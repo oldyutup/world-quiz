@@ -31,26 +31,53 @@
    RESET
 ═══════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #root { height: 100%; overflow: hidden; }
-body { background: var(--bg); color: var(--text); font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+html, body { height: 100%; }
+/* #root: no fixed height — lets HomeScreen grow beyond viewport and scroll.
+   Game screens (.app) set their own 100dvh height. */
+#root {
+  min-height: 100%;   /* at least fills viewport; can grow taller for scroll */
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
 
 /* ═══════════════════════════════════════════
    APP SHELL (game screens)
 ═══════════════════════════════════════════ */
-.app { display:flex; flex-direction:column; width:100%; height:100dvh; height:100vh; overflow:hidden; }
+/* Game screen shell — clips overflow so map/flag areas don't scroll.
+   Uses dvh/svh so the map fills the visible area excluding browser chrome.
+   Falls back to 100vh for older browsers. */
+.app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;       /* base fallback */
+  height: 100dvh;      /* modern: dynamic viewport, shrinks with browser bar */
+  overflow: hidden;    /* game screens must not scroll */
+}
 
 /* ═══════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════ */
 .home-screen {
-  min-height: 100dvh; min-height: 100vh;
+  /* HomeScreen is a direct child of #root, NOT inside .app.
+     It must be able to scroll independently.
+     min-height forces the page to be at least viewport-tall;
+     overflow-y:auto lets it grow and scroll when content overflows. */
+  min-height: 100dvh;
+  min-height: 100svh;        /* small viewport height — iOS Safari with browser chrome */
+  min-height: 100vh;         /* final fallback */
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;   /* smooth momentum scroll on iOS */
   background: var(--bg);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 20px 60px;
-  gap: 48px;
+  padding: 40px 20px env(safe-area-inset-bottom, 80px);
+  gap: 36px;
 }
 
 .home-hero {
@@ -58,7 +85,8 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
   text-align: center;
 }
 .home-globe {
-  font-size: 5rem; line-height: 1;
+  font-size: 4rem;     /* slightly smaller — saves vertical space */
+  line-height: 1;
   animation: float 4s ease-in-out infinite;
   filter: drop-shadow(0 0 32px rgba(88,166,255,.35));
 }
@@ -68,19 +96,19 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 }
 .home-title {
   font-family: var(--font-head);
-  font-size: clamp(3rem,10vw,5.5rem);
+  font-size: clamp(2.4rem, 8vw, 5rem);   /* narrower clamp — shrinks faster */
   letter-spacing: .08em;
   background: linear-gradient(135deg, var(--accent) 0%, var(--green) 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-.home-subtitle { font-size: 1.1rem; color: var(--muted); }
+.home-subtitle { font-size: 1rem; color: var(--muted); }
 
 /* Mode grid */
 .mode-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
   width: 100%;
   max-width: 860px;
 }
@@ -89,9 +117,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
   position: relative;
   background: var(--surface);
   border: 1.5px solid var(--border);
-  border-radius: 16px;
-  padding: 28px 24px;
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  border-radius: 14px;
+  padding: 22px 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
   text-align: center;
   transition: border-color .2s, transform .2s, box-shadow .2s;
 }
@@ -105,10 +133,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
   filter: grayscale(.4);
 }
 
-.mode-card-icon { font-size: 2.8rem; line-height: 1; }
-.mode-card-title { font-family: var(--font-head); font-size: 1.6rem; letter-spacing: .05em; }
-.mode-card-desc { font-size: .84rem; color: var(--muted); line-height: 1.5; }
-.mode-card-btn { margin-top: 6px; width: 100%; }
+.mode-card-icon { font-size: 2.4rem; line-height: 1; }
+.mode-card-title { font-family: var(--font-head); font-size: 1.5rem; letter-spacing: .05em; }
+.mode-card-desc { font-size: .82rem; color: var(--muted); line-height: 1.45; }
+.mode-card-btn { margin-top: 4px; width: 100%; }
 .mode-card-btn.disabled { opacity: .45; cursor: not-allowed; }
 
 .soon-badge {
@@ -1203,4 +1231,30 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
   .setup-start, .setup-target { font-size: 1rem; }
   .route-win-actions { flex-wrap: wrap; }
   .route-win-actions .btn { flex: 1; min-width: 90px; }
+}
+
+/* ── Home screen mobile (phones ≤ 480px) ── */
+@media (max-width: 480px) {
+  .home-screen {
+    padding: 24px 14px env(safe-area-inset-bottom, 80px);
+    gap: 24px;
+  }
+  .home-globe    { font-size: 2.8rem; }
+  .home-hero     { gap: 6px; }
+  .mode-grid     { grid-template-columns: 1fr; gap: 10px; }
+  .mode-card     { padding: 16px 14px; gap: 8px; flex-direction: row; align-items: center; text-align: left; border-radius: 12px; }
+  .mode-card-icon     { font-size: 2rem; flex-shrink: 0; }
+  .mode-card-content  { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .mode-card-title    { font-size: 1.25rem; }
+  .mode-card-desc     { font-size: .75rem; line-height: 1.35; }
+  .mode-card-btn      { margin-top: 0; width: auto; flex-shrink: 0; height: 34px; padding: 0 14px; font-size: .8rem; align-self: center; }
+  .soon-badge  { top: 8px; right: 8px; }
+}
+
+/* ── Landscape phones ── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .home-screen { padding: 20px 20px env(safe-area-inset-bottom, 40px); gap: 20px; }
+  .home-globe  { font-size: 2.4rem; }
+  .mode-grid   { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mode-card   { padding: 14px 16px; gap: 8px; }
 }

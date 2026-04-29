@@ -226,8 +226,10 @@ function HomeScreen({ onSelect }: HomeProps) {
           <div key={i} className={"mode-card" + (m.available ? "" : " mode-card--soon")}>
             {!m.available && <span className="soon-badge">Yakında</span>}
             <div className="mode-card-icon">{m.icon}</div>
-            <h2 className="mode-card-title">{m.title}</h2>
-            <p className="mode-card-desc">{m.desc}</p>
+            <div className="mode-card-content">
+              <h2 className="mode-card-title">{m.title}</h2>
+              <p className="mode-card-desc">{m.desc}</p>
+            </div>
             <button
               className={"btn btn-accent mode-card-btn" + (m.available ? "" : " disabled")}
               disabled={!m.available}
