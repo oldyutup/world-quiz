@@ -563,6 +563,10 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
   const [input,        setInput]       = useState("");
   const [feedback,     setFeedback]    = useState<"correct" | "wrong" | "dup" | null>(null);
   const [timeLeft,     setTimeLeft]    = useState(selectedDuration);
+  // Wall-clock start time — set when timed game begins, null otherwise.
+  // Using Date.now() means the timer keeps running even when the tab is hidden.
+  const gameStartTimeRef = useRef<number | null>(null);
+  const rafRef           = useRef<number | null>(null);
   const [showModal,    setShowModal]   = useState(false);
   const [shareState,   setShareState]  = useState<"idle" | "shared" | "copied" | "failed">("idle");
   const [lastMode,     setLastMode]    = useState<"timed" | "free">("free");
@@ -578,7 +582,7 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
   const goldRewardedRef  = useRef(false); // prevent double-awarding per game
 
   const inputRef    = useRef<HTMLInputElement>(null);
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null); // kept for legacy cleanup
   const feedbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isPlaying    = mode === "free" || mode === "timed";
@@ -634,6 +638,8 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
 
   const endGame = useCallback((won?: boolean) => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    gameStartTimeRef.current = null;
     void won;
     flushGold(); // award gold when game ends
     setMode("finished");
@@ -652,16 +658,53 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  // ── Real-time wall-clock timer ──
+  // Uses Date.now() so it stays accurate even when the tab is hidden or
+  // the browser throttles setInterval. A rAF loop checks the elapsed time
+  // on every visible frame; visibilitychange re-checks on tab focus.
   useEffect(() => {
     if (mode !== "timed") return;
-    timerRef.current = setInterval(() => {
-      setTimeLeft(t => { if (t <= 1) { endGame(); return 0; } return t - 1; });
-    }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [mode, endGame]);
+
+    // Record start time (or resume time if we re-enter this effect)
+    if (!gameStartTimeRef.current) {
+      gameStartTimeRef.current = Date.now();
+    }
+    const startTime    = gameStartTimeRef.current;
+    const totalMs      = selectedDuration * 1000;
+    let   ended        = false;
+
+    const tick = () => {
+      if (ended) return;
+      const elapsed  = Date.now() - startTime;
+      const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+      setTimeLeft(remaining);
+      if (elapsed >= totalMs) {
+        ended = true;
+        endGame();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    // Also fire on visibility restore so display snaps immediately
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && !ended) tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      ended = true;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [mode, endGame, selectedDuration]);
 
   const startGame = useCallback((m: "timed" | "free") => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    gameStartTimeRef.current = null; // will be set fresh when timed effect runs
     // Reset per-session gold tracking
     pendingGoldRef.current  = 0;
     goldRewardedRef.current = false;
@@ -679,6 +722,8 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
 
   const resetGame = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    gameStartTimeRef.current = null;
     pendingGoldRef.current  = 0;
     goldRewardedRef.current = false;
     setMode("idle");
@@ -952,6 +997,22 @@ function FlagGame({ continent, selectedDuration, onContinentChange, onDurationCh
       />
       <HintPanel gold={g.gold} hints={hints} currentEntry={currentFlag} isPlaying={g.isPlaying} onBuyHint={handleBuyHint} />
 
+      {/* Pas Geç bar — full-width, below hints, above flag display */}
+      {g.isPlaying && (
+        <div className="pas-gec-bar">
+          {skipAnswer ? (
+            <span className="pas-gec-answer">
+              Doğru cevap: <strong>{skipAnswer}</strong>
+            </span>
+          ) : (
+            <button className="btn-pas-gec" onClick={handleSkip}>
+              <span>⏭️</span> Pas Geç
+            </button>
+          )}
+          <span className="pas-gec-hint">ESC</span>
+        </div>
+      )}
+
       <div className="flag-area">
         {g.mode === "idle" && (
           <div className="flag-idle">
@@ -985,7 +1046,6 @@ function FlagGame({ continent, selectedDuration, onContinentChange, onDurationCh
             ) : (
               <p className="flag-prompt">Bu bayrağın ülkesi nedir?</p>
             )}
-            <p className="skip-hint">ESC veya "Pas" ile geçebilirsin</p>
           </div>
         )}
         {g.mode === "finished" && (
@@ -1165,6 +1225,22 @@ function SilhouetteGame({ continent, selectedDuration, onContinentChange, onDura
       />
       <HintPanel gold={g.gold} hints={hints} currentEntry={currentSil} isPlaying={g.isPlaying} onBuyHint={handleBuyHint} />
 
+      {/* Pas Geç bar */}
+      {g.isPlaying && (
+        <div className="pas-gec-bar">
+          {skipAnswer ? (
+            <span className="pas-gec-answer">
+              Doğru cevap: <strong>{skipAnswer}</strong>
+            </span>
+          ) : (
+            <button className="btn-pas-gec" onClick={handleSkip}>
+              <span>⏭️</span> Pas Geç
+            </button>
+          )}
+          <span className="pas-gec-hint">ESC</span>
+        </div>
+      )}
+
       <div className="sil-area">
         {g.mode === "idle" && (
           <div className="flag-idle">
@@ -1191,7 +1267,6 @@ function SilhouetteGame({ continent, selectedDuration, onContinentChange, onDura
             ) : (
               <p className="flag-prompt">Bu ülkenin adı nedir?</p>
             )}
-            <p className="skip-hint">ESC veya "Pas" ile geçebilirsin</p>
           </div>
         )}
         {g.mode === "finished" && (

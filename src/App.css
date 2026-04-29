@@ -1258,3 +1258,75 @@ body {
   .mode-grid   { grid-template-columns: 1fr 1fr; gap: 10px; }
   .mode-card   { padding: 14px 16px; gap: 8px; }
 }
+
+/* ═══════════════════════════════════════════
+   PAS GEÇ BAR — full-width strip between hints and game area
+═══════════════════════════════════════════ */
+.pas-gec-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Pas Geç button */
+.btn-pas-gec {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.btn-pas-gec:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(245,158,11,.07);
+}
+.btn-pas-gec:active { transform: scale(.97); }
+
+/* ESC hint */
+.pas-gec-hint {
+  font-size: .65rem;
+  color: var(--muted);
+  opacity: .55;
+  letter-spacing: .05em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Answer reveal inside bar */
+.pas-gec-answer {
+  font-size: .82rem;
+  color: var(--red);
+  font-weight: 500;
+  animation: fadeUp .2s ease;
+  flex: 1;
+}
+.pas-gec-answer strong {
+  font-family: var(--font-head);
+  font-size: 1rem;
+  letter-spacing: .03em;
+  color: var(--red);
+}
+
+@media (max-width: 520px) {
+  .pas-gec-bar { padding: 5px 10px; gap: 8px; }
+  .btn-pas-gec { height: 28px; font-size: .74rem; padding: 0 10px; }
+  .pas-gec-hint { display: none; }  /* save space on small screens */
+}
