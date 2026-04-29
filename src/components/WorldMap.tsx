@@ -501,3 +501,133 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     </div>
   );
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DUEL MAP VIEW
+   Same base as WorldMap but supports two coloured claim sets.
+   myTopoIds  → green (the local player)
+   oppTopoIds → red  (the opponent)
+═══════════════════════════════════════════════════════════════ */
+export interface DuelMapProps {
+  myTopoIds:  Set<string>;
+  oppTopoIds: Set<string>;
+}
+
+export function DuelMapView({ myTopoIds, oppTopoIds }: DuelMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef       = useRef<SVGSVGElement>(null);
+  const rawRef3      = useRef<Feature<Geometry>[]>([]);
+
+  const [computed3, setComputed3] = useState<ComputedFeature[]>([]);
+  const [dims3, setDims3]         = useState({ w: 960, h: 500 });
+  const [loading3, setLoading3]   = useState(true);
+
+  const xf3Ref  = useRef({ k: 1, tx: 0, ty: 0 });
+  const [xf3, setXf3] = useState({ k: 1, tx: 0, ty: 0 });
+  const drag3Ref = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
+  const proj3Ref = useRef({ w: 0, h: 0 });
+
+  const measure3 = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    if (width > 10 && height > 10)
+      setDims3(p => p.w === width && p.h === height ? p : { w: width, h: height });
+  }, []);
+
+  useEffect(() => {
+    measure3();
+    const ro = new ResizeObserver(measure3);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [measure3]);
+
+  useEffect(() => {
+    loadTopo().then(f => { rawRef3.current = f; setLoading3(false); });
+  }, []);
+
+  useEffect(() => {
+    const features = rawRef3.current;
+    if (loading3 || !features.length || dims3.w === 0) return;
+    if (proj3Ref.current.w === dims3.w && proj3Ref.current.h === dims3.h) return;
+    proj3Ref.current = { w: dims3.w, h: dims3.h };
+    const proj = geoNaturalEarth1().scale(dims3.w / 6.2).translate([dims3.w / 2, dims3.h / 2]);
+    const pg   = geoPath(proj);
+    const next: ComputedFeature[] = [];
+    features.forEach(f => {
+      const id = String((f as Feature & { id?: unknown }).id ?? "");
+      const d  = pg(f); if (!d) return;
+      const area = pg.area(f); const [cx, cy] = pg.centroid(f);
+      next.push({ id, d, area, cx: isNaN(cx)?0:cx, cy: isNaN(cy)?0:cy, display: TOPOID_TO_DISPLAY[id]??""  });
+    });
+    setComputed3(next);
+  }, [loading3, dims3]);
+
+  const applyZoom3 = useCallback((nk: number, fx?: number, fy?: number) => {
+    const old = xf3Ref.current; const k = clamp(nk, ZOOM_MIN, ZOOM_MAX);
+    const _fx = fx ?? dims3.w/2; const _fy = fy ?? dims3.h/2;
+    const r = k/old.k; const maxP = dims3.w*(k-1)*0.6+dims3.w*0.3;
+    const next = { k, tx: clamp(_fx-r*(_fx-old.tx),-maxP,maxP), ty: clamp(_fy-r*(_fy-old.ty),-maxP,maxP) };
+    xf3Ref.current = next; setXf3({...next});
+  }, [dims3]);
+
+  useEffect(() => {
+    const el = containerRef.current; if (!el) return;
+    const h = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      applyZoom3(xf3Ref.current.k*(e.deltaY<0?ZOOM_STEP:1/ZOOM_STEP), e.clientX-r.left, e.clientY-r.top);
+    };
+    el.addEventListener("wheel", h, { passive: false });
+    return () => el.removeEventListener("wheel", h);
+  }, [applyZoom3]);
+
+  const onPD3 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    svgRef.current?.setPointerCapture(e.pointerId);
+    drag3Ref.current = { sx:e.clientX, sy:e.clientY, tx0:xf3Ref.current.tx, ty0:xf3Ref.current.ty };
+  };
+  const onPM3 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!drag3Ref.current) return;
+    const { k } = xf3Ref.current; const maxP = dims3.w*(k-1)*0.6+dims3.w*0.3;
+    const next = { k, tx: clamp(drag3Ref.current.tx0+e.clientX-drag3Ref.current.sx,-maxP,maxP), ty: clamp(drag3Ref.current.ty0+e.clientY-drag3Ref.current.sy,-maxP,maxP) };
+    xf3Ref.current = next; setXf3({...next});
+  };
+  const onPU3 = () => { drag3Ref.current = null; };
+
+  if (loading3 || computed3.length === 0) {
+    return <div ref={containerRef} className="map-container-inner"><div className="map-loading"><div className="spinner"/><span>Harita yükleniyor…</span></div></div>;
+  }
+
+  const t3 = `translate(${xf3.tx}px,${xf3.ty}px) scale(${xf3.k})`;
+
+  return (
+    <div ref={containerRef} className="map-container-inner">
+      <svg ref={svgRef} viewBox={`0 0 ${dims3.w} ${dims3.h}`} className="world-svg"
+        style={{ width:"100%", height:"100%", cursor: drag3Ref.current?"grabbing":"grab" }}
+        onPointerDown={onPD3} onPointerMove={onPM3} onPointerUp={onPU3} onPointerCancel={onPU3}
+      >
+        <rect width={dims3.w} height={dims3.h} fill="var(--ocean)"/>
+        <g style={{ transform:t3, transformOrigin:"0 0" }}>
+          {computed3.map(cf => {
+            const isMine = myTopoIds.has(cf.id);
+            const isOpp  = oppTopoIds.has(cf.id);
+            const cls = ["country-path", isMine ? "duel-mine" : isOpp ? "duel-opp" : ""].filter(Boolean).join(" ");
+            return <path key={cf.id+cf.d.slice(1,8)} d={cf.d} className={cls}/>;
+          })}
+        </g>
+      </svg>
+      <div className="zoom-controls">
+        <button className="zoom-btn" onClick={()=>applyZoom3(xf3Ref.current.k*ZOOM_STEP)}>+</button>
+        <div className="zoom-divider"/>
+        <button className="zoom-btn" onClick={()=>applyZoom3(xf3Ref.current.k/ZOOM_STEP)}>&#8722;</button>
+      </div>
+      <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+
+      {/* Legend */}
+      <div className="duel-legend">
+        <span className="duel-legend-item duel-legend-mine">● Ben</span>
+        <span className="duel-legend-item duel-legend-opp">● Rakip</span>
+      </div>
+    </div>
+  );
+}

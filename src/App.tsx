@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import WorldMap, { SilhouetteView } from "./components/WorldMap";
 import RouteGame from "./components/RouteGame";
+import DuelGame from "./components/DuelGame";
 import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
@@ -17,7 +18,7 @@ import "./App.css";
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen       = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game";
+type AppScreen       = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -68,6 +69,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "flag-game":        6,
   "silhouette-game":  8,
   "route-game":       0,  // handled internally by RouteGame
+  "duel-game":        0,  // handled internally by DuelGame
 };
 
 /** Hint costs */
@@ -212,6 +214,7 @@ function HomeScreen({ onSelect }: HomeProps) {
     { id: "flag-game"       as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.",           available: true  },
     { id: "silhouette-game" as AppScreen, icon: "🗺️", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.",               available: true  },
     { id: "route-game"      as AppScreen, icon: "🧭", title: "Rota Modu",   desc: "Komşu ülkelerle hedefe ulaş.",                              available: true  },
+    { id: "duel-game"      as AppScreen, icon: "⚔️", title: "Online 1v1",  desc: "Arkadaşınla ülke kapmaca oyna.",                           available: true  },
     { id: "home"            as AppScreen, icon: "🏙️", title: "Foto Tahmin", desc: "Fotoğraftan şehri veya ülkeyi bul.",                        available: false },
   ];
   return (
@@ -1306,6 +1309,7 @@ export default function App() {
   const [selectedDuration, setSelectedDuration] = useState(60);
 
   if (screen === "home") return <HomeScreen onSelect={setScreen} />;
+  if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "silhouette-game") return (
     <SilhouetteGame continent={continent} selectedDuration={selectedDuration}
