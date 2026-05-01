@@ -2108,3 +2108,22 @@ body {
 .duel-disconnect-banner strong {
   color: #a78bfa;
 }
+@media (max-width: 768px) {
+  .world-map,
+  .duel-map,
+  .map-wrap,
+  .map-container {
+    touch-action: none;
+    overscroll-behavior: contain;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .world-map svg,
+  .duel-map svg,
+  .map-wrap svg,
+  .map-container svg {
+    touch-action: pinch-zoom; /* ⬅️ burayı böyle yap */
+  }
+}
