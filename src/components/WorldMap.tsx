@@ -690,9 +690,14 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
             {computed3
              .filter(cf => {
   if (cf.cx === 0 || !cf.display) return false;
+
+  const isClaimed = myTopoIds.has(cf.id) || oppTopoIds.has(cf.id);
+  if (!isClaimed) return false;
+
   const effectiveMin = 40 / (xf3.k * xf3.k);
   if (cf.area < effectiveMin) return false;
-  return myTopoIds.has(cf.id) || oppTopoIds.has(cf.id);
+
+  return true;
 })
               .map(cf => {
                 // Font size: based on sqrt(area) scaled by label-scale,
