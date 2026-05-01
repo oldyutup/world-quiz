@@ -300,10 +300,19 @@ COUNTRIES.forEach(entry => {
 
 export const TOTAL_COUNTRIES = COUNTRIES.filter(c => c.counted).length;
 
+const MULTI_CONTINENT: Record<string, Continent[]> = {
+  "792": ["europe", "asia"], // Türkiye
+  "643": ["europe", "asia"], // Rusya
+};
+
 export function getContinentIds(continent: Continent | "world"): Set<string> {
   const base = COUNTRIES.filter(c => c.counted && c.topoId);
   if (continent === "world") return new Set(base.map(c => c.topoId));
-  return new Set(base.filter(c => c.continent === continent).map(c => c.topoId));
+  const ids = new Set(base.filter(c => c.continent === continent).map(c => c.topoId));
+  for (const [topoId, continents] of Object.entries(MULTI_CONTINENT)) {
+    if (continents.includes(continent)) ids.add(topoId);
+  }
+  return ids;
 }
 
 export type Difficulty = "easy" | "normal" | "hard" | "all";

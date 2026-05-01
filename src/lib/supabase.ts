@@ -13,24 +13,45 @@ export const supabase = createClient(url ?? "", key ?? "");
 
 /* ── DB row types ── */
 export interface DuelRoom {
-  id:         string;
-  code:       string;
-  status:     "waiting" | "playing" | "finished";
-  created_at: string;
+  id:               string;
+  code:             string;
+  status:           "waiting" | "waiting_rematch" | "playing" | "finished";
+  duration_seconds: number;
+  region:           string;
+  created_at:       string;
+
+  /** Set when host starts the game — server-authoritative timer reference */
+  started_at:       string | null;
+
+  /** Why the game ended */
+  finished_reason:     "timeout" | "forfeit" | "disconnect" | null;
+  /** Player who quit (only set if finished_reason === "forfeit") */
+  forfeited_player_id: string | null;
+  /** Winner player_id — set when finishing */
+  winner_player_id:    string | null;
+
+  /** Pointer to the new room when a rematch is accepted */
+  rematch_room_id:     string | null;
+
+  /** Disconnect grace: the player who closed the tab (cleared when they return) */
+  disconnected_player_id: string | null;
+  /** Timestamp when the disconnect was recorded — used to compute remaining grace */
+  disconnect_at:          string | null;
 }
 
 export interface DuelPlayer {
-  id:        string;
-  room_id:   string;
-  name:      string;
-  score:     number;
-  joined_at: string;
+  id:           string;
+  room_id:      string;
+  name:         string;
+  score:        number;
+  joined_at:    string;
+  last_seen_at: string | null;
 }
 
 export interface DuelClaim {
   id:           string;
   room_id:      string;
   player_id:    string;
-  country_code: string;   // topoId (e.g. "276")
+  country_code: string;
   created_at:   string;
 }

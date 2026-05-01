@@ -41,6 +41,7 @@ interface MapProps {
   showLabels:  boolean;
   activeIds:   Set<string>;
   resetKey:    number;
+  region?:     string;
 }
 
 interface ComputedFeature {
@@ -48,13 +49,54 @@ interface ComputedFeature {
 }
 
 const MIN_LABEL = 120;
+
+/** Manual label offsets for countries whose centroid is pulled off mainland by overseas territories.
+ *  Values are projected SVG units at k=1. */
+const LABEL_OFFSET: Record<string, [number, number]> = {
+  "250": [17, -10], // Fransa — centroid pulled SW by overseas territories
+};
 const ZOOM_MIN  = 1;
 const ZOOM_MAX  = 12;
 const ZOOM_STEP = 1.4;
 
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
-export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey }: MapProps) {
+/**
+ * Compute the transform {k, tx, ty} that fits all countries in activeIds
+ * into the viewport (w × h) with padding. Returns null for world/no scope.
+ */
+function fitRegion(
+  activeIds: Set<string>,
+  computed: ComputedFeature[],
+  w: number,
+  h: number,
+): { k: number; tx: number; ty: number } | null {
+  if (!activeIds.size) return null;
+  const inScope = computed.filter(cf => activeIds.has(cf.id) && cf.cx !== 0);
+  if (!inScope.length) return null;
+
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const cf of inScope) {
+    const r = Math.sqrt(cf.area) * 0.55;
+    x0 = Math.min(x0, cf.cx - r);
+    y0 = Math.min(y0, cf.cy - r);
+    x1 = Math.max(x1, cf.cx + r);
+    y1 = Math.max(y1, cf.cy + r);
+  }
+  if (!isFinite(x0) || !isFinite(y0)) return null;
+
+  const PAD = 40;
+  const bw  = x1 - x0;
+  const bh  = y1 - y0;
+  if (bw < 1 || bh < 1) return null;
+
+  const k  = clamp(Math.min((w - PAD * 2) / bw, (h - PAD * 2) / bh), ZOOM_MIN, ZOOM_MAX);
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  return { k, tx: w / 2 - cx * k, ty: h / 2 - cy * k };
+}
+
+export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const rawRef       = useRef<Feature<Geometry>[]>([]);
@@ -113,6 +155,16 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     xfRef.current = reset;
     setXf(reset);
   }, [resetKey]);
+
+  // Auto-zoom to fit the selected region whenever region or layout changes
+  useEffect(() => {
+    if (!region || region === "world" || computed.length === 0 || dims.w === 0) return;
+    const fit = fitRegion(activeIds, computed, dims.w, dims.h);
+    if (!fit) return;
+    xfRef.current = fit;
+    setXf({ ...fit });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region, activeIds, computed, dims]);
 
   const applyZoom = useCallback((newK: number, focalX?: number, focalY?: number) => {
     const old = xfRef.current;
@@ -185,7 +237,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
             .map(cf => {
               const base = Math.min(11, Math.max(5, Math.sqrt(cf.area) * 0.27));
               return (
-                <g key={"lbl-"+cf.id} transform={`translate(${cf.cx},${cf.cy})`}>
+                <g key={"lbl-"+cf.id} transform={`translate(${cf.cx + (LABEL_OFFSET[cf.id]?.[0] ?? 0)},${cf.cy + (LABEL_OFFSET[cf.id]?.[1] ?? 0)})`}>
                   <text textAnchor="middle" dominantBaseline="central" fontSize={base*labelScale}
                     className={"country-label"+(cf.id===lastGuessed?" label-last":"")}>
                     {cf.display}
@@ -509,11 +561,14 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
    oppTopoIds → red  (the opponent)
 ═══════════════════════════════════════════════════════════════ */
 export interface DuelMapProps {
-  myTopoIds:  Set<string>;
-  oppTopoIds: Set<string>;
+  myTopoIds:   Set<string>;
+  oppTopoIds:  Set<string>;
+  showLabels?: boolean;
+  region?:     string;
+  activeIds?:  Set<string>;
 }
 
-export function DuelMapView({ myTopoIds, oppTopoIds }: DuelMapProps) {
+export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region, activeIds }: DuelMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const rawRef3      = useRef<Feature<Geometry>[]>([]);
@@ -562,6 +617,16 @@ export function DuelMapView({ myTopoIds, oppTopoIds }: DuelMapProps) {
     });
     setComputed3(next);
   }, [loading3, dims3]);
+
+  // Auto-zoom to fit the selected region
+  useEffect(() => {
+    if (!region || region === "world" || !activeIds?.size || computed3.length === 0 || dims3.w === 0) return;
+    const fit = fitRegion(activeIds, computed3, dims3.w, dims3.h);
+    if (!fit) return;
+    xf3Ref.current = fit;
+    setXf3({ ...fit });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region, activeIds, computed3, dims3]);
 
   const applyZoom3 = useCallback((nk: number, fx?: number, fy?: number) => {
     const old = xf3Ref.current; const k = clamp(nk, ZOOM_MIN, ZOOM_MAX);
@@ -615,6 +680,44 @@ export function DuelMapView({ myTopoIds, oppTopoIds }: DuelMapProps) {
             return <path key={cf.id+cf.d.slice(1,8)} d={cf.d} className={cls}/>;
           })}
         </g>
+
+        {/* Country labels — only for claimed countries, shown when toggle is on.
+             Zoom-aware: at low zoom, only large countries show labels.
+             Font is capped so it never grows huge or stays microscopic.
+             Areas below MIN_LABEL are always hidden. */}
+        {showLabels && (
+          <g style={{ transform: t3, transformOrigin: "0 0" }}>
+            {computed3
+             .filter(cf => {
+  if (cf.cx === 0 || !cf.display) return false;
+  const effectiveMin = 40 / (xf3.k * xf3.k);
+  if (cf.area < effectiveMin) return false;
+  return myTopoIds.has(cf.id) || oppTopoIds.has(cf.id);
+})
+              .map(cf => {
+                // Font size: based on sqrt(area) scaled by label-scale,
+                // clamped so it stays readable but not huge.
+                const labelScale3 = Math.max(0.6, 1 / Math.sqrt(xf3.k));
+                const base = Math.min(10, Math.max(4.5, Math.sqrt(cf.area) * 0.22));
+                const finalSize = base * labelScale3;
+                // Don't render if too tiny to read
+                if (finalSize < 2) return null;
+                return (
+                  <g key={"dl-" + cf.id} transform={`translate(${cf.cx + (LABEL_OFFSET[cf.id]?.[0] ?? 0)},${cf.cy + (LABEL_OFFSET[cf.id]?.[1] ?? 0)})`}>
+                    <text
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={finalSize}
+                      className="country-label label-last"
+                      style={{ pointerEvents: "none" }}
+                    >
+                      {cf.display}
+                    </text>
+                  </g>
+                );
+              })}
+          </g>
+        )}
       </svg>
       <div className="zoom-controls">
         <button className="zoom-btn" onClick={()=>applyZoom3(xf3Ref.current.k*ZOOM_STEP)}>+</button>

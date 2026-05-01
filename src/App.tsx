@@ -839,7 +839,8 @@ function MapGame({ continent, selectedDuration, onContinentChange, onDurationCha
       />
       <div className="map-area">
         <WorldMap guessedISOs={g.guessedISOs} lastGuessed={g.lastGuessed}
-          showLabels={showLabels} activeIds={g.activeIds} resetKey={mapResetKey} />
+          showLabels={showLabels} activeIds={g.activeIds} resetKey={mapResetKey}
+          region={continent} />
       </div>
       {g.showModal && g.mode === "finished" && (
         <ResultModal
