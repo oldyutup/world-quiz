@@ -205,6 +205,7 @@ export default function DuelGame({ onHome }: DuelGameProps) {
   const rafRef          = useRef<number | null>(null);
   const fbTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameEndedRef    = useRef(false);
+  const lastWriteRef = useRef(0);
   const staleCountRef = useRef(0);
   const timeLeftRef     = useRef<number>(9999);   // mirrors timeLeft; readable in async handlers
   const pollTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -738,8 +739,20 @@ export default function DuelGame({ onHome }: DuelGameProps) {
       const opp = ps.find((p: { id: string }) => p.id !== myId);
       if (!opp) return;
 
-      const lastSeen = opp.last_seen_at ? new Date(opp.last_seen_at).getTime() : 0;
-      const stale = lastSeen > 0 && (Date.now() - lastSeen) > 20000;
+      const lastSeen = opp.last_seen_at
+  ? new Date(opp.last_seen_at).getTime()
+  : 0;
+
+const started = room.started_at
+  ? new Date(room.started_at).getTime()
+  : Date.now();
+
+const justStarted = Date.now() - started < 10000;
+
+const stale =
+  !justStarted &&
+  lastSeen > 0 &&
+  (Date.now() - lastSeen) > 20000;
 
       dbg("opp monitor", { oppId: opp.id, lastSeen: opp.last_seen_at, stale });
 
@@ -1004,6 +1017,18 @@ await supabase
     // ── GUARD: must be playing, have a room, and have time left ──
     if (phaseRef.current !== "playing") return;
     if (gameEndedRef.current) return;
+    if (activePlayerIdRef.current) {
+  const now = Date.now();
+
+  if (now - lastWriteRef.current > 2000) {
+    lastWriteRef.current = now;
+
+    await supabase
+      .from("duel_players")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", activePlayerIdRef.current);
+  }
+}
     if (timeLeftRef.current <= 0) return;
     if (!room || room.status !== "playing") return;
 
