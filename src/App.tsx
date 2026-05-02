@@ -793,7 +793,11 @@ function MapGame({ continent, selectedDuration, onContinentChange, onDurationCha
     const norm = normalizeInput(g.input);
     if (!norm) return;
     const topoId = NAME_TO_TOPOID[norm];
-    if (!topoId || !g.activeIds.has(topoId)) { g.triggerFeedback("wrong"); return; }
+    if (!topoId || !g.activeIds.has(topoId)) {
+  g.triggerFeedback("wrong");
+  g.setInput(""); // 🔥 input temizlenir
+  return;
+}
     if (g.guessedISOs.has(topoId)) { g.triggerFeedback("dup"); g.setInput(""); return; }
     const next = new Set(g.guessedISOs);
     next.add(topoId);
@@ -953,7 +957,11 @@ function FlagGame({ continent, selectedDuration, onContinentChange, onDurationCh
     const norm = normalizeInput(g.input);
     if (!norm) return;
     const entry = NAME_TO_ENTRY[norm];
-    if (!entry || entry.code !== currentFlag.code) { g.triggerFeedback("wrong"); return; }
+    if (!entry || entry.code !== currentFlag.code) { 
+  g.triggerFeedback("wrong"); 
+  g.setInput(""); // input temizlenir
+  return;
+}
     const topoId = currentFlag.topoId;
     if (topoId && g.guessedISOs.has(topoId)) {
       g.triggerFeedback("dup"); g.setInput(""); advanceTo(flagQueue, flagIndex); return;
@@ -1176,11 +1184,12 @@ function SilhouetteGame({ continent, selectedDuration, onContinentChange, onDura
     const entry  = NAME_TO_ENTRY[norm];
     const isMatch = (topoId && topoId === currentSil.topoId) || (entry && entry.code === currentSil.code);
     if (!isMatch) {
-      g.triggerFeedback("wrong");
-      setFlash("wrong");
-      setTimeout(() => setFlash(null), 500);
-      return;
-    }
+  g.triggerFeedback("wrong");
+  g.setInput(""); // 🔥 EKLE
+  setFlash("wrong");
+  setTimeout(() => setFlash(null), 500);
+  return;
+}
     const tid = currentSil.topoId;
     if (tid && g.guessedISOs.has(tid)) {
       g.triggerFeedback("dup"); g.setInput(""); advanceTo(silQueue, silIndex); return;
