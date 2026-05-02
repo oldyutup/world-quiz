@@ -647,8 +647,11 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     return () => el.removeEventListener("wheel", h);
   }, [applyZoom3]);
 
-  const onPD3 = (e: ReactPointerEvent<SVGSVGElement>) => {
-    svgRef.current?.setPointerCapture(e.pointerId);
+ const onPD3 = (e: ReactPointerEvent<SVGSVGElement>) => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  svgRef.current?.setPointerCapture(e.pointerId);
     drag3Ref.current = { sx:e.clientX, sy:e.clientY, tx0:xf3Ref.current.tx, ty0:xf3Ref.current.ty };
   };
   const onPM3 = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -667,10 +670,21 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
 
   return (
     <div ref={containerRef} className="map-container-inner">
-      <svg ref={svgRef} viewBox={`0 0 ${dims3.w} ${dims3.h}`} className="world-svg"
-        style={{ width:"100%", height:"100%", cursor: drag3Ref.current?"grabbing":"grab" }}
-        onPointerDown={onPD3} onPointerMove={onPM3} onPointerUp={onPU3} onPointerCancel={onPU3}
-      >
+      <svg
+  ref={svgRef}
+  viewBox={`0 0 ${dims3.w} ${dims3.h}`}
+  className="world-svg"
+  style={{
+    width: "100%",
+    height: "100%",
+    cursor: drag3Ref.current ? "grabbing" : "grab",
+    touchAction: "none",
+  }}
+  onPointerDown={onPD3}
+  onPointerMove={onPM3}
+  onPointerUp={onPU3}
+  onPointerCancel={onPU3}
+>
         <rect width={dims3.w} height={dims3.h} fill="var(--ocean)"/>
         <g style={{ transform:t3, transformOrigin:"0 0" }}>
           {computed3.map(cf => {
