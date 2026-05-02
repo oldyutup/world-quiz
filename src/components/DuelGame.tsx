@@ -205,6 +205,7 @@ export default function DuelGame({ onHome }: DuelGameProps) {
   const rafRef          = useRef<number | null>(null);
   const fbTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameEndedRef    = useRef(false);
+  const staleCountRef = useRef(0);
   const timeLeftRef     = useRef<number>(9999);   // mirrors timeLeft; readable in async handlers
   const pollTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
   // Refs that keep realtime callbacks up-to-date (avoids stale closure bugs)
@@ -738,13 +739,18 @@ export default function DuelGame({ onHome }: DuelGameProps) {
       if (!opp) return;
 
       const lastSeen = opp.last_seen_at ? new Date(opp.last_seen_at).getTime() : 0;
-      const stale = lastSeen > 0 && (Date.now() - lastSeen) > 12000;
+      const stale = lastSeen > 0 && (Date.now() - lastSeen) > 20000;
 
       dbg("opp monitor", { oppId: opp.id, lastSeen: opp.last_seen_at, stale });
 
       if (stale) {
-        handleOppDisconnect(opp.last_seen_at!);
-      } else {
+  staleCountRef.current += 1;
+
+  if (staleCountRef.current >= 2) {
+    handleOppDisconnect(opp.last_seen_at);
+  }
+} else {
+  staleCountRef.current = 0;
         if (disconnectTimerRef.current || disconnectIntervalRef.current) {
           if (disconnectTimerRef.current)   { clearTimeout(disconnectTimerRef.current);   disconnectTimerRef.current   = null; }
           if (disconnectIntervalRef.current){ clearInterval(disconnectIntervalRef.current); disconnectIntervalRef.current = null; }
