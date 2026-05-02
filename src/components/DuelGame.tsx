@@ -1051,9 +1051,23 @@ await supabase
     const norm = normalizeInput(input);
     if (!norm) return;
     const topoId = NAME_TO_TOPOID[norm];
-    if (!topoId) { showFeedback("err"); return; }
-    if (allowedIds && !allowedIds.has(topoId)) { showFeedback("region"); return; }
-    if (claims.some(c => c.country_code === topoId)) { showFeedback("dup"); return; }
+    if (!topoId) {
+  showFeedback("err");
+  setInput("");
+  return;
+}
+
+if (allowedIds && !allowedIds.has(topoId)) {
+  showFeedback("region");
+  setInput("");
+  return;
+}
+
+if (claims.some(c => c.country_code === topoId)) {
+  showFeedback("dup");
+  setInput("");
+  return;
+}
 
     // Final time check right before the DB insert
     if (timeLeftRef.current <= 0 || gameEndedRef.current) return;
@@ -1062,14 +1076,17 @@ await supabase
     const { error } = await supabase.from("duel_claims").insert({
       room_id: room.id, player_id: myId, country_code: topoId,
     });
-    if (error) {
-      if (error.code === "23505") showFeedback("dup");
-      else { showFeedback("err"); setInput(norm); }
-    } else {
-      showFeedback("ok");
-    }
-  };
-
+  if (error) {
+  if (error.code === "23505") {
+    showFeedback("dup");
+    setInput("");
+  } else {
+    showFeedback("err");
+    setInput("");
+  }
+} else {
+  showFeedback("ok");
+}
   /* ── COPY INVITE MESSAGE ── */
   const inviteMessage = room
     ? `GeoQuiz'te Online 1v1 ülke kapmaca oynayalım! ⚔️
