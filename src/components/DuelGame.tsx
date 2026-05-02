@@ -575,7 +575,7 @@ export default function DuelGame({ onHome }: DuelGameProps) {
       dbg("timer: waiting for room.started_at");
       return;
     }
-    const startMs = new Date(room.started_at).getTime();
+    
     const totalMs = gameDuration * 1000;
     let done = false;
 
