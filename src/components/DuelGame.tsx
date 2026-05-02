@@ -1076,15 +1076,20 @@ if (claims.some(c => c.country_code === topoId)) {
     const { error } = await supabase.from("duel_claims").insert({
       room_id: room.id, player_id: myId, country_code: topoId,
     });
-  if (error) {
-  if (error.code === "23505") {
-    showFeedback("dup");
-    setInput("");
-  } else {
-    showFeedback("err");
-    setInput("");
-  }
-} else {
+  if (!error) {
+  showFeedback("ok");
+  return;
+}
+
+if (error.code === "23505") {
+  showFeedback("dup");
+  setInput("");
+  return;
+}
+
+showFeedback("err");
+setInput("");
+return;
   showFeedback("ok");
 }
   /* ── COPY INVITE MESSAGE ── */
