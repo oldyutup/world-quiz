@@ -581,10 +581,26 @@ export default function DuelGame({ onHome }: DuelGameProps) {
 
     const tick = () => {
       if (done) return;
-      const elapsed = Date.now() - startMs;
-      const rem     = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
-      setTimeLeft(rem);
-      if (elapsed >= totalMs) {
+      const now = Date.now();
+
+// start güvenli
+const safeStart = room.started_at
+  ? new Date(room.started_at).getTime()
+  : now;
+
+const endMs = safeStart + totalMs;
+
+// kalan süre (ms)
+const remainingMs = Math.max(0, endMs - now);
+
+// saniye
+const rem = Math.floor(remainingMs / 1000);
+
+// asla gameDuration'ı geçmesin
+const safeRem = Math.min(gameDuration, rem);
+
+setTimeLeft(safeRem);
+      if (now >= endMs) {
         done = true;
         if (!gameEndedRef.current) {
           // ANY client triggers finish — conditional update prevents double-write
