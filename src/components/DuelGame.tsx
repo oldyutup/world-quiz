@@ -320,7 +320,10 @@ export default function DuelGame({ onHome }: DuelGameProps) {
     if (gameEndedRef.current) return;
     if (disconnectTimerRef.current) return; // grace already in progress
 
-    const GRACE = 15;
+    const GRACE =
+  gameDuration <= 60 ? 20 :
+  gameDuration <= 120 ? 30 :
+  45;
     dbg("handleOppDisconnect: grace countdown start", { grace: GRACE });
     setOppDisconnected(true);
     setDisconnectCountdown(GRACE);
@@ -963,10 +966,27 @@ export default function DuelGame({ onHome }: DuelGameProps) {
     if (!room || !isHost) return;
     const startedAt = new Date().toISOString();
     const { error } = await supabase
-      .from("duel_rooms")
-      .update({ status: "playing", started_at: startedAt })
-      .eq("id", room.id);
-    if (error) { setErrorMsg("Oyun başlatılamadı."); return; }
+  .from("duel_rooms")
+  .update({
+    status: "playing",
+    started_at: startedAt,
+    finished_reason: null,
+    winner_player_id: null,
+    forfeited_player_id: null,
+    disconnected_player_id: null,
+    disconnect_at: null,
+  })
+  .eq("id", room.id);
+
+if (error) { 
+  setErrorMsg("Oyun başlatılamadı."); 
+  return; 
+}
+
+await supabase
+  .from("duel_players")
+  .update({ last_seen_at: startedAt })
+  .eq("room_id", room.id);
     const { data: cs } = await supabase
       .from("duel_claims").select("*").eq("room_id", room.id);
     setClaims(cs ?? []);
