@@ -738,7 +738,7 @@ export default function DuelGame({ onHome }: DuelGameProps) {
       if (!opp) return;
 
       const lastSeen = opp.last_seen_at ? new Date(opp.last_seen_at).getTime() : 0;
-      const stale = lastSeen > 0 && (Date.now() - lastSeen) > 6000;
+      const stale = lastSeen > 0 && (Date.now() - lastSeen) > 12000;
 
       dbg("opp monitor", { oppId: opp.id, lastSeen: opp.last_seen_at, stale });
 
