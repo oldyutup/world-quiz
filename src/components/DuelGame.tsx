@@ -1392,6 +1392,14 @@ ${shareLink}`
     if (oppMonitorRef.current)        { clearInterval(oppMonitorRef.current);         oppMonitorRef.current        = null; }
     setOppDisconnected(false);
     setDisconnectCountdown(0);
+    if (room && phase === "waiting") {
+      // Herkes kendi player kaydını siler
+      supabase.from("duel_players").delete().eq("id", myIdRef.current).then(() => {});
+      if (isHost) {
+        // Host odayı tamamen siler
+        supabase.from("duel_rooms").delete().eq("id", room.id).then(() => {});
+      }
+    }
     clearDuelSession();
     myIdRef.current = "";
     setRoom(null); setPlayers([]); setClaims([]);
