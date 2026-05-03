@@ -429,6 +429,13 @@ export default function DuelGame({ onHome }: DuelGameProps) {
           }
         })
       .on("postgres_changes",
+        { event: "DELETE", schema: "public", table: "duel_rooms", filter: `id=eq.${room.id}` },
+        () => {
+          if (phaseRef.current === "waiting") {
+            backToLobby();
+          }
+        })
+      .on("postgres_changes",
         { event: "*", schema: "public", table: "duel_players", filter: `room_id=eq.${room.id}` },
         () => {
           supabase.from("duel_players").select("*").eq("room_id", room.id)
