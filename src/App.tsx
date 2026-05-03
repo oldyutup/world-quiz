@@ -1314,9 +1314,18 @@ function SilhouetteGame({ continent, selectedDuration, onContinentChange, onDura
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [screen,           setScreen]           = useState<AppScreen>("home");
-  const [continent,        setContinent]        = useState<ContinentFilter>("world");
+  const [screen, setScreen] = useState<AppScreen>("home");
+  const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("duel");
+
+    if (code) {
+      setScreen("duel-game");
+    }
+  }, []);
 
   if (screen === "home") return <HomeScreen onSelect={setScreen} />;
   if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
