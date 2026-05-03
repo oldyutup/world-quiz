@@ -185,7 +185,8 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  useEffect(() => { if (open || sheetOpen) setUnread(0); }, [open, sheetOpen]);
+  useEffect(() => { if (open) setUnread(0); }, [open]);
+  useEffect(() => { if (sheetOpen) setUnread(0); }, [sheetOpen]);
 
   /* ── 4) Mesaj gönder ──
      Adımlar:

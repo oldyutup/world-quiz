@@ -2641,6 +2641,7 @@ body {
   background: rgba(0,0,0,0.65);
   z-index: 300;
   align-items: flex-end;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   animation: lc-fade 0.2s ease;
 }
 @keyframes lc-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -2649,8 +2650,8 @@ body {
   background: var(--surface);
   border-radius: 18px 18px 0 0;
   width: 100%;
-  height: 78dvh;
-  max-height: 78vh;
+  height: 60dvh;
+  max-height: 60dvh;
   display: flex;
   flex-direction: column;
   padding-bottom: env(safe-area-inset-bottom, 12px);
