@@ -55,3 +55,11 @@ export interface DuelClaim {
   country_code: string;
   created_at:   string;
 }
+
+export interface DuelMessage {
+  id:          string;
+  room_code:   string;
+  player_name: string;
+  message:     string;
+  created_at:  string;
+}

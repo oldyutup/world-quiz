@@ -279,7 +279,7 @@ const [showCountryMenu, setShowCountryMenu] = useState(false);
         className="modal-close"
         onClick={() => setShowCountryMenu(false)}
       >
-        Geri dön
+        ✕
       </button>
 
     </div>

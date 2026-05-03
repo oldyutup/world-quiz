@@ -31,6 +31,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
+import LobbyChat from "./LobbyChat";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 
 /* ─── options ─── */
@@ -1735,7 +1736,8 @@ ${shareLink}`
       {/* ════════ WAITING ════════ */}
       {phase === "waiting" && room && (
         <div className="duel-lobby">
-          <div className="duel-lobby-card">
+            <div className="duel-lobby-with-chat">
+            <div className="duel-lobby-card">
             {isQuickMatch ? (
               /* ── Quick match waiting UI ── */
               <div className="qm-waiting">
@@ -1826,6 +1828,10 @@ ${shareLink}`
                 </button>
               </>
             )}
+          </div>
+          {!isQuickMatch && (
+            <LobbyChat roomCode={room.code} playerName={playerName} />
+          )}
           </div>
         </div>
       )}
