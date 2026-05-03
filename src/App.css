@@ -2557,7 +2557,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 16px;        /* ← bunu ekle, iOS zoom engeller */
   font-family: inherit;
   padding: 10px 14px;
   outline: none;
