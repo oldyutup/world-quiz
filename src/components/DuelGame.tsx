@@ -1385,7 +1385,7 @@ ${shareLink}`
   }, [room, players, onHome]);
 
   /* ── BACK TO LOBBY ── */
-  const backToLobby = () => {
+  const backToLobby = async () => {
     if (disconnectTimerRef.current)   { clearTimeout(disconnectTimerRef.current);   disconnectTimerRef.current   = null; }
     if (disconnectIntervalRef.current){ clearInterval(disconnectIntervalRef.current); disconnectIntervalRef.current = null; }
     if (heartbeatRef.current)         { clearInterval(heartbeatRef.current);         heartbeatRef.current         = null; }
@@ -1393,11 +1393,11 @@ ${shareLink}`
     setOppDisconnected(false);
     setDisconnectCountdown(0);
     if (room && phase === "waiting") {
-      // Herkes kendi player kaydını siler
-      supabase.from("duel_players").delete().eq("id", myIdRef.current).then(() => {});
       if (isHost) {
-        // Host odayı tamamen siler
-        supabase.from("duel_rooms").delete().eq("id", room.id).then(() => {});
+        await supabase.from("duel_players").delete().eq("room_id", room.id);
+        await supabase.from("duel_rooms").delete().eq("id", room.id);
+      } else {
+        await supabase.from("duel_players").delete().eq("id", myIdRef.current);
       }
     }
     clearDuelSession();
