@@ -2424,14 +2424,9 @@ body {
   justify-content: flex-start;
 }
 .lc-panel.is-collapsed .lc-title {
-  writing-mode: vertical-lr;
+  writing-mode: vertical-rl;
   text-orientation: mixed;
   transform: rotate(180deg);
-  font-size: 0.85rem;
-  gap: 6px;
-}
-.lc-panel.is-collapsed .lc-title-icon {
-  font-size: 1rem;
 }
 
 .lc-title {
