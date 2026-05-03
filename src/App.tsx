@@ -18,7 +18,7 @@ import "./App.css";
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "country-menu" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -70,7 +70,6 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "silhouette-game": 8,
   "route-game": 0,
   "duel-game": 0,
-  "country-menu": 0, // 🔥 bunu ekle
 };
 
 /** Hint costs */
@@ -210,8 +209,9 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 ═══════════════════════════════════════════════════════════════ */
 interface HomeProps { onSelect: (screen: AppScreen) => void; }
 function HomeScreen({ onSelect }: HomeProps) {
+const [showCountryMenu, setShowCountryMenu] = useState(false);
   const modes = [
-  { id: "country-menu" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
+  { id: "map-game" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
   { id: "silhouette-game" as AppScreen, icon: "🗺️", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
   { id: "route-game" as AppScreen, icon: "🧭", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
@@ -236,11 +236,55 @@ function HomeScreen({ onSelect }: HomeProps) {
             <button
               className={"btn btn-accent mode-card-btn" + (m.available ? "" : " disabled")}
               disabled={!m.available}
-              onClick={() => m.available && onSelect(m.id)}
+              onClick={() => {
+  if (!m.available) return;
+
+  if (m.id === "map-game") {
+    setShowCountryMenu(true);
+  } else {
+    onSelect(m.id);
+  }
+}}
             >{m.available ? "Oyna" : "Yakında"}</button>
           </div>
         ))}
       </div>
+      {showCountryMenu && (
+  <div className="overlay" onClick={() => setShowCountryMenu(false)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+      
+      <h2>🌍 Ülke Yaz</h2>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          setShowCountryMenu(false);
+          onSelect("map-game");
+        }}
+      >
+        🎮 Tek Oyuncu
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          setShowCountryMenu(false);
+          onSelect("duel-game");
+        }}
+      >
+        ⚔️ Online 1v1
+      </button>
+
+      <button
+        className="modal-close"
+        onClick={() => setShowCountryMenu(false)}
+      >
+        Geri dön
+      </button>
+
+    </div>
+  </div>
+)}
     </div>
   );
 }
@@ -1328,26 +1372,6 @@ export default function App() {
   }, []);
 
   if (screen === "home") return <HomeScreen onSelect={setScreen} />;
-  if (screen === "country-menu") return (
-  <div className="app">
-    <div className="topbar">
-      <button className="btn btn-ghost" onClick={() => setScreen("home")}>←</button>
-      <h2>🌍 Ülke Yaz</h2>
-    </div>
-
-    <div className="mode-card">
-      <h2>🎮 Tek Oyuncu</h2>
-      <p>Haritada ülkeleri tek başına bul.</p>
-      <button className="btn btn-accent" onClick={() => setScreen("map-game")}>Oyna</button>
-    </div>
-
-    <div className="mode-card">
-      <h2>⚔️ Online 1v1</h2>
-      <p>Online ülke kapmaca. Arkadaşınla veya rastgele rakiple oyna.</p>
-      <button className="btn btn-accent" onClick={() => setScreen("duel-game")}>Oyna</button>
-    </div>
-  </div>
-);
   if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "silhouette-game") return (

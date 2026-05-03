@@ -2127,3 +2127,52 @@ body {
     touch-action: pinch-zoom; /* ⬅️ burayı böyle yap */
   }
 }
+/* MODAL */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal {
+  background: #111;
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 320px;
+  text-align: center;
+  border: 1px solid #2a2a2a;
+}
+
+.modal h2 {
+  margin-bottom: 16px;
+}
+
+.modal-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: none;
+  background: #2d7df6;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-btn:hover {
+  background: #1f5fd1;
+}
+
+.modal-close {
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+}
