@@ -181,7 +181,7 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
     if (messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (last.player_name === myName) return; // kendi mesajım sayılmaz
-    if (!open && !sheetOpen) setUnread(u => u + 1);
+    setUnread(u => u + 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
