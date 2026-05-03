@@ -167,6 +167,7 @@ export default function DuelGame({ onHome }: DuelGameProps) {
   const [phase,     setPhase]     = useState<DuelPhase>("lobby");
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [hostClosedRoom, setHostClosedRoom] = useState(false);
 
   /* game state */
   const [room,        setRoom]        = useState<DuelRoom | null>(null);
@@ -431,8 +432,8 @@ export default function DuelGame({ onHome }: DuelGameProps) {
       .on("postgres_changes",
         { event: "DELETE", schema: "public", table: "duel_rooms", filter: `id=eq.${room.id}` },
         () => {
-          if (phaseRef.current === "waiting") {
-            backToLobby();
+          if (phaseRef.current === "waiting" && !isHostRef.current) {
+            setHostClosedRoom(true);
           }
         })
       .on("postgres_changes",
@@ -1850,7 +1851,24 @@ ${shareLink}`
           </div>
         </div>
       )}
-
+{hostClosedRoom && (
+        <div className="duel-quit-backdrop" onClick={() => { setHostClosedRoom(false); backToLobby(); }}>
+          <div className="duel-quit-modal" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🚪</div>
+            <h3 className="duel-quit-title">Oda Kapatıldı</h3>
+            <p className="duel-quit-sub">Oda sahibi odadan ayrıldı ve oturumu sonlandırdı.</p>
+            <div className="duel-quit-actions">
+              <button
+                className="btn btn-accent"
+                onClick={() => { setHostClosedRoom(false); backToLobby(); }}
+              >
+                ← Lobiye Dön
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* ════════ PLAYING ════════ */}
       {phase === "playing" && (
         <>
