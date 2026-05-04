@@ -654,6 +654,20 @@ setTimeLeft(safeRem);
    *  If realtime event was missed (network hiccup, tab sleep), polling
    *  catches the status change and triggers the result screen.
    */
+  /* ── Waiting fazında player listesini polla (Realtime yedek) ── */
+  useEffect(() => {
+    if (phase !== "waiting" || !room?.id) return;
+    const roomId = room.id;
+    const timer = setInterval(async () => {
+      const { data } = await supabase
+        .from("duel_players")
+        .select("*")
+        .eq("room_id", roomId);
+      if (!data) return;
+      setPlayers(data);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [phase, room?.id]);
   useEffect(() => {
     if (phase !== "playing" || !room?.id) return;
     const roomId = room.id;
