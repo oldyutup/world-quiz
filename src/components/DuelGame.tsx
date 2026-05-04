@@ -1405,7 +1405,8 @@ ${shareLink}`
         await supabase.from("duel_players").delete().eq("room_id", room.id);
         await supabase.from("duel_rooms").delete().eq("id", room.id);
       } else {
-        await supabase.from("duel_players").delete().eq("id", myIdRef.current);
+        const myPlayerId = myIdRef.current;
+        await supabase.from("duel_players").delete().eq("id", myPlayerId).eq("room_id", room.id);
       }
     }
     clearDuelSession();
