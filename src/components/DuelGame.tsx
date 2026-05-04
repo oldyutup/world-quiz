@@ -1413,7 +1413,8 @@ ${shareLink}`
         await supabase.from("duel_rooms").delete().eq("id", room.id);
       } else {
         const myPlayerId = myIdRef.current;
-        await supabase.from("duel_players").delete().eq("id", myPlayerId).eq("room_id", room.id);
+        const { error } = await supabase.from("duel_players").delete().eq("id", myPlayerId);
+        console.log("[backToLobby] misafir player silme:", myPlayerId, error);
       }
     }
     clearDuelSession();
