@@ -442,6 +442,13 @@ export default function DuelGame({ onHome }: DuelGameProps) {
           supabase.from("duel_players").select("*").eq("room_id", room.id)
             .then(({ data }) => {
               if (!data) return;
+
+              // Misafir çıktı veya oda boşaldı — host tarafında güncelle
+              if (phaseRef.current === "waiting" && data.length === 0) {
+                backToLobby();
+                return;
+              }
+
               setPlayers(data);
               // Quick match auto-start:
               // Only trigger if we're the host, still waiting, and 2nd player just arrived
