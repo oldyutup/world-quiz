@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import WorldMap, { SilhouetteView } from "./components/WorldMap";
 import RouteGame from "./components/RouteGame";
 import DuelGame from "./components/DuelGame";
+import FlagDuelGame from "./components/FlagDuelGame";
 import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
@@ -18,7 +19,7 @@ import "./App.css";
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "flag-duel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -51,10 +52,10 @@ const CONTINENT_OPTIONS: { label: string; short: string; value: ContinentFilter 
 ];
 
 const DIFFICULTY_OPTIONS: { label: string; value: Difficulty; color: string }[] = [
-  { label: "🟢 Kolay",  value: "easy",   color: "var(--green)"  },
-  { label: "🟡 Normal", value: "normal", color: "var(--amber)"  },
-  { label: "🔴 Zor",    value: "hard",   color: "var(--red)"    },
-  { label: "⚪ Tümü",   value: "all",    color: "var(--muted)"  },
+  { label: "🧩 Kolay",  value: "easy",   color: "var(--green)"  },
+  { label: "🔸 Normal", value: "normal", color: "var(--amber)"  },
+  { label: "👑 Zor",    value: "hard",   color: "var(--red)"    },
+  { label: "🗺️ Tümü",   value: "all",    color: "var(--muted)"  },
 ];
 
 /* ─── Gold ─── */
@@ -70,6 +71,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "silhouette-game": 8,
   "route-game": 0,
   "duel-game": 0,
+  "flag-duel-game": 0,
 };
 
 /** Hint costs */
@@ -210,6 +212,7 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 interface HomeProps { onSelect: (screen: AppScreen) => void; }
 function HomeScreen({ onSelect }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
+const [showFlagMenu, setShowFlagMenu] = useState(false);
   const modes = [
   { id: "map-game" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -241,6 +244,8 @@ const [showCountryMenu, setShowCountryMenu] = useState(false);
 
   if (m.id === "map-game") {
     setShowCountryMenu(true);
+  } else if (m.id === "flag-game") {
+    setShowFlagMenu(true);
   } else {
     onSelect(m.id);
   }
@@ -278,6 +283,43 @@ const [showCountryMenu, setShowCountryMenu] = useState(false);
       <button
         className="modal-close"
         onClick={() => setShowCountryMenu(false)}
+      >
+        ✕
+      </button>
+
+    </div>
+  </div>
+)}
+
+{showFlagMenu && (
+  <div className="overlay" onClick={() => setShowFlagMenu(false)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+
+      <h2>🚩 Bayrak Modu</h2>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          setShowFlagMenu(false);
+          onSelect("flag-game");
+        }}
+      >
+        🎮 Tek Oyuncu
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          setShowFlagMenu(false);
+          onSelect("flag-duel-game");
+        }}
+      >
+        ⚔️ Online 1v1
+      </button>
+
+      <button
+        className="modal-close"
+        onClick={() => setShowFlagMenu(false)}
       >
         ✕
       </button>
@@ -1361,18 +1403,57 @@ export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);
+  const [gold, setGold] = useState<number>(() => loadGold());
+  const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
 
+  const handleAppClaimBonus = () => {
+  if (!canClaimDailyBonus()) {
+    setCanBonus(false);
+    return;
+  }
+
+  const next = claimDailyBonus();
+  setGold(next);
+  setCanBonus(false);
+};
+const handleSpendGold = (amount: number): boolean => {
+  const current = loadGold();
+
+  if (current < amount) return false;
+
+  const next = Math.max(0, current - amount);
+  saveGold(next);
+  setGold(next);
+
+  return true;
+};
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code = params.get("duel");
+    const duelCode = params.get("duel");
+    const flagDuelCode = params.get("flagDuel");
 
-    if (code) {
-      setScreen("duel-game");
-    }
+if (flagDuelCode) {
+  setScreen("flag-duel-game");
+  return;
+}
+
+if (duelCode) {
+  setScreen("duel-game");
+  return;
+}
   }, []);
 
   if (screen === "home") return <HomeScreen onSelect={setScreen} />;
   if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
+  if (screen === "flag-duel-game") return (
+  <FlagDuelGame
+  onHome={() => setScreen("home")}
+  gold={gold}
+  canBonus={canBonus}
+  onClaimBonus={handleAppClaimBonus}
+  onSpendGold={handleSpendGold}
+/>
+);
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "silhouette-game") return (
     <SilhouetteGame continent={continent} selectedDuration={selectedDuration}
