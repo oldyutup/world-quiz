@@ -1334,13 +1334,16 @@ ${shareLink}`;
 
                 {/* Tur kapanmış (cevaplandı veya süre doldu) → cevabı göster */}
                 {!feedback && roundResolved && roundAnswered && (
-                  <span className="fb fb-hint">
-                    {iAnswered ? "✓ Sen bildin" : "✗ Rakip bildi"} · {currentFlag?.display}
-                  </span>
-                )}
-                {!feedback && roundResolved && roundTimedOut && (
-                  <span className="fb fb-no">⏰ Süre doldu · Cevap: {currentFlag?.display}</span>
-                )}
+  <span className={iAnswered ? "fb fb-ok" : "fb fb-no"}>
+    {iAnswered ? "✓ Sen bildin" : "✕ Rakip bildi"} · {currentFlag?.display}
+  </span>
+)}
+
+{!feedback && roundResolved && roundTimedOut && (
+  <span className="fb fb-timeout">
+    ⏰ Süre doldu · Cevap: {currentFlag?.display}
+  </span>
+)}
 
                 {/* Cevap GELMEDEN, sadece kendi sürem doldu / pas geçtim → cevabı VERME */}
                 {!feedback && !roundResolved && timedOut && (
@@ -1422,19 +1425,25 @@ ${shareLink}`;
                     />
                   )}
                 </div>
-                {roundResolved ? (
-                  roundAnswered ? (
-                    <div className="skip-answer-reveal">
-                      <span className="skip-label">{iAnswered ? "✓ Sen bildin:" : "✗ Cevap:"}</span>
-                      <span className="skip-country">{currentFlag.display}</span>
-                    </div>
-                  ) : (
-                    <div className="skip-answer-reveal">
-                      <span className="skip-label">⏰ Süre doldu! Cevap:</span>
-                      <span className="skip-country">{currentFlag.display}</span>
-                    </div>
-                  )
-                ) : timedOut ? (
+               {roundResolved ? (
+  roundAnswered ? (
+    <div
+      className={`skip-answer-reveal ${
+        iAnswered ? "skip-answer-reveal--ok" : "skip-answer-reveal--no"
+      }`}
+    >
+      <span className="skip-label">
+        {iAnswered ? "✓ Sen bildin:" : "✕ Rakip bildi:"}
+      </span>
+      <span className="skip-country">{currentFlag.display}</span>
+    </div>
+  ) : (
+    <div className="skip-answer-reveal skip-answer-reveal--timeout">
+      <span className="skip-label">⏰ Süre doldu! Cevap:</span>
+      <span className="skip-country">{currentFlag.display}</span>
+    </div>
+  )
+) : timedOut ? (
                   <p className="flag-prompt">⏳ Süren doldu — rakibi bekliyoruz…</p>
                 ) : (
                   <p className="flag-prompt">Bu bayrağın ülkesi nedir?</p>
