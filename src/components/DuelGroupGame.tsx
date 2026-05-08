@@ -955,7 +955,7 @@ setPhase("waiting");
               ← Ana Menü
             </button>
 
-            <h2 className="duel-lobby-title">🏆 Çok Oyunculu — Ülke Yaz</h2>
+            <h2 className="duel-lobby-title">🏆 Çok Oyunculu</h2>
             <p className="duel-lobby-desc">3–10 kişilik arkadaş grubunla oyna • En çok ülke yazan kazanır.</p>
 
             <input
