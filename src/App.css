@@ -4550,3 +4550,245 @@ body {
 .dgg-wait-left .duel-players-list::-webkit-scrollbar-thumb:hover {
   background: rgba(120, 160, 255, 0.38);
 }
+/* =========================================================
+   GROUP LOBBY MOBILE FINAL OVERRIDE
+   En alta koy. Desktop düzeni bozmaz.
+   ========================================================= */
+
+@media (max-width: 760px) {
+  html,
+  body {
+    overflow-x: hidden !important;
+  }
+
+  /* Ana sayfa */
+  .dgg-wait-page {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 100dvh !important;
+    display: block !important;
+    padding: 12px 10px 120px !important;
+    overflow: visible !important;
+  }
+
+  .dgg-wait-shell {
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+
+  /* Ana kart */
+  .dgg-wait-main-card {
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    padding: 18px 14px 20px !important;
+    border-radius: 22px !important;
+    overflow: visible !important;
+  }
+
+  /* Desktop chat kartını mobilde kart gibi gösterme,
+     ama LobbyChat component'i yaşasın ki floating Sohbet butonu çalışsın */
+  .dgg-wait-chat-card {
+    display: block !important;
+    position: static !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .dgg-wait-chat-card > * {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* Üst başlık/kod alanı */
+  .dgg-wait-main-card .dgg-wait-head {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: center !important;
+  }
+
+  .dgg-wait-main-card .duel-lobby-title {
+    font-size: clamp(30px, 9vw, 42px) !important;
+    line-height: 0.95 !important;
+    letter-spacing: 1px !important;
+    margin: 0 0 14px !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  .dgg-wait-main-card .duel-room-code {
+    font-size: clamp(46px, 13vw, 62px) !important;
+    line-height: 1 !important;
+    letter-spacing: 5px !important;
+    margin: 0 !important;
+    text-align: center !important;
+  }
+
+  .dgg-wait-main-card .duel-room-code-hint {
+    font-size: 13px !important;
+    margin-top: 8px !important;
+    text-align: center !important;
+  }
+
+  .dgg-wait-main-card .duel-invite-btn {
+    width: 100% !important;
+    min-height: 54px !important;
+    height: 54px !important;
+    margin-top: 18px !important;
+    border-radius: 16px !important;
+    font-size: 16px !important;
+  }
+
+  .dgg-wait-main-card .duel-link-preview {
+    width: 100% !important;
+    margin-top: 14px !important;
+  }
+
+  .dgg-wait-main-card .duel-link-input {
+    width: 100% !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    border-radius: 16px !important;
+    font-size: 14px !important;
+  }
+
+  .dgg-wait-main-card .duel-settings-summary {
+    margin: 18px 0 20px !important;
+    font-size: 16px !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* İç gövde: mobilde tek kolon */
+  .dgg-wait-body {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+    margin-top: 0 !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+
+  .dgg-panel {
+    width: 100% !important;
+    border-radius: 22px !important;
+  }
+
+  /* Oyuncular paneli */
+  .dgg-wait-left.dgg-panel {
+    max-height: none !important;
+    padding: 18px !important;
+    overflow: visible !important;
+  }
+
+  .dgg-panel-head {
+    margin-bottom: 16px !important;
+    align-items: flex-start !important;
+  }
+
+  .dgg-panel-head h3 {
+    font-size: 22px !important;
+    line-height: 1.1 !important;
+    margin: 0 !important;
+  }
+
+  .dgg-panel-sub {
+    font-size: 14px !important;
+    margin-top: 8px !important;
+  }
+
+  .dgg-panel-count {
+    min-width: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    color: rgba(245, 248, 255, 0.92) !important;
+    font-size: 15px !important;
+  }
+
+  .dgg-wait-left .duel-players-list {
+    max-height: 260px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-right: 0 !important;
+  }
+
+  .dgg-wait-left .duel-player-chip {
+    min-height: 64px !important;
+    border-radius: 18px !important;
+    padding: 0 16px !important;
+  }
+
+  .dgg-wait-left .duel-player-name {
+    font-size: 18px !important;
+  }
+
+  /* Oda ayarları paneli */
+  .dgg-room-settings.dgg-panel {
+    padding: 18px !important;
+  }
+
+  .dgg-room-settings-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+  }
+
+  .dgg-room-settings label,
+  .dgg-room-settings .duel-select-label,
+  .dgg-room-settings .dgg-setting-label {
+    font-size: 16px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .dgg-room-settings select,
+  .dgg-room-settings .duel-select,
+  .dgg-room-settings .dgg-setting-field select {
+    width: 100% !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    border-radius: 18px !important;
+    font-size: 20px !important;
+    padding-left: 18px !important;
+  }
+
+  /* Alt mesaj ve butonlar */
+  .duel-waiting-msg {
+    font-size: 14px !important;
+    margin: 14px 0 !important;
+    text-align: center !important;
+  }
+
+  .duel-start-btn,
+  .duel-return-room-btn {
+    width: 100% !important;
+    min-height: 48px !important;
+    height: 48px !important;
+    border-radius: 16px !important;
+    font-size: 15px !important;
+  }
+
+  /* Mobil chat butonu / sheet çalışsın diye */
+  .lc-fab,
+  .lc-mobile-fab,
+  .lc-sheet-backdrop,
+  .lc-sheet {
+    z-index: 9999 !important;
+  }
+}
