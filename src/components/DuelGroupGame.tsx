@@ -196,7 +196,7 @@ export default function DuelGroupGame({ onHome }: Props) {
   const [phase,     setPhase]     = useState<Phase>("lobby");
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [hostClosedRoom, setHostClosedRoom] = useState(false);
+  const [, setHostClosedRoom] = useState(false);
 
   /* game state */
   const [room,     setRoom]     = useState<GroupRoom | null>(null);
@@ -725,6 +725,36 @@ useEffect(() => {
     dbg("joinRoom ✓", { roomId: targetRoom.id });
   };
 
+
+  const updateRoomSettings = useCallback(
+  async (patch: Partial<Pick<GroupRoom, "duration_seconds" | "region" | "max_players">>) => {
+    if (!room || !isHostRef.current || phase !== "waiting") return;
+
+    const nextMaxPlayers = patch.max_players ?? room.max_players;
+
+    if (nextMaxPlayers < waitingPlayers.length) {
+      setErrorMsg(`Maksimum oyuncu sayısı şu an odada olan kişi sayısından düşük olamaz. Şu an ${waitingPlayers.length} kişi var.`);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("duel_group_rooms")
+      .update({
+        ...patch,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", room.id);
+
+    if (error) {
+      dbgErr("updateRoomSettings failed", error);
+      setErrorMsg("Oda ayarları güncellenemedi.");
+      return;
+    }
+
+    setErrorMsg(null);
+  },
+  [room, phase, waitingPlayers.length]
+);
   /* ── START GAME (sadece host) ── */
   const startGame = async () => {
     if (!room || !isHost) return;
@@ -932,179 +962,267 @@ setPhase("waiting");
             />
 
             {/* CREATE block */}
-            <div className="duel-create-block">
-              <div className="duel-host-settings">
-                <div className="duel-select-wrap">
-                  <label className="duel-select-label">Süre</label>
-                  <div className="duel-select-box">
-                    <select
-                      className="duel-select"
-                      value={hostDuration}
-                      onChange={e => setHostDuration(Number(e.target.value))}
-                    >
-                      {DURATION_OPTS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                    <span className="duel-select-caret">▾</span>
-                  </div>
-                </div>
-
-                <div className="duel-select-wrap">
-                  <label className="duel-select-label">Bölge</label>
-                  <div className="duel-select-box">
-                    <select
-                      className="duel-select"
-                      value={hostRegion}
-                      onChange={e => setHostRegion(e.target.value)}
-                    >
-                      {REGION_OPTS.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                    <span className="duel-select-caret">▾</span>
-                  </div>
-                </div>
-
-                <div className="duel-select-wrap">
-                  <label className="duel-select-label">Maks Oyuncu</label>
-                  <div className="duel-select-box">
-                    <select
-                      className="duel-select"
-                      value={hostMaxPlayers}
-                      onChange={e => setHostMaxPlayers(Number(e.target.value))}
-                    >
-                      {[3,4,5,6,7,8,9,10].map(n => (
-                        <option key={n} value={n}>{n} kişi</option>
-                      ))}
-                    </select>
-                    <span className="duel-select-caret">▾</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                className="btn btn-accent duel-create-btn"
-                onClick={createRoom}
-                disabled={phase !== "lobby"}
-              >
-                {(phase as Phase) === "creating" ? "Kuruluyor…" : "🏠 Grup Odası Kur"}
-              </button>
-            </div>
-
-            <div className="duel-section-divider">veya mevcut bir odaya katıl</div>
-
-            <div className="duel-join-block">
-              <div className="duel-join-row">
-                <input
-                  className="duel-code-input"
-                  type="text"
-                  placeholder="ODA KODU"
-                  value={joinCode}
-                  onChange={e => setJoinCode(e.target.value.toUpperCase())}
-                  maxLength={6}
-                  autoComplete="off"
-                />
-                <button className="btn btn-danger" onClick={joinRoom}>Katıl</button>
-              </div>
-            </div>
-
-            {errorMsg  && <p className="duel-error">{errorMsg}</p>}
-            {statusMsg && <p className="duel-status">{statusMsg}</p>}
-          </div>
+<div className="duel-create-block duel-create-polished">
+  <div className="duel-create-fields">
+    <div className="duel-host-settings">
+      <div className="duel-select-wrap">
+        <label className="duel-select-label">Süre</label>
+        <div className="duel-select-box">
+          <select
+            className="duel-select"
+            value={hostDuration}
+            onChange={(e) => setHostDuration(Number(e.target.value))}
+          >
+            {DURATION_OPTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <span className="duel-select-caret">⌄</span>
         </div>
-      )}
+      </div>
+
+      <div className="duel-select-wrap">
+        <label className="duel-select-label">Bölge</label>
+        <div className="duel-select-box">
+          <select
+            className="duel-select"
+            value={hostRegion}
+            onChange={(e) => setHostRegion(e.target.value)}
+          >
+            {REGION_OPTS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <span className="duel-select-caret">⌄</span>
+        </div>
+      </div>
+
+      <div className="duel-select-wrap">
+        <label className="duel-select-label">Maks Oyuncu</label>
+        <div className="duel-select-box">
+          <select
+            className="duel-select"
+            value={hostMaxPlayers}
+            onChange={(e) => setHostMaxPlayers(Number(e.target.value))}
+          >
+            {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <option key={n} value={n}>
+                {n} kişi
+              </option>
+            ))}
+          </select>
+          <span className="duel-select-caret">⌄</span>
+        </div>
+      </div>
+    </div>
+
+    <button
+      className="btn btn-accent duel-create-btn"
+      onClick={createRoom}
+      disabled={phase !== "lobby"}
+    >
+      {(phase as Phase) === "creating" ? "Kuruluyor..." : "🏠 Grup Odası Kur"}
+    </button>
+  </div>
+
+  <div className="duel-section-divider">
+    <span>veya mevcut bir odaya katıl</span>
+  </div>
+
+  <div className="duel-join-block">
+    <div className="duel-join-row">
+      <input
+        className="duel-code-input"
+        type="text"
+        placeholder="ODA KODU"
+        value={joinCode}
+        onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+        maxLength={6}
+        autoComplete="off"
+      />
+      <button className="btn btn-danger duel-join-btn" onClick={joinRoom}>
+        Katıl
+      </button>
+    </div>
+  </div>
+
+    {errorMsg && <p className="duel-error">{errorMsg}</p>}
+  {statusMsg && <p className="duel-status">{statusMsg}</p>}
+</div>
+</div>
+</div>
+)}
 
       {/* ════════ WAITING ════════ */}
-      {phase === "waiting" && room && (
-        <div className="duel-lobby">
-          <div className="duel-lobby-with-chat">
-            <div className="duel-lobby-card">
-              <h2 className="duel-lobby-title">Oyuncular Bekleniyor…</h2>
+      {/* ======== WAITING ======== */}
+{phase === "waiting" && room && (
+  <div className="duel-lobby">
+    <div className="duel-lobby-with-chat">
+      <div className="duel-lobby-card dgg-wait-card">
+        <div className="dgg-wait-head">
+          <h2 className="duel-lobby-title">Oyuncular Bekleniyor...</h2>
 
-              <div className="duel-room-code-block">
-                <span className="duel-room-code">{room.code}</span>
-                <p className="duel-room-code-hint">6 haneli kod — arkadaşlarına ver</p>
-              </div>
+          <div className="duel-room-code-block">
+            <span className="duel-room-code">{room.code}</span>
+            <p className="duel-room-code-hint">6 haneli kod — arkadaşlarına ver</p>
+          </div>
 
-              <button
-                className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                onClick={copyInvite}
-              >
-                {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-              </button>
+          <button
+            className={"btn duel-invite-btn" + (copied ? " invited" : "")}
+            onClick={copyInvite}
+          >
+            {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
+          </button>
 
-              <div className="duel-link-preview" onClick={e => {
-                const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
-                el?.select();
-              }}>
-                <input className="duel-link-input" readOnly value={shareLink}
-                  onFocus={e => e.target.select()} />
-              </div>
+          <div
+            className="duel-link-preview"
+            onClick={(e) => {
+              const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
+              el?.select();
+            }}
+          >
+            <input
+              className="duel-link-input"
+              readOnly
+              value={shareLink}
+              onFocus={(e) => e.target.select()}
+            />
+          </div>
 
-              <div className="duel-settings-summary">
-                <span>⏱ {durationLabel}</span>
-                <span className="duel-sum-dot">·</span>
-                <span>{regionLabel}</span>
-                <span className="duel-sum-dot">·</span>
-                <span>👥 {waitingPlayers.length}/{room.max_players}</span>
-              </div>
+          <div className="duel-settings-summary">
+            <span>⏱ {durationLabel}</span>
+            <span className="duel-sum-dot">·</span>
+            <span>{regionLabel}</span>
+            <span className="duel-sum-dot">·</span>
+            <span>👥 {waitingPlayers.length}/{room.max_players}</span>
+          </div>
+        </div>
 
-              <div className="duel-players-list">
-                 {waitingPlayers.map(p => (
-                  <div key={p.id} className={"duel-player-chip" + (p.id === myId ? " mine" : "")}>
-                    <span className="duel-player-dot"/>
-                    <span className="duel-player-name">{p.name}</span>
-                    <div className="duel-player-tags">
-                      {p.id === myId && <span className="duel-tag">Sen</span>}
-                      {p.is_host && <span className="duel-tag host">👑</span>}
-                    </div>
+        <div className="dgg-wait-body">
+          <div className="dgg-wait-left">
+            <div className="duel-players-list">
+              {waitingPlayers.map((p) => (
+                <div
+                  key={p.id}
+                  className={"duel-player-chip" + (p.id === myId ? " mine" : "")}
+                >
+                  <span className="duel-player-dot" />
+                  <span className="duel-player-name">{p.name}</span>
+                  <div className="duel-player-tags">
+                    {p.id === myId && <span className="duel-tag">Sen</span>}
+                    {p.is_host && <span className="duel-tag host">👑</span>}
                   </div>
-                ))}
-                {waitingPlayers.length < MIN_PLAYERS && (
-                  <div className="duel-player-chip waiting">
-                    <span className="duel-player-dot waiting"/>
-                    <span>En az {MIN_PLAYERS} oyuncu gerekli ({MIN_PLAYERS - waitingPlayers.length} bekleniyor)…</span>
-                  </div>
+                </div>
+              ))}
+
+              {waitingPlayers.length < MIN_PLAYERS && (
+                <div className="duel-player-chip waiting">
+                  <span className="duel-player-dot waiting" />
+                  <span>
+                    En az {MIN_PLAYERS} oyuncu gerekli ({MIN_PLAYERS - waitingPlayers.length} bekleniyor)...
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="dgg-wait-right">
+            <div className="dgg-room-settings">
+              <div className="dgg-room-settings-title">
+                ⚙️ Oda Ayarları
+                {!isHost && (
+                  <span className="dgg-room-settings-note">
+                    Sadece oda sahibi değiştirebilir
+                  </span>
                 )}
               </div>
 
-              {isHost ? (
-                waitingPlayers.length >= MIN_PLAYERS
-                  ? <button className="btn btn-accent duel-start-btn" onClick={startGame}>
-                      🚀 Oyunu Başlat ({waitingPlayers.length} kişi)
-                    </button>
-                  : <p className="duel-waiting-msg">En az {MIN_PLAYERS} kişi gerekli…</p>
+              <div className="dgg-room-settings-grid">
+                <label className="dgg-setting-field">
+                  <span>Süre</span>
+                  <select
+                    value={room.duration_seconds}
+                    disabled={!isHost}
+                    onChange={(e) =>
+                      updateRoomSettings({ duration_seconds: Number(e.target.value) })
+                    }
+                  >
+                    <option value={60}>1 dk</option>
+                    <option value={120}>2 dk</option>
+                    <option value={180}>3 dk</option>
+                    <option value={300}>5 dk</option>
+                  </select>
+                </label>
+
+                <label className="dgg-setting-field">
+                  <span>Bölge</span>
+                  <select
+                    value={room.region}
+                    disabled={!isHost}
+                    onChange={(e) =>
+                      updateRoomSettings({ region: e.target.value })
+                    }
+                  >
+                    <option value="world">Dünya</option>
+                    <option value="europe">Avrupa</option>
+                    <option value="asia">Asya</option>
+                    <option value="africa">Afrika</option>
+                    <option value="north_america">Kuzey Amerika</option>
+                    <option value="south_america">Güney Amerika</option>
+                    <option value="oceania">Okyanusya</option>
+                  </select>
+                </label>
+
+                <label className="dgg-setting-field">
+                  <span>Maks. Oyuncu</span>
+                  <select
+                    value={room.max_players}
+                    disabled={!isHost}
+                    onChange={(e) =>
+                      updateRoomSettings({ max_players: Number(e.target.value) })
+                    }
+                  >
+                    {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                      <option key={n} value={n}>
+                        {n} kişi
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {isHost ? (
+              waitingPlayers.length >= MIN_PLAYERS ? (
+                <button className="btn btn-accent duel-start-btn" onClick={startGame}>
+                  🚀 Oyunu Başlat ({waitingPlayers.length} kişi)
+                </button>
               ) : (
-                <p className="duel-waiting-msg">Ev sahibi oyunu başlatacak…</p>
-              )}
+                <p className="duel-waiting-msg">En az {MIN_PLAYERS} kişi gerekli...</p>
+              )
+            ) : (
+              <p className="duel-waiting-msg">Ev sahibi oyunu başlatacak...</p>
+            )}
 
-              {errorMsg && <p className="duel-error">{errorMsg}</p>}
+            {errorMsg && <p className="duel-error">{errorMsg}</p>}
 
-              <button className="btn btn-ghost btn-sm" onClick={backToLobby}>
-                ← Lobiye Dön
-              </button>
-            </div>
-            <LobbyChat roomCode={room.code} playerName={playerName} />
+            <button className="btn btn-ghost btn-sm" onClick={backToLobby}>
+              ← Lobiye Dön
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {hostClosedRoom && (
-        <div className="duel-quit-backdrop" onClick={() => { setHostClosedRoom(false); backToLobby(); }}>
-          <div className="duel-quit-modal" onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🚪</div>
-            <h3 className="duel-quit-title">Oda Kapatıldı</h3>
-            <p className="duel-quit-sub">Oda sahibi odadan ayrıldı.</p>
-            <div className="duel-quit-actions">
-              <button className="btn btn-accent"
-                onClick={() => { setHostClosedRoom(false); backToLobby(); }}>
-                ← Lobiye Dön
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="dgg-wait-chat">
+        <LobbyChat roomCode={room.code} playerName={playerName} />
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ════════ PLAYING ════════ */}
       {phase === "playing" && room && (
