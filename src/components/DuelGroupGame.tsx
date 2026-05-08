@@ -196,11 +196,13 @@ export default function DuelGroupGame({ onHome }: Props) {
   const [phase,     setPhase]     = useState<Phase>("lobby");
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
   const [, setHostClosedRoom] = useState(false);
 
   /* game state */
   const [room,     setRoom]     = useState<GroupRoom | null>(null);
   const [players,  setPlayers]  = useState<GroupPlayer[]>([]);
+  const [kickTarget, setKickTarget] = useState<GroupPlayer | null>(null);
   const [claims,   setClaims]   = useState<GroupClaim[]>([]);
   const [timeLeft, setTimeLeft] = useState(60);
   const [isHost,   setIsHost]   = useState(false);
@@ -586,6 +588,29 @@ useEffect(() => {
     clearGroupSession();
   }, [room, freezeLeaderboard]);
 
+  /* — KICKED CHECK: odadan silinen oyuncuyu lobby ekranına düşür — */
+useEffect(() => {
+  if (!room) return;
+  if (phase !== "waiting") return;
+  if (!myIdRef.current) return;
+  if (!players.length) return;
+
+  const stillInRoom = players.some((p) => p.id === myIdRef.current);
+
+  if (!stillInRoom) {
+    clearGroupSession();
+    setRoom(null);
+    setPlayers([]);
+    setClaims([]);
+    setIsHost(false);
+    setFinalLeaderboard(null);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setKickedNoticeOpen(true);
+    setPhase("lobby");
+  }
+}, [room, phase, players]);
+
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
     const name = playerName.trim();
@@ -679,12 +704,30 @@ useEffect(() => {
 
     const targetRoom = r as GroupRoom;
 
-    // Kapasite kontrol
-    const { data: ps0 } = await supabase
-      .from("duel_group_players").select("id").eq("room_id", targetRoom.id);
-    if ((ps0?.length ?? 0) >= targetRoom.max_players) {
-      setErrorMsg(`Oda dolu (${targetRoom.max_players} kişi).`); setStatusMsg(null); return;
-    }
+    // Kapasite + aynı isim kontrolü
+const { data: ps0 } = await supabase
+  .from("duel_group_players")
+  .select("id, name")
+  .eq("room_id", targetRoom.id);
+
+const cleanName = playerName.trim();
+
+const sameNameExists = (ps0 ?? []).some((p: any) =>
+  String(p.name ?? "").trim().toLocaleLowerCase("tr-TR") ===
+  cleanName.toLocaleLowerCase("tr-TR")
+);
+
+if (sameNameExists) {
+  setErrorMsg("Bu isim bu odada kullanılıyor. Farklı bir isim seç.");
+  setStatusMsg(null);
+  return;
+}
+
+if ((ps0?.length ?? 0) >= targetRoom.max_players) {
+  setErrorMsg(`Oda dolu (${targetRoom.max_players} kişi).`);
+  setStatusMsg(null);
+  return;
+}
 
     // Önceki session bu odadaysa devam et, değilse yeni id
     const saved = loadRoomSession();
@@ -847,6 +890,31 @@ ${shareLink}`
     });
   };
 
+  /* — KICK PLAYER (sadece host, sadece bekleme odası) — */
+const kickPlayer = useCallback(
+  async (playerId: string) => {
+    if (!room || !isHostRef.current) return;
+    if (phaseRef.current !== "waiting") return;
+    if (playerId === myIdRef.current) return;
+
+    const { error } = await supabase
+      .from("duel_group_players")
+      .delete()
+      .eq("room_id", room.id)
+      .eq("id", playerId);
+
+    if (error) {
+      dbgErr("kickPlayer failed", error);
+      setErrorMsg("Oyuncu odadan çıkarılamadı.");
+      return;
+    }
+
+    setPlayers((prev) => prev.filter((p) => p.id !== playerId));
+    setKickTarget(null);
+  },
+  [room]
+);
+  
   /* ── BACK TO LOBBY ── */
   const backToLobby = useCallback(async () => {
     // Eğer waiting'deyiz ve oyuncuysak → kendimi sil
@@ -1067,9 +1135,9 @@ setPhase("waiting");
       {/* ════════ WAITING ════════ */}
       {/* ======== WAITING ======== */}
 {phase === "waiting" && room && (
-  <div className="duel-lobby">
-    <div className="duel-lobby-with-chat">
-      <div className="duel-lobby-card dgg-wait-card">
+  <div className="dgg-wait-page">
+    <div className="dgg-wait-shell">
+      <div className="dgg-wait-main-card">
         <div className="dgg-wait-head">
           <h2 className="duel-lobby-title">Oyuncular Bekleniyor...</h2>
 
@@ -1110,7 +1178,19 @@ setPhase("waiting");
         </div>
 
         <div className="dgg-wait-body">
-          <div className="dgg-wait-left">
+          <div className="dgg-wait-left dgg-panel">
+            <div className="dgg-panel-head">
+  <div>
+    <h3>Oyuncular</h3>
+    <span className="dgg-panel-sub">
+      En az {MIN_PLAYERS} oyuncu gerekli
+    </span>
+  </div>
+
+  <span className="dgg-panel-count">
+    {waitingPlayers.length}/{room.max_players}
+  </span>
+</div>
             <div className="duel-players-list">
               {waitingPlayers.map((p) => (
                 <div
@@ -1120,11 +1200,21 @@ setPhase("waiting");
                   <span className="duel-player-dot" />
                   <span className="duel-player-name">{p.name}</span>
                   <div className="duel-player-tags">
-                    {p.id === myId && <span className="duel-tag">Sen</span>}
-                    {p.is_host && <span className="duel-tag host">👑</span>}
-                  </div>
-                </div>
-              ))}
+  {p.id === myId && <span className="duel-tag">Sen</span>}
+  {p.is_host && <span className="duel-tag host">👑</span>}
+</div>
+
+{isHost && phase === "waiting" && p.id !== myId && (
+  <button
+    type="button"
+    className="dgg-kick-btn"
+    onClick={() => setKickTarget(p)}
+  >
+    At
+  </button>
+)}
+</div>
+))}
 
               {waitingPlayers.length < MIN_PLAYERS && (
                 <div className="duel-player-chip waiting">
@@ -1138,7 +1228,7 @@ setPhase("waiting");
           </div>
 
           <div className="dgg-wait-right">
-            <div className="dgg-room-settings">
+            <div className="dgg-room-settings dgg-panel">
               <div className="dgg-room-settings-title">
                 ⚙️ Oda Ayarları
                 {!isHost && (
@@ -1224,7 +1314,7 @@ setPhase("waiting");
         </div>
       </div>
 
-      <div className="dgg-wait-chat">
+      <div className="dgg-wait-chat-card">
         <LobbyChat roomCode={room.code} playerName={playerName} />
       </div>
     </div>
@@ -1395,6 +1485,67 @@ setPhase("waiting");
           </div>
         </div>
       )}
+
+          {kickTarget && (
+  <div className="dgg-confirm-backdrop" onClick={() => setKickTarget(null)}>
+    <div className="dgg-confirm-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="dgg-confirm-icon">⚠️</div>
+
+      <h3>Oyuncuyu odadan çıkar</h3>
+
+      <p>
+        <strong>{kickTarget.name}</strong> adlı oyuncuyu odadan çıkarmak
+        istediğine emin misin?
+      </p>
+
+      <div className="dgg-confirm-actions">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setKickTarget(null)}
+        >
+          Vazgeç
+        </button>
+
+        <button
+          type="button"
+          className="dgg-confirm-danger"
+          onClick={() => kickPlayer(kickTarget.id)}
+        >
+          Odadan At
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{kickedNoticeOpen && (
+  <div
+    className="dgg-confirm-backdrop"
+    onClick={() => setKickedNoticeOpen(false)}
+  >
+    <div
+      className="dgg-confirm-modal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="dgg-confirm-icon">🚪</div>
+
+      <h3>Odadan Çıkarıldın</h3>
+
+      <p>Oda sahibi seni odadan çıkardı.</p>
+
+      <div className="dgg-confirm-actions single">
+        <button
+          type="button"
+          className="btn btn-accent"
+          onClick={() => setKickedNoticeOpen(false)}
+        >
+          Tamam
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
