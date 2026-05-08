@@ -289,7 +289,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
           onSelect("duel-group-game");
         }}
       >
-        👥 Grup Modu
+        🏆 Çok Oyunculu
       </button>
 
       <button

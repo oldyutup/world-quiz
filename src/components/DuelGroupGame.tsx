@@ -1,5 +1,5 @@
 /**
- * DuelGroupGame.tsx — Online Grup Modu (Ülke Yaz, 3–10 kişi)
+ * DuelGroupGame.tsx — Online Çok Oyunculu Mod (Ülke Yaz, 3–10 kişi)
  *
  * Bu dosya mevcut 1v1 DuelGame.tsx'e DOKUNMAZ. Tamamen ayrı bir component
  * ve ayrı Supabase tabloları (duel_group_rooms / duel_group_players /
@@ -825,9 +825,16 @@ setClaims([]);
 
   /* ── COPY INVITE ── */
   const inviteMessage = room
-    ? `GeoQuiz Grup Modu — Ülke Yaz! 👥
-Oda: ${room.code} · ${regionLabel} · ${durationLabel}
-En çok ülke yazan kazanır. Katılmak için tıkla:
+    ? `🏆 Çok Oyunculu – Ülke Yaz
+
+Oda Kodu: ${room.code}
+Bölge: ${regionLabel}
+Süre: ${durationLabel}
+
+Arkadaşlarınla aynı odada yarış:
+Süre bitmeden en çok ülkeyi yazan kazanır.
+
+Oyuna katıl:
 ${shareLink}`
     : "";
   const copyInvite = () => {
@@ -948,8 +955,8 @@ setPhase("waiting");
               ← Ana Menü
             </button>
 
-            <h2 className="duel-lobby-title">👥 Grup Modu — Ülke Yaz</h2>
-            <p className="duel-lobby-desc">3–10 kişi · En çok ülke yazan kazanır.</p>
+            <h2 className="duel-lobby-title">🏆 Çok Oyunculu — Ülke Yaz</h2>
+            <p className="duel-lobby-desc">3–10 kişilik arkadaş grubunla oyna • En çok ülke yazan kazanır.</p>
 
             <input
               className="duel-name-input"
