@@ -4792,3 +4792,154 @@ body {
     z-index: 9999 !important;
   }
 }
+/* =========================================================
+   GROUP LOBBY MOBILE COMPACT FIX
+   Chat'e dokunmaz. Sadece mobil lobi içeriğini küçültür.
+   ========================================================= */
+
+@media (max-width: 760px) {
+  .dgg-wait-page {
+    padding: 8px 10px 92px !important;
+  }
+
+  .dgg-wait-main-card {
+    padding: 14px 12px 16px !important;
+    border-radius: 18px !important;
+  }
+
+  /* Üst başlık / kod alanı */
+  .dgg-wait-main-card .duel-lobby-title {
+    font-size: clamp(24px, 7.2vw, 32px) !important;
+    line-height: 0.95 !important;
+    letter-spacing: 0.5px !important;
+    margin: 0 0 10px !important;
+  }
+
+  .dgg-wait-main-card .duel-room-code {
+    font-size: clamp(34px, 10vw, 46px) !important;
+    letter-spacing: 4px !important;
+    line-height: 1 !important;
+  }
+
+  .dgg-wait-main-card .duel-room-code-hint {
+    font-size: 12px !important;
+    margin-top: 5px !important;
+  }
+
+  .dgg-wait-main-card .duel-invite-btn {
+    min-height: 44px !important;
+    height: 44px !important;
+    margin-top: 12px !important;
+    border-radius: 14px !important;
+    font-size: 14px !important;
+  }
+
+  .dgg-wait-main-card .duel-link-preview {
+    margin-top: 10px !important;
+  }
+
+  .dgg-wait-main-card .duel-link-input {
+    height: 42px !important;
+    min-height: 42px !important;
+    border-radius: 13px !important;
+    font-size: 12px !important;
+  }
+
+  .dgg-wait-main-card .duel-settings-summary {
+    margin: 12px 0 14px !important;
+    font-size: 13px !important;
+    gap: 6px !important;
+  }
+
+  /* İç gövde */
+  .dgg-wait-body {
+    gap: 12px !important;
+  }
+
+  .dgg-panel {
+    border-radius: 18px !important;
+  }
+
+  .dgg-wait-left.dgg-panel,
+  .dgg-room-settings.dgg-panel {
+    padding: 13px !important;
+  }
+
+  .dgg-panel-head {
+    margin-bottom: 10px !important;
+  }
+
+  .dgg-panel-head h3 {
+    font-size: 18px !important;
+    line-height: 1.1 !important;
+  }
+
+  .dgg-panel-sub {
+    font-size: 12.5px !important;
+    margin-top: 5px !important;
+  }
+
+  .dgg-panel-count {
+    font-size: 13px !important;
+  }
+
+  /* Oyuncu listesi */
+  .dgg-wait-left .duel-players-list {
+    max-height: 185px !important;
+    overflow-y: auto !important;
+  }
+
+  .dgg-wait-left .duel-player-chip {
+    min-height: 48px !important;
+    height: 48px !important;
+    border-radius: 14px !important;
+    padding: 0 12px !important;
+  }
+
+  .dgg-wait-left .duel-player-name {
+    font-size: 15px !important;
+  }
+
+  .dgg-wait-left .duel-tag,
+  .dgg-wait-left .duel-tag.host {
+    font-size: 12px !important;
+    min-height: 28px !important;
+    padding: 0 10px !important;
+  }
+
+  /* Oda ayarları */
+  .dgg-room-settings-grid {
+    gap: 10px !important;
+  }
+
+  .dgg-room-settings label,
+  .dgg-room-settings .duel-select-label,
+  .dgg-room-settings .dgg-setting-label {
+    font-size: 13px !important;
+    margin-bottom: 5px !important;
+  }
+
+  .dgg-room-settings select,
+  .dgg-room-settings .duel-select,
+  .dgg-room-settings .dgg-setting-field select {
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 14px !important;
+    font-size: 16px !important;
+    padding-left: 14px !important;
+  }
+
+  /* Alt mesaj ve buton */
+  .duel-waiting-msg {
+    font-size: 12px !important;
+    margin: 8px 0 !important;
+  }
+
+  .duel-start-btn,
+  .duel-return-room-btn {
+    height: 40px !important;
+    min-height: 40px !important;
+    border-radius: 13px !important;
+    font-size: 13px !important;
+  }
+}
