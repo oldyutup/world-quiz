@@ -3,6 +3,7 @@ import WorldMap, { SilhouetteView } from "./components/WorldMap";
 import RouteGame from "./components/RouteGame";
 import DuelGame from "./components/DuelGame";
 import FlagDuelGame from "./components/FlagDuelGame";
+import DuelGroupGame from "./components/DuelGroupGame";
 import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
@@ -19,7 +20,7 @@ import "./App.css";
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "flag-duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -71,6 +72,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "silhouette-game": 8,
   "route-game": 0,
   "duel-game": 0,
+  "duel-group-game": 0,
   "flag-duel-game": 0,
 };
 
@@ -257,7 +259,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       {showCountryMenu && (
   <div className="overlay" onClick={() => setShowCountryMenu(false)}>
     <div className="modal" onClick={(e) => e.stopPropagation()}>
-      
+
       <h2>🌍 Ülke Yaz</h2>
 
       <button
@@ -278,6 +280,16 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
         }}
       >
         ⚔️ Online 1v1
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          setShowCountryMenu(false);
+          onSelect("duel-group-game");
+        }}
+      >
+        👥 Grup Modu
       </button>
 
       <button
@@ -1430,21 +1442,28 @@ const handleSpendGold = (amount: number): boolean => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const duelCode = params.get("duel");
+    const duelGroupCode = params.get("duelGroup");
     const flagDuelCode = params.get("flagDuel");
 
-if (flagDuelCode) {
-  setScreen("flag-duel-game");
-  return;
-}
+    if (flagDuelCode) {
+      setScreen("flag-duel-game");
+      return;
+    }
 
-if (duelCode) {
-  setScreen("duel-game");
-  return;
-}
+    if (duelGroupCode) {
+      setScreen("duel-group-game");
+      return;
+    }
+
+    if (duelCode) {
+      setScreen("duel-game");
+      return;
+    }
   }, []);
 
   if (screen === "home") return <HomeScreen onSelect={setScreen} />;
   if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
+  if (screen === "duel-group-game") return <DuelGroupGame onHome={() => setScreen("home")} />;
   if (screen === "flag-duel-game") return (
   <FlagDuelGame
   onHome={() => setScreen("home")}

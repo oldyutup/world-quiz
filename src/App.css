@@ -72,12 +72,44 @@ body {
   min-height: 100vh;         /* final fallback */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;   /* smooth momentum scroll on iOS */
-  background: var(--bg);
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background:
+  radial-gradient(circle at 50% 8%, rgba(88,166,255,.22), transparent 28%),
+  radial-gradient(circle at 18% 24%, rgba(34,197,94,.10), transparent 22%),
+  radial-gradient(circle at 82% 18%, rgba(59,130,246,.12), transparent 26%),
+  radial-gradient(circle at 50% 100%, rgba(15,23,42,.85), transparent 45%),
+  linear-gradient(180deg, #070b14 0%, #0a101d 45%, #05070d 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 40px 20px env(safe-area-inset-bottom, 80px);
   gap: 36px;
+}
+.home-screen::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,.55) 0 1px, transparent 1.5px),
+    radial-gradient(circle, rgba(88,166,255,.45) 0 1px, transparent 1.6px);
+  background-size: 90px 90px, 140px 140px;
+  background-position: 12px 18px, 48px 70px;
+  opacity: .22;
+}
+
+.home-screen::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 35%, transparent 0 34%, rgba(4,7,13,.52) 62%, rgba(4,7,13,.84) 100%);
+  opacity: .9;
 }
 
 .home-hero {
@@ -2780,4 +2812,287 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   DUEL GROUP GAME (DGG) — Grup Modu eklemeleri
+   .duel-* mevcut sınıfları yeniden kullanılıyor;
+   bunlar sadece grup moduna özel ek widget'lar.
+═══════════════════════════════════════════════════════ */
+
+/* Üst bar timer */
+.dgg-timer-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 2px;
+}
+.dgg-timer-bar {
+  width: 100%;
+  max-width: 220px;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dgg-timer-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .25s linear;
+}
+.dgg-timer-text {
+  font-family: var(--font-head, inherit);
+  font-size: .9rem;
+  letter-spacing: .04em;
+}
+
+/* Live leaderboard (oyun sırasında) */
+.dgg-leaderboard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  max-height: 88px;
+  overflow-y: auto;
+}
+.dgg-lb-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: .82rem;
+  white-space: nowrap;
+}
+.dgg-lb-row.mine {
+  background: var(--accent-glow, rgba(80,180,220,.18));
+  border-color: var(--accent);
+}
+.dgg-lb-rank {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: .75rem;
+}
+.dgg-lb-name {
+  color: var(--text);
+}
+.dgg-lb-host {
+  margin-left: 2px;
+}
+.dgg-lb-you {
+  color: var(--accent);
+  font-size: .75rem;
+}
+.dgg-lb-score {
+  font-family: var(--font-head, inherit);
+  font-weight: 700;
+  color: var(--accent);
+  margin-left: 2px;
+}
+
+/* Final leaderboard (oyun sonu) */
+.dgg-final-board {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.dgg-final-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.dgg-final-row.mine {
+  border-color: var(--accent);
+  background: var(--accent-glow, rgba(80,180,220,.14));
+}
+.dgg-final-row.winner {
+  border-color: var(--amber, #f59e0b);
+  box-shadow: 0 0 0 1px var(--amber, #f59e0b) inset;
+}
+.dgg-final-rank {
+  font-family: var(--font-head, inherit);
+  font-size: 1.2rem;
+  text-align: center;
+}
+.dgg-final-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dgg-final-score {
+  font-family: var(--font-head, inherit);
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .dgg-leaderboard { padding: 6px 8px; max-height: 72px; }
+  .dgg-lb-row      { font-size: .76rem; padding: 3px 8px; }
+  .dgg-final-row   { grid-template-columns: 44px 1fr auto; padding: 8px 10px; }
+  .dgg-final-score { font-size: 1.1rem; }
+}
+
+.dgg-game {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.dgg-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dgg-topbar-left,
+.dgg-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dgg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.dgg-score-total {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.dgg-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dgg-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.dgg-subbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dgg-room-meta {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.dgg-players-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dgg-player-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.dgg-player-chip.mine {
+  border-color: var(--accent);
+  background: rgba(88,166,255,.12);
+}
+
+.dgg-map-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dgg-map-wrap > * {
+  width: 100%;
+  height: 100%;
+}
+
+.dgg-chat-wrap {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  max-height: 220px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+@media (max-width: 768px) {
+  .dgg-topbar,
+  .dgg-input-row {
+    padding: 8px 10px;
+  }
+
+  .dgg-subbar {
+    padding: 8px 10px;
+  }
+
+  .dgg-input-row {
+    flex-wrap: wrap;
+  }
+
+  .dgg-input {
+    min-width: 100%;
+  }
+}
+
+.duel-return-room-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  min-height: 52px;
+  font-size: 1rem;
 }

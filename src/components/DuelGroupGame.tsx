@@ -1,0 +1,1275 @@
+/**
+ * DuelGroupGame.tsx — Online Grup Modu (Ülke Yaz, 3–10 kişi)
+ *
+ * Bu dosya mevcut 1v1 DuelGame.tsx'e DOKUNMAZ. Tamamen ayrı bir component
+ * ve ayrı Supabase tabloları (duel_group_rooms / duel_group_players /
+ * duel_group_claims) kullanır.
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * ⚠️  Supabase setup (gerekli SQL — bir defa çalıştır):
+ *
+ *   CREATE TABLE IF NOT EXISTS duel_group_rooms (
+ *     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ *     code              text UNIQUE NOT NULL,
+ *     status            text NOT NULL DEFAULT 'waiting',
+ *                       -- 'waiting' | 'playing' | 'finished'
+ *     duration_seconds  int  NOT NULL DEFAULT 60,
+ *     region            text NOT NULL DEFAULT 'world',
+ *     max_players       int  NOT NULL DEFAULT 10,
+ *     started_at        timestamptz,
+ *     created_at        timestamptz NOT NULL DEFAULT now(),
+ *     updated_at        timestamptz NOT NULL DEFAULT now()
+ *   );
+ *
+ *   CREATE TABLE IF NOT EXISTS duel_group_players (
+ *     id            uuid PRIMARY KEY,
+ *     room_id       uuid NOT NULL REFERENCES duel_group_rooms(id) ON DELETE CASCADE,
+ *     name          text NOT NULL,
+ *     is_host       boolean NOT NULL DEFAULT false,
+ *     joined_at     timestamptz NOT NULL DEFAULT now(),
+ *     last_seen_at  timestamptz NOT NULL DEFAULT now()
+ *   );
+ *   CREATE INDEX IF NOT EXISTS duel_group_players_room_idx ON duel_group_players(room_id);
+ *
+ *   CREATE TABLE IF NOT EXISTS duel_group_claims (
+ *     id            bigserial PRIMARY KEY,
+ *     room_id       uuid NOT NULL REFERENCES duel_group_rooms(id) ON DELETE CASCADE,
+ *     player_id     uuid NOT NULL,
+ *     country_code  text NOT NULL,
+ *     created_at    timestamptz NOT NULL DEFAULT now(),
+ *     UNIQUE (room_id, country_code)   -- aynı ülkeyi sadece ilk yazan alır
+ *   );
+ *   CREATE INDEX IF NOT EXISTS duel_group_claims_room_idx ON duel_group_claims(room_id);
+ *
+ *   ALTER TABLE duel_group_rooms   ENABLE ROW LEVEL SECURITY;
+ *   ALTER TABLE duel_group_players ENABLE ROW LEVEL SECURITY;
+ *   ALTER TABLE duel_group_claims  ENABLE ROW LEVEL SECURITY;
+ *
+ *   CREATE POLICY "anon_all_group_rooms"   ON duel_group_rooms   FOR ALL TO anon USING (true) WITH CHECK (true);
+ *   CREATE POLICY "anon_all_group_players" ON duel_group_players FOR ALL TO anon USING (true) WITH CHECK (true);
+ *   CREATE POLICY "anon_all_group_claims"  ON duel_group_claims  FOR ALL TO anon USING (true) WITH CHECK (true);
+ *
+ *   -- Realtime'ı her üç tabloda etkinleştir.
+ *   ALTER PUBLICATION supabase_realtime ADD TABLE duel_group_rooms;
+ *   ALTER PUBLICATION supabase_realtime ADD TABLE duel_group_players;
+ *   ALTER PUBLICATION supabase_realtime ADD TABLE duel_group_claims;
+ * ─────────────────────────────────────────────────────────────────
+ */
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { supabase } from "../lib/supabase";
+import { DuelMapView } from "./WorldMap";
+import LobbyChat from "./LobbyChat";
+import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
+
+/* ─── Lokal type'lar (lib/supabase.ts'i kirletmemek için) ─── */
+interface GroupRoom {
+  id:               string;
+  code:             string;
+  status:           "waiting" | "playing" | "finished";
+  duration_seconds: number;
+  region:           string;
+  max_players:      number;
+  started_at:       string | null;
+  created_at:       string;
+  updated_at:       string;
+}
+interface GroupPlayer {
+  id:           string;
+  room_id:      string;
+  name:         string;
+  is_host:      boolean;
+  joined_at:    string;
+  last_seen_at: string;
+  status: "waiting" | "playing" | "finished";
+}
+interface GroupClaim {
+  id:           number;
+  room_id:      string;
+  player_id:    string;
+  country_code: string;
+  created_at:   string;
+}
+
+/* ─── Sabitler ─── */
+const MIN_PLAYERS = 3;
+const MAX_PLAYERS = 10;
+
+const DURATION_OPTS = [
+  { label: "1 dk",  value: 60  },
+  { label: "2 dk",  value: 120 },
+  { label: "3 dk",  value: 180 },
+  { label: "5 dk",  value: 300 },
+  { label: "10 dk", value: 600 },
+];
+
+const REGION_OPTS = [
+  { label: "🌍 Dünya",          value: "world"         },
+  { label: "🇪🇺 Avrupa",        value: "europe"        },
+  { label: "🌏 Asya",           value: "asia"          },
+  { label: "🌍 Afrika",         value: "africa"        },
+  { label: "🌎 Kuzey Amerika",  value: "north-america" },
+  { label: "🌎 Güney Amerika",  value: "south-america" },
+  { label: "🌊 Okyanusya",      value: "oceania"       },
+];
+
+/** DB'de kullanılacak normalize edilmiş region değeri (1v1 ile aynı kuralla) */
+const normalizeRegion = (r: string): string => {
+  const map: Record<string, string> = {
+    "north-america": "north_america",
+    "south-america": "south_america",
+  };
+  return map[r] ?? r;
+};
+const denormalizeRegion = (r: string): string => {
+  const map: Record<string, string> = {
+    "north_america": "north-america",
+    "south_america": "south-america",
+  };
+  return map[r] ?? r;
+};
+
+/* ─── localStorage helpers (1v1'inkinden ayrı namespace) ─── */
+const PLAYER_ID_KEY = "geoquiz_group_player_id";
+const ROOM_KEY      = "geoquiz_group_room";
+
+function makeCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+function dbg(label: string, obj?: unknown) {
+  console.log(`[DuelGroupGame] ${label}`, obj ?? "");
+}
+function dbgErr(label: string, err?: unknown, ctx?: unknown) {
+  console.error(`[DuelGroupGame] ❌ ${label}`, err, ctx ?? "");
+}
+
+function freshPlayerId(): string {
+  const id = crypto.randomUUID();
+  localStorage.setItem(PLAYER_ID_KEY, id);
+  return id;
+}
+
+interface RoomSession { roomId: string; roomCode: string; playerId: string; }
+
+function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
+  localStorage.setItem(ROOM_KEY, JSON.stringify({ roomId, roomCode, playerId }));
+}
+function loadRoomSession(): RoomSession | null {
+  try {
+    const raw = localStorage.getItem(ROOM_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.roomId || !parsed?.roomCode || !parsed?.playerId) return null;
+    return parsed as RoomSession;
+  } catch { return null; }
+}
+function clearGroupSession() {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("geoquiz_group")) keys.push(k);
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+}
+
+function buildAllowedSet(region: string): Set<string> | null {
+  if (region === "world") return null;
+  const key = denormalizeRegion(region);
+  return getContinentIds(key as Continent);
+}
+
+type Phase = "lobby" | "creating" | "waiting" | "playing" | "finished";
+
+interface Props { onHome: () => void; }
+
+export default function DuelGroupGame({ onHome }: Props) {
+  /* identity */
+  const myIdRef = useRef<string>("");
+  const myId = myIdRef.current;
+
+  /* lobby form */
+  const [playerName,   setPlayerName]   = useState("");
+  const [joinCode,     setJoinCode]     = useState("");
+  const [hostDuration, setHostDuration] = useState(120);
+  const [hostRegion,   setHostRegion]   = useState("world");
+  const [hostMaxPlayers, setHostMaxPlayers] = useState(10);
+
+  /* phase / messages */
+  const [phase,     setPhase]     = useState<Phase>("lobby");
+  const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [hostClosedRoom, setHostClosedRoom] = useState(false);
+
+  /* game state */
+  const [room,     setRoom]     = useState<GroupRoom | null>(null);
+  const [players,  setPlayers]  = useState<GroupPlayer[]>([]);
+  const [claims,   setClaims]   = useState<GroupClaim[]>([]);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [isHost,   setIsHost]   = useState(false);
+  const [input,    setInput]    = useState("");
+  const [feedback, setFeedback] = useState<"ok" | "err" | "dup" | "region" | null>(null);
+  const [copied,   setCopied]   = useState(false);
+  const [showLabels] = useState(true);
+  const [quitModal, setQuitModal] = useState(false);
+
+  // Frozen leaderboard at game end
+  const [finalLeaderboard, setFinalLeaderboard] =
+    useState<Array<{ playerId: string; name: string; score: number }> | null>(null);
+
+  /* refs */
+  const inputRef     = useRef<HTMLInputElement>(null);
+  const rafRef       = useRef<number | null>(null);
+  const fbTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameEndedRef = useRef(false);
+  const phaseRef     = useRef<Phase>("lobby");
+  const isHostRef    = useRef(false);
+  const roomIdRef    = useRef<string>("");
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeLeftRef  = useRef<number>(9999);
+
+  /* derived */
+  const gameDuration = room?.duration_seconds ?? hostDuration;
+  const gameRegion   = room?.region ?? hostRegion;
+  const allowedIds   = useMemo(() => buildAllowedSet(gameRegion), [gameRegion]);
+  const regionLabel  = REGION_OPTS.find(r => r.value === denormalizeRegion(gameRegion))?.label
+    ?? REGION_OPTS.find(r => r.value === gameRegion)?.label
+    ?? "Dünya";
+  const durationLabel = DURATION_OPTS.find(d => d.value === gameDuration)?.label ?? `${gameDuration}sn`;
+
+  /* sync refs */
+  phaseRef.current  = phase;
+  isHostRef.current = isHost;
+  timeLeftRef.current = timeLeft;
+  if (room) roomIdRef.current = room.id;
+
+  /* skor hesabı: claims tablosundan canlı */
+  const scoreMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    claims.forEach(c => { m[c.player_id] = (m[c.player_id] ?? 0) + 1; });
+    return m;
+  }, [claims]);
+
+  const myScore = scoreMap[myId] ?? 0;
+  
+  const waitingPlayers = useMemo(
+  () => players.filter((p) => p.status === "waiting"),
+  [players]
+);
+ 
+/* leaderboard: tüm oyuncular skora göre sıralı */
+  const leaderboard = useMemo(() => {
+    return players
+      .map(p => ({
+        playerId: p.id,
+        name:     p.name,
+        score:    scoreMap[p.id] ?? 0,
+        isMe:     p.id === myId,
+        isHost:   p.is_host,
+      }))
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  }, [players, scoreMap, myId]);
+
+  /* harita için: benim claim'lerim ve diğerlerinin */
+  const myTopoIds  = useMemo(
+    () => new Set(claims.filter(c => c.player_id === myId).map(c => c.country_code)),
+    [claims, myId],
+  );
+  const otherTopoIds = useMemo(
+    () => new Set(claims.filter(c => c.player_id !== myId).map(c => c.country_code)),
+    [claims, myId],
+  );
+
+  const shareLink = room ? `${location.origin}${location.pathname}?duelGroup=${room.code}` : "";
+  const timerPct  = gameDuration > 0 ? (timeLeft / gameDuration) * 100 : 0;
+  const timerColor =
+    timeLeft > gameDuration * 0.33 ? "var(--accent)" :
+    timeLeft > gameDuration * 0.13 ? "#f59e0b" : "#ef4444";
+  const gameOver = gameEndedRef.current || timeLeft <= 0 || phase === "finished";
+  const inputCls = ["duel-input",
+    feedback === "ok"  ? "ok"  : "",
+    feedback === "err" || feedback === "dup" || feedback === "region" ? "err" : "",
+    gameOver ? "disabled" : "",
+  ].filter(Boolean).join(" ");
+
+  /* ── feedback helper ── */
+  const showFeedback = useCallback((type: "ok" | "err" | "dup" | "region") => {
+    if (fbTimerRef.current) clearTimeout(fbTimerRef.current);
+    setFeedback(type);
+    fbTimerRef.current = setTimeout(() => setFeedback(null), 900);
+  }, []);
+
+  /* ── ?duelGroup=CODE URL paramı ── */
+  useEffect(() => {
+    const code = new URLSearchParams(location.search).get("duelGroup");
+    if (code) setJoinCode(code.toUpperCase());
+  }, []);
+
+  /* ── Session restore ── */
+  useEffect(() => {
+    const saved = loadRoomSession();
+    if (!saved) return;
+
+    myIdRef.current = saved.playerId;
+
+    (async () => {
+      const { data: r } = await supabase
+        .from("duel_group_rooms").select("*").eq("id", saved.roomId).single();
+      if (!r || r.status === "finished") {
+        clearGroupSession();
+        return;
+      }
+      const { data: ps } = await supabase
+        .from("duel_group_players").select("*").eq("room_id", r.id);
+      const isMe = (ps ?? []).some((p: GroupPlayer) => p.id === saved.playerId);
+      if (!isMe) {
+        clearGroupSession();
+        return;
+      }
+      const room = r as GroupRoom;
+      const myRow = (ps ?? []).find((p: GroupPlayer) => p.id === saved.playerId);
+      setRoom(room);
+      setPlayers(ps ?? []);
+      setIsHost(!!myRow?.is_host);
+      setTimeLeft(room.duration_seconds);
+      if (r.status === "playing") {
+        const { data: cs } = await supabase
+          .from("duel_group_claims").select("*").eq("room_id", r.id);
+        setClaims(cs ?? []);
+        setPhase("playing");
+      } else {
+        setPhase("waiting");
+      }
+      dbg("session restore ✓", { roomId: r.id, status: r.status });
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Realtime ── */
+  useEffect(() => {
+    if (!room) return;
+
+    const chan = supabase.channel(`duel-group:${room.id}`)
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "duel_group_rooms", filter: `id=eq.${room.id}` },
+        async (payload: { new: GroupRoom }) => {
+          const r = payload.new as GroupRoom;
+          setRoom(r);
+
+          if (r.status === "playing" && phaseRef.current !== "playing") {
+            dbg("RT room → playing", r.started_at);
+            setPhase("playing");
+          }
+          if (r.status === "finished" && !gameEndedRef.current) {
+            gameEndedRef.current = true;
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+            await freezeLeaderboard(r.id);
+            clearGroupSession();
+            setPhase("finished");
+          }
+        })
+      .on("postgres_changes",
+        { event: "DELETE", schema: "public", table: "duel_group_rooms", filter: `id=eq.${room.id}` },
+        () => {
+          if (phaseRef.current === "waiting" && !isHostRef.current) {
+            setHostClosedRoom(true);
+          }
+        })
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "duel_group_players", filter: `room_id=eq.${room.id}` },
+        () => {
+          // Tüm değişikliklerde listeyi yeniden çek (basit, doğru)
+          supabase.from("duel_group_players")
+            .select("*").eq("room_id", room.id)
+            .then(({ data }: { data: GroupPlayer[] | null }) => {
+              if (!data) return;
+              setPlayers(data as GroupPlayer[]);
+            });
+        })
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "duel_group_claims", filter: `room_id=eq.${room.id}` },
+        (payload: { new: GroupClaim }) => {
+          if (gameEndedRef.current || phaseRef.current === "finished") return;
+          setClaims(prev => {
+            const c = payload.new as GroupClaim;
+            if (prev.some(x => x.id === c.id)) return prev;
+            return [...prev, c];
+          });
+        })
+      .subscribe();
+
+    return () => { supabase.removeChannel(chan); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.id]);
+
+  /* ── Realtime fallback poll (waiting fazı için player listesi) ── */
+  useEffect(() => {
+    if (phase !== "waiting" || !room?.id) return;
+    const roomId = room.id;
+    const t = setInterval(async () => {
+      const { data } = await supabase
+        .from("duel_group_players").select("*").eq("room_id", roomId);
+      if (data) setPlayers(data as GroupPlayer[]);
+      // status değişti mi kontrol et (host başlattı vs.)
+      const { data: r } = await supabase
+        .from("duel_group_rooms").select("*").eq("id", roomId).single();
+      if (r && r.status === "playing" && phaseRef.current === "waiting") {
+        setRoom(r as GroupRoom);
+        setPhase("playing");
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [phase, room?.id]);
+
+  /* ── Realtime fallback poll (playing fazı için bitiş tespiti) ── */
+  useEffect(() => {
+    if (phase !== "playing" || !room?.id) return;
+    const roomId = room.id;
+    pollTimerRef.current = setInterval(async () => {
+      if (phaseRef.current !== "playing") {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        return;
+      }
+      try {
+        const { data } = await supabase
+          .from("duel_group_rooms")
+          .select("status, started_at")
+          .eq("id", roomId).single();
+        if (!data) return;
+        if (data.status === "finished" && !gameEndedRef.current) {
+          gameEndedRef.current = true;
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+          await freezeLeaderboard(roomId);
+          setRoom(prev => prev ? { ...prev, status: "finished" } : prev);
+          clearGroupSession();
+          setPhase("finished");
+        }
+      } catch { /* ignore */ }
+    }, 1500);
+    return () => {
+      if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, room?.id]);
+
+  /* ── Server-authoritative timer (1v1 ile aynı mantık) ── */
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!room?.started_at) return;
+
+    const totalMs = gameDuration * 1000;
+    let done = false;
+
+    const tick = () => {
+      if (done) return;
+      const now      = Date.now();
+      const startMs  = room.started_at ? new Date(room.started_at).getTime() : now;
+      const endMs    = startMs + totalMs;
+      const remMs    = Math.max(0, endMs - now);
+      const remSec   = Math.floor(remMs / 1000);
+      const safeRem  = Math.min(gameDuration, remSec);
+      setTimeLeft(safeRem);
+
+      if (now >= endMs) {
+        done = true;
+        if (!gameEndedRef.current) finishGameByTimeout();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !done) {
+        if (phaseRef.current !== "playing") { done = true; return; }
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      done = true;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, gameDuration, room?.started_at]);
+
+  /* ── auto-focus oyun başlayınca ── */
+  useEffect(() => {
+    if (phase === "playing") setTimeout(() => inputRef.current?.focus(), 100);
+  }, [phase]);
+
+  /* — oyun bitince bu oyuncuyu finished işaretle — */
+useEffect(() => {
+  if (phase !== "finished" || !room || !myIdRef.current) return;
+
+  supabase
+    .from("duel_group_players")
+    .update({
+      status: "finished",
+      last_seen_at: new Date().toISOString(),
+    })
+    .eq("room_id", room.id)
+    .eq("id", myIdRef.current);
+}, [phase, room]);
+
+  /* ── ESC → quit modal ── */
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setQuitModal(prev => !prev);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [phase]);
+
+  /* ── Lightweight heartbeat: sadece guess ya da focus event'inde last_seen güncelle ──
+   *    (saniyelik DB write yok; ölçeklenebilirlik kuralı)
+   */
+  const heartbeatThrottleRef = useRef(0);
+  const touchHeartbeat = useCallback(() => {
+    if (!myIdRef.current) return;
+    const now = Date.now();
+    if (now - heartbeatThrottleRef.current < 5000) return;
+    heartbeatThrottleRef.current = now;
+    supabase.from("duel_group_players")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", myIdRef.current)
+      .then(({ error }: { error: unknown }) => {
+        if (error) dbgErr("heartbeat update failed", error);
+      });
+  }, []);
+
+  /* ── Final leaderboard'u dondur ── */
+  const freezeLeaderboard = useCallback(async (roomId: string) => {
+    const [csRes, psRes] = await Promise.all([
+      supabase.from("duel_group_claims").select("player_id").eq("room_id", roomId),
+      supabase.from("duel_group_players").select("id, name").eq("room_id", roomId),
+    ]);
+    const cs: Array<{ player_id: string }> = csRes?.data ?? [];
+    const ps: Array<{ id: string; name: string }> = psRes?.data ?? [];
+
+    const counts: Record<string, number> = {};
+    cs.forEach(c => { counts[c.player_id] = (counts[c.player_id] ?? 0) + 1; });
+
+    const board: Array<{ playerId: string; name: string; score: number }> =
+      ps.map(p => ({
+        playerId: p.id,
+        name:     p.name,
+        score:    counts[p.id] ?? 0,
+      }));
+
+    board.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    setFinalLeaderboard(board);
+    dbg("final leaderboard frozen", board);
+  }, []);
+
+  /* ── Süre dolunca finish (her client çağırabilir, atomic update kazanır) ── */
+  const finishGameByTimeout = useCallback(async () => {
+    if (gameEndedRef.current || !room) return;
+    gameEndedRef.current = true;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+
+    await freezeLeaderboard(room.id);
+
+    // Conditional update — yalnız "playing" iken set'lensin (race-safe)
+    await supabase.from("duel_group_rooms")
+      .update({ status: "finished", updated_at: new Date().toISOString() })
+      .eq("id", room.id)
+      .eq("status", "playing");
+
+    setRoom(prev => prev ? { ...prev, status: "finished" } : prev);
+    setPhase("finished");
+    clearGroupSession();
+  }, [room, freezeLeaderboard]);
+
+  /* ── CREATE ROOM ── */
+  const createRoom = async () => {
+    const name = playerName.trim();
+    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+
+    const safeMax = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, hostMaxPlayers));
+
+    setErrorMsg(null);
+    setStatusMsg("Oda kuruluyor…");
+    setPhase("creating");
+
+    clearGroupSession();
+    const freshId = freshPlayerId();
+    myIdRef.current = freshId;
+
+    const code = makeCode();
+
+    const { data: roomData, error: roomErr } = await supabase
+      .from("duel_group_rooms")
+      .insert({
+        code,
+        status:           "waiting",
+        duration_seconds: hostDuration,
+        region:           normalizeRegion(hostRegion),
+        max_players:      safeMax,
+      })
+      .select("*")
+      .single();
+
+    if (roomErr || !roomData?.id) {
+      dbgErr("room insert failed", roomErr);
+      setErrorMsg("Oda oluşturulamadı. Tekrar dene.");
+      setStatusMsg(null); setPhase("lobby"); return;
+    }
+
+    const newRoom = roomData as GroupRoom;
+
+    const { error: pErr } = await supabase
+      .from("duel_group_players")
+      .insert({
+  id: freshId,
+  room_id: newRoom.id,
+  name,
+  is_host: true,
+  status: "waiting",
+});
+
+    if (pErr) {
+      dbgErr("host insert failed", pErr);
+      // best-effort cleanup
+      await supabase.from("duel_group_rooms").delete().eq("id", newRoom.id);
+      setErrorMsg("Oda oluşturulamadı. Tekrar dene.");
+      setStatusMsg(null); setPhase("lobby"); return;
+    }
+
+    const { data: ps } = await supabase
+      .from("duel_group_players").select("*").eq("room_id", newRoom.id);
+
+    setRoom(newRoom);
+    setPlayers((ps as GroupPlayer[]) ?? []);
+    setClaims([]);
+    setIsHost(true);
+    saveRoomSession(newRoom.id, newRoom.code, freshId);
+    setTimeLeft(hostDuration);
+    setStatusMsg(null);
+    setPhase("waiting");
+    dbg("createRoom ✓", { roomId: newRoom.id, code: newRoom.code });
+  };
+
+  /* ── JOIN ROOM ── */
+  const joinRoom = async () => {
+    const name = playerName.trim();
+    const code = joinCode.trim().toUpperCase();
+    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+    if (!code) { setErrorMsg("Oda kodu yazmalısın."); return; }
+
+    setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
+
+    const { data: r, error: re } = await supabase
+      .from("duel_group_rooms").select("*").eq("code", code).single();
+
+    if (re || !r?.id) {
+      setErrorMsg("Oda bulunamadı. Kodu kontrol et."); setStatusMsg(null); return;
+    }
+    if (r.status === "finished") {
+      setErrorMsg("Bu oyun zaten bitti."); setStatusMsg(null); return;
+    }
+    if (r.status === "playing") {
+      setErrorMsg("Oyun başladı, katılamazsın."); setStatusMsg(null); return;
+    }
+
+    const targetRoom = r as GroupRoom;
+
+    // Kapasite kontrol
+    const { data: ps0 } = await supabase
+      .from("duel_group_players").select("id").eq("room_id", targetRoom.id);
+    if ((ps0?.length ?? 0) >= targetRoom.max_players) {
+      setErrorMsg(`Oda dolu (${targetRoom.max_players} kişi).`); setStatusMsg(null); return;
+    }
+
+    // Önceki session bu odadaysa devam et, değilse yeni id
+    const saved = loadRoomSession();
+    const joinId = (saved?.roomCode === code && saved?.playerId) ? saved.playerId : freshPlayerId();
+    if (joinId !== saved?.playerId) clearGroupSession();
+    myIdRef.current = joinId;
+
+    // Bu id zaten odada mı?
+    const { data: existing } = await supabase
+      .from("duel_group_players").select("id").eq("room_id", targetRoom.id).eq("id", joinId);
+
+    if (!existing?.length) {
+      const { error: pErr } = await supabase
+        .from("duel_group_players")
+        .insert({
+  id: joinId,
+  room_id: targetRoom.id,
+  name,
+  is_host: false,
+  status: "waiting",
+});
+      if (pErr && pErr.code !== "23505") {
+        dbgErr("join insert failed", pErr);
+        setErrorMsg("Odaya katılınamadı."); setStatusMsg(null); return;
+      }
+    }
+
+    const { data: ps } = await supabase
+      .from("duel_group_players").select("*").eq("room_id", targetRoom.id);
+
+    setRoom(targetRoom);
+    setPlayers((ps as GroupPlayer[]) ?? []);
+    setClaims([]);
+    setIsHost(false);
+    saveRoomSession(targetRoom.id, targetRoom.code, joinId);
+    setTimeLeft(targetRoom.duration_seconds);
+    setStatusMsg(null); setPhase("waiting");
+    dbg("joinRoom ✓", { roomId: targetRoom.id });
+  };
+
+  /* ── START GAME (sadece host) ── */
+  const startGame = async () => {
+    if (!room || !isHost) return;
+    if (players.length < MIN_PLAYERS) {
+      setErrorMsg(`En az ${MIN_PLAYERS} oyuncu gerekli.`); return;
+    }
+    const startedAt = new Date().toISOString();
+
+const { error: clearClaimsError } = await supabase
+  .from("duel_group_claims")
+  .delete()
+  .eq("room_id", room.id);
+
+if (clearClaimsError) {
+  dbgErr("startGame clear claims failed", clearClaimsError);
+  setErrorMsg("Eski cevaplar temizlenemedi. Oyunu başlatamadık.");
+  return;
+}
+
+setClaims([]);
+
+    await supabase
+  .from("duel_group_players")
+  .update({
+    status: "playing",
+    last_seen_at: startedAt,
+  })
+  .eq("room_id", room.id);
+    const { error } = await supabase
+      .from("duel_group_rooms")
+      .update({ status: "playing", started_at: startedAt, updated_at: startedAt })
+      .eq("id", room.id);
+    if (error) { setErrorMsg("Oyun başlatılamadı."); return; }
+    // Realtime ile zaten gelecek; ama yine de hızlı geçiş için yerel set
+    setRoom(prev => prev ? { ...prev, status: "playing", started_at: startedAt } : prev);
+    setPhase("playing");
+  };
+
+  /* ── GUESS ── */
+  const handleGuess = async () => {
+    if (phaseRef.current !== "playing") return;
+    if (gameEndedRef.current) return;
+    if (timeLeftRef.current <= 0) return;
+    if (!room || room.status !== "playing") return;
+
+    touchHeartbeat();
+
+    const norm = normalizeInput(input);
+    if (!norm) return;
+    const topoId = NAME_TO_TOPOID[norm];
+    if (!topoId) { showFeedback("err"); setInput(""); return; }
+    if (allowedIds && !allowedIds.has(topoId)) { showFeedback("region"); setInput(""); return; }
+    if (claims.some(c => c.country_code === topoId)) { showFeedback("dup"); setInput(""); return; }
+
+    if (timeLeftRef.current <= 0 || gameEndedRef.current) return;
+
+    setInput("");
+    const { error } = await supabase.from("duel_group_claims").insert({
+      room_id:      room.id,
+      player_id:    myIdRef.current,
+      country_code: topoId,
+    });
+
+    if (!error) { showFeedback("ok"); return; }
+    if (error.code === "23505") { showFeedback("dup"); return; } // başkası daha hızlı yazdı
+    showFeedback("err");
+  };
+
+  /* ── COPY INVITE ── */
+  const inviteMessage = room
+    ? `GeoQuiz Grup Modu — Ülke Yaz! 👥
+Oda: ${room.code} · ${regionLabel} · ${durationLabel}
+En çok ülke yazan kazanır. Katılmak için tıkla:
+${shareLink}`
+    : "";
+  const copyInvite = () => {
+    const text = inviteMessage || shareLink;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }).catch(() => {
+      window.prompt("Linki kopyala:", shareLink);
+    });
+  };
+
+  /* ── BACK TO LOBBY ── */
+  const backToLobby = useCallback(async () => {
+    // Eğer waiting'deyiz ve oyuncuysak → kendimi sil
+    if (room && phaseRef.current === "waiting") {
+      try {
+        if (isHostRef.current) {
+          // Host → odayı sil (cascade ile player ve claim'ler de silinir)
+          await supabase.from("duel_group_rooms").delete().eq("id", room.id);
+        } else {
+          await supabase.from("duel_group_players")
+            .delete()
+            .eq("id", myIdRef.current)
+            .eq("room_id", room.id);
+        }
+      } catch (e) { dbgErr("backToLobby cleanup failed", e); }
+    }
+    clearGroupSession();
+    setRoom(null);
+    setPlayers([]);
+    setClaims([]);
+    setIsHost(false);
+    setFinalLeaderboard(null);
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setQuitModal(false);
+    gameEndedRef.current = false;
+    setPhase("lobby");
+  }, [room]);
+
+/* — RETURN TO SAME ROOM (oyun sonu -> aynı odaya dön) — */
+const returnToRoom = useCallback(async () => {
+  if (!room) return;
+
+  try {
+    // Sadece host odayı tekrar waiting durumuna çeksin
+    if (isHostRef.current) {
+      await supabase
+        .from("duel_group_rooms")
+        .update({
+          status: "waiting",
+          started_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", room.id);
+    }
+  } catch (e) {
+    dbgErr("returnToRoom failed", e);
+  }
+
+  // Oyunun geçici state'lerini temizle ama ODAYI ve OYUNCULARI KORU
+  setClaims([]);
+  setFinalLeaderboard(null);
+  setErrorMsg(null);
+  setStatusMsg(null);
+  setQuitModal(false);
+  gameEndedRef.current = false;
+
+  setClaims([]);
+setFinalLeaderboard(null);
+setErrorMsg(null);
+setStatusMsg(null);
+setQuitModal(false);
+gameEndedRef.current = false;
+
+await supabase
+  .from("duel_group_players")
+  .update({
+    status: "waiting",
+    last_seen_at: new Date().toISOString(),
+  })
+  .eq("room_id", room.id)
+  .eq("id", myIdRef.current);
+
+setPhase("waiting");
+  // Aynı odanın bekleme ekranına dön
+  setPhase("waiting");
+}, [room]);
+
+  /* ── FORFEIT (oyun sırasında çık) ── */
+  const forfeit = useCallback(async (target: "lobby" | "home") => {
+    // Skor zaten claim sayısına göre olduğu için "kaybetmek" davranışı:
+    // sadece odadan ayrıl. Geri kalanlar kendi aralarında yarışmaya devam eder.
+    if (room) {
+      try {
+        await supabase.from("duel_group_players")
+          .delete()
+          .eq("id", myIdRef.current)
+          .eq("room_id", room.id);
+      } catch (e) { dbgErr("forfeit cleanup failed", e); }
+    }
+    clearGroupSession();
+    setQuitModal(false);
+    if (target === "home") onHome();
+    else backToLobby();
+  }, [room, backToLobby, onHome]);
+
+  /* ─────────── RENDER ─────────── */
+
+  return (
+    <div className="duel-app">
+      {/* ════════ LOBBY ════════ */}
+      {phase === "lobby" && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card">
+            <button className="btn btn-ghost btn-sm" onClick={onHome} style={{ alignSelf: "flex-start" }}>
+              ← Ana Menü
+            </button>
+
+            <h2 className="duel-lobby-title">👥 Grup Modu — Ülke Yaz</h2>
+            <p className="duel-lobby-desc">3–10 kişi · En çok ülke yazan kazanır.</p>
+
+            <input
+              className="duel-name-input"
+              type="text"
+              placeholder="İsmin"
+              value={playerName}
+              onChange={e => setPlayerName(e.target.value.slice(0, 20))}
+              maxLength={20}
+              autoComplete="off"
+            />
+
+            {/* CREATE block */}
+            <div className="duel-create-block">
+              <div className="duel-host-settings">
+                <div className="duel-select-wrap">
+                  <label className="duel-select-label">Süre</label>
+                  <div className="duel-select-box">
+                    <select
+                      className="duel-select"
+                      value={hostDuration}
+                      onChange={e => setHostDuration(Number(e.target.value))}
+                    >
+                      {DURATION_OPTS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <span className="duel-select-caret">▾</span>
+                  </div>
+                </div>
+
+                <div className="duel-select-wrap">
+                  <label className="duel-select-label">Bölge</label>
+                  <div className="duel-select-box">
+                    <select
+                      className="duel-select"
+                      value={hostRegion}
+                      onChange={e => setHostRegion(e.target.value)}
+                    >
+                      {REGION_OPTS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <span className="duel-select-caret">▾</span>
+                  </div>
+                </div>
+
+                <div className="duel-select-wrap">
+                  <label className="duel-select-label">Maks Oyuncu</label>
+                  <div className="duel-select-box">
+                    <select
+                      className="duel-select"
+                      value={hostMaxPlayers}
+                      onChange={e => setHostMaxPlayers(Number(e.target.value))}
+                    >
+                      {[3,4,5,6,7,8,9,10].map(n => (
+                        <option key={n} value={n}>{n} kişi</option>
+                      ))}
+                    </select>
+                    <span className="duel-select-caret">▾</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="btn btn-accent duel-create-btn"
+                onClick={createRoom}
+                disabled={phase !== "lobby"}
+              >
+                {(phase as Phase) === "creating" ? "Kuruluyor…" : "🏠 Grup Odası Kur"}
+              </button>
+            </div>
+
+            <div className="duel-section-divider">veya mevcut bir odaya katıl</div>
+
+            <div className="duel-join-block">
+              <div className="duel-join-row">
+                <input
+                  className="duel-code-input"
+                  type="text"
+                  placeholder="ODA KODU"
+                  value={joinCode}
+                  onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                  maxLength={6}
+                  autoComplete="off"
+                />
+                <button className="btn btn-danger" onClick={joinRoom}>Katıl</button>
+              </div>
+            </div>
+
+            {errorMsg  && <p className="duel-error">{errorMsg}</p>}
+            {statusMsg && <p className="duel-status">{statusMsg}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ════════ WAITING ════════ */}
+      {phase === "waiting" && room && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-with-chat">
+            <div className="duel-lobby-card">
+              <h2 className="duel-lobby-title">Oyuncular Bekleniyor…</h2>
+
+              <div className="duel-room-code-block">
+                <span className="duel-room-code">{room.code}</span>
+                <p className="duel-room-code-hint">6 haneli kod — arkadaşlarına ver</p>
+              </div>
+
+              <button
+                className={"btn duel-invite-btn" + (copied ? " invited" : "")}
+                onClick={copyInvite}
+              >
+                {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
+              </button>
+
+              <div className="duel-link-preview" onClick={e => {
+                const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
+                el?.select();
+              }}>
+                <input className="duel-link-input" readOnly value={shareLink}
+                  onFocus={e => e.target.select()} />
+              </div>
+
+              <div className="duel-settings-summary">
+                <span>⏱ {durationLabel}</span>
+                <span className="duel-sum-dot">·</span>
+                <span>{regionLabel}</span>
+                <span className="duel-sum-dot">·</span>
+                <span>👥 {waitingPlayers.length}/{room.max_players}</span>
+              </div>
+
+              <div className="duel-players-list">
+                 {waitingPlayers.map(p => (
+                  <div key={p.id} className={"duel-player-chip" + (p.id === myId ? " mine" : "")}>
+                    <span className="duel-player-dot"/>
+                    <span className="duel-player-name">{p.name}</span>
+                    <div className="duel-player-tags">
+                      {p.id === myId && <span className="duel-tag">Sen</span>}
+                      {p.is_host && <span className="duel-tag host">👑</span>}
+                    </div>
+                  </div>
+                ))}
+                {waitingPlayers.length < MIN_PLAYERS && (
+                  <div className="duel-player-chip waiting">
+                    <span className="duel-player-dot waiting"/>
+                    <span>En az {MIN_PLAYERS} oyuncu gerekli ({MIN_PLAYERS - waitingPlayers.length} bekleniyor)…</span>
+                  </div>
+                )}
+              </div>
+
+              {isHost ? (
+                waitingPlayers.length >= MIN_PLAYERS
+                  ? <button className="btn btn-accent duel-start-btn" onClick={startGame}>
+                      🚀 Oyunu Başlat ({waitingPlayers.length} kişi)
+                    </button>
+                  : <p className="duel-waiting-msg">En az {MIN_PLAYERS} kişi gerekli…</p>
+              ) : (
+                <p className="duel-waiting-msg">Ev sahibi oyunu başlatacak…</p>
+              )}
+
+              {errorMsg && <p className="duel-error">{errorMsg}</p>}
+
+              <button className="btn btn-ghost btn-sm" onClick={backToLobby}>
+                ← Lobiye Dön
+              </button>
+            </div>
+            <LobbyChat roomCode={room.code} playerName={playerName} />
+          </div>
+        </div>
+      )}
+
+      {hostClosedRoom && (
+        <div className="duel-quit-backdrop" onClick={() => { setHostClosedRoom(false); backToLobby(); }}>
+          <div className="duel-quit-modal" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🚪</div>
+            <h3 className="duel-quit-title">Oda Kapatıldı</h3>
+            <p className="duel-quit-sub">Oda sahibi odadan ayrıldı.</p>
+            <div className="duel-quit-actions">
+              <button className="btn btn-accent"
+                onClick={() => { setHostClosedRoom(false); backToLobby(); }}>
+                ← Lobiye Dön
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ PLAYING ════════ */}
+      {phase === "playing" && room && (
+  <div className="dgg-game">
+        <>
+          {/* Üst bar: skor + timer + leaderboard pill */}
+          <div className="duel-score-bar">
+            <div className="duel-score-mine">
+              <span className="duel-score-label">Senin Skorun</span>
+              <span className="duel-score-value">{myScore}</span>
+            </div>
+
+            <div className="dgg-timer-wrap">
+              <div className="dgg-timer-bar">
+                <div className="dgg-timer-fill" style={{
+                  width: `${timerPct}%`,
+                  background: timerColor,
+                }}/>
+              </div>
+              <span className="dgg-timer-text" style={{ color: timerColor }}>
+                {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+              </span>
+            </div>
+
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setQuitModal(true)}
+              aria-label="Çıkış"
+            >
+              ✕ Çık
+            </button>
+          </div>
+
+          {/* Live leaderboard */}
+          <div className="dgg-leaderboard">
+            {leaderboard.map((entry, idx) => (
+              <div
+                key={entry.playerId}
+                className={"dgg-lb-row" + (entry.isMe ? " mine" : "")}
+              >
+                <span className="dgg-lb-rank">#{idx + 1}</span>
+                <span className="dgg-lb-name">
+                  {entry.name}
+                  {entry.isHost && <span className="dgg-lb-host"> 👑</span>}
+                  {entry.isMe   && <span className="dgg-lb-you"> (Sen)</span>}
+                </span>
+                <span className="dgg-lb-score">{entry.score}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Map */}
+          <div className="dgg-map-wrap map-area">
+            <DuelMapView
+              myTopoIds={myTopoIds}
+              oppTopoIds={otherTopoIds}
+              showLabels={showLabels}
+              region={denormalizeRegion(gameRegion)}
+              activeIds={allowedIds ?? undefined}
+            />
+          </div>
+
+          {/* Input */}
+          <div className="duel-input-bar">
+            <input
+              ref={inputRef}
+              type="text"
+              className={inputCls}
+              disabled={gameOver}
+              placeholder={gameOver
+                ? "Süre bitti"
+                : allowedIds
+                  ? `${regionLabel} ülkesi yaz… (Enter)`
+                  : "Ülke adı yaz… (Enter)"}
+              value={gameOver ? "" : input}
+              onChange={e => { if (!gameOver) setInput(e.target.value); }}
+              onKeyDown={e => { if (e.key === "Enter" && !gameOver) handleGuess(); }}
+              autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+            />
+            <button className="btn btn-accent" onClick={handleGuess} disabled={gameOver}>Gir</button>
+            <div className="duel-fb-slot">
+              {feedback === "ok"     && <span className="fb fb-ok">✓ +1!</span>}
+              {feedback === "err"    && <span className="fb fb-no">✗ Bulunamadı</span>}
+              {feedback === "dup"    && <span className="fb fb-dup">Zaten alındı</span>}
+              {feedback === "region" && <span className="fb fb-no">⚠ Bölge dışı</span>}
+            </div>
+          </div>
+
+          {/* Quit modal */}
+          {quitModal && (
+            <div className="duel-quit-backdrop" onClick={() => setQuitModal(false)}>
+              <div className="duel-quit-modal" onClick={e => e.stopPropagation()}>
+                <h3 className="duel-quit-title">Oyundan çıkmak istiyor musun?</h3>
+                <p className="duel-quit-sub">Çıkarsan diğerleri yarışmaya devam eder; senin skorun donar.</p>
+                <div className="duel-quit-actions">
+                  <button className="btn duel-quit-action forfeit" onClick={() => forfeit("lobby")}>
+                    🚪 Lobiye Dön
+                  </button>
+                  <button className="btn duel-quit-action menu" onClick={() => forfeit("home")}>
+                    🏠 Ana Menü
+                  </button>
+                  <button className="btn duel-quit-action cancel" onClick={() => setQuitModal(false)}>
+                    ↩ Vazgeç
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+        </div>
+)}
+
+      {/* ════════ FINISHED ════════ */}
+      {phase === "finished" && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card">
+            <div className="duel-result-emoji">🏁</div>
+            <h2 className="duel-result-title">Oyun Bitti!</h2>
+
+            {/* Sıralama */}
+            <div className="dgg-final-board">
+              {(finalLeaderboard ?? leaderboard).map((entry, idx) => {
+                const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`;
+                const isMe  = entry.playerId === myId;
+                return (
+                  <div key={entry.playerId}
+                       className={"dgg-final-row" + (isMe ? " mine" : "") + (idx === 0 ? " winner" : "")}>
+                    <span className="dgg-final-rank">{medal}</span>
+                    <span className="dgg-final-name">
+                      {entry.name}{isMe && <span className="dgg-lb-you"> (Sen)</span>}
+                    </span>
+                    <span className="dgg-final-score">{entry.score}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="duel-result-meta">
+              <span>⏱ {durationLabel}</span>
+              <span className="duel-sum-dot">·</span>
+              <span>{regionLabel}</span>
+              <span className="duel-sum-dot">·</span>
+              <span>Toplam {claims.length} ülke</span>
+            </div>
+
+            {errorMsg && <p className="duel-error">{errorMsg}</p>}
+
+            <button
+  className="btn btn-accent duel-return-room-btn"
+  onClick={returnToRoom}
+>
+  ↩ Odaya Geri Dön
+</button>
+
+<div className="duel-result-actions">
+  <button className="btn btn-ghost" onClick={backToLobby}>
+    ↻ Yeni Oyun
+  </button>
+  <button className="btn btn-ghost" onClick={onHome}>
+    ⌂ Ana Menü
+  </button>
+</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
