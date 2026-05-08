@@ -3951,3 +3951,72 @@ body {
   margin: 0 auto !important;
   transform: translateY(18px) !important;
 }
+
+/* ===== GROUP LOBBY MOBILE CHAT - USE FAB / SHEET ===== */
+
+@media (max-width: 860px) {
+  .duel-lobby-with-chat {
+    width: calc(100vw - 20px) !important;
+    max-width: none !important;
+    display: block !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  .duel-lobby-with-chat > .duel-lobby-card {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Chat wrapper layout bozmasın */
+  .dgg-wait-chat {
+    display: contents !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+  }
+
+  .dgg-wait-chat > * {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  /* Mobilde masaüstü chat paneli görünmesin */
+  .dgg-wait-chat .lc-panel {
+    display: none !important;
+  }
+
+  /* Mobilde sadece sohbet butonu görünsün */
+  .dgg-wait-chat .lc-fab {
+    display: inline-flex !important;
+    position: fixed !important;
+    right: 24px !important;
+    bottom: calc(24px + env(safe-area-inset-bottom)) !important;
+    z-index: 80 !important;
+  }
+
+  /* Açılan sohbet sheet’i her şeyin üstünde olsun */
+  .dgg-wait-chat .lc-sheet-backdrop {
+    z-index: 999 !important;
+  }
+
+  .dgg-wait-chat .lc-sheet {
+    z-index: 1000 !important;
+  }
+}
+@media (min-width: 861px) {
+  .dgg-wait-chat .lc-fab,
+  .dgg-wait-chat .lc-sheet-backdrop {
+    display: none !important;
+  }
+}
