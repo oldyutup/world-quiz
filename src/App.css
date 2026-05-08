@@ -4943,3 +4943,96 @@ body {
     font-size: 13px !important;
   }
 }
+/* =========================================================
+   MOBILE COLLAPSIBLE ROOM SETTINGS
+   Grup modu mobilde oda ayarları kapalı gelir.
+   Desktop'ta açık kalır.
+   ========================================================= */
+
+.dgg-settings-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: rgba(245, 248, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dgg-settings-toggle span:first-child {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.dgg-settings-chevron {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(90, 160, 255, 0.10);
+  border: 1px solid rgba(90, 160, 255, 0.22);
+  color: rgba(130, 185, 255, 0.95);
+  font-size: 20px;
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+.dgg-settings-content {
+  margin-top: 16px;
+}
+
+/* Desktop: ayarlar her zaman açık */
+@media (min-width: 761px) {
+  .dgg-settings-content {
+    display: block !important;
+  }
+
+  .dgg-settings-chevron {
+    display: none !important;
+  }
+
+  .dgg-settings-toggle {
+    cursor: default;
+    pointer-events: none;
+  }
+}
+
+/* Mobil: default kapalı, tıklayınca açılır */
+@media (max-width: 760px) {
+  .dgg-settings-content {
+    display: none !important;
+  }
+
+  .dgg-settings-content.open {
+    display: block !important;
+  }
+
+  .dgg-room-settings.dgg-panel {
+    padding: 14px !important;
+  }
+
+  .dgg-settings-toggle span:first-child {
+    font-size: 18px !important;
+  }
+
+  .dgg-settings-chevron {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 18px !important;
+  }
+
+  .dgg-room-settings-note {
+    display: block !important;
+    margin-top: 6px !important;
+    font-size: 12px !important;
+    color: rgba(210, 220, 240, 0.48) !important;
+  }
+}

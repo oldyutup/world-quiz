@@ -198,6 +198,7 @@ export default function DuelGroupGame({ onHome }: Props) {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
   const [, setHostClosedRoom] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   /* game state */
   const [room,     setRoom]     = useState<GroupRoom | null>(null);
@@ -1228,16 +1229,24 @@ setPhase("waiting");
           </div>
 
           <div className="dgg-wait-right">
-            <div className="dgg-room-settings dgg-panel">
-              <div className="dgg-room-settings-title">
-                ⚙️ Oda Ayarları
-                {!isHost && (
-                  <span className="dgg-room-settings-note">
-                    Sadece oda sahibi değiştirebilir
-                  </span>
-                )}
-              </div>
+           <button
+  type="button"
+  className="dgg-settings-toggle"
+  onClick={() => setMobileSettingsOpen((v) => !v)}
+>
+  <span>⚙️ Oda Ayarları</span>
+  <span className="dgg-settings-chevron">
+    {mobileSettingsOpen ? "⌃" : "⌄"}
+  </span>
+</button>
 
+{!isHost && (
+  <span className="dgg-room-settings-note">
+    Sadece oda sahibi değiştirebilir
+  </span>
+)}
+
+<div className={"dgg-settings-content" + (mobileSettingsOpen ? " open" : "")}>
               <div className="dgg-room-settings-grid">
                 <label className="dgg-setting-field">
                   <span>Süre</span>
