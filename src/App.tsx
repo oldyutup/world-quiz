@@ -16,7 +16,14 @@ import {
   type Difficulty,
 } from "./data/countries";
 import "./App.css";
-import { playSound, stopSound } from "./lib/sound";
+import {
+  playSound,
+  stopSound,
+  isSoundEnabled,
+  setSoundEnabled,
+} from "./lib/sound";
+import AuthModal from "./components/AuthModal";
+import { getCurrentUser, getProfile, signOut, type Profile } from "./lib/auth";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -1479,6 +1486,10 @@ export default function App() {
   const [selectedDuration, setSelectedDuration] = useState(60);
   const [gold, setGold] = useState<number>(() => loadGold());
   const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
 
   const handleAppClaimBonus = () => {
   if (!canClaimDailyBonus()) {
@@ -1501,6 +1512,46 @@ const handleSpendGold = (amount: number): boolean => {
 
   return true;
 };
+useEffect(() => {
+  let alive = true;
+
+  async function loadAuth() {
+    setAuthLoading(true);
+
+    const { user } = await getCurrentUser();
+
+    if (!alive) return;
+
+    if (!user) {
+      setProfile(null);
+      setAuthLoading(false);
+      return;
+    }
+
+    const { data } = await getProfile(user.id);
+
+    if (!alive) return;
+
+    setProfile(data ?? null);
+    setAuthLoading(false);
+  }
+
+  loadAuth();
+
+  return () => {
+    alive = false;
+  };
+}, []);
+
+async function handleLogout() {
+  await signOut();
+  setProfile(null);
+}
+function handleToggleSound() {
+  const next = !soundEnabled;
+  setSoundEnabled(next);
+  setSoundEnabledState(next);
+}
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const duelCode = params.get("duel");
@@ -1523,7 +1574,46 @@ const handleSpendGold = (amount: number): boolean => {
     }
   }, []);
 
-  if (screen === "home") return <HomeScreen onSelect={setScreen} />;
+  if (screen === "home")
+  return (
+    <>
+      <div className="auth-mini-bar">
+        {authLoading ? (
+          <span>Kontrol ediliyor...</span>
+        ) : profile ? (
+          <>
+            <span>@{profile.username}</span>
+            <span>Lv. {profile.level}</span>
+            <button type="button" onClick={handleLogout}>
+              Çıkış
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setAuthOpen(true)}>
+            Giriş Yap
+          </button>
+        )}
+      </div>
+      <button
+  className="sound-toggle-btn"
+  type="button"
+  onClick={handleToggleSound}
+  title={soundEnabled ? "Sesi kapat" : "Sesi aç"}
+>
+  {soundEnabled ? "🔊 Ses Açık" : "🔇 Ses Kapalı"}
+</button>
+
+      <HomeScreen onSelect={setScreen} />
+
+      {authOpen && (
+        <AuthModal
+          onClose={() => setAuthOpen(false)}
+          onGuest={() => setProfile(null)}
+          onAuthSuccess={(nextProfile) => setProfile(nextProfile)}
+        />
+      )}
+    </>
+  );
   if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
   if (screen === "duel-group-game") return <DuelGroupGame onHome={() => setScreen("home")} />;
   if (screen === "flag-duel-game") return (

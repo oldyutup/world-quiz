@@ -5104,3 +5104,231 @@ body {
 .dgg-join-divider span {
   white-space: nowrap;
 }
+/* ===== Auth mini bar ===== */
+.auth-mini-bar {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(140, 160, 190, 0.24);
+  border-radius: 999px;
+  background: rgba(15, 20, 30, 0.72);
+  backdrop-filter: blur(12px);
+  color: rgba(235, 242, 255, 0.9);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.auth-mini-bar button {
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(80, 160, 255, 0.18);
+  color: rgba(235, 242, 255, 0.95);
+  padding: 7px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+/* ===== Auth modal ===== */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 7, 14, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.auth-modal {
+  position: relative;
+  width: min(440px, 100%);
+  border: 1px solid rgba(140, 160, 190, 0.28);
+  border-radius: 26px;
+  background: rgba(18, 24, 34, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  padding: 26px;
+  color: rgba(235, 242, 255, 0.94);
+}
+
+.auth-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 242, 255, 0.85);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.auth-head {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.auth-icon {
+  font-size: 34px;
+  margin-bottom: 8px;
+}
+
+.auth-head h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.03em;
+}
+
+.auth-head p {
+  margin: 10px 0 0;
+  color: rgba(190, 200, 215, 0.75);
+  line-height: 1.45;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.auth-tabs button,
+.auth-primary,
+.auth-google,
+.auth-ghost,
+.auth-guest {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.auth-tabs button {
+  border: 1px solid rgba(140, 160, 190, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(220, 230, 245, 0.8);
+}
+
+.auth-tabs button.active {
+  border-color: rgba(90, 165, 255, 0.55);
+  background: rgba(90, 165, 255, 0.18);
+  color: white;
+}
+
+.auth-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.auth-field span {
+  color: rgba(190, 200, 215, 0.82);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-field input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid rgba(140, 160, 190, 0.25);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+  color: white;
+  padding: 0 14px;
+  box-sizing: border-box;
+  font-size: 15px;
+}
+
+.auth-field small {
+  color: rgba(180, 190, 205, 0.62);
+  font-size: 12px;
+}
+
+.auth-error {
+  margin: 10px 0;
+  color: #ff6b6b;
+  font-weight: 800;
+  text-align: center;
+}
+
+.auth-status {
+  margin: 10px 0;
+  color: #75d68a;
+  font-weight: 800;
+  text-align: center;
+}
+
+.auth-primary {
+  border: 0;
+  background: linear-gradient(135deg, #55a5ff, #2388ff);
+  color: #06101f;
+  margin-top: 6px;
+}
+
+.auth-google {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  margin-top: 10px;
+}
+
+.auth-ghost,
+.auth-guest {
+  border: 1px solid rgba(140, 160, 190, 0.18);
+  background: transparent;
+  color: rgba(220, 230, 245, 0.8);
+  margin-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .auth-mini-bar {
+    top: 10px;
+    right: 10px;
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+
+  .auth-modal {
+    padding: 22px;
+    border-radius: 22px;
+  }
+}
+.sound-toggle-btn {
+  position: fixed;
+  top: 78px;
+  right: 18px;
+  z-index: 5000;
+  border: 1px solid rgba(140, 160, 190, 0.24);
+  border-radius: 999px;
+  background: rgba(15, 20, 30, 0.72);
+  backdrop-filter: blur(12px);
+  color: rgba(235, 242, 255, 0.92);
+  padding: 8px 13px;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sound-toggle-btn:hover {
+  background: rgba(80, 160, 255, 0.18);
+  border-color: rgba(120, 170, 255, 0.38);
+}
+
+@media (max-width: 768px) {
+  .sound-toggle-btn {
+    top: 66px;
+    right: 10px;
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+}
