@@ -59,6 +59,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
+import { playSound, stopSound } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 
 /* ─── Lokal type'lar (lib/supabase.ts'i kirletmemek için) ─── */
@@ -227,6 +228,7 @@ export default function DuelGroupGame({ onHome }: Props) {
   const roomIdRef    = useRef<string>("");
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeLeftRef  = useRef<number>(9999);
+  const countdownPlayedRef = useRef(false);
 
   /* derived */
   const gameDuration = room?.duration_seconds ?? hostDuration;
@@ -236,6 +238,40 @@ export default function DuelGroupGame({ onHome }: Props) {
     ?? REGION_OPTS.find(r => r.value === gameRegion)?.label
     ?? "Dünya";
   const durationLabel = DURATION_OPTS.find(d => d.value === gameDuration)?.label ?? `${gameDuration}sn`;
+  useEffect(() => {
+  if (phase !== "playing") {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (gameDuration <= 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft >= gameDuration - 1) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+    countdownPlayedRef.current = true;
+    playSound("countdown20", { restart: true });
+  }
+
+  if (timeLeft <= 0) {
+    stopSound("countdown20");
+  }
+}, [phase, timeLeft, gameDuration]);
+
+useEffect(() => {
+  return () => {
+    stopSound("countdown20");
+  };
+}, []);
 
   /* sync refs */
   phaseRef.current  = phase;
@@ -1020,7 +1056,14 @@ setPhase("waiting");
       {phase === "lobby" && (
         <div className="duel-lobby">
           <div className="duel-lobby-card">
-            <button className="btn btn-ghost btn-sm" onClick={onHome} style={{ alignSelf: "flex-start" }}>
+            <button
+  className="btn btn-ghost btn-sm"
+  onClick={() => {
+    playSound("click");
+    onHome();
+  }}
+  style={{ alignSelf: "flex-start" }}
+>
               ← Ana Menü
             </button>
 
@@ -1105,9 +1148,9 @@ setPhase("waiting");
     </button>
   </div>
 
-  <div className="duel-section-divider">
-    <span>veya mevcut bir odaya katıl</span>
-  </div>
+  <div className="dgg-join-divider">
+  <span>veya mevcut bir odaya katıl</span>
+</div>
 
   <div className="duel-join-block">
     <div className="duel-join-row">

@@ -5036,3 +5036,71 @@ body {
     color: rgba(210, 220, 240, 0.48) !important;
   }
 }
+
+/* Sadece Ülke Yaz Online 1v1 lobi isim input genişliği */
+.duel-lobby-card .duel-name-input {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
+}
+
+/* Sadece Ülke Yaz Online 1v1 - oda kodu + katıl hizası */
+.duel-lobby-card .duel-join-row {
+  width: 100%;
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 12px;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+.duel-lobby-card .duel-join-row input {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0;
+  height: 46px;
+  box-sizing: border-box;
+  text-align: center;
+  padding-left: 0;
+}
+
+.duel-lobby-card .duel-join-row button {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  box-sizing: border-box;
+}
+/* Sadece desktop Ülke Yaz Online 1v1 lobi kartını biraz daha aşağı al */
+@media (min-width: 769px) {
+  .duel-screen .duel-lobby-card {
+    transform: translateY(48px);
+  }
+}
+
+/* Sadece Çok Oyunculu giriş ekranı - katıl ayırıcı çizgi */
+.dgg-join-divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 10px;
+  color: rgba(210, 220, 240, 0.58);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.dgg-join-divider::before,
+.dgg-join-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(140, 160, 190, 0.18);
+}
+
+.dgg-join-divider span {
+  white-space: nowrap;
+}

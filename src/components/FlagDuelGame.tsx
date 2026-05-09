@@ -27,6 +27,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import LobbyChat from "./LobbyChat";
+import { playSound } from "../lib/sound";
 import {
   NAME_TO_ENTRY,
   normalizeInput,
@@ -1557,7 +1558,14 @@ ${shareLink}`;
   >
     ⚡ Hızlı Eşleş
   </button>
-  <button className="btn btn-accent" style={{ flex: 1 }} onClick={onHome}>
+  <button
+  className="btn btn-accent"
+  style={{ flex: 1 }}
+  onClick={() => {
+    playSound("click");
+    onHome();
+  }}
+>
     ⌂ Ana Menü
   </button>
 </div>

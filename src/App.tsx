@@ -16,6 +16,7 @@ import {
   type Difficulty,
 } from "./data/countries";
 import "./App.css";
+import { playSound, stopSound } from "./lib/sound";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -189,7 +190,10 @@ function Dropdown({ label, disabled, children, align = "left" }: DropdownProps) 
     <div className="dd-wrap" ref={ref}>
       <button
         className={"dd-trigger" + (open ? " open" : "") + (disabled ? " disabled" : "")}
-        disabled={disabled} onClick={() => setOpen(o => !o)}
+        disabled={disabled} onClick={() => {
+  playSound("click");
+  setOpen((o) => !o);
+}}
         aria-haspopup="listbox" aria-expanded={open}
       >
         <span className="dd-label">{label}</span>
@@ -202,7 +206,15 @@ function Dropdown({ label, disabled, children, align = "left" }: DropdownProps) 
 interface DDItemProps { active: boolean; onClick: () => void; children: React.ReactNode; }
 function DDItem({ active, onClick, children }: DDItemProps) {
   return (
-    <button className={"dd-item" + (active ? " active" : "")} role="option" aria-selected={active} onClick={onClick}>
+    <button
+  className={"dd-item" + (active ? " active" : "")}
+  role="option"
+  aria-selected={active}
+  onClick={() => {
+    playSound("click");
+    onClick();
+  }}
+>
       {children}
     </button>
   );
@@ -244,6 +256,8 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
               onClick={() => {
   if (!m.available) return;
 
+  playSound("click");
+
   if (m.id === "map-game") {
     setShowCountryMenu(true);
   } else if (m.id === "flag-game") {
@@ -265,6 +279,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       <button
         className="modal-btn"
         onClick={() => {
+          playSound("click");
           setShowCountryMenu(false);
           onSelect("map-game");
         }}
@@ -275,6 +290,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       <button
         className="modal-btn"
         onClick={() => {
+          playSound("click");
           setShowCountryMenu(false);
           onSelect("duel-game");
         }}
@@ -285,6 +301,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       <button
         className="modal-btn"
         onClick={() => {
+          playSound("click");
           setShowCountryMenu(false);
           onSelect("duel-group-game");
         }}
@@ -294,7 +311,10 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 
       <button
         className="modal-close"
-        onClick={() => setShowCountryMenu(false)}
+        onClick={() => {
+  playSound("click");
+  setShowCountryMenu(false);
+}}
       >
         ✕
       </button>
@@ -312,6 +332,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       <button
         className="modal-btn"
         onClick={() => {
+          playSound("click");
           setShowFlagMenu(false);
           onSelect("flag-game");
         }}
@@ -322,6 +343,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
       <button
         className="modal-btn"
         onClick={() => {
+          playSound("click");
           setShowFlagMenu(false);
           onSelect("flag-duel-game");
         }}
@@ -331,7 +353,10 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 
       <button
         className="modal-close"
-        onClick={() => setShowFlagMenu(false)}
+        onClick={() => {
+  playSound("click");
+  setShowFlagMenu(false);
+}}
       >
         ✕
       </button>
@@ -533,7 +558,14 @@ function TopBar(p: TopBarProps) {
       <GoldBar gold={p.gold} canBonus={p.canBonus} onClaimBonus={p.onClaimBonus} />
       {/* Row 1 */}
       <div className="bar-row bar-top">
-        <button className="back-btn" onClick={p.onHome} title="Ana Menü">
+        <button
+  className="back-btn"
+  onClick={() => {
+    playSound("click");
+    p.onHome();
+  }}
+  title="Ana Menü"
+>
           <span>←</span><span className="back-label">Menü</span>
         </button>
         <div className="bar-dropdowns">
@@ -664,6 +696,7 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
   const [input,        setInput]       = useState("");
   const [feedback,     setFeedback]    = useState<"correct" | "wrong" | "dup" | null>(null);
   const [timeLeft,     setTimeLeft]    = useState(selectedDuration);
+  const countdownPlayedRef = useRef(false);
   // Wall-clock start time — set when timed game begins, null otherwise.
   // Using Date.now() means the timer keeps running even when the tab is hidden.
   const gameStartTimeRef = useRef<number | null>(null);
@@ -690,6 +723,35 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
   const activeIds    = useMemo(() => getContinentIds(continent), [continent]);
   const totalInScope = activeIds.size;
   const scoreInScope = useMemo(() => [...guessedISOs].filter(id => activeIds.has(id)).length, [guessedISOs, activeIds]);
+
+  useEffect(() => {
+  if (mode !== "timed") {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (selectedDuration <= 20) {
+  countdownPlayedRef.current = false;
+  stopSound("countdown20");
+  return;
+}
+
+  if (timeLeft > 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+    countdownPlayedRef.current = true;
+    playSound("countdown20");
+  }
+
+  if (timeLeft <= 0) {
+    stopSound("countdown20");
+  }
+}, [mode, timeLeft]);
 
   const missedCountries = useMemo(() => {
     if (mode !== "finished") return [];

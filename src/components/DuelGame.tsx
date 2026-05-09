@@ -32,6 +32,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
+import { playSound, stopSound } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 
 /* ─── options ─── */
@@ -211,6 +212,8 @@ export default function DuelGame({ onHome }: DuelGameProps) {
   const staleCountRef = useRef(0);
   const timeLeftRef     = useRef<number>(9999);   // mirrors timeLeft; readable in async handlers
   const pollTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownPlayedRef = useRef(false);
+  const resultSoundPlayedRef = useRef(false);
   // Refs that keep realtime callbacks up-to-date (avoids stale closure bugs)
   const phaseRef        = useRef<DuelPhase>("lobby");
   const isHostRef       = useRef(false);
@@ -231,6 +234,58 @@ export default function DuelGame({ onHome }: DuelGameProps) {
 
   const me  = players.find(p => p.id === myId);
   const opp = players.find(p => p.id !== myId);
+
+const durationSeconds = room?.duration_seconds ?? hostDuration;
+
+useEffect(() => {
+  if (phase !== "playing") {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (durationSeconds <= 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft > 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+    countdownPlayedRef.current = true;
+    playSound("countdown20");
+  }
+
+  if (timeLeft <= 0) {
+    stopSound("countdown20");
+  }
+}, [phase, timeLeft, durationSeconds]);
+
+useEffect(() => {
+  return () => {
+    stopSound("countdown20");
+  };
+}, []);
+useEffect(() => {
+  if (phase !== "finished" || !finalScores) {
+    resultSoundPlayedRef.current = false;
+    return;
+  }
+
+  if (resultSoundPlayedRef.current) return;
+  resultSoundPlayedRef.current = true;
+
+  if (finalScores.my > finalScores.opp) {
+    playSound("win", { restart: true });
+  } else if (finalScores.my < finalScores.opp) {
+    playSound("lose", { restart: true });
+  }
+}, [phase, finalScores]);
 
   // Keep refs in sync so realtime handlers always read fresh values
   phaseRef.current   = phase;
@@ -981,13 +1036,30 @@ const stale =
     dbg("existing player check", { existing });
 
     if (!existing?.length) {
-      // Check capacity
-      const { data: allPs } = await supabase
-        .from("duel_players").select("id").eq("room_id", room.id);
-      if ((allPs?.length ?? 0) >= 2) {
-        setErrorMsg("Oda dolu (2 oyuncu mevcut)."); setStatusMsg(null); return;
-      }
+      // Check capacity + duplicate name
+const { data: allPs } = await supabase
+  .from("duel_players")
+  .select("id, name")
+  .eq("room_id", room.id);
 
+const sameNameExists = (allPs ?? []).some(
+  (p) =>
+    p.id !== joinId &&
+    p.name?.trim().toLocaleLowerCase("tr-TR") ===
+      name.trim().toLocaleLowerCase("tr-TR")
+);
+
+if (sameNameExists) {
+  setErrorMsg("Bu odada bu isim zaten kullanılıyor.");
+  setStatusMsg(null);
+  return;
+}
+
+if ((allPs?.length ?? 0) >= 2) {
+  setErrorMsg("Oda dolu (2 oyuncu mevcut).");
+  setStatusMsg(null);
+  return;
+}
       // ── Step 3: Insert player ──
       const { data: playerData, error: pe } = await supabase
         .from("duel_players")
@@ -1628,7 +1700,13 @@ ${shareLink}`
 
       {/* ── HEADER ── */}
       <div className="duel-header">
-        <button className="back-btn" onClick={onHome}>
+        <button
+  className="back-btn"
+  onClick={() => {
+    playSound("click");
+    onHome();
+  }}
+>
           <span>←</span><span className="back-label">Menü</span>
         </button>
         <div className="duel-header-center">
