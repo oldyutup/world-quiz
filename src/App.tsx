@@ -23,7 +23,13 @@ import {
   setSoundEnabled,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
-import { getCurrentUser, getProfile, signOut, type Profile } from "./lib/auth";
+import {
+  createProfile,
+  getCurrentUser,
+  getProfile,
+  signOut,
+  type Profile,
+} from "./lib/auth";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -153,7 +159,7 @@ async function shareScore(
       : gameType === "silhouette-game"
       ? `Silüet Modu${difficulty && difficulty !== "all" ? " (" + (DIFFICULTY_OPTIONS.find(d => d.value === difficulty)?.label ?? "") + ")" : ""}`
       : "Ülke Yaz";
-  const text = `GeoQuiz ${modeName} — ${cName} (${dur}): ${score}/${total} ülke — %${pct}. Sen geçebilir misin? 🌍`;
+  const text = `Torble ${modeName} — ${cName} (${dur}): ${score}/${total} ülke — %${pct}. Sen geçebilir misin? 🌍`;
   if (typeof navigator.share === "function") {
     try { await navigator.share({ text }); return "shared"; } catch {}
   }
@@ -245,7 +251,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
     <div className="home-screen">
       <div className="home-hero">
         <div className="home-globe">🌍</div>
-        <h1 className="home-title">GeoQuiz</h1>
+        <h1 className="home-title">Torble</h1>
         <p className="home-subtitle">Dünya bilginizi test edin.</p>
       </div>
       <div className="mode-grid">
@@ -1530,10 +1536,31 @@ useEffect(() => {
 
     const { data } = await getProfile(user.id);
 
-    if (!alive) return;
+if (!alive) return;
 
-    setProfile(data ?? null);
+if (data) {
+  setProfile(data);
+  setAuthLoading(false);
+  return;
+}
+
+const pendingUsername = localStorage.getItem("geoquiz_pending_username");
+
+if (pendingUsername) {
+  const { data: createdProfile } = await createProfile(user.id, pendingUsername);
+
+  if (!alive) return;
+
+  if (createdProfile) {
+    localStorage.removeItem("geoquiz_pending_username");
+    setProfile(createdProfile);
     setAuthLoading(false);
+    return;
+  }
+}
+
+setProfile(null);
+setAuthLoading(false);
   }
 
   loadAuth();

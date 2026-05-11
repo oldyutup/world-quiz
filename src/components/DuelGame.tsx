@@ -1196,7 +1196,7 @@ return;
 }
   /* ── COPY INVITE MESSAGE ── */
   const inviteMessage = room
-    ? `GeoQuiz'te Online 1v1 ülke kapmaca oynayalım! ⚔️
+    ? `Torble'da Online 1v1 ülke kapmaca oynayalım! ⚔️
 Mod: ${regionLabel} · Süre: ${durationLabel}
 En çok ülke yazan kazanır.
 Katılmak için tıkla:

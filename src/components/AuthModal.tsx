@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  createProfile,
   getCurrentUser,
   getProfile,
   signInWithEmail,
@@ -100,8 +99,13 @@ export default function AuthModal({
 
     setLoading(true);
 
-    try {
-      const { data, error } = await signUpWithEmail(email, password);
+try {
+  localStorage.setItem(
+    "geoquiz_pending_username",
+    username.trim().toLocaleLowerCase("tr-TR")
+  );
+
+  const { error } = await signUpWithEmail(email, password);
 
       if (error) {
         if (error.message.toLowerCase().includes("already")) {
@@ -112,32 +116,10 @@ export default function AuthModal({
         return;
       }
 
-      const userId = data.user?.id;
-
-      if (!userId) {
-        setStatusMsg("Kayıt isteği alındı. E-postanı kontrol etmen gerekebilir.");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await createProfile(
-        userId,
-        username
-      );
-
-      if (profileError) {
-        const msg = profileError.message || "";
-
-        if (msg.includes("duplicate") || msg.includes("unique")) {
-          setErrorMsg("Bu kullanıcı adı zaten alınmış.");
-        } else {
-          setErrorMsg(msg || "Profil oluşturulamadı.");
-        }
-
-        return;
-      }
-
-      onAuthSuccess(profile ?? null);
-      onClose();
+      setStatusMsg(
+  "Doğrulama bağlantısı e-postana gönderildi. Mailini onayladıktan sonra giriş yapabilirsin."
+);
+return;
     } finally {
       setLoading(false);
     }

@@ -27,7 +27,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import LobbyChat from "./LobbyChat";
-import { playSound } from "../lib/sound";
+import { playSound, stopSound } from "../lib/sound";
 import {
   NAME_TO_ENTRY,
   normalizeInput,
@@ -370,12 +370,46 @@ const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "decl
   const advancingRef     = useRef(false);
   const inputRef         = useRef<HTMLInputElement>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownPlayedRef = useRef(false);
 
   useEffect(() => { phaseRef.current   = phase;    }, [phase]);
   useEffect(() => { roomRef.current    = room;     }, [room]);
   useEffect(() => { claimsRef.current  = claims;   }, [claims]);
   useEffect(() => { isHostRef.current  = isHost;   }, [isHost]);
   useEffect(() => { flagPoolRef.current= flagPool; }, [flagPool]);
+  useEffect(() => {
+  if (phase !== "playing") {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (FLAG_TIMEOUT_SEC <= 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft >= FLAG_TIMEOUT_SEC - 1) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+    countdownPlayedRef.current = true;
+    playSound("countdown20", { restart: true });
+  }
+
+  if (timeLeft <= 0) {
+    stopSound("countdown20");
+  }
+}, [phase, timeLeft]);
+useEffect(() => {
+  return () => {
+    stopSound("countdown20");
+  };
+}, []);
 
   /* türetilmiş veriler */
   const myPlayer  = players.find(p => p.id === myId);
@@ -1032,7 +1066,7 @@ if (passers.size >= 2) {
   /* davet kopyala */
   const copyInvite = async () => {
     if (!room) return;
-    const msg = `GeoQuiz Bayrak Modu Online 1v1! 🚩
+    const msg = `Torble Bayrak Modu Online 1v1! 🚩
 Mod: ${continentLabel} · ${roundsLabel}
 Oda kodu: ${room.code}
 
