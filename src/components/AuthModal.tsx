@@ -25,6 +25,7 @@ export default function AuthModal({
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -207,41 +208,53 @@ return;
           </button>
         </div>
 
-        {isSignup && (
-          <label className="auth-field">
-            <span>Kullanıcı adı</span>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value.toLocaleLowerCase("tr-TR"))}
-              placeholder="enes_41"
-              maxLength={16}
-              autoComplete="username"
-            />
-            <small>3–16 karakter. Küçük harf, rakam, alt çizgi ve Türkçe karakter.</small>
-          </label>
-        )}
+       {isSignup && (
+  <label className="auth-field">
+    <span>Kullanıcı adı</span>
+    <input
+      value={username}
+      onChange={(e) => setUsername(e.target.value.toLocaleLowerCase("tr-TR"))}
+      placeholder="enes_41"
+      maxLength={16}
+      autoComplete="username"
+    />
+    <small>3-16 karakter. Küçük harf, rakam, alt çizgi ve Türkçe karakter.</small>
+  </label>
+)}
 
-        <label className="auth-field">
-          <span>E-posta</span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="ornek@mail.com"
-            type="email"
-            autoComplete="email"
-          />
-        </label>
+<label className="auth-field">
+  <span>E-posta</span>
+  <input
+    value={email}
+    onChange={(e) => setEmail(e.target.value)}
+    placeholder="ornek@mail.com"
+    type="email"
+    autoComplete="email"
+  />
+</label>
 
-        <label className="auth-field">
-          <span>Şifre</span>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="En az 6 karakter"
-            type="password"
-            autoComplete={isSignup ? "new-password" : "current-password"}
-          />
-        </label>
+<label className="auth-field">
+  <span>Şifre</span>
+
+  <div className="password-input-wrap">
+    <input
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+      placeholder="En az 6 karakter"
+      type={showPassword ? "text" : "password"}
+      autoComplete={isSignup ? "new-password" : "current-password"}
+    />
+
+    <button
+      type="button"
+      className="password-eye-btn"
+      onClick={() => setShowPassword((v) => !v)}
+      aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+    >
+      {showPassword ? "🙈" : "👁️"}
+    </button>
+  </div>
+</label>
 
         {errorMsg && <div className="auth-error">{errorMsg}</div>}
         {statusMsg && <div className="auth-status">{statusMsg}</div>}
