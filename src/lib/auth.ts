@@ -46,10 +46,20 @@ export function validateUsername(usernameRaw: string): string | null {
   return null;
 }
 
-export async function signUpWithEmail(email: string, password: string) {
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  username: string
+) {
   return supabase.auth.signUp({
     email: email.trim(),
     password,
+    options: {
+      emailRedirectTo: `${window.location.origin}/`,
+      data: {
+        username,
+      },
+    },
   });
 }
 

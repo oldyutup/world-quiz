@@ -1544,19 +1544,21 @@ if (data) {
   return;
 }
 
-const pendingUsername = localStorage.getItem("geoquiz_pending_username");
+const pendingUsername =
+  user.user_metadata?.username ||
+  localStorage.getItem("geoquiz_pending_username") ||
+  user.email?.split("@")[0] ||
+  "oyuncu";
 
-if (pendingUsername) {
-  const { data: createdProfile } = await createProfile(user.id, pendingUsername);
+const { data: createdProfile } = await createProfile(user.id, pendingUsername);
 
-  if (!alive) return;
+if (!alive) return;
 
-  if (createdProfile) {
-    localStorage.removeItem("geoquiz_pending_username");
-    setProfile(createdProfile);
-    setAuthLoading(false);
-    return;
-  }
+if (createdProfile) {
+  localStorage.removeItem("geoquiz_pending_username");
+  setProfile(createdProfile);
+  setAuthLoading(false);
+  return;
 }
 
 setProfile(null);

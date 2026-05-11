@@ -106,7 +106,7 @@ try {
     username.trim().toLocaleLowerCase("tr-TR")
   );
 
-  const { error } = await signUpWithEmail(email, password);
+  const { error } = await signUpWithEmail(email, password, username);
 
       if (error) {
         if (error.message.toLowerCase().includes("already")) {
