@@ -68,6 +68,14 @@ function getAudio(name: SoundName): HTMLAudioElement {
   return audio;
 }
 
+export function preloadSounds() {
+  (Object.keys(SOUND_PATHS) as SoundName[]).forEach((name) => {
+    const audio = getAudio(name);
+    audio.preload = "auto";
+    audio.load();
+  });
+}
+
 export function playSound(name: SoundName, options?: { restart?: boolean }) {
   if (!isSoundEnabled()) return;
 

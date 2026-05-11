@@ -21,6 +21,7 @@ import {
   stopSound,
   isSoundEnabled,
   setSoundEnabled,
+  preloadSounds,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
 import {
@@ -1518,6 +1519,22 @@ const handleSpendGold = (amount: number): boolean => {
 
   return true;
 };
+useEffect(() => {
+  const handleFirstInteraction = () => {
+    preloadSounds();
+    window.removeEventListener("pointerdown", handleFirstInteraction);
+    window.removeEventListener("keydown", handleFirstInteraction);
+  };
+
+  window.addEventListener("pointerdown", handleFirstInteraction);
+  window.addEventListener("keydown", handleFirstInteraction);
+
+  return () => {
+    window.removeEventListener("pointerdown", handleFirstInteraction);
+    window.removeEventListener("keydown", handleFirstInteraction);
+  };
+}, []);
+
 useEffect(() => {
   let alive = true;
 
