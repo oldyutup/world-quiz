@@ -6,7 +6,10 @@ export type SoundName =
   | "win"
   | "lose";
 
+export type CountdownSoundMode = "off" | "last10" | "last20";
+
 const SOUND_ENABLED_KEY = "worldQuizSoundEnabled";
+const COUNTDOWN_SOUND_MODE_KEY = "torble_countdown_sound_mode";
 
 const SOUND_PATHS: Record<SoundName, string> = {
   click: "/sounds/click.mp3",
@@ -52,6 +55,33 @@ export function toggleSoundEnabled(): boolean {
   const next = !isSoundEnabled();
   setSoundEnabled(next);
   return next;
+}
+export function getCountdownSoundMode(): CountdownSoundMode {
+  if (typeof window === "undefined") return "last20";
+
+  const saved = window.localStorage.getItem(COUNTDOWN_SOUND_MODE_KEY);
+
+  if (saved === "off" || saved === "last10" || saved === "last20") {
+    return saved;
+  }
+
+  return "last20";
+}
+
+export function setCountdownSoundMode(mode: CountdownSoundMode) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(COUNTDOWN_SOUND_MODE_KEY, mode);
+}
+
+export function shouldPlayCountdownSound(
+  timeLeft: number,
+  mode: CountdownSoundMode
+): boolean {
+  if (mode === "off") return false;
+  if (mode === "last10") return timeLeft <= 10;
+  if (mode === "last20") return timeLeft <= 20;
+  return false;
 }
 
 function getAudio(name: SoundName): HTMLAudioElement {

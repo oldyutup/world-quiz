@@ -27,7 +27,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import LobbyChat from "./LobbyChat";
-import { playSound, stopSound } from "../lib/sound";
+import {
+  playSound,
+  stopSound,
+  shouldPlayCountdownSound,
+  type CountdownSoundMode,
+} from "../lib/sound";
 import {
   NAME_TO_ENTRY,
   normalizeInput,
@@ -35,6 +40,7 @@ import {
   type Continent,
   type CountryEntry,
 } from "../data/countries";
+import { validateUsername, type Profile } from "../lib/auth";
 
 /* ═══════════════════════════════════════════════════════════════
    SEÇENEKLER (offline mod ile aynı isimler)
@@ -303,6 +309,8 @@ interface FlagDuelGameProps {
   canBonus: boolean;
   onClaimBonus: () => void;
   onSpendGold: (amount: number) => boolean;
+  profile?: Profile | null;
+  countdownSoundMode?: CountdownSoundMode;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -314,6 +322,8 @@ export default function FlagDuelGame({
   canBonus,
   onClaimBonus,
   onSpendGold,
+  profile,
+  countdownSoundMode = "last20",
 }: FlagDuelGameProps) {
   /* identity */
   const myIdRef = useRef<string>("");
@@ -322,6 +332,9 @@ export default function FlagDuelGame({
   /* lobi formu */
   const [playerName, setPlayerName] = useState("");
   const [joinCode,   setJoinCode]   = useState("");
+  const loggedInUsername = profile?.username ?? "";
+  const effectivePlayerName = loggedInUsername || playerName;
+  const isLoggedInPlayer = !!loggedInUsername;
   const [hostRounds, setHostRounds] = useState(10);
   const [hostRegion, setHostRegion] = useState("world");
 
@@ -384,19 +397,19 @@ const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "decl
     return;
   }
 
-  if (FLAG_TIMEOUT_SEC <= 20) {
-    countdownPlayedRef.current = false;
-    stopSound("countdown20");
-    return;
-  }
-
   if (timeLeft >= FLAG_TIMEOUT_SEC - 1) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+  if (!shouldPlayCountdownSound(timeLeft, countdownSoundMode)) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft > 0 && !countdownPlayedRef.current) {
     countdownPlayedRef.current = true;
     playSound("countdown20", { restart: true });
   }
@@ -404,7 +417,7 @@ const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "decl
   if (timeLeft <= 0) {
     stopSound("countdown20");
   }
-}, [phase, timeLeft]);
+}, [phase, timeLeft, countdownSoundMode]);
 useEffect(() => {
   return () => {
     stopSound("countdown20");
@@ -863,8 +876,15 @@ if (passers.size >= 2) {
      ODA KUR
   ════════════════════════════════════════════════════════════════ */
   const createRoom = async () => {
-    const name = playerName.trim();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
     setErrorMsg(null); setStatusMsg("Oda kuruluyor…"); setPhase("creating");
 
     clearSession();
@@ -916,10 +936,22 @@ if (passers.size >= 2) {
      ODAYA KATIL
   ════════════════════════════════════════════════════════════════ */
   const joinRoom = async () => {
-    const name = playerName.trim();
-    const code = joinCode.trim().toUpperCase();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
-    if (!code) { setErrorMsg("Oda kodu yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const code = joinCode.trim().toUpperCase();
+
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
+
+if (!code) {
+  setErrorMsg("Oda kodu yazmalısın.");
+  return;
+}
     setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
 
     const saved = loadSession();
@@ -1139,13 +1171,19 @@ ${shareLink}`;
             <div className="duel-field-row">
               <label className="duel-field-label">Oyuncu Adın</label>
               <input
-                className="duel-name-input"
-                type="text" placeholder="Adını gir…"
-                value={playerName}
-                onChange={e => setPlayerName(e.target.value)}
-                maxLength={20} autoComplete="off"
-                onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
-              />
+  className="duel-name-input"
+  type="text"
+  placeholder="Adını gir..."
+  value={isLoggedInPlayer ? loggedInUsername : playerName}
+  onChange={(e) => {
+    if (isLoggedInPlayer) return;
+    setPlayerName(e.target.value);
+  }}
+  disabled={isLoggedInPlayer}
+  maxLength={20}
+  autoComplete="off"
+  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+/>
             </div>
 
             <div className="duel-settings-block">

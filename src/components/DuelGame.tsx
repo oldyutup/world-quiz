@@ -32,8 +32,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
-import { playSound, stopSound } from "../lib/sound";
+import {
+  playSound,
+  stopSound,
+  shouldPlayCountdownSound,
+  type CountdownSoundMode,
+} from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
+import { validateUsername, type Profile } from "../lib/auth";
 
 /* ─── options ─── */
 const DURATION_OPTS = [
@@ -150,9 +156,17 @@ function buildAllowedSet(region: string): Set<string> | null {
 /* ─── phase ─── */
 type DuelPhase = "lobby" | "creating" | "waiting" | "playing" | "finished";
 
-interface DuelGameProps { onHome: () => void; }
+interface DuelGameProps {
+  onHome: () => void;
+  profile?: Profile | null;
+  countdownSoundMode?: CountdownSoundMode;
+}
 
-export default function DuelGame({ onHome }: DuelGameProps) {
+export default function DuelGame({
+  onHome,
+  profile,
+  countdownSoundMode = "last20",
+}: DuelGameProps) {
   /* identity — set fresh for each new room, loaded from session on resume */
   const myIdRef = useRef<string>("");
   // Convenience getter so we don't change 30+ call sites
@@ -160,6 +174,10 @@ export default function DuelGame({ onHome }: DuelGameProps) {
 
   /* lobby form */
   const [playerName,   setPlayerName]   = useState("");
+  const loggedInUsername = profile?.username ?? "";
+  const effectivePlayerName = loggedInUsername || playerName;
+  const isLoggedInPlayer = !!loggedInUsername;
+
   const [joinCode,     setJoinCode]     = useState("");
   const [hostDuration, setHostDuration] = useState(60);
   const [hostRegion,   setHostRegion]   = useState("world");
@@ -244,19 +262,26 @@ useEffect(() => {
     return;
   }
 
-  if (durationSeconds <= 20) {
+  const countdownLimit =
+    countdownSoundMode === "last20"
+      ? 20
+      : countdownSoundMode === "last10"
+        ? 10
+        : 0;
+
+  if (countdownLimit === 0 || durationSeconds <= countdownLimit) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft > 20) {
+  if (!shouldPlayCountdownSound(timeLeft, countdownSoundMode)) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+  if (timeLeft > 0 && !countdownPlayedRef.current) {
     countdownPlayedRef.current = true;
     playSound("countdown20");
   }
@@ -264,7 +289,7 @@ useEffect(() => {
   if (timeLeft <= 0) {
     stopSound("countdown20");
   }
-}, [phase, timeLeft, durationSeconds]);
+}, [phase, timeLeft, durationSeconds, countdownSoundMode]);
 
 useEffect(() => {
   return () => {
@@ -886,8 +911,15 @@ const stale =
 
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
-    const name = playerName.trim();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
 
     setErrorMsg(null);
     setStatusMsg("Oda kuruluyor…");
@@ -990,10 +1022,22 @@ const stale =
 
   /* ── JOIN ROOM ── */
   const joinRoom = async () => {
-    const name = playerName.trim();
-    const code = joinCode.trim().toUpperCase();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
-    if (!code) { setErrorMsg("Oda kodu yazmalısın."); return; }
+   const name = effectivePlayerName.trim();
+const code = joinCode.trim().toUpperCase();
+
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
+
+if (!code) {
+  setErrorMsg("Oda kodu yazmalısın.");
+  return;
+}
 
     setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
 
@@ -1226,8 +1270,15 @@ ${shareLink}`
   // but DB stores "north_america"/"south_america" (with underscore) for consistent queries.
   const quickMatch = async () => {
     // When called from result screen, playerName may be empty — fall back to last known name
-    const name = playerName.trim() || me?.name || "";
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
 
     setErrorMsg(null);
     setStatusMsg("Rakip aranıyor…");
@@ -1752,16 +1803,20 @@ ${shareLink}`
             {/* Player name */}
             <div className="duel-field-row">
               <label className="duel-field-label">Oyuncu Adın</label>
-              <input
-                className="duel-name-input"
-                type="text"
-                placeholder="Adını gir…"
-                value={playerName}
-                onChange={e => setPlayerName(e.target.value)}
-                maxLength={20}
-                autoComplete="off"
-                onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
-              />
+             <input
+  className="duel-name-input"
+  type="text"
+  placeholder="Adını gir..."
+  value={isLoggedInPlayer ? loggedInUsername : playerName}
+  onChange={(e) => {
+    if (isLoggedInPlayer) return;
+    setPlayerName(e.target.value);
+  }}
+  disabled={isLoggedInPlayer}
+  maxLength={20}
+  autoComplete="off"
+  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+/>
             </div>
 
             {/* HOST settings block — dropdown version */}

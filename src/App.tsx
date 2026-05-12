@@ -22,6 +22,10 @@ import {
   isSoundEnabled,
   setSoundEnabled,
   preloadSounds,
+  getCountdownSoundMode,
+  setCountdownSoundMode,
+  shouldPlayCountdownSound,
+  type CountdownSoundMode,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
 import {
@@ -703,7 +707,12 @@ function TopBar(p: TopBarProps) {
    localStorage at game-end — this prevents the "re-adding reward
    on every render" bug and keeps hints properly scoped.
 ═══════════════════════════════════════════════════════════════ */
-function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDuration: number) {
+function useGameCore(
+  gameType: AppScreen,
+  continent: ContinentFilter,
+  selectedDuration: number,
+  countdownSoundMode: CountdownSoundMode
+) {
   const [mode,         setMode]        = useState<GameMode>("idle");
   const [guessedISOs,  setGuessedISOs] = useState<Set<string>>(new Set());
   const [lastGuessed,  setLastGuessed] = useState<string | null>(null);
@@ -745,19 +754,26 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
     return;
   }
 
-  if (selectedDuration <= 20) {
-  countdownPlayedRef.current = false;
-  stopSound("countdown20");
-  return;
-}
+  const countdownLimit =
+    countdownSoundMode === "last20"
+      ? 20
+      : countdownSoundMode === "last10"
+        ? 10
+        : 0;
 
-  if (timeLeft > 20) {
+  if (countdownLimit === 0 || selectedDuration <= countdownLimit) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+  if (!shouldPlayCountdownSound(timeLeft, countdownSoundMode)) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
+  if (timeLeft > 0 && !countdownPlayedRef.current) {
     countdownPlayedRef.current = true;
     playSound("countdown20");
   }
@@ -765,7 +781,7 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
   if (timeLeft <= 0) {
     stopSound("countdown20");
   }
-}, [mode, timeLeft]);
+}, [mode, timeLeft, selectedDuration, countdownSoundMode]);
 
   const missedCountries = useMemo(() => {
     if (mode !== "finished") return [];
@@ -952,13 +968,22 @@ function useGameCore(gameType: AppScreen, continent: ContinentFilter, selectedDu
    MAP GAME
 ═══════════════════════════════════════════════════════════════ */
 interface MapGameProps {
-  continent: ContinentFilter; selectedDuration: number;
+  continent: ContinentFilter;
+  selectedDuration: number;
+  countdownSoundMode: CountdownSoundMode;
   onContinentChange: (c: ContinentFilter) => void;
   onDurationChange: (d: number) => void;
   onHome: () => void;
 }
-function MapGame({ continent, selectedDuration, onContinentChange, onDurationChange, onHome }: MapGameProps) {
-  const g = useGameCore("map-game", continent, selectedDuration);
+function MapGame({
+  continent,
+  selectedDuration,
+  countdownSoundMode,
+  onContinentChange,
+  onDurationChange,
+  onHome,
+}: MapGameProps) {
+  const g = useGameCore("map-game", continent, selectedDuration, countdownSoundMode);
   const [showLabels, setShowLabels] = useState(false);
   const [mapResetKey, setMapResetKey] = useState(0);
 
@@ -1044,13 +1069,22 @@ function MapGame({ continent, selectedDuration, onContinentChange, onDurationCha
    FLAG GAME
 ═══════════════════════════════════════════════════════════════ */
 interface FlagGameProps {
-  continent: ContinentFilter; selectedDuration: number;
+  continent: ContinentFilter;
+  selectedDuration: number;
+  countdownSoundMode: CountdownSoundMode;
   onContinentChange: (c: ContinentFilter) => void;
   onDurationChange: (d: number) => void;
   onHome: () => void;
 }
-function FlagGame({ continent, selectedDuration, onContinentChange, onDurationChange, onHome }: FlagGameProps) {
-  const g = useGameCore("flag-game", continent, selectedDuration);
+function FlagGame({
+  continent,
+  selectedDuration,
+  countdownSoundMode,
+  onContinentChange,
+  onDurationChange,
+  onHome,
+}: FlagGameProps) {
+  const g = useGameCore("flag-game", continent, selectedDuration, countdownSoundMode);
   const [difficulty,  setDifficulty]  = useState<Difficulty>("normal");
   const [flagQueue,   setFlagQueue]   = useState<CountryEntry[]>([]);
   const [currentFlag, setCurrentFlag] = useState<CountryEntry | null>(null);
@@ -1266,13 +1300,22 @@ function FlagGame({ continent, selectedDuration, onContinentChange, onDurationCh
    SILHOUETTE GAME
 ═══════════════════════════════════════════════════════════════ */
 interface SilhouetteGameProps {
-  continent: ContinentFilter; selectedDuration: number;
+  continent: ContinentFilter;
+  selectedDuration: number;
+  countdownSoundMode: CountdownSoundMode;
   onContinentChange: (c: ContinentFilter) => void;
   onDurationChange: (d: number) => void;
   onHome: () => void;
 }
-function SilhouetteGame({ continent, selectedDuration, onContinentChange, onDurationChange, onHome }: SilhouetteGameProps) {
-  const g = useGameCore("silhouette-game", continent, selectedDuration);
+function SilhouetteGame({
+  continent,
+  selectedDuration,
+  countdownSoundMode,
+  onContinentChange,
+  onDurationChange,
+  onHome,
+}: SilhouetteGameProps) {
+  const g = useGameCore("silhouette-game", continent, selectedDuration, countdownSoundMode);
   const [difficulty,  setDifficulty]  = useState<Difficulty>("normal");
   const [silQueue,    setSilQueue]    = useState<CountryEntry[]>([]);
   const [currentSil,  setCurrentSil]  = useState<CountryEntry | null>(null);
@@ -1497,6 +1540,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
+  const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
+  const [countdownSoundMode, setCountdownSoundModeState] =
+  useState<CountdownSoundMode>(() => getCountdownSoundMode());
 
   const handleAppClaimBonus = () => {
   if (!canClaimDailyBonus()) {
@@ -1518,6 +1564,15 @@ const handleSpendGold = (amount: number): boolean => {
   setGold(next);
 
   return true;
+};
+const handleSetSoundEnabled = (enabled: boolean) => {
+  setSoundEnabled(enabled);
+  setSoundEnabledState(enabled);
+};
+
+const handleSetCountdownSoundMode = (mode: CountdownSoundMode) => {
+  setCountdownSoundMode(mode);
+  setCountdownSoundModeState(mode);
 };
 useEffect(() => {
   const handleFirstInteraction = () => {
@@ -1593,11 +1648,7 @@ async function handleLogout() {
   await signOut();
   setProfile(null);
 }
-function handleToggleSound() {
-  const next = !soundEnabled;
-  setSoundEnabled(next);
-  setSoundEnabledState(next);
-}
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const duelCode = params.get("duel");
@@ -1643,11 +1694,85 @@ function handleToggleSound() {
       <button
   className="sound-toggle-btn"
   type="button"
-  onClick={handleToggleSound}
-  title={soundEnabled ? "Sesi kapat" : "Sesi aç"}
+  onClick={() => setSoundSettingsOpen(true)}
+  title="Ses ayarları"
 >
-  {soundEnabled ? "🔊 Ses Açık" : "🔇 Ses Kapalı"}
+  🔊 Ses Ayarları
 </button>
+
+{soundSettingsOpen && (
+  <div
+    className="sound-settings-backdrop"
+    onClick={() => setSoundSettingsOpen(false)}
+  >
+    <div
+      className="sound-settings-panel"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        className="sound-settings-close"
+        onClick={() => setSoundSettingsOpen(false)}
+      >
+        ×
+      </button>
+
+      <h2 className="sound-settings-title">🔊 Ses Ayarları</h2>
+
+      <div className="sound-setting-section">
+        <p className="sound-setting-label">Genel Ses</p>
+
+        <div className="sound-setting-options two">
+          <button
+            type="button"
+            className={soundEnabled ? "sound-setting-option active" : "sound-setting-option"}
+            onClick={() => handleSetSoundEnabled(true)}
+          >
+            Açık
+          </button>
+
+          <button
+            type="button"
+            className={!soundEnabled ? "sound-setting-option active" : "sound-setting-option"}
+            onClick={() => handleSetSoundEnabled(false)}
+          >
+            Kapalı
+          </button>
+        </div>
+      </div>
+
+      <div className="sound-setting-section">
+        <p className="sound-setting-label">Geri Sayım Sesi</p>
+
+        <div className="sound-setting-options three">
+          <button
+            type="button"
+            className={countdownSoundMode === "off" ? "sound-setting-option active" : "sound-setting-option"}
+            onClick={() => handleSetCountdownSoundMode("off")}
+          >
+            Kapalı
+          </button>
+
+          <button
+            type="button"
+            className={countdownSoundMode === "last10" ? "sound-setting-option active" : "sound-setting-option"}
+            onClick={() => handleSetCountdownSoundMode("last10")}
+          >
+            Son 10 sn
+          </button>
+
+          <button
+            type="button"
+            className={countdownSoundMode === "last20" ? "sound-setting-option active" : "sound-setting-option"}
+            onClick={() => handleSetCountdownSoundMode("last20")}
+          >
+            Son 20 sn
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       <HomeScreen onSelect={setScreen} />
 
@@ -1660,8 +1785,22 @@ function handleToggleSound() {
       )}
     </>
   );
-  if (screen === "duel-game") return <DuelGame onHome={() => setScreen("home")} />;
-  if (screen === "duel-group-game") return <DuelGroupGame onHome={() => setScreen("home")} />;
+  if (screen === "duel-game") {
+  return (
+   <DuelGame
+  onHome={() => setScreen("home")}
+  profile={profile}
+/>
+  );
+}
+  if (screen === "duel-group-game") {
+  return (
+    <DuelGroupGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+}
   if (screen === "flag-duel-game") return (
   <FlagDuelGame
   onHome={() => setScreen("home")}
@@ -1669,22 +1808,38 @@ function handleToggleSound() {
   canBonus={canBonus}
   onClaimBonus={handleAppClaimBonus}
   onSpendGold={handleSpendGold}
+  profile={profile}
 />
 );
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "silhouette-game") return (
-    <SilhouetteGame continent={continent} selectedDuration={selectedDuration}
-      onContinentChange={setContinent} onDurationChange={setSelectedDuration}
-      onHome={() => setScreen("home")} />
+    <SilhouetteGame
+  continent={continent}
+  selectedDuration={selectedDuration}
+  countdownSoundMode={countdownSoundMode}
+  onContinentChange={setContinent}
+  onDurationChange={setSelectedDuration}
+  onHome={() => setScreen("home")}
+/>
   );
   if (screen === "flag-game") return (
-    <FlagGame continent={continent} selectedDuration={selectedDuration}
-      onContinentChange={setContinent} onDurationChange={setSelectedDuration}
-      onHome={() => setScreen("home")} />
+    <FlagGame
+  continent={continent}
+  selectedDuration={selectedDuration}
+  countdownSoundMode={countdownSoundMode}
+  onContinentChange={setContinent}
+  onDurationChange={setSelectedDuration}
+  onHome={() => setScreen("home")}
+/>
   );
   return (
-    <MapGame continent={continent} selectedDuration={selectedDuration}
-      onContinentChange={setContinent} onDurationChange={setSelectedDuration}
-      onHome={() => setScreen("home")} />
+   <MapGame
+  continent={continent}
+  selectedDuration={selectedDuration}
+  countdownSoundMode={countdownSoundMode}
+  onContinentChange={setContinent}
+  onDurationChange={setSelectedDuration}
+  onHome={() => setScreen("home")}
+/>
   );
 }

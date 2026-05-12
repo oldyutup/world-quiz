@@ -59,8 +59,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
-import { playSound, stopSound } from "../lib/sound";
+import {
+  playSound,
+  stopSound,
+  shouldPlayCountdownSound,
+  type CountdownSoundMode,
+} from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
+import { validateUsername, type Profile } from "../lib/auth";
 
 /* ─── Lokal type'lar (lib/supabase.ts'i kirletmemek için) ─── */
 interface GroupRoom {
@@ -179,15 +185,26 @@ function buildAllowedSet(region: string): Set<string> | null {
 
 type Phase = "lobby" | "creating" | "waiting" | "playing" | "finished";
 
-interface Props { onHome: () => void; }
+interface Props {
+  onHome: () => void;
+  profile?: Profile | null;
+  countdownSoundMode?: CountdownSoundMode;
+}
 
-export default function DuelGroupGame({ onHome }: Props) {
+export default function DuelGroupGame({
+  onHome,
+  profile,
+  countdownSoundMode = "last20",
+}: Props) {
   /* identity */
   const myIdRef = useRef<string>("");
   const myId = myIdRef.current;
 
   /* lobby form */
   const [playerName,   setPlayerName]   = useState("");
+  const loggedInUsername = profile?.username ?? "";
+  const effectivePlayerName = loggedInUsername || playerName;
+  const isLoggedInPlayer = !!loggedInUsername;
   const [joinCode,     setJoinCode]     = useState("");
   const [hostDuration, setHostDuration] = useState(120);
   const [hostRegion,   setHostRegion]   = useState("world");
@@ -245,27 +262,34 @@ export default function DuelGroupGame({ onHome }: Props) {
     return;
   }
 
-  if (gameDuration <= 20) {
+  const countdownLimit =
+    countdownSoundMode === "last20"
+      ? 20
+      : countdownSoundMode === "last10"
+        ? 10
+        : 0;
+
+  if (countdownLimit === 0 || gameDuration <= countdownLimit) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft >= gameDuration - 1) {
+  if (!shouldPlayCountdownSound(timeLeft, countdownSoundMode)) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
+  if (timeLeft > 0 && !countdownPlayedRef.current) {
     countdownPlayedRef.current = true;
-    playSound("countdown20", { restart: true });
+    playSound("countdown20");
   }
 
   if (timeLeft <= 0) {
     stopSound("countdown20");
   }
-}, [phase, timeLeft, gameDuration]);
+}, [phase, timeLeft, gameDuration, countdownSoundMode]);
 
 useEffect(() => {
   return () => {
@@ -650,8 +674,15 @@ useEffect(() => {
 
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
-    const name = playerName.trim();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
 
     const safeMax = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, hostMaxPlayers));
 
@@ -719,10 +750,22 @@ useEffect(() => {
 
   /* ── JOIN ROOM ── */
   const joinRoom = async () => {
-    const name = playerName.trim();
-    const code = joinCode.trim().toUpperCase();
-    if (!name) { setErrorMsg("İsim yazmalısın."); return; }
-    if (!code) { setErrorMsg("Oda kodu yazmalısın."); return; }
+    const name = effectivePlayerName.trim();
+const code = joinCode.trim().toUpperCase();
+
+const usernameError = validateUsername(name);
+
+if (usernameError) {
+  setErrorMsg(usernameError);
+  setStatusMsg(null);
+  setPhase("lobby");
+  return;
+}
+
+if (!code) {
+  setErrorMsg("Oda kodu yazmalısın.");
+  return;
+}
 
     setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
 
@@ -1071,14 +1114,18 @@ setPhase("waiting");
             <p className="duel-lobby-desc">3–10 kişilik arkadaş grubunla oyna • En çok ülke yazan kazanır.</p>
 
             <input
-              className="duel-name-input"
-              type="text"
-              placeholder="İsmin"
-              value={playerName}
-              onChange={e => setPlayerName(e.target.value.slice(0, 20))}
-              maxLength={20}
-              autoComplete="off"
-            />
+  className="duel-name-input"
+  type="text"
+  placeholder="İsmin"
+  value={isLoggedInPlayer ? loggedInUsername : playerName}
+  onChange={(e) => {
+    if (isLoggedInPlayer) return;
+    setPlayerName(e.target.value.slice(0, 20));
+  }}
+  disabled={isLoggedInPlayer}
+  maxLength={20}
+  autoComplete="off"
+/>
 
             {/* CREATE block */}
 <div className="duel-create-block duel-create-polished">
