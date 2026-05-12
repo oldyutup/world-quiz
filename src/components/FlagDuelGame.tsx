@@ -27,12 +27,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import LobbyChat from "./LobbyChat";
-import {
-  playSound,
-  stopSound,
-  shouldPlayCountdownSound,
-  type CountdownSoundMode,
-} from "../lib/sound";
+import { playSound, stopSound } from "../lib/sound";
 import {
   NAME_TO_ENTRY,
   normalizeInput,
@@ -310,7 +305,6 @@ interface FlagDuelGameProps {
   onClaimBonus: () => void;
   onSpendGold: (amount: number) => boolean;
   profile?: Profile | null;
-  countdownSoundMode?: CountdownSoundMode;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -323,7 +317,6 @@ export default function FlagDuelGame({
   onClaimBonus,
   onSpendGold,
   profile,
-  countdownSoundMode = "last20",
 }: FlagDuelGameProps) {
   /* identity */
   const myIdRef = useRef<string>("");
@@ -397,19 +390,19 @@ const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "decl
     return;
   }
 
+  if (FLAG_TIMEOUT_SEC <= 20) {
+    countdownPlayedRef.current = false;
+    stopSound("countdown20");
+    return;
+  }
+
   if (timeLeft >= FLAG_TIMEOUT_SEC - 1) {
     countdownPlayedRef.current = false;
     stopSound("countdown20");
     return;
   }
 
-  if (!shouldPlayCountdownSound(timeLeft, countdownSoundMode)) {
-    countdownPlayedRef.current = false;
-    stopSound("countdown20");
-    return;
-  }
-
-  if (timeLeft > 0 && !countdownPlayedRef.current) {
+  if (timeLeft <= 20 && timeLeft > 0 && !countdownPlayedRef.current) {
     countdownPlayedRef.current = true;
     playSound("countdown20", { restart: true });
   }
@@ -417,7 +410,7 @@ const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "decl
   if (timeLeft <= 0) {
     stopSound("countdown20");
   }
-}, [phase, timeLeft, countdownSoundMode]);
+}, [phase, timeLeft]);
 useEffect(() => {
   return () => {
     stopSound("countdown20");
@@ -1306,7 +1299,7 @@ ${shareLink}`;
               </button>
             </div>
 
-            <LobbyChat roomCode={room.code} playerName={myPlayer?.name ?? playerName} />
+            <LobbyChat roomCode={room.code} playerName={myPlayer?.name ?? effectivePlayerName} />
           </div>
         </div>
       )}

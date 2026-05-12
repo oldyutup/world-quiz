@@ -2002,7 +2002,7 @@ if (usernameError) {
             )}
           </div>
           {!isQuickMatch && (
-            <LobbyChat roomCode={room.code} playerName={playerName} />
+            <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
           )}
           </div>
         </div>

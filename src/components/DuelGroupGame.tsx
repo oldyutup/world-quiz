@@ -1414,7 +1414,7 @@ setPhase("waiting");
       </div>
 
       <div className="dgg-wait-chat-card">
-        <LobbyChat roomCode={room.code} playerName={playerName} />
+        <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
       </div>
     </div>
   </div>
