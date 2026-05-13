@@ -26,6 +26,13 @@
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
+import {
+  calculateFlagDuelXp,
+  resultFromScores,
+  awardXpEvent,
+  type XpBreakdown,
+} from "../lib/progression";
+import XpGainBar from "./XpGainBar";
 import LobbyChat from "./LobbyChat";
 import { playSound, stopSound } from "../lib/sound";
 import {
@@ -333,6 +340,36 @@ export default function FlagDuelGame({
 
   /* faz */
   const [phase,    setPhase]    = useState<DuelPhase>("lobby");
+  // ── XP (sadece giriş yapmış kullanıcı için, maç başına 1 kez) ──
+const [xpResult, setXpResult] = useState<{
+  awarded:     boolean;
+  xpEarned:    number;
+  prevTotalXp: number;
+  totalXp:     number;
+  prevModeXp:  number;
+  modeXp:      number;
+  breakdown:   XpBreakdown;
+  roomKey:     string;
+  dismissed:   boolean;
+} | null>(null);
+const xpAwardedRef = useRef(false);
+
+// Synthetic match ID — her yeni maçta (lobby→playing) ve her rematch'ta
+// üretilir. FlagDuelGame rematch'larda aynı room.id'yi kullanır, o yüzden
+// RPC idempotency için ayrı bir match ID gerekir.
+const matchIdRef = useRef<string>("");
+/* ── Match ID üretimi: oyun başladığında yeni UUID ── */
+useEffect(() => {
+  if (phase !== "playing") return;
+  // Sadece daha önce üretilmemişse üret. Resume/rejoin'de mevcut kalır,
+  // ama XP idempotency için bu yeterli (aynı maç = aynı match ID).
+  if (!matchIdRef.current) {
+    matchIdRef.current = crypto.randomUUID();
+  }
+}, [phase]);
+
+
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg,setStatusMsg]= useState<string | null>(null);
 
@@ -427,6 +464,93 @@ useEffect(() => {
   );
   const myScore  = useMemo(() => realClaims.filter(c => c.player_id === myId).length, [realClaims, myId]);
   const oppScore = useMemo(() => realClaims.filter(c => c.player_id !== myId).length, [realClaims, myId]);
+  /* ── Oyun sonu sesi (win / lose) ── */
+const resultSoundPlayedRef = useRef(false);
+useEffect(() => {
+  if (phase !== "finished") {
+    resultSoundPlayedRef.current = false;
+    return;
+  }
+  if (resultSoundPlayedRef.current) return;
+  resultSoundPlayedRef.current = true;
+
+  if (myScore > oppScore) {
+    playSound("win", { restart: true });
+  } else if (myScore < oppScore) {
+    playSound("lose", { restart: true });
+  }
+  // Beraberlikte ses yok (DuelGame ile aynı davranış)
+}, [phase, myScore, oppScore]);
+  /* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
+useEffect(() => {
+  if (phase !== "finished") return;
+  if (xpAwardedRef.current) return;
+  if (!isLoggedInPlayer || !profile?.id) return;
+  if (!matchIdRef.current) return;
+
+  xpAwardedRef.current = true;
+
+  const myScoreFinal  = myScore;
+  const oppScoreFinal = oppScore;
+
+  const matchResult = resultFromScores(myScoreFinal, oppScoreFinal);
+  const breakdown = calculateFlagDuelXp({
+    correctCount: myScoreFinal,
+    result: matchResult,
+  });
+
+  const profileId  = profile.id;
+  const matchId    = matchIdRef.current;
+  const realRoomId = room?.id ?? null;
+
+  (async () => {
+    const res = await awardXpEvent({
+      profileId,
+      modeKey:  "flag_duel",
+      roomId:   matchId,
+      xpEarned: breakdown.total,
+      result:   matchResult,
+      details: {
+        my_score:     myScoreFinal,
+        opp_score:    oppScoreFinal,
+        breakdown,
+        real_room_id: realRoomId,
+      },
+    });
+
+    if (res.error) {
+      xpAwardedRef.current = false;
+      console.error("[FlagDuelGame] XP yazılamadı:", res.error);
+      return;
+    }
+
+    const prevModeXp  = res.awarded ? Math.max(0, res.modeXp  - res.xpEarned) : res.modeXp;
+    const prevTotalXp = res.awarded ? Math.max(0, res.totalXp - res.xpEarned) : res.totalXp;
+
+    setXpResult({
+      awarded:     res.awarded,
+      xpEarned:    res.xpEarned,
+      prevTotalXp,
+      totalXp:     res.totalXp,
+      prevModeXp,
+      modeXp:      res.modeXp,
+      breakdown,
+      roomKey:     matchId,
+      dismissed:   false,
+    });
+  })();
+}, [phase, myScore, oppScore, isLoggedInPlayer, profile?.id, room?.id]);
+
+/* ── XP barı: kazandın/kaybettin sesi başladıktan sonra çık ── */
+const [xpFooterVisible, setXpFooterVisible] = useState(false);
+useEffect(() => {
+  if (!xpResult) {
+    setXpFooterVisible(false);
+    return;
+  }
+  const t = setTimeout(() => setXpFooterVisible(true), 1200);
+  return () => clearTimeout(t);
+}, [xpResult]);
 
   const currentFlag: CountryEntry | null = useMemo(() => {
     if (!room?.current_flag) return null;
@@ -624,6 +748,9 @@ useEffect(() => {
 const acceptRematch = useCallback(async () => {
   if (!room) return;
   console.log("REMATCH BAŞLIYOR, room:", room.id, "status:", room.status, "is_golden:", room.is_golden_round);
+  // XP idempotency için yeni match ID — rematch aynı odada olduğu için şart.
+matchIdRef.current = crypto.randomUUID();
+setXpResult(null); xpAwardedRef.current = false;
   setRematch("idle");
   setInput("");
   setFeedback(null);
@@ -700,6 +827,9 @@ const declineRematch = useCallback(() => {
     setRematch("declined");
   })
 .on("broadcast", { event: "rematch_accepted" }, () => {
+  // XP idempotency için yeni match ID — bu taraf da rematch'ı kabul etti
+  matchIdRef.current = crypto.randomUUID();
+  setXpResult(null); xpAwardedRef.current = false;
   setRematch("idle");
   setInput("");
   setFeedback(null);
@@ -976,6 +1106,7 @@ if (!code) {
     setPlayers(pls ?? []);
     setClaims(cs ?? []);
     setIsHost(false); isHostRef.current = false;
+    setXpResult(null); xpAwardedRef.current = false; matchIdRef.current = "";
     saveSession(r.id, r.code, joinId);
     buildPool(r.region);
     setStatusMsg(null);
@@ -1664,6 +1795,23 @@ ${shareLink}`;
             </div>
           </div>
         </div>
+      )}
+    {/* ════════ XP KAZANIMI — fixed footer ════════ */}
+      {xpResult && xpFooterVisible && !xpResult.dismissed && (
+        <XpGainBar
+          key={xpResult.roomKey}
+          modeLabel="Bayrak"
+          prevTotalXp={xpResult.prevTotalXp}
+          newTotalXp={xpResult.totalXp}
+          prevModeXp={xpResult.prevModeXp}
+          newModeXp={xpResult.modeXp}
+          xpEarned={xpResult.xpEarned}
+          awarded={xpResult.awarded}
+          breakdown={xpResult.breakdown}
+          onDismiss={() =>
+            setXpResult(prev => (prev ? { ...prev, dismissed: true } : null))
+          }
+        />
       )}
     </div>
   );
