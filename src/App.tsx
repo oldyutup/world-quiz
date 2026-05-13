@@ -1670,6 +1670,23 @@ async function handleLogout() {
       return;
     }
   }, []);
+  /* ── Hoş geldin: misafir kullanıcıya giriş davet modal'ı (bir kez) ── */
+useEffect(() => {
+  // Auth check henüz bitmediyse bekle
+  if (authLoading) return;
+  // Zaten giriş yapmışsa gerek yok
+  if (profile) return;
+  // Daha önce göstermişsek bir daha çıkma
+  if (localStorage.getItem("torble_welcome_seen") === "true") return;
+
+  // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel")) {
+    return;
+  }
+
+  setAuthOpen(true);
+}, [authLoading, profile]);
 
   if (screen === "home")
   return (
@@ -1777,12 +1794,21 @@ async function handleLogout() {
       <HomeScreen onSelect={setScreen} />
 
       {authOpen && (
-        <AuthModal
-          onClose={() => setAuthOpen(false)}
-          onGuest={() => setProfile(null)}
-          onAuthSuccess={(nextProfile) => setProfile(nextProfile)}
-        />
-      )}
+  <AuthModal
+    onClose={() => {
+      setAuthOpen(false);
+      localStorage.setItem("torble_welcome_seen", "true");
+    }}
+    onGuest={() => {
+      setProfile(null);
+      localStorage.setItem("torble_welcome_seen", "true");
+    }}
+    onAuthSuccess={(nextProfile) => {
+      setProfile(nextProfile);
+      localStorage.setItem("torble_welcome_seen", "true");
+    }}
+  />
+)}
     </>
   );
   if (screen === "duel-game") {
