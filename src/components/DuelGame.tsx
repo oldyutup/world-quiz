@@ -1908,8 +1908,8 @@ if (usernameError) {
       {/* ════════ WAITING ════════ */}
       {phase === "waiting" && room && (
         <div className="duel-lobby">
-            <div className="duel-lobby-with-chat">
-            <div className="duel-lobby-card">
+            <div className="duel-lobby-with-chat duel-1v1-room-layout">
+            <div className="duel-lobby-card duel-1v1-room-card">
             {isQuickMatch ? (
               /* ── Quick match waiting UI ── */
               <div className="qm-waiting">
@@ -1925,13 +1925,19 @@ if (usernameError) {
               </div>
             ) : (
               <>
-                <h2 className="duel-lobby-title">Rakip Bekleniyor…</h2>
+                <h2 className="duel-lobby-title" style={{ fontSize: 22, margin: "0 0 14px" }}>
+  Rakip Bekleniyor…
+</h2>
 
                 {/* Big room code */}
-                <div className="duel-room-code-block">
-                  <span className="duel-room-code">{room.code}</span>
-                  <p className="duel-room-code-hint">6 haneli kod — arkadaşına ver</p>
-                </div>
+                <div className="duel-room-code-block" style={{ margin: "0 0 12px" }}>
+  <span className="duel-room-code" style={{ fontSize: 36, letterSpacing: "0.15em" }}>
+    {room.code}
+  </span>
+  <p className="duel-room-code-hint" style={{ fontSize: 12, marginTop: 4 }}>
+    6 haneli kod — arkadaşına ver
+  </p>
+</div>
 
                 {/* Invite — copy full message button */}
                 <button
@@ -1943,7 +1949,7 @@ if (usernameError) {
                     : "📋 Davet Mesajını Kopyala"}
                 </button>
                 {/* Link preview (read-only, tap to select) */}
-                <div className="duel-link-preview" onClick={e => {
+                <div className="duel-link-preview" style={{ marginBottom: 10 }} onClick={e => {
                   const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
                   el?.select();
                 }}>
@@ -1955,55 +1961,218 @@ if (usernameError) {
                   />
                 </div>
 
-                {/* Settings summary */}
-                <div className="duel-settings-summary">
-                  <span>⏱ {durationLabel}</span>
-                  <span className="duel-sum-dot">·</span>
-                  <span>{regionLabel}</span>
-                </div>
+                
+                {/* Room settings - host only */}
+{/* Middle: players + settings */}
+<div className="duel-wait-middle" style={{ marginTop: 8 }}>
+  {/* Players */} 
+  <div className="duel-wait-players-box">
+    <div className="duel-wait-section-title">Oyuncular</div>
 
-                {/* Players */}
-                <div className="duel-players-list">
-                  {players.map(p => (
-                    <div
-                      key={p.id}
-                      className={"duel-player-chip" + (p.id === myId ? " mine" : "")}
-                    >
-                      <span className="duel-player-dot"/>
-                      <span className="duel-player-name">{p.name}</span>
-                      <div className="duel-player-tags">
-                        {p.id === myId && <span className="duel-tag">Sen</span>}
-                        {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}
-                      </div>
-                    </div>
-                  ))}
-                  {players.length < 2 && (
-                    <div className="duel-player-chip waiting">
-                      <span className="duel-player-dot waiting"/>
-                      <span>Rakip bekleniyor…</span>
-                    </div>
-                  )}
-                </div>
+    <div className="duel-players-list duel-wait-players">
+      {players.map((p) => (
+        <div
+          key={p.id}
+          className={"duel-player-chip" + (p.id === myId ? " mine" : "")}
+        >
+          <span className="duel-player-dot" />
+          <span className="duel-player-name">{p.name}</span>
 
-                {isHost ? (
-                  players.length >= 2
-                    ? <button className="btn btn-accent duel-start-btn" onClick={startGame}>🚀 Oyunu Başlat</button>
-                    : <p className="duel-waiting-msg">Rakip katılmayı bekliyoruz…</p>
-                ) : (
-                  <p className="duel-waiting-msg">Ev sahibi oyunu başlatacak…</p>
-                )}
+          <div className="duel-player-tags">
+            {p.id === myId && <span className="duel-tag">Sen</span>}
+            {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}
+          </div>
+        </div>
+      ))}
 
-                {errorMsg && <p className="duel-error">{errorMsg}</p>}
+      {players.length < 2 && (
+        <div className="duel-player-chip waiting">
+          <span className="duel-player-dot waiting" />
+          <span>Rakip bekleniyor...</span>
+        </div>
+      )}
+    </div>
 
-                <button className="btn btn-ghost btn-sm" onClick={backToLobby}>
-                  ← Lobiye Dön
-                </button>
+   
+
+    {/* Host/guest bilgi mesajı oyuncular kutusunun altında */}
+    {isHost && players.length < 2 && (
+      <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.65, textAlign: "center" }}>
+        Rakibin katılması bekleniyor...
+      </p>
+    )}
+    {isHost && players.length >= 2 && (
+      <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.65, textAlign: "center" }}>
+        Oyunu başlatmanız bekleniyor
+      </p>
+    )}
+    {!isHost && (
+      <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.65, textAlign: "center" }}>
+        Ev sahibi oyunu başlatacak...
+      </p>
+    )}
+  </div>
+
+  {/* Room settings */}
+  <div className="duel-wait-settings-lift">
+  <div className="duel-room-settings-box duel-wait-settings-compact">
+    <div className="duel-room-settings-title">⚙️ Oda Ayarları</div>
+
+    <div className="duel-room-settings-grid">
+      <label className="duel-room-setting-field">
+        <span>Süre</span>
+        <select
+          value={hostDuration}
+          disabled={!isHost}
+          onChange={(e) => setHostDuration(Number(e.target.value))}
+        >
+          <option value={60}>1 dk</option>
+          <option value={120}>2 dk</option>
+          <option value={180}>3 dk</option>
+          <option value={300}>5 dk</option>
+        </select>
+      </label>
+
+      <label className="duel-room-setting-field">
+        <span>Bölge</span>
+        <select
+          value={hostRegion}
+          disabled={!isHost}
+          onChange={(e) => setHostRegion(e.target.value)}
+        >
+          <option value="world">🌍 Dünya</option>
+          <option value="europe">Avrupa</option>
+          <option value="asia">Asya</option>
+          <option value="africa">Afrika</option>
+          <option value="north-america">Kuzey Amerika</option>
+          <option value="south-america">Güney Amerika</option>
+          <option value="oceania">Okyanusya</option>
+        </select>
+      </label>
+    </div>
+
+    {isHost && (
+      <p
+        className="duel-room-settings-note"
+        style={{
+          margin: "10px 0 0",
+          fontSize: 11,
+          opacity: 0.6,
+          textAlign: "center",
+          lineHeight: 1.3,
+        }}
+      >
+        Ayarları buradan değiştirebilirsiniz
+      </p>
+    )}
+    {!isHost && (
+      <p
+        className="duel-room-settings-note"
+        style={{
+          margin: "10px 0 0",
+          fontSize: 11,
+          opacity: 0.6,
+          textAlign: "center",
+          lineHeight: 1.3,
+        }}
+      >
+        Yalnızca oda sahibi değiştirebilir
+      </p>
+    )}
+  </div>
+</div>
+  </div>
+
+
+    {isHost && players.length >= 2 ? (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 18,
+      marginTop: 2,
+      width: "100%",
+      maxWidth: 610,
+      marginLeft: "auto",
+      marginRight: "auto",
+      boxSizing: "border-box",
+    }}
+  >
+    <button
+      className="btn btn-accent duel-start-btn"
+      onClick={startGame}
+      style={{
+        width: "100%",
+        maxWidth: "none",
+        justifySelf: "stretch",
+        minHeight: 46,
+        fontSize: 15,
+        marginTop: 0,
+        borderRadius: 14,
+        fontWeight: 800,
+        letterSpacing: "0.02em",
+        boxSizing: "border-box",
+      }}
+    >
+      🚀 Oyunu Başlat
+    </button>
+    <button
+      className="btn btn-ghost"
+      onClick={backToLobby}
+      style={{
+        width: "100%",
+        maxWidth: "none",
+        justifySelf: "stretch",
+        minHeight: 46,
+        fontSize: 14,
+        borderRadius: 14,
+        fontWeight: 700,
+        opacity: 0.85,
+        boxSizing: "border-box",
+      }}
+    >
+      ← Lobiye Dön
+    </button>
+  </div>
+) : (
+  <div
+  style={{
+    marginTop: 0,
+    width: "100%",
+    maxWidth: 610,
+    marginLeft: "auto",
+    marginRight: "auto",
+    boxSizing: "border-box",
+  }}
+>
+  <button
+    className="btn btn-ghost btn-sm"
+    onClick={backToLobby}
+    style={{
+      width: "100%",
+      maxWidth: "none",
+      minHeight: 46,
+      fontSize: 14,
+      borderRadius: 14,
+      fontWeight: 700,
+      opacity: 0.85,
+      boxSizing: "border-box",
+    }}
+  >
+    ← Lobiye Dön
+  </button>
+</div>
+)}
+
+{errorMsg && <p className="duel-error">{errorMsg}</p>}
               </>
             )}
           </div>
-          {!isQuickMatch && (
-            <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
-          )}
+       {!isQuickMatch && (
+  <div className="duel-wait-chat-align">
+    <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
+  </div>
+)}
           </div>
         </div>
       )}
