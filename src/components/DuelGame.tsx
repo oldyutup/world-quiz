@@ -1285,6 +1285,8 @@ if (usernameError) {
     setPhase("creating");
     setRematch("idle");  // reset rematch state
 
+    await supabase.rpc("cleanup_expired_duel_lobbies");
+
     // Always generate a fresh player ID for quick match
     clearDuelSession();
     const freshId = freshPlayerId();
@@ -1293,6 +1295,8 @@ if (usernameError) {
     // Normalize region for DB consistency
     const dbRegion   = normalizeRegion(hostRegion);
     const dbDuration = hostDuration;
+    const freshRoomLimit = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const freshPlayerLimit = new Date(Date.now() - 45 * 1000).toISOString();
 
     console.log("[QM] normalizedRegion:", dbRegion, "normalizedDuration:", dbDuration, "freshId:", freshId);
 
@@ -1302,11 +1306,12 @@ if (usernameError) {
     const { data: waitingRooms, error: searchErr } = await supabase
       .from("duel_rooms")
       .select("id, code, status, duration_seconds, region, created_at")
-      .eq("status",           "waiting")
-      .eq("region",           dbRegion)
-      .eq("duration_seconds", dbDuration)
-      .order("created_at", { ascending: true })
-      .limit(20);
+      .eq("status", "waiting")
+.eq("region", dbRegion)
+.eq("duration_seconds", dbDuration)
+.gte("created_at", freshRoomLimit)
+.order("created_at", { ascending: true })
+.limit(20);
 
     if (searchErr) {
       console.error("[QM] search error:", searchErr);
@@ -1322,9 +1327,10 @@ if (usernameError) {
         console.log("[QM] checking room:", candidate.code, candidate.id);
 
         const { data: roomPlayers, error: pErr } = await supabase
-          .from("duel_players")
-          .select("id")
-          .eq("room_id", candidate.id);
+  .from("duel_players")
+  .select("id")
+  .eq("room_id", candidate.id)
+  .gte("last_seen_at", freshPlayerLimit);
 
         const pCount = roomPlayers?.length ?? 0;
         console.log("[QM] player count for", candidate.code, ":", pCount, pErr ? "(error: " + pErr.message + ")" : "");
