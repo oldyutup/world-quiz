@@ -994,14 +994,14 @@ const justStarted = Date.now() - started < 10000;
 const stale =
   !justStarted &&
   lastSeen > 0 &&
-  (Date.now() - lastSeen) > 20000;
+  (Date.now() - lastSeen) > 45000;
 
       dbg("opp monitor", { oppId: opp.id, lastSeen: opp.last_seen_at, stale });
 
       if (stale) {
   staleCountRef.current += 1;
 
-  if (staleCountRef.current >= 2) {
+  if (staleCountRef.current >= 4) {
     handleOppDisconnect(opp.last_seen_at);
   }
 } else {
