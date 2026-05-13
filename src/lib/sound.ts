@@ -4,7 +4,8 @@ export type SoundName =
   | "wrong"
   | "countdown20"
   | "win"
-  | "lose";
+  | "lose"
+  | "levelup";
 
 export type CountdownSoundMode = "off" | "last10" | "last20";
 
@@ -18,6 +19,7 @@ const SOUND_PATHS: Record<SoundName, string> = {
   countdown20: "/sounds/countdown20.mp3",
   win: "/sounds/win.mp3",
   lose: "/sounds/lose.mp3",
+  levelup: "/sounds/levelup.mp3",
 };
 
 const SOUND_VOLUME: Record<SoundName, number> = {
@@ -27,6 +29,7 @@ const SOUND_VOLUME: Record<SoundName, number> = {
   countdown20: 0.45,
   win: 0.65,
   lose: 0.6,
+  levelup: 0.7,
 };
 
 const audioCache = new Map<SoundName, HTMLAudioElement>();

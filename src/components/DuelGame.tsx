@@ -30,6 +30,13 @@
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
+import {
+  calculateCountryDuelXp,
+  resultFromScores,
+  awardXpEvent,
+  type XpBreakdown,
+} from "../lib/progression";
+import XpGainBar from "./XpGainBar";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
 import {
@@ -210,6 +217,21 @@ export default function DuelGame({
 
   // Frozen scores at game end — prevent late realtime claims from changing result display
   const [finalScores, setFinalScores] = useState<{ my: number; opp: number } | null>(null);
+  // ── XP (sadece giriş yapmış kullanıcı için, maç başına 1 kez) ──
+const [xpResult, setXpResult] = useState<{
+  awarded:     boolean;
+  xpEarned:    number;
+  prevTotalXp: number;
+  totalXp:     number;
+  prevModeXp:  number;
+  modeXp:      number;
+  breakdown:   XpBreakdown;
+  /** Footer'ın React `key`'i — rematch sonrası temiz mount için. */
+  roomKey:     string;
+  /** Kullanıcı X'e bastıysa veya auto-dismiss tetiklendiyse. */
+  dismissed:   boolean;
+} | null>(null);
+const xpAwardedRef = useRef(false);
 
   // Disconnect grace period (manual room only)
   const [oppDisconnected,      setOppDisconnected]      = useState(false);
@@ -311,6 +333,100 @@ useEffect(() => {
     playSound("lose", { restart: true });
   }
 }, [phase, finalScores]);
+/* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
+useEffect(() => {
+  if (phase !== "finished" || !finalScores) return;
+  if (xpAwardedRef.current) return;
+  if (!isLoggedInPlayer || !profile?.id) return;
+  if (!room?.id) return;
+
+  const myScoreFinal  = finalScores.my;
+  const oppScoreFinal = finalScores.opp;
+
+  // RPC öncesi snapshot — animasyonun "neredeyim" değerleri.
+  // profile.xp genel XP; mod XP'yi bilmediğimiz için 0'dan başlatıyoruz.
+  // (İlk maçtan sonra DB'de gerçek değer olacak; sonraki maçta tekrar
+  //  0'dan başlamayacak çünkü prevModeXp'yi RPC'nin döndürdüğü modeXp'den
+  //  geriye doğru breakdown.total ile hesaplayacağız — aşağıda yapıyoruz.)
+  const prevTotalXpSnapshot = profile.xp ?? 0;
+
+  xpAwardedRef.current = true;
+
+  const matchResult = resultFromScores(myScoreFinal, oppScoreFinal);
+  const breakdown = calculateCountryDuelXp({
+    correctCount: myScoreFinal,
+    result: matchResult,
+  });
+
+  const profileId = profile.id;
+  const roomId    = room.id;
+
+  (async () => {
+    const res = await awardXpEvent({
+      profileId,
+      modeKey: "country_duel",
+      roomId,
+      xpEarned: breakdown.total,
+      result: matchResult,
+      details: {
+        my_score:  myScoreFinal,
+        opp_score: oppScoreFinal,
+        breakdown,
+      },
+    });
+
+    if (res.error) {
+      xpAwardedRef.current = false;
+      console.error("[DuelGame] XP yazılamadı:", res.error);
+      return;
+    }
+
+    // prevModeXp'yi hesapla:
+    //   - awarded=true  → DB'deki yeni modeXp'den bu maçın xpEarned'ini çıkar
+    //   - awarded=false → DB'deki modeXp zaten "önceki" değer (RPC bu çağrıda
+    //     yazma yapmadı, yani modeXp = prevModeXp). Animasyon "yerinde sayar".
+    const prevModeXp = res.awarded
+      ? Math.max(0, res.modeXp - res.xpEarned)
+      : res.modeXp;
+
+    // prevTotalXp için aynı mantık:
+    //   - awarded=true  → totalXp - xpEarned
+    //   - awarded=false → snapshot zaten doğru
+    // NOT: snapshot kullanmıyoruz çünkü `profile.xp` güncel olmayabilir
+    // (örn. başka bir tabda XP yazıldıysa). RPC dönüşü tek doğru kaynak.
+    const prevTotalXp = res.awarded
+      ? Math.max(0, res.totalXp - res.xpEarned)
+      : res.totalXp;
+
+    setXpResult({
+      awarded:     res.awarded,
+      xpEarned:    res.xpEarned,
+      prevTotalXp,
+      totalXp:     res.totalXp,
+      prevModeXp,
+      modeXp:      res.modeXp,
+      breakdown,
+      roomKey:     roomId,
+      dismissed:   false,
+    });
+
+    // prevTotalXpSnapshot artık kullanılmıyor — yukarıdaki yorum açıklıyor.
+    // İleride RPC'ye previous_total_xp eklersen burayı sadeleştiririz.
+    void prevTotalXpSnapshot;
+  })();
+}, [phase, finalScores, isLoggedInPlayer, profile?.id, profile?.xp, room?.id]);
+/* ── XP barı: kazandın/kaybettin sesi başladıktan sonra çık ── */
+const [xpFooterVisible, setXpFooterVisible] = useState(false);
+useEffect(() => {
+  if (!xpResult) {
+    setXpFooterVisible(false);
+    return;
+  }
+  // 1.2 sn gecikme: win sesinin tepe noktasını geçince bar kayarak çıkar,
+  // sonrasında kullanıcı X'e basana kadar ekranda kalır.
+  const t = setTimeout(() => setXpFooterVisible(true), 1200);
+  return () => clearTimeout(t);
+}, [xpResult]);
 
   // Keep refs in sync so realtime handlers always read fresh values
   phaseRef.current   = phase;
@@ -1564,7 +1680,8 @@ if (usernameError) {
     myIdRef.current = "";
     setRoom(null); setPlayers([]); setClaims([]);
     setIsQuickMatch(false); setRematch("idle"); setFinalScores(null);
-    gameEndedRef.current = false; startTimeRef.current = null;
+setXpResult(null); xpAwardedRef.current = false;
+gameEndedRef.current = false; startTimeRef.current = null;
     setQuitModal(false); setQuitStep("idle");
     setPhase("lobby"); setErrorMsg(null); setStatusMsg(null);
   };
@@ -1605,6 +1722,7 @@ if (usernameError) {
     setIsHost(false);
     setRematch("idle");
     gameEndedRef.current = false;
+setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(updatedRoom.duration_seconds);
     setPhase("playing");
     dbg("joinRematchRoom: switched + started ✓", updatedRoom.code);
@@ -1678,6 +1796,7 @@ if (usernameError) {
     setClaims([]);
     setIsHost(true);  // Accepter = host of new room
     gameEndedRef.current = false;
+setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(dbDuration);
     setPhase("waiting");
     dbg("acceptRematch: switched to new room", newRoom.code);
@@ -2388,6 +2507,7 @@ if (usernameError) {
               <span className="duel-sum-dot">·</span>
               <span>Toplam {claims.length} ülke</span>
             </div>
+            
 
             {errorMsg && <p className="duel-error">{errorMsg}</p>}
 
@@ -2428,6 +2548,24 @@ if (usernameError) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ════════ XP KAZANIMI — fixed footer ════════ */}
+      {xpResult && xpFooterVisible && !xpResult.dismissed && (
+        <XpGainBar
+          key={xpResult.roomKey}
+          modeLabel="Kapmaca"
+          prevTotalXp={xpResult.prevTotalXp}
+          newTotalXp={xpResult.totalXp}
+          prevModeXp={xpResult.prevModeXp}
+          newModeXp={xpResult.modeXp}
+          xpEarned={xpResult.xpEarned}
+          awarded={xpResult.awarded}
+          breakdown={xpResult.breakdown}
+          onDismiss={() =>
+            setXpResult(prev => (prev ? { ...prev, dismissed: true } : null))
+          }
+        />
       )}
     </div>
   );
