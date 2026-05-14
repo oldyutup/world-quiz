@@ -69,3 +69,30 @@ export interface DuelMessage {
   message:     string;
   created_at:  string;
 }
+
+/* ── Wheel Duel (Online Çark 1v1) ── */
+export interface WheelDuelRoom {
+  id:                    string;
+  code:                  string;
+  status:                "waiting" | "playing" | "finished";
+  duration_seconds:      number;
+  region:                string;
+  host_player_id:        string | null;
+  started_at:            string | null;
+  finished_at:           string | null;
+  finished_reason:       string | null;
+  winner_player_id:      string | null;
+  current_target_topoid: string | null;
+  used_target_topoids:   string[];
+  created_at:            string;
+  updated_at:            string;
+}
+
+export interface WheelDuelPlayer {
+  id:           string;
+  room_id:      string;
+  name:         string;
+  score:        number;
+  joined_at:    string;
+  last_seen_at: string;
+}
