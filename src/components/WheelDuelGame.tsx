@@ -23,8 +23,9 @@
  *   - hızlı eşleş
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LobbyChat from "./LobbyChat";
+import WorldMap from "./WorldMap";
 import type { Profile } from "../lib/auth";
 import {
   supabase,
@@ -32,12 +33,73 @@ import {
   type WheelDuelPlayer,
 } from "../lib/supabase";
 import { playSound } from "../lib/sound";
+import {
+  getFlagPool,
+  getContinentIds,
+  TOPOID_TO_DISPLAY,
+  type Continent,
+} from "../data/countries";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES & CONSTANTS
 ═══════════════════════════════════════════════════════════════ */
 
-type Phase = "setup" | "creating" | "lobby" | "playing";
+type Phase = "setup" | "creating" | "lobby" | "playing" | "finished";
+
+const FEEDBACK_MS = 1200;   // Doğru bilinince hedef bu kadar süre kapalı kalır (host pick gecikmesi)
+const WRONG_FLASH_MS = 600; // Yanlış tıklama kırmızı flash süresi (lokal)
+
+/** Online Çark 1v1 hedef havuzundan ÇIKARILAN ülkeler.
+ *
+ *  Mikro devletler ve haritada tıklanması zor ada ülkeleri online
+ *  rekabette adil olmuyor — yalnız bu mod için dışarıda bırakılır.
+ *  Offline WheelGame ve diğer modlar etkilenmez.
+ *
+ *  topoId üzerinden filtreliyoruz (display adı dilden dile değişebilir,
+ *  ISO numerik kod kararlıdır). Listeyi düzenlemek için satır eklemek/
+ *  silmek yeterli; her topoId'in yanına ülke adını yorum olarak yazdım.
+ */
+const WHEEL_DUEL_EXCLUDED_TOPOIDS = new Set<string>([
+  // ── Avrupa mikro-devletleri ──
+  "020",  // Andorra
+  "438",  // Lihtenştayn / Liechtenstein
+  "470",  // Malta
+  "492",  // Monako / Monaco
+  "674",  // San Marino
+  "336",  // Vatikan / Vatican
+
+  // ── Asya küçük/ada ülkeleri ──
+  "048",  // Bahreyn / Bahrain
+  "462",  // Maldivler / Maldives
+  "702",  // Singapur / Singapore
+
+  // ── Afrika ada ülkeleri ──
+  "132",  // Cabo Verde / Cape Verde
+  "174",  // Komorlar / Comoros
+  "480",  // Mauritius
+  "678",  // Sao Tome ve Principe / Sao Tome and Principe
+  "690",  // Seyşeller / Seychelles
+
+  // ── Karayipler / K.Amerika mikro adaları ──
+  "028",  // Antigua ve Barbuda
+  "052",  // Barbados
+  "212",  // Dominika / Dominica
+  "308",  // Grenada
+  "659",  // Saint Kitts ve Nevis
+  "662",  // Saint Lucia
+  "670",  // Saint Vincent ve Grenadinler
+
+  // ── Okyanusya mikro adaları ──
+  "242",  // Fiji
+  "296",  // Kiribati
+  "520",  // Nauru
+  "583",  // Mikronezya / Micronesia
+  "584",  // Marshall Adaları / Marshall Islands
+  "585",  // Palau
+  "776",  // Tonga
+  "798",  // Tuvalu
+  "882",  // Samoa
+]);
 type Region =
   | "world"
   | "europe"
@@ -180,8 +242,27 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   const [players, setPlayers] = useState<WheelDuelPlayer[]>([]);
   const [copied, setCopied] = useState(false);
 
+  /* ── Gameplay state ───────────────────────────────────────── */
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [wrongId, setWrongId] = useState<string | null>(null);
+  const [lastClaimedTopoId, setLastClaimedTopoId] = useState<string | null>(null);
+  /** Lokal "pas oyumu gönderdim" bayrağı. UI optimistic state + lost-vote
+   *  auto-retry sinyali. Hedef değişince otomatik sıfırlanır. */
+  const [iPressedLocally, setIPressedLocally] = useState(false);
+
   /* ── Identity (set fresh on create/join) ──────────────────── */
   const myIdRef = useRef<string>("");
+
+  /* ── Refs for transitions / guards ────────────────────────── */
+  const prevTargetRef = useRef<string | null>(null);
+  const endingRef = useRef<boolean>(false);
+  const wrongFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastClaimedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* ── Refs that callbacks read (avoid stale closure on room/timeLeft) ── */
+  const roomRef = useRef<WheelDuelRoom | null>(null);
+  const timeLeftRef = useRef<number>(0);
+  const finishGameRef = useRef<((reason: "timeout" | "pool") => Promise<void>) | null>(null);
 
   /* ── Derived ─────────────────────────────────────────────── */
   const isHost = !!room && room.host_player_id === myIdRef.current;
@@ -238,9 +319,43 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         },
         payload => {
           const r = payload.new as WheelDuelRoom;
+
+          console.log("[WD/realtime] room UPDATE", {
+            status: r.status,
+            started_at: r.started_at,
+            current_target_topoid: r.current_target_topoid,
+            finished_reason: r.finished_reason,
+            winner_player_id: r.winner_player_id,
+          });
+
+          // Target transitions → green flash for last claimed
+          const prev = prevTargetRef.current;
+          const curr = r.current_target_topoid ?? null;
+          if (prev && !curr) {
+            // Round ended — capture last target for ~FEEDBACK_MS green flash
+            setLastClaimedTopoId(prev);
+            if (lastClaimedTimerRef.current) clearTimeout(lastClaimedTimerRef.current);
+            lastClaimedTimerRef.current = setTimeout(() => {
+              setLastClaimedTopoId(null);
+              lastClaimedTimerRef.current = null;
+            }, FEEDBACK_MS);
+          } else if (curr) {
+            // New target appeared — clear any stale flash
+            if (lastClaimedTimerRef.current) {
+              clearTimeout(lastClaimedTimerRef.current);
+              lastClaimedTimerRef.current = null;
+            }
+            setLastClaimedTopoId(null);
+          }
+          prevTargetRef.current = curr;
+
           setRoom(r);
+
           if (r.status === "playing") {
             setPhase(prev => (prev === "playing" ? prev : "playing"));
+          }
+          if (r.status === "finished") {
+            setPhase("finished");
           }
         },
       )
@@ -288,6 +403,440 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       supabase.removeChannel(chan);
     };
   }, [room?.id]);
+
+  /* ───────────────────────────────────────────────────────────
+     GAMEPLAY HELPERS
+  ─────────────────────────────────────────────────────────── */
+
+  const buildTargetPool = useCallback((regionDb: string): string[] => {
+    const denorm = denormalizeRegion(regionDb);
+    return getFlagPool(denorm as Continent | "world", "all")
+      .map(c => c.topoId)
+      .filter((id): id is string => !!id)
+      .filter(id => !WHEEL_DUEL_EXCLUDED_TOPOIDS.has(id));
+  }, []);
+
+  const pickNextTarget = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.status !== "playing") return;
+    if (r.host_player_id !== myIdRef.current) return;
+    if (r.current_target_topoid) return;
+
+    const pool = buildTargetPool(r.region);
+    const used = new Set(r.used_target_topoids ?? []);
+    const remaining = pool.filter(id => !used.has(id));
+
+    if (remaining.length === 0) {
+      // Havuz tükendi → erken bitir
+      await finishGameRef.current?.("pool");
+      return;
+    }
+
+    const next = remaining[Math.floor(Math.random() * remaining.length)];
+
+    await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        // used_target_topoids burada büyütülmez — aktif hedef bu listede
+        // olursa WorldMap onu "claim edilmiş" gibi yeşil gösterir. Liste
+        // sadece bir oyuncu doğru tıkladığında handleMapClick içinde büyür.
+        current_target_topoid: next,
+        // Yeni hedefe geçildi → pas oyları temizlenir (savunma; çoğunlukla
+        // zaten claim/skip atomik UPDATE'inde temizlenmiş olur).
+        pass_requested_by: [],
+        pass_target_topoid: null,
+      })
+      .eq("id", r.id)
+      .eq("status", "playing")
+      .is("current_target_topoid", null);
+  }, [buildTargetPool]);
+
+  const finishGame = useCallback(async (reason: "timeout" | "pool") => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.host_player_id !== myIdRef.current) return;
+    if (endingRef.current) return;
+    endingRef.current = true;
+
+    // En güncel skorları DB'den çek (stale state riskine karşı)
+    const { data: ps } = await supabase
+      .from("wheel_duel_players")
+      .select("id, score")
+      .eq("room_id", r.id);
+
+    let winnerId: string | null = null;
+    if (ps && ps.length > 0) {
+      const sorted = [...ps].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      if (sorted.length === 1) {
+        winnerId = sorted[0].id;
+      } else if ((sorted[0].score ?? 0) > (sorted[1].score ?? 0)) {
+        winnerId = sorted[0].id;
+      }
+    }
+
+    const { error } = await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        status: "finished",
+        finished_at: new Date().toISOString(),
+        finished_reason: reason,
+        winner_player_id: winnerId,
+        current_target_topoid: null,
+      })
+      .eq("id", r.id)
+      .eq("status", "playing");
+
+    if (error) {
+      console.error("[WheelDuel] finishGame failed", error);
+      endingRef.current = false;
+    }
+  }, []);
+
+  const handleMapClick = useCallback(
+    async (topoId: string) => {
+      const r = roomRef.current;
+      if (!r || r.status !== "playing") return;
+      if (!r.current_target_topoid) return;
+      if (timeLeftRef.current <= 0) return;
+
+      if (topoId !== r.current_target_topoid) {
+        // Yanlış: lokal kırmızı flash, DB yok
+        playSound("wrong");
+        setWrongId(topoId);
+        if (wrongFlashTimerRef.current) clearTimeout(wrongFlashTimerRef.current);
+        wrongFlashTimerRef.current = setTimeout(() => {
+          setWrongId(null);
+          wrongFlashTimerRef.current = null;
+        }, WRONG_FLASH_MS);
+        return;
+      }
+
+      // Doğru: atomic claim
+      const newUsed = [...(r.used_target_topoids ?? []), topoId];
+      const claimedTarget = topoId;
+      const { data: claimRows, error: claimErr } = await supabase
+        .from("wheel_duel_rooms")
+        .update({
+          current_target_topoid: null,
+          used_target_topoids: newUsed,
+          // Hedef değiştiği için pas state'i temizlenir — aynı oylar yeni
+          // hedef için yanlışlıkla geçerli sayılmasın.
+          pass_requested_by: [],
+          pass_target_topoid: null,
+        })
+        .eq("id", r.id)
+        .eq("current_target_topoid", claimedTarget)
+        .select("id");
+
+      if (claimErr) {
+        console.error("[WheelDuel] claim failed", claimErr);
+        return;
+      }
+
+      if (!claimRows || claimRows.length === 0) {
+        // Rakip kapmış — sessizce no-op
+        return;
+      }
+
+      playSound("correct");
+
+      // ── Skor: DB'den fresh oku, +1 ile yaz (stale local state'e güvenme) ──
+      const myId = myIdRef.current;
+      const { data: meRow } = await supabase
+        .from("wheel_duel_players")
+        .select("score")
+        .eq("id", myId)
+        .maybeSingle();
+
+      const latestScore = meRow?.score ?? 0;
+      const { error: scoreErr } = await supabase
+        .from("wheel_duel_players")
+        .update({ score: latestScore + 1 })
+        .eq("id", myId);
+
+      if (scoreErr) {
+        console.error("[WheelDuel] score update failed", scoreErr);
+      }
+    },
+    [],
+  );
+
+  /* ── Sync refs with state ── */
+  useEffect(() => { roomRef.current = room; }, [room]);
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+    console.log("[WD/timeLeftRef] update", { timeLeft });
+  }, [timeLeft]);
+  useEffect(() => { finishGameRef.current = finishGame; }, [finishGame]);
+
+  /* ───────────────────────────────────────────────────────────
+     TIMER (clients independent, anchored to room.started_at)
+  ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    console.log("[WD/timer] effect run", {
+      phase,
+      status: room?.status,
+      started_at: room?.started_at,
+      duration_seconds: room?.duration_seconds,
+    });
+
+    if (phase !== "playing") {
+      console.log("[WD/timer] bail: phase !== playing");
+      setTimeLeft(0);
+      return;
+    }
+    if (!room?.started_at) {
+      console.log("[WD/timer] bail: no started_at");
+      return;
+    }
+
+    const startMs = new Date(room.started_at).getTime();
+    const duration = Number(room.duration_seconds);
+    if (!(duration > 0)) {
+      console.log("[WD/timer] bail: duration invalid", { duration });
+      return;
+    }
+
+    let firstTickLogged = false;
+    const tick = () => {
+      const elapsed = (Date.now() - startMs) / 1000;
+      const remaining = Math.max(0, Math.ceil(duration - elapsed));
+      if (!firstTickLogged) {
+        console.log("[WD/timer] tick (first)", { elapsed, remaining });
+        firstTickLogged = true;
+      }
+      setTimeLeft(remaining);
+    };
+
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [phase, room?.started_at, room?.duration_seconds]);
+
+  /* ───────────────────────────────────────────────────────────
+     HOST: pick next target after FEEDBACK_MS when target=null
+  ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "playing") return;
+    if (!room) return;
+    if (room.current_target_topoid) return;
+    if (timeLeft <= 0) return;
+
+    const t = setTimeout(() => {
+      pickNextTarget();
+    }, FEEDBACK_MS);
+
+    return () => clearTimeout(t);
+    // deps: timeLeft ve bare `room` KASTEN dışarıda. Timer her 200ms'de
+    // timeLeft'i güncellediği için bunu deps'e koyarsak setTimeout sürekli
+    // iptal olur ve 1200ms hiç tamamlanmaz. room?.id + room?.current_target_topoid
+    // pick döngüsü için yeterli sinyal.
+  }, [isHost, phase, room?.id, room?.current_target_topoid, pickNextTarget]);
+
+  /* ───────────────────────────────────────────────────────────
+     HOST: finish on timer expiry
+     ────────────────────────────────────────────────────────────
+     Otorite: room.started_at + duration_seconds (DB değerleri).
+     timeLeft state'ine BAĞLI DEĞİL — closure-stale ve effect-order
+     race'lerinin yarattığı "timeLeft=0 + phase=playing" anlık
+     tuzağı bu sayede tamamen kapanır.
+
+     Mekanizma: effect mount olunca prerequisites'leri doğrular ve
+     250ms'lik bir interval kurar. Her tick'te Date.now() vs
+     started_at karşılaştırması yapılır; elapsed >= duration olunca
+     finish atılır.
+  ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    console.log("[WD/finish] effect run", {
+      phase,
+      isHost,
+      status: room?.status,
+      started_at: room?.started_at,
+      duration_seconds: room?.duration_seconds,
+      ending: endingRef.current,
+    });
+
+    if (!isHost) {
+      console.log("[WD/finish] bail: not host");
+      return;
+    }
+    if (phase !== "playing") {
+      console.log("[WD/finish] bail: phase !== playing");
+      return;
+    }
+    if (!room) {
+      console.log("[WD/finish] bail: no room");
+      return;
+    }
+    if (room.status !== "playing") {
+      console.log("[WD/finish] bail: room.status !== playing");
+      return;
+    }
+    if (!room.started_at) {
+      console.log("[WD/finish] bail: no started_at");
+      return;
+    }
+    const duration = Number(room.duration_seconds);
+    if (!(duration > 0)) {
+      console.log("[WD/finish] bail: duration invalid", { duration });
+      return;
+    }
+    if (endingRef.current) {
+      console.log("[WD/finish] bail: endingRef already true");
+      return;
+    }
+
+    const startMs = new Date(room.started_at).getTime();
+    const durationMs = duration * 1000;
+
+    const check = () => {
+      if (endingRef.current) return;
+      const elapsedMs = Date.now() - startMs;
+      if (elapsedMs < durationMs) return;
+
+      console.log("[WD/finish] FINISH_TRIGGERED_TIMEOUT", {
+        elapsedMs,
+        durationMs,
+      });
+      finishGame("timeout");
+    };
+
+    // İlk anlık check — yeni başlayan oyunda elapsed≈0 < duration, no-op.
+    // Sayfa F5'le geri gelinmiş ve süre çoktan geçtiyse burada anında fire.
+    check();
+    const id = setInterval(check, 250);
+    return () => clearInterval(id);
+  }, [
+    isHost,
+    phase,
+    room?.id,
+    room?.status,
+    room?.started_at,
+    room?.duration_seconds,
+    finishGame,
+  ]);
+
+  /* ───────────────────────────────────────────────────────────
+     PAS GEÇ — request + host-side skip processor
+  ─────────────────────────────────────────────────────────── */
+
+  /** Mevcut hedef için pas oyumu DB'ye yaz. Idempotent (ben zaten oy
+   *  verdiysem no-op). Hedef değişmediyse yazılır (atomic guard).
+   *  iPressedLocally = lokal UI optimistic ve aynı zamanda
+   *  "oyum DB'de yoksa tekrar gönder" auto-retry sinyali. */
+  const requestPass = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r || !r.current_target_topoid) return;
+    if (r.status !== "playing") return;
+    const myId = myIdRef.current;
+    const target = r.current_target_topoid;
+
+    const existing =
+      r.pass_target_topoid === target ? r.pass_requested_by ?? [] : [];
+    if (existing.includes(myId)) {
+      // Zaten DB'de oyum var; lokal bayrağı da senkronla
+      setIPressedLocally(true);
+      return;
+    }
+
+    const newVotes = [...existing, myId];
+    setIPressedLocally(true);
+
+    const { error } = await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        pass_requested_by: newVotes,
+        pass_target_topoid: target,
+      })
+      .eq("id", r.id)
+      .eq("current_target_topoid", target); // 🔒 hedef bayatladıysa yazma
+
+    if (error) {
+      console.error("[WheelDuel] requestPass failed", error);
+    }
+  }, []);
+
+  /** Sadece host. İki oy toplandığında atomik skip UPDATE'i atar:
+   *   current_target_topoid = null (mevcut pick-next-target effect 1.2s
+   *   sonra yeni hedefi seçer)
+   *   used_target_topoids   += skipped target
+   *   pass_*                = reset
+   *  .eq("current_target_topoid", target) guard'ı double-fire'ı engeller. */
+  const processSkip = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.host_player_id !== myIdRef.current) return;
+    if (r.status !== "playing") return;
+    if (!r.current_target_topoid) return;
+    if (r.pass_target_topoid !== r.current_target_topoid) return;
+    if ((r.pass_requested_by ?? []).length < 2) return;
+
+    const target = r.current_target_topoid;
+    const newUsed = [...(r.used_target_topoids ?? []), target];
+
+    const { error } = await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        current_target_topoid: null,
+        used_target_topoids: newUsed,
+        pass_requested_by: [],
+        pass_target_topoid: null,
+      })
+      .eq("id", r.id)
+      .eq("current_target_topoid", target)
+      .eq("status", "playing");
+
+    if (error) {
+      console.error("[WheelDuel] processSkip failed", error);
+    }
+  }, []);
+
+  /* Hedef değişince lokal "ben bastım" sıfırla */
+  useEffect(() => {
+    setIPressedLocally(false);
+  }, [room?.current_target_topoid]);
+
+  /* Lost-vote auto-retry: lokal olarak bastığımı düşünüyorum ama DB'de
+   * oyum yoksa (last-write-wins race), yeniden gönder. */
+  useEffect(() => {
+    if (!iPressedLocally) return;
+    if (!room?.current_target_topoid) return;
+    const myId = myIdRef.current;
+    const matchesTarget =
+      room.pass_target_topoid === room.current_target_topoid;
+    const myVoteInDb =
+      matchesTarget && (room.pass_requested_by ?? []).includes(myId);
+    if (myVoteInDb) return;
+    // Oy kayboldu → yeniden gönder. requestPass kendi idempotent guard'ına
+    // sahip; sonsuz döngü riski yok.
+    requestPass();
+  }, [
+    iPressedLocally,
+    room?.pass_requested_by,
+    room?.pass_target_topoid,
+    room?.current_target_topoid,
+    requestPass,
+  ]);
+
+  /* Host: iki oy toplandıysa skip'i tetikle */
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "playing") return;
+    if (!room?.current_target_topoid) return;
+    if (room.pass_target_topoid !== room.current_target_topoid) return;
+    if ((room.pass_requested_by ?? []).length < 2) return;
+    processSkip();
+  }, [
+    isHost,
+    phase,
+    room?.current_target_topoid,
+    room?.pass_target_topoid,
+    room?.pass_requested_by?.length,
+    processSkip,
+    room?.pass_requested_by,
+  ]);
 
   /* ───────────────────────────────────────────────────────────
      ACTIONS
@@ -502,6 +1051,20 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     setErrorMsg(null);
     setStatusMsg(null);
     setPhase("setup");
+    setTimeLeft(0);
+    setWrongId(null);
+    setLastClaimedTopoId(null);
+    setIPressedLocally(false);
+    endingRef.current = false;
+    prevTargetRef.current = null;
+    if (wrongFlashTimerRef.current) {
+      clearTimeout(wrongFlashTimerRef.current);
+      wrongFlashTimerRef.current = null;
+    }
+    if (lastClaimedTimerRef.current) {
+      clearTimeout(lastClaimedTimerRef.current);
+      lastClaimedTimerRef.current = null;
+    }
     clearWheelDuelSession();
 
     if (!currentRoom) return;
@@ -526,19 +1089,65 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     if (!room || !isHost) return;
     if (players.length < 2) return;
 
-    const startedAt = new Date().toISOString();
-    // Optimistic — realtime UPDATE da aynı değeri getirecek
-    setPhase("playing");
-
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({ status: "playing", started_at: startedAt })
-      .eq("id", room.id);
-
-    if (error) {
-      setErrorMsg("Oyun başlatılamadı. Tekrar dene.");
-      setPhase("lobby");
+    // İlk hedefi host burada seçer; gameplay UPDATE'i status + started_at + ilk
+    // target'ı tek atışta yazar, böylece her iki client da aynı anda görür.
+    const pool = buildTargetPool(room.region);
+    if (pool.length === 0) {
+      setErrorMsg("Bu bölge için hedef havuzu boş.");
+      return;
     }
+    const firstTarget = pool[Math.floor(Math.random() * pool.length)];
+    const startedAt = new Date().toISOString();
+
+    // Reset gameplay refs for a fresh round
+    endingRef.current = false;
+    prevTargetRef.current = firstTarget;  // realtime UPDATE'in lastClaimed
+                                          // false-positive ihtimalini önler
+    setLastClaimedTopoId(null);
+    setWrongId(null);
+
+    console.log("[WD/startGame] before update", {
+      roomId: room.id,
+      firstTarget,
+      duration_seconds: hostDuration,
+      hostId: myIdRef.current,
+      isHost,
+    });
+
+    // setPhase("playing") burada ÇAĞIRMIYORUZ. UPDATE dönüp room.started_at
+    // lokal state'e oturduktan sonra phase'i flip ediyoruz; aksi halde
+    // "phase=playing + room.started_at=null" tek render bile finish effect'in
+    // anında tetiklenmesine yol açıyor.
+    const { data: updated, error } = await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        status: "playing",
+        started_at: startedAt,
+        current_target_topoid: firstTarget,
+        // used_target_topoids sadece claim'lerle büyür; aktif hedef burada
+        // EKLENMEZ — yoksa hedef oyuncu tıklamadan haritada yeşil görünür.
+        used_target_topoids: [],
+      })
+      .eq("id", room.id)
+      .select("*")
+      .single();
+
+    console.log("[WD/startGame] update result", { error, updated });
+
+    if (error || !updated) {
+      setErrorMsg("Oyun başlatılamadı. Tekrar dene.");
+      return;
+    }
+
+    console.log("[WD/startGame] state set", {
+      updatedStatus: (updated as WheelDuelRoom).status,
+      updatedStartedAt: (updated as WheelDuelRoom).started_at,
+      updatedDuration: (updated as WheelDuelRoom).duration_seconds,
+      updatedTarget: (updated as WheelDuelRoom).current_target_topoid,
+    });
+
+    setRoom(updated as WheelDuelRoom);  // started_at + status dolu satır
+    setPhase("playing");                // güvenli: room artık tutarlı
   }
 
   async function updateHostSetting(
@@ -616,9 +1225,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           <div className="duel-lobby-card">
             <h2 className="duel-lobby-title">🎯 Çark · Online 1v1</h2>
             <p className="duel-lobby-desc">
-              Bir oda kur ya da arkadaşının kodunu gir. Lobby Supabase
-              üzerinden senkronize — oyuncu listesi her iki tarayıcıda da
-              anlık güncellenir. Çark gameplay sonraki aşamada.
+              Odanı kur, kodu arkadaşına gönder. Çarkın seçtiği ülkeyi haritada ilk bulan puanı kapar.
             </p>
 
             {hostClosedRoom && (
@@ -1037,60 +1644,219 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         </div>
       )}
 
-      {/* ════════ PLAYING (placeholder) ════════ */}
-      {phase === "playing" && room && (
-        <div className="duel-lobby">
-          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 56, marginBottom: 12 }}>🎯</div>
-            <h2 className="duel-lobby-title">Online Çark — Yakında</h2>
-            <p
-              className="duel-lobby-desc"
-              style={{ maxWidth: 460, margin: "0 auto 18px" }}
-            >
-              Online Çark gameplay bir sonraki aşamada eklenecek. Lobby
-              senkronu, oda kodu ve chat hazır — gameplay senkronu eklendiğinde
-              aynı odadan başlayacak.
-            </p>
+      {/* ════════ PLAYING ════════ */}
+      {phase === "playing" && room && (() => {
+        const me = players.find(p => p.id === myIdRef.current);
+        const opp = players.find(p => p.id !== myIdRef.current);
+        const myScore = me?.score ?? 0;
+        const oppScore = opp?.score ?? 0;
+        const currentTarget = room.current_target_topoid;
+        const targetDisplay = currentTarget
+          ? TOPOID_TO_DISPLAY[currentTarget] ?? currentTarget
+          : null;
+        const lastClaimDisplay = lastClaimedTopoId
+          ? TOPOID_TO_DISPLAY[lastClaimedTopoId] ?? lastClaimedTopoId
+          : null;
+        const regionDenorm = denormalizeRegion(room.region);
+        const activeIds =
+          regionDenorm === "world"
+            ? new Set<string>()  // empty = no filter (WorldMap treats this as fit-all)
+            : getContinentIds(regionDenorm as Continent);
+        // For region=world we want all countries clickable. WorldMap uses
+        // activeIds.has(...) for in-scope check, so build full set from pool.
+        const clickableIds =
+          regionDenorm === "world"
+            ? new Set(buildTargetPool("world"))
+            : activeIds;
+        const usedSet = new Set(room.used_target_topoids ?? []);
+        // Timer color (visual nudge near time-out)
+        const timerColor =
+          timeLeft <= 5 ? "var(--red, #e25555)"
+          : timeLeft <= 15 ? "var(--amber, #d4a02c)"
+          : "var(--accent, #4f8bff)";
 
-            <div
-              className="duel-settings-summary"
-              style={{ marginBottom: 18 }}
-            >
-              <span>#{room.code}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>{regionLabel(room.region)}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>⏱ {durationLabel(room.duration_seconds)}</span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
+        return (
+          <div className="wd-screen">
+            {/* HUD top bar */}
+            <div className="wd-hud">
               <button
-                className="btn btn-ghost"
-                onClick={leaveRoom}
-              >
-                ← Lobiden Çık
-              </button>
-              <button
-                className="btn btn-ghost"
+                className="back-btn wd-hud-back"
                 onClick={() => {
                   playSound("click");
-                  if (room) leaveRoom();
-                  onHome();
+                  leaveRoom();
                 }}
+                title="Lobiden Çık"
               >
-                ⌂ Ana Menü
+                <span>←</span>
+                <span className="back-label">Çık</span>
               </button>
+
+              <div className="wd-hud-center">
+                {targetDisplay ? (
+                  <>
+                    <div className="wd-hud-label">🎯 Hedef</div>
+                    <div className="wd-target">{targetDisplay}</div>
+                  </>
+                ) : lastClaimDisplay ? (
+                  <>
+                    <div className="wd-hud-label">✓ Doğru</div>
+                    <div className="wd-target wd-target-claimed">
+                      {lastClaimDisplay}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="wd-hud-label">…</div>
+                    <div className="wd-target wd-target-muted">
+                      Sıradaki hedef seçiliyor
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="wd-hud-right">
+                <div className="wd-hud-label">⏱ Süre</div>
+                <div className="wd-timer" style={{ color: timerColor }}>
+                  {timeLeft}
+                </div>
+              </div>
+            </div>
+
+            {/* Score row + Pas butonu */}
+            <div className="wd-scores">
+              <div className={"wd-score wd-score-me" + (myScore >= oppScore ? " lead" : "")}>
+                <span className="wd-score-name">{me?.name ?? "Sen"}</span>
+                <span className="wd-score-val">{myScore}</span>
+              </div>
+              <span className="wd-score-sep">vs</span>
+              <div className={"wd-score wd-score-opp" + (oppScore > myScore ? " lead" : "")}>
+                <span className="wd-score-name">{opp?.name ?? "Rakip"}</span>
+                <span className="wd-score-val">{oppScore}</span>
+              </div>
+
+              {/* Pas Geç — sadece aktif hedef varken görünür */}
+              {currentTarget && (() => {
+                const myId = myIdRef.current;
+                const passMatches =
+                  room.pass_target_topoid === currentTarget;
+                const passList = passMatches
+                  ? (room.pass_requested_by ?? [])
+                  : [];
+                const iVotedDb = passList.includes(myId);
+                const iVoted = iVotedDb || iPressedLocally;
+                const oppVoted = passList.some(id => id !== myId);
+
+                let label = "🟡 Pas Geç";
+                let disabled = false;
+                if (iVoted && oppVoted) {
+                  label = "Geçiliyor…";
+                  disabled = true;
+                } else if (iVoted) {
+                  label = "Pas Bekleniyor…";
+                  disabled = true;
+                } else if (oppVoted) {
+                  label = "🟠 Rakip pas istedi · Sen de bas";
+                }
+
+                return (
+                  <button
+                    className="btn btn-ghost wd-pass-btn"
+                    onClick={requestPass}
+                    disabled={disabled}
+                    title="Aktif hedefi her iki oyuncu da pas geçerse atlanır"
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
+            </div>
+
+            {/* Map */}
+            <div className="wheel-map-area wd-map">
+              <WorldMap
+                guessedISOs={usedSet}
+                lastGuessed={lastClaimedTopoId}
+                showLabels={false}
+                activeIds={clickableIds}
+                resetKey={0}
+                region={regionDenorm}
+                onCountryClick={handleMapClick}
+                wrongId={wrongId || undefined}
+              />
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* ════════ FINISHED ════════ */}
+      {phase === "finished" && room && (() => {
+        const me = players.find(p => p.id === myIdRef.current);
+        const opp = players.find(p => p.id !== myIdRef.current);
+        const myScore = me?.score ?? 0;
+        const oppScore = opp?.score ?? 0;
+        const winnerId = room.winner_player_id;
+        const isTie = winnerId === null;
+        const iWon = !!winnerId && winnerId === myIdRef.current;
+        const reasonText =
+          room.finished_reason === "pool"
+            ? "Tüm ülkeler kullanıldı."
+            : "Süre doldu.";
+
+        return (
+          <div className="duel-lobby">
+            <div className="duel-lobby-card" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 56, marginBottom: 8 }}>
+                {isTie ? "🤝" : iWon ? "🏆" : "💀"}
+              </div>
+              <h2 className="duel-lobby-title" style={{ marginBottom: 6 }}>
+                {isTie ? "Berabere" : iWon ? "Kazandın!" : "Kaybettin"}
+              </h2>
+              <p
+                className="duel-lobby-desc"
+                style={{ maxWidth: 460, margin: "0 auto 16px" }}
+              >
+                {reasonText}
+              </p>
+
+              <div className="wd-result-scores">
+                <div className={"wd-score" + (iWon ? " lead" : "")}>
+                  <span className="wd-score-name">{me?.name ?? "Sen"}</span>
+                  <span className="wd-score-val">{myScore}</span>
+                </div>
+                <span className="wd-score-sep">·</span>
+                <div className={"wd-score" + (!iWon && !isTie ? " lead" : "")}>
+                  <span className="wd-score-name">{opp?.name ?? "Rakip"}</span>
+                  <span className="wd-score-val">{oppScore}</span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  justifyContent: "center",
+                  flexWrap: "wrap",
+                  marginTop: 20,
+                }}
+              >
+                <button className="btn btn-accent" onClick={leaveRoom}>
+                  ← Lobiye Dön
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    playSound("click");
+                    if (room) leaveRoom();
+                    onHome();
+                  }}
+                >
+                  ⌂ Ana Menü
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -84,6 +84,10 @@ export interface WheelDuelRoom {
   winner_player_id:      string | null;
   current_target_topoid: string | null;
   used_target_topoids:   string[];
+  /** Pas oyu vermiş oyuncuların UUID listesi (boş ise []). */
+  pass_requested_by:     string[];
+  /** pass_requested_by hangi hedef için toplandığını işaretler. */
+  pass_target_topoid:    string | null;
   created_at:            string;
   updated_at:            string;
 }

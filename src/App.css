@@ -6793,3 +6793,80 @@ body {
   .wheel-floating-title { font-size: 1.1rem; }
   .wheel-dd-trigger   { padding: 0 7px; font-size: 0.76rem; height: 30px; min-width: 84px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   WHEEL DUEL (Online Çark 1v1) — gameplay HUD
+═══════════════════════════════════════════════════════════════ */
+.wd-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg, #0e1117);
+}
+.wd-hud {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+.wd-hud-back { white-space: nowrap; }
+.wd-hud-center { text-align: center; min-width: 0; }
+.wd-hud-right  { text-align: right; min-width: 64px; }
+.wd-hud-label {
+  font-size: 11px;
+  opacity: 0.65;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wd-target {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+}
+.wd-target-claimed { color: var(--green, #5fdb7c); }
+.wd-target-muted   { opacity: 0.55; font-weight: 600; }
+.wd-timer {
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.wd-scores {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+}
+.wd-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+}
+.wd-score.lead { background: rgba(95, 219, 124, 0.12); }
+.wd-score-name { font-size: 13px; opacity: 0.85; }
+.wd-score-val  { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.wd-score-sep  { opacity: 0.5; font-size: 13px; }
+.wd-map { flex: 1; min-height: 0; }
+.wd-result-scores {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 8px;
+}
+@media (max-width: 520px) {
+  .wd-hud { gap: 10px; padding: 8px 10px; }
+  .wd-target { font-size: 18px; }
+  .wd-timer  { font-size: 22px; }
+  .wd-hud-label { font-size: 10px; }
+  .wd-scores { gap: 10px; padding: 6px 10px; }
+  .wd-score-val { font-size: 16px; }
+}
