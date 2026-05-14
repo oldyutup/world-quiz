@@ -247,6 +247,7 @@ interface HomeProps { onSelect: (screen: AppScreen) => void; }
 function HomeScreen({ onSelect }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
+const [showWheelMenu, setShowWheelMenu] = useState(false);
   const modes = [
   { id: "map-game" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -283,6 +284,8 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
     setShowCountryMenu(true);
   } else if (m.id === "flag-game") {
     setShowFlagMenu(true);
+  } else if (m.id === "wheel-game") {
+    setShowWheelMenu(true);
   } else {
     onSelect(m.id);
   }
@@ -378,6 +381,55 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
   playSound("click");
   setShowFlagMenu(false);
 }}
+      >
+        ✕
+      </button>
+
+    </div>
+  </div>
+)}
+
+{showWheelMenu && (
+  <div className="overlay" onClick={() => setShowWheelMenu(false)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+
+      <h2>🎯 Çark Modu</h2>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowWheelMenu(false);
+          onSelect("wheel-game");
+        }}
+      >
+        🎮 Tek Oyuncu
+      </button>
+
+      <button
+        className="modal-btn modal-btn-soon"
+        disabled
+        title="Yakında"
+      >
+        ⚔️ Online 1v1
+        <span className="modal-btn-soon-tag">Yakında</span>
+      </button>
+
+      <button
+        className="modal-btn modal-btn-soon"
+        disabled
+        title="Yakında"
+      >
+        🏆 Çok Oyunculu
+        <span className="modal-btn-soon-tag">Yakında</span>
+      </button>
+
+      <button
+        className="modal-close"
+        onClick={() => {
+          playSound("click");
+          setShowWheelMenu(false);
+        }}
       >
         ✕
       </button>
