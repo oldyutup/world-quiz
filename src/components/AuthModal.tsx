@@ -214,7 +214,7 @@ return;
     <input
       value={username}
       onChange={(e) => setUsername(e.target.value.toLocaleLowerCase("tr-TR"))}
-      placeholder="enes_41"
+      placeholder="oyuncu_adı"
       maxLength={16}
       autoComplete="username"
     />
