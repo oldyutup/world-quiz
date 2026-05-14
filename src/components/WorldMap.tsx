@@ -42,6 +42,10 @@ interface MapProps {
   activeIds:   Set<string>;
   resetKey:    number;
   region?:     string;
+  /** Optional click handler — opt-in. When omitted, paths render without onClick (legacy behaviour). */
+  onCountryClick?: (topoId: string) => void;
+  /** Optional id to flash red — used by Wheel Mode. */
+  wrongId?: string;
 }
 
 interface ComputedFeature {
@@ -96,7 +100,7 @@ function fitRegion(
   return { k, tx: w / 2 - cx * k, ty: h / 2 - cy * k };
 }
 
-export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region }: MapProps) {
+export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region, onCountryClick, wrongId }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const rawRef       = useRef<Feature<Geometry>[]>([]);
@@ -109,6 +113,10 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const [xf, setXf] = useState({ k: 1, tx: 0, ty: 0 });
   const dragRef = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const projectedDimsRef = useRef({ w: 0, h: 0 });
+  // Track pointer movement so a drag never fires onCountryClick.
+  // Stays harmless when onCountryClick is undefined.
+  const wasDragRef = useRef(false);
+  const downPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -192,15 +200,42 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const onPD = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx0: xfRef.current.tx, ty0: xfRef.current.ty };
+    wasDragRef.current = false;
+    downPosRef.current = { x: e.clientX, y: e.clientY };
   };
   const onPM = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!dragRef.current) return;
+    if (!wasDragRef.current) {
+      const dx = Math.abs(e.clientX - downPosRef.current.x);
+      const dy = Math.abs(e.clientY - downPosRef.current.y);
+      if (dx + dy > 5) wasDragRef.current = true;
+    }
     const { k } = xfRef.current;
     const maxP  = dims.w * (k - 1) * 0.6 + dims.w * 0.3;
     const next  = { k, tx: clamp(dragRef.current.tx0+e.clientX-dragRef.current.sx,-maxP,maxP), ty: clamp(dragRef.current.ty0+e.clientY-dragRef.current.sy,-maxP,maxP) };
     xfRef.current = next; setXf({ ...next });
   };
-  const onPU = () => { dragRef.current = null; };
+  const onPU = (e: ReactPointerEvent<SVGSVGElement>) => {
+    // Click dispatch via pointerup: setPointerCapture on the SVG redirects
+    // pointer events to the SVG, which can prevent the synthesized `click`
+    // from firing on the underlying <path>. We resolve the path the user
+    // released over via elementFromPoint and read data-topo-id.
+    //
+    // No-op when onCountryClick is not provided → legacy behaviour unchanged.
+    if (
+      onCountryClick &&
+      e.type === "pointerup" &&
+      e.button === 0 &&
+      !wasDragRef.current
+    ) {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      if (el instanceof SVGPathElement) {
+        const topoId = el.getAttribute("data-topo-id");
+        if (topoId) onCountryClick(topoId);
+      }
+    }
+    dragRef.current = null;
+  };
 
   if (loading || computed.length === 0) {
     return (
@@ -226,9 +261,12 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
             const inScope   = activeIds.has(cf.id);
             const isGuessed = guessedISOs.has(cf.id);
             const isLast    = cf.id === lastGuessed;
+            const isWrong   = wrongId === cf.id;
             return (
               <path key={cf.id + cf.d.slice(1, 8)} d={cf.d}
-                className={["country-path",!inScope?"out-of-scope":"",isGuessed?"guessed":"",isLast?"last":""].filter(Boolean).join(" ")}
+                data-topo-id={cf.id}
+                className={["country-path",!inScope?"out-of-scope":"",isGuessed?"guessed":"",isLast?"last":"",isWrong?"wheel-wrong":""].filter(Boolean).join(" ")}
+                style={onCountryClick ? { cursor: "pointer" } : undefined}
               />
             );
           })}

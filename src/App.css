@@ -6131,3 +6131,632 @@ body {
     height: 26px;
   }
 }
+
+/* ═══════════════════════════════════════════
+   WHEEL MODE (Çark Modu) — offline
+   All classes prefixed wheel-* to keep isolated.
+   The single non-prefixed addition is .country-path.wheel-wrong
+   which paints a temporary red flash on wrong-clicked country.
+═══════════════════════════════════════════ */
+
+/* App shell for wheel mode */
+.wheel-app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Shared buttons ── */
+.wheel-primary-btn {
+  appearance: none;
+  background: var(--accent);
+  color: #0a1224;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px var(--accent-glow);
+  transition: transform 0.05s, box-shadow 0.15s, background 0.15s;
+}
+
+.wheel-primary-btn:hover:not(:disabled) {
+  background: #7cb8ff;
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+
+.wheel-primary-btn:active:not(:disabled) { transform: scale(0.97); }
+
+.wheel-primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.wheel-ghost-btn {
+  appearance: none;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.wheel-ghost-btn:hover {
+  background: var(--surface3);
+  border-color: var(--muted);
+}
+
+.wheel-back-btn {
+  appearance: none;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.wheel-back-btn:hover {
+  background: var(--surface3);
+}
+
+/* ── TOP BAR ──
+   3-column grid: [left] [center] [right]
+   Left/Right hug their content; center fills the gap so the target badge
+   sits visually centered. Mobile drops center to its own row. */
+.wheel-topbar {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-areas: "left center right";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  min-height: 60px;
+}
+
+.wheel-topbar-left {
+  grid-area: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.wheel-topbar-center {
+  grid-area: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wheel-topbar-right {
+  grid-area: right;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* ── DROPDOWN (local to wheel mode) ── */
+.wheel-dd {
+  position: relative;
+  display: inline-block;
+}
+
+.wheel-dd-trigger {
+  appearance: none;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+  /* Same height + min-width across all 4 setting dropdowns so
+     continent / difficulty / duration / lifeMode look uniform. */
+  height: 34px;
+  min-width: 108px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.wheel-dd-trigger:hover:not(:disabled) {
+  background: var(--surface3);
+  border-color: var(--accent);
+}
+
+.wheel-dd-trigger.open {
+  background: var(--surface3);
+  border-color: var(--accent);
+}
+
+.wheel-dd-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.wheel-dd-caret {
+  font-size: 0.8rem;
+  transition: transform 0.15s;
+  opacity: 0.8;
+}
+
+.wheel-dd-caret.up { transform: rotate(180deg); }
+
+.wheel-dd-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.wheel-dd-item {
+  appearance: none;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+
+.wheel-dd-item:hover {
+  background: var(--surface2);
+}
+
+.wheel-dd-item.active {
+  background: var(--accent);
+  color: #0a1224;
+  font-weight: 700;
+}
+
+/* ── HUD chunks within topbar-right ──
+   All three (score, lives, timer) share the same fixed height so they
+   sit on a clean horizontal baseline regardless of internal content. */
+.wheel-hud-score,
+.wheel-hud-lives,
+.wheel-hud-timer {
+  height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.wheel-hud-score {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1;
+  min-width: 44px;
+}
+
+.wheel-hud-label {
+  font-size: 0.66rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.wheel-hud-value {
+  font-family: var(--font-head);
+  font-size: 1.4rem;
+  color: var(--text);
+  line-height: 1;
+}
+
+.wheel-hud-lives {
+  position: relative;
+  justify-content: center;
+  gap: 3px;
+  font-size: 1rem;
+  /* Stable width across "5 hearts" and "∞" so endless ↔ lives toggle
+     doesn't shift the surrounding score/timer. */
+  min-width: 110px;
+}
+
+.wheel-life.on  { filter: none; }
+.wheel-life.off { filter: grayscale(1) opacity(0.5); }
+
+.wheel-life-infinite {
+  font-family: var(--font-head);
+  font-size: 1.6rem;
+  color: var(--accent);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+/* "+1 can!" toast — anchored above the lives row */
+.wheel-life-gain {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--green);
+  color: #0a1224;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 3px 10px var(--green-glow);
+  animation: wheel-life-gain-pop 1.5s ease-out forwards;
+  z-index: 20;
+}
+
+@keyframes wheel-life-gain-pop {
+  0%   { opacity: 0; transform: translateY(8px)  scale(0.85); }
+  18%  { opacity: 1; transform: translateY(0)    scale(1);    }
+  75%  { opacity: 1; transform: translateY(-4px) scale(1);    }
+  100% { opacity: 0; transform: translateY(-14px) scale(0.95); }
+}
+
+.wheel-hud-timer {
+  position: relative;
+  width: 44px;
+  justify-content: center;
+}
+
+.wheel-timer-svg {
+  width: 44px;
+  height: 44px;
+}
+
+.wheel-timer-num {
+  position: absolute;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+}
+
+/* ── Compact target badge inside topbar (only shown when target is set) ── */
+.wheel-topbar-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, var(--accent) 0%, #7cb8ff 100%);
+  color: #0a1224;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 3px 12px var(--accent-glow);
+  animation: wheel-badge-pop 0.22s ease-out;
+}
+
+.wheel-topbar-target-label {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.wheel-topbar-target-name {
+  font-family: var(--font-head);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+@keyframes wheel-badge-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* Small "Pas Geç" chip — sits next to target badge, only in endless mode */
+.wheel-topbar-skip {
+  appearance: none;
+  background: var(--surface3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+  animation: wheel-badge-pop 0.22s ease-out;
+}
+
+.wheel-topbar-skip:hover {
+  background: var(--amber);
+  color: #0a1224;
+  border-color: var(--amber);
+}
+
+.wheel-topbar-skip:active { transform: scale(0.97); }
+
+/* ── Floating overlay on map (idle / spinning / pool-empty) ── */
+.wheel-floating-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* clicks pass through to map */
+  z-index: 10;
+  padding: 20px;
+}
+
+.wheel-floating-box {
+  pointer-events: auto; /* re-enable clicks on the box itself */
+  background: rgba(13, 17, 23, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 260px;
+  max-width: min(360px, 90%);
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  animation: wheel-float-in 0.22s ease-out;
+}
+
+@keyframes wheel-float-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+
+.wheel-floating-title {
+  font-family: var(--font-head);
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.wheel-floating-desc {
+  font-size: 0.9rem;
+  color: var(--muted);
+  max-width: 280px;
+  line-height: 1.4;
+}
+
+.wheel-floating-name {
+  font-family: var(--font-head);
+  font-size: 1.8rem;
+  letter-spacing: 0.04em;
+  color: #f59e0b;
+  line-height: 1.1;
+}
+
+.wheel-floating-box .wheel-cycle {
+  animation: wheel-cycle-flash 0.12s linear infinite;
+}
+
+.wheel-floating-box .wheel-spin-btn {
+  margin-top: 6px;
+}
+
+.wheel-spin-btn {
+  font-size: 0.95rem;
+  padding: 9px 20px;
+}
+
+@keyframes wheel-cycle-flash {
+  0%   { opacity: 0.6; }
+  50%  { opacity: 1;   }
+  100% { opacity: 0.6; }
+}
+
+/* ── Map area ── */
+.wheel-map-area {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Wrong-click red flash (only addition outside wheel- prefix).
+   Scoped to .country-path so it doesn't leak elsewhere. */
+.country-path.wheel-wrong {
+  fill: #ef4444 !important;
+  stroke: #b91c1c !important;
+  stroke-width: 1px !important;
+  animation: wheel-wrong-pulse 0.6s ease-out;
+}
+
+@keyframes wheel-wrong-pulse {
+  0%   { fill: #f87171; }
+  100% { fill: #ef4444; }
+}
+
+/* ── Result modal ── */
+.wheel-result-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 22, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.wheel-result-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 22px 20px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.wheel-result-emoji {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.wheel-result-title {
+  font-family: var(--font-head);
+  font-size: 1.8rem;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.wheel-result-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.wheel-result-score-num {
+  font-family: var(--font-head);
+  font-size: 3.2rem;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.wheel-result-score-lbl {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.wheel-result-rows {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  background: var(--surface2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.wheel-result-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.92rem;
+}
+
+.wheel-result-row span { color: var(--muted); }
+.wheel-result-row strong { color: var(--text); font-weight: 600; }
+
+.wheel-result-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.wheel-result-actions .wheel-ghost-btn,
+.wheel-result-actions .wheel-primary-btn {
+  flex: 1;
+}
+
+/* ── Mobile tweaks ──
+   Below 720px: grid drops center to its own row.
+     "left  right"
+     "center center"
+   Center collapses (no height) when target is absent. */
+@media (max-width: 720px) {
+  .wheel-topbar {
+    grid-template-areas:
+      "left  right"
+      "center center";
+    grid-template-columns: 1fr auto;
+    gap: 8px 10px;
+    padding: 6px 10px;
+    min-height: 0;
+  }
+  .wheel-topbar-left  { gap: 6px; }
+  .wheel-topbar-right { gap: 10px; }
+  .wheel-topbar-target      { font-size: 0.85rem; padding: 5px 10px; }
+  .wheel-topbar-target-name { font-size: 1rem; }
+
+  .wheel-hud-score,
+  .wheel-hud-lives,
+  .wheel-hud-timer { height: 40px; }
+  .wheel-hud-value     { font-size: 1.2rem; }
+  .wheel-hud-lives     { min-width: 92px; font-size: 0.92rem; }
+  .wheel-hud-timer     { width: 40px; }
+  .wheel-timer-svg     { width: 40px; height: 40px; }
+  .wheel-life-infinite { font-size: 1.4rem; }
+
+  .wheel-dd-trigger   { padding: 0 8px; font-size: 0.8rem; height: 32px; min-width: 96px; }
+  .wheel-dd-menu      { min-width: 140px; }
+  .wheel-floating-box { padding: 18px 20px; min-width: 220px; }
+  .wheel-floating-title { font-size: 1.2rem; }
+  .wheel-floating-name  { font-size: 1.5rem; }
+  .wheel-result-score-num { font-size: 2.6rem; }
+}
+
+@media (max-width: 420px) {
+  .wheel-hud-score .wheel-hud-label { display: none; }
+  .wheel-hud-lives  { min-width: 80px; font-size: 0.85rem; }
+  .wheel-life-infinite { font-size: 1.3rem; }
+  .wheel-floating-name  { font-size: 1.3rem; }
+  .wheel-floating-title { font-size: 1.1rem; }
+  .wheel-dd-trigger   { padding: 0 7px; font-size: 0.76rem; height: 30px; min-width: 84px; }
+}

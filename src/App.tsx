@@ -4,6 +4,7 @@ import RouteGame from "./components/RouteGame";
 import DuelGame from "./components/DuelGame";
 import FlagDuelGame from "./components/FlagDuelGame";
 import DuelGroupGame from "./components/DuelGroupGame";
+import WheelGame from "./components/WheelGame";
 import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
@@ -39,7 +40,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -93,6 +94,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "duel-game": 0,
   "duel-group-game": 0,
   "flag-duel-game": 0,
+  "wheel-game": 0,
 };
 
 /** Hint costs */
@@ -250,6 +252,7 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
   { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
   { id: "silhouette-game" as AppScreen, icon: "🗺️", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
   { id: "route-game" as AppScreen, icon: "🧭", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
+  { id: "wheel-game" as AppScreen, icon: "🎯", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
   { id: "home" as AppScreen, icon: "🌃", title: "Foto Tahmin", desc: "Fotoğraftan şehri veya ülkeyi bul.", available: false },
 ];
   return (
@@ -1838,6 +1841,7 @@ useEffect(() => {
 />
 );
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
+  if (screen === "wheel-game") return <WheelGame onHome={() => setScreen("home")} />;
   if (screen === "silhouette-game") return (
     <SilhouetteGame
   continent={continent}
