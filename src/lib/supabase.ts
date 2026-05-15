@@ -88,6 +88,10 @@ export interface WheelDuelRoom {
   pass_requested_by:     string[];
   /** pass_requested_by hangi hedef için toplandığını işaretler. */
   pass_target_topoid:    string | null;
+  /** status='finished' iken rövanş oyu vermiş oyuncuların UUID listesi.
+   *  İki oy toplandığında host atomic UPDATE ile room'u 'waiting'e döndürür
+   *  ve bu listeyi sıfırlar. */
+  rematch_requested_by:  string[];
   created_at:            string;
   updated_at:            string;
 }

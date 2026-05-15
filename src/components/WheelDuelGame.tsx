@@ -254,6 +254,9 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   /** Lokal "pas oyumu gönderdim" bayrağı. UI optimistic state + lost-vote
    *  auto-retry sinyali. Hedef değişince otomatik sıfırlanır. */
   const [iPressedLocally, setIPressedLocally] = useState(false);
+  /** Lokal "rövanş oyumu gönderdim" bayrağı. UI optimistic + lost-vote
+   *  auto-retry sinyali. status finished'dan çıkınca sıfırlanır. */
+  const [iRequestedRematchLocally, setIRequestedRematchLocally] = useState(false);
 
   /* ── Identity (set fresh on create/join) ──────────────────── */
   const myIdRef = useRef<string>("");
@@ -365,6 +368,11 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           }
           if (r.status === "finished") {
             setPhase("finished");
+          }
+          // Rövanş reset → her iki tarafta lobby'ye dön.
+          // (waiting'e başka geçiş yolu şu an yok; ileride eklenirse de güvenli.)
+          if (r.status === "waiting") {
+            setPhase(prev => (prev === "lobby" ? prev : "lobby"));
           }
         },
       )
@@ -913,6 +921,127 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     room?.pass_requested_by?.length,
     processSkip,
     room?.pass_requested_by,
+  ]);
+
+  /* ───────────────────────────────────────────────────────────
+     RÖVANŞ — request + host-side reset processor
+  ─────────────────────────────────────────────────────────── */
+
+  /** Sonuç ekranında "Rövanş İste" / "Kabul Et" tıklaması. Idempotent:
+   *  Zaten oyum varsa no-op. Status 'finished' guard'ı stale-status
+   *  korumasıdır (host arada reset atmışsa UPDATE silently no-op olur). */
+  const requestRematch = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.status !== "finished") return;
+    const myId = myIdRef.current;
+
+    const existing = r.rematch_requested_by ?? [];
+    if (existing.includes(myId)) {
+      setIRequestedRematchLocally(true);
+      return;
+    }
+
+    const newVotes = [...existing, myId];
+    setIRequestedRematchLocally(true);
+
+    const { error } = await supabase
+      .from("wheel_duel_rooms")
+      .update({ rematch_requested_by: newVotes })
+      .eq("id", r.id)
+      .eq("status", "finished"); // 🔒 host arada reset attıysa yazma
+
+    if (error) {
+      console.error("[WheelDuel] requestRematch failed", error);
+    }
+  }, []);
+
+  /** Sadece host. İki rövanş oyu toplandığında atomik reset:
+   *   1) wheel_duel_players.score = 0  (room_id eşleşen tüm satırlar)
+   *   2) wheel_duel_rooms UPDATE: status='waiting' + tüm gameplay alanlarını
+   *      sıfırla (started_at, finished_*, winner, target, used, pass_*,
+   *      rematch_*). Guard: .eq("status","finished") → double-reset no-op. */
+  const processRematch = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.host_player_id !== myIdRef.current) return;
+    if (r.status !== "finished") return;
+    if ((r.rematch_requested_by ?? []).length < 2) return;
+
+    // 1) Skorları sıfırla. Lobby ekranı skor göstermiyor; bu UPDATE
+    //    finished overlay henüz açıkken atılır ama hemen ardından room
+    //    UPDATE'i status'u 'waiting'e çevirip overlay'i kapatır.
+    const { error: scoreErr } = await supabase
+      .from("wheel_duel_players")
+      .update({ score: 0 })
+      .eq("room_id", r.id);
+
+    if (scoreErr) {
+      console.error("[WheelDuel] processRematch score reset failed", scoreErr);
+      // Devam et — room reset yine de yapılmalı; aksi halde lobby'ye
+      // dönemeyiz ve kullanıcı sıkışır. Skor next maç başında startGame
+      // sırasında zaten kritik değil; tek senaryo: skor 0'dan başlamayabilir.
+    }
+
+    // 2) Room'u tamamen sıfırla. Guard concurrent host-yarışını engeller.
+    const { error: roomErr } = await supabase
+      .from("wheel_duel_rooms")
+      .update({
+        status: "waiting",
+        started_at: null,
+        finished_at: null,
+        finished_reason: null,
+        winner_player_id: null,
+        current_target_topoid: null,
+        used_target_topoids: [],
+        pass_requested_by: [],
+        pass_target_topoid: null,
+        rematch_requested_by: [],
+      })
+      .eq("id", r.id)
+      .eq("status", "finished");
+
+    if (roomErr) {
+      console.error("[WheelDuel] processRematch room reset failed", roomErr);
+    }
+  }, []);
+
+  /* Status finished'dan çıkışta lokal oy bayrağını sıfırla. Yeni maçta
+   * eski rövanş niyetinin yanlışlıkla auto-retry'a yol açmasını önler. */
+  useEffect(() => {
+    if (room?.status !== "finished") {
+      setIRequestedRematchLocally(false);
+    }
+  }, [room?.status]);
+
+  /* Lost-vote auto-retry: lokal olarak oyladığımı düşünüyorum ama DB'de
+   * oyum yoksa (last-write-wins race), yeniden gönder. requestRematch
+   * idempotent — sonsuz döngü riski yok. */
+  useEffect(() => {
+    if (!iRequestedRematchLocally) return;
+    if (room?.status !== "finished") return;
+    const myId = myIdRef.current;
+    if ((room.rematch_requested_by ?? []).includes(myId)) return;
+    requestRematch();
+  }, [
+    iRequestedRematchLocally,
+    room?.status,
+    room?.rematch_requested_by,
+    requestRematch,
+  ]);
+
+  /* Host: iki rövanş oyu toplandıysa atomik reset'i tetikle */
+  useEffect(() => {
+    if (!isHost) return;
+    if (room?.status !== "finished") return;
+    if ((room.rematch_requested_by ?? []).length < 2) return;
+    processRematch();
+  }, [
+    isHost,
+    room?.status,
+    room?.rematch_requested_by?.length,
+    room?.rematch_requested_by,
+    processRematch,
   ]);
 
   /* ───────────────────────────────────────────────────────────
@@ -1881,6 +2010,29 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         const titleText = isTie ? "BERABERE" : iWon ? "KAZANDIN!" : "KAYBETTİN";
         const emoji = isTie ? "🤝" : iWon ? "🏆" : "💀";
 
+        // Rövanş 4-state hesap
+        const myId = myIdRef.current;
+        const rematchVotes = room.rematch_requested_by ?? [];
+        const iVotedRematch = rematchVotes.includes(myId);
+        const oppVotedRematch = rematchVotes.some(v => v !== myId);
+        let rematchLabel: string;
+        let rematchDisabled: boolean;
+        let rematchClassName = "wheel-ghost-btn";
+        if (iVotedRematch && oppVotedRematch) {
+          rematchLabel = "↺ Rövanş hazırlanıyor...";
+          rematchDisabled = true;
+        } else if (iVotedRematch) {
+          rematchLabel = "✓ Rövanş istedin · Rakip bekleniyor (1/2)";
+          rematchDisabled = true;
+        } else if (oppVotedRematch) {
+          rematchLabel = "↺ Rakip rövanş istiyor · Kabul Et";
+          rematchDisabled = false;
+          rematchClassName = "wheel-primary-btn";
+        } else {
+          rematchLabel = "↺ Rövanş İste";
+          rematchDisabled = false;
+        }
+
         return (
           <div className="wheel-result-backdrop">
             <div className="wheel-result-panel">
@@ -1930,11 +2082,18 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                 </button>
                 <button
                   type="button"
-                  className="wheel-ghost-btn"
-                  disabled
-                  title="Yakında"
+                  className={rematchClassName}
+                  disabled={rematchDisabled}
+                  onClick={
+                    rematchDisabled
+                      ? undefined
+                      : () => {
+                          playSound("click");
+                          requestRematch();
+                        }
+                  }
                 >
-                  ↺ Rövanş · Yakında
+                  {rematchLabel}
                 </button>
                 <button
                   type="button"
