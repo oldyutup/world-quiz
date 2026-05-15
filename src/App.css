@@ -6103,12 +6103,6 @@ body {
   text-align: right;
 }
 
-.xpgain-xp-mode {
-  grid-column: 3 / span 2;
-  text-align: left;
-  opacity: 0.85;
-}
-
 /* ── Kapat butonu ── */
 .xpgain-close {
   background: transparent;

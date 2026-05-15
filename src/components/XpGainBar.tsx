@@ -151,6 +151,8 @@ export default function XpGainBar({
   const totalProgressPct = Math.round(totalProgress.progressRatio * 100);
   const totalLevelDisplay = getLevelFromXp(Math.round(animTotal));
 
+  const modeProgress = getLevelProgress(Math.round(animMode));
+  const modeProgressPct = Math.round(modeProgress.progressRatio * 100);
   const modeLevelDisplay = getLevelFromXp(Math.round(animMode));
 
   return (
@@ -208,8 +210,15 @@ export default function XpGainBar({
             <div className={`xpgain-row ${leveledUpMode ? "xpgain-row-lvlup" : ""}`}>
               <span className="xpgain-label">{modeLabel}</span>
               <span className="xpgain-level">Lv {modeLevelDisplay}</span>
-              <span className="xpgain-xp xpgain-xp-mode">
-                {Math.round(animMode)} XP
+              <div className="xpgain-bar">
+                <div
+                  className="xpgain-bar-fill"
+                  style={{ width: `${modeProgressPct}%` }}
+                />
+                {leveledUpMode && <div className="xpgain-bar-shine" />}
+              </div>
+              <span className="xpgain-xp">
+                {modeProgress.xpIntoLevel}/{modeProgress.nextLevelXp - modeProgress.currentLevelXp}
               </span>
             </div>
           </div>
