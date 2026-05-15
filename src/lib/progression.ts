@@ -23,7 +23,7 @@ import { supabase } from "./supabase";
    ──────────────────────────────────────────────── */
 
 /** Şu an XP destekli online 1v1 modlar. İleride buraya yeni mod eklenebilir. */
-export type ModeKey = "country_duel" | "flag_duel";
+export type ModeKey = "country_duel" | "flag_duel" | "wheel_duel";
 
 /** Maç sonucu. */
 export type MatchResult = "win" | "loss" | "draw";
@@ -39,6 +39,14 @@ export interface CountryDuelXpParams {
 /** Flag Duel XP hesaplaması için girdiler. */
 export interface FlagDuelXpParams {
   /** Oyuncunun doğru bildiği bayrak sayısı. */
+  correctCount: number;
+  /** Maç sonucu. */
+  result: MatchResult;
+}
+
+/** Wheel Duel (Online Çark 1v1) XP hesaplaması için girdiler. */
+export interface WheelDuelXpParams {
+  /** Oyuncunun haritada ilk bulduğu doğru ülke sayısı (kendi skoru). */
   correctCount: number;
   /** Maç sonucu. */
   result: MatchResult;
@@ -222,6 +230,39 @@ export function calculateFlagDuelXp(
 ): XpBreakdown {
   const participation = 10;
   const perCorrect = 4;
+  const correctCount = Math.max(0, Math.floor(params.correctCount || 0));
+  const correctTotal = perCorrect * correctCount;
+  const bonus = resultBonus(params.result);
+  const total = participation + correctTotal + bonus;
+
+  return {
+    participation,
+    perCorrect,
+    correctCount,
+    correctTotal,
+    resultBonus: bonus,
+    resultBonusLabel: params.result === "win"
+      ? "win"
+      : params.result === "draw"
+        ? "draw"
+        : "loss",
+    total,
+  };
+}
+
+/**
+ * Wheel Duel (Online Çark 1v1) XP:
+ *   - Katılım:        +10
+ *   - Her doğru ülke: +5
+ *   - Kazanma:        +25
+ *   - Beraberlik:     +10
+ *   - Kaybetme:       +5
+ */
+export function calculateWheelDuelXp(
+  params: WheelDuelXpParams
+): XpBreakdown {
+  const participation = 10;
+  const perCorrect = 5;
   const correctCount = Math.max(0, Math.floor(params.correctCount || 0));
   const correctTotal = perCorrect * correctCount;
   const bonus = resultBonus(params.result);

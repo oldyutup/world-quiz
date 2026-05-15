@@ -92,6 +92,14 @@ export interface WheelDuelRoom {
    *  İki oy toplandığında host atomic UPDATE ile room'u 'waiting'e döndürür
    *  ve bu listeyi sıfırlar. */
   rematch_requested_by:  string[];
+  /** Bu odada şu ana kadar oynanan maç sayısı. İlk maç = 1, her rövanş
+   *  reset'inde +1. Debug ve ileride leaderboard segmentasyonu için. */
+  match_seq:             number;
+  /** Aktif maçın benzersiz UUID'si. XP RPC'sine `p_room_id` olarak verilir.
+   *  Aynı oda satırında rövanş oynandığı için xp_events UNIQUE constraint'ini
+   *  ihlal etmemek adına her rövanş reset'inde yeni UUID atanır (host atomik
+   *  UPDATE ile yayar, realtime sayesinde iki client da aynı değeri görür). */
+  current_match_id:      string;
   created_at:            string;
   updated_at:            string;
 }

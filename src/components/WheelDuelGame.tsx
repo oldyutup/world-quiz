@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
+import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
 import {
   supabase,
@@ -38,6 +39,12 @@ import {
   getCountdownSoundMode,
   shouldPlayCountdownSound,
 } from "../lib/sound";
+import {
+  awardXpEvent,
+  calculateWheelDuelXp,
+  resultFromScores,
+  type XpBreakdown,
+} from "../lib/progression";
 import {
   getFlagPool,
   getContinentIds,
@@ -257,6 +264,23 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   /** Lokal "rövanş oyumu gönderdim" bayrağı. UI optimistic + lost-vote
    *  auto-retry sinyali. status finished'dan çıkınca sıfırlanır. */
   const [iRequestedRematchLocally, setIRequestedRematchLocally] = useState(false);
+
+  /* ── XP (sadece giriş yapmış kullanıcı için, maç başına 1 kez) ── */
+  const [xpResult, setXpResult] = useState<{
+    awarded:     boolean;
+    xpEarned:    number;
+    prevTotalXp: number;
+    totalXp:     number;
+    prevModeXp:  number;
+    modeXp:      number;
+    breakdown:   XpBreakdown;
+    /** Footer'ın React `key`'i — rematch sonrası temiz mount için
+     *  current_match_id kullanıyoruz (her rövanşta DB tarafında değişir). */
+    roomKey:     string;
+    /** Kullanıcı X'e basınca true olur. */
+    dismissed:   boolean;
+  } | null>(null);
+  const xpAwardedRef = useRef(false);
 
   /* ── Identity (set fresh on create/join) ──────────────────── */
   const myIdRef = useRef<string>("");
@@ -804,6 +828,114 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   }, [phase, room?.winner_player_id, room]);
 
   /* ───────────────────────────────────────────────────────────
+     XP — oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı)
+     Genel XP + mod XP ("wheel_duel") aynı RPC çağrısında işlenir.
+     Idempotency anahtarı: room.current_match_id (rövanşta yenilenir).
+  ─────────────────────────────────────────────────────────── */
+  const isLoggedInPlayer = !!profile?.username;
+  useEffect(() => {
+    if (phase !== "finished" || !room) return;
+    if (xpAwardedRef.current) return;
+    if (!isLoggedInPlayer || !profile?.id) return;
+    if (!room.current_match_id) return;
+
+    const me  = players.find(p => p.id === myIdRef.current);
+    const opp = players.find(p => p.id !== myIdRef.current);
+    if (!me) return;
+
+    const myScoreFinal  = me.score  ?? 0;
+    const oppScoreFinal = opp?.score ?? 0;
+
+    // winner_player_id finishGame içinde yazılıyor; daha güvenilir kaynak.
+    // Yoksa skor karşılaştırmasına düşeriz (savunma).
+    const winnerId = room.winner_player_id;
+    const matchResult =
+      winnerId === null || winnerId === undefined
+        ? resultFromScores(myScoreFinal, oppScoreFinal)
+        : winnerId === myIdRef.current
+          ? "win"
+          : "loss";
+
+    xpAwardedRef.current = true;
+
+    const breakdown = calculateWheelDuelXp({
+      correctCount: myScoreFinal,
+      result: matchResult,
+    });
+
+    const profileId = profile.id;
+    const matchId   = room.current_match_id;
+    const realRoomId = room.id;
+
+    (async () => {
+      const res = await awardXpEvent({
+        profileId,
+        modeKey:  "wheel_duel",
+        roomId:   matchId,
+        xpEarned: breakdown.total,
+        result:   matchResult,
+        details: {
+          my_score:        myScoreFinal,
+          opp_score:       oppScoreFinal,
+          breakdown,
+          real_room_id:    realRoomId,
+          match_seq:       room.match_seq,
+          finished_reason: room.finished_reason,
+          region:          room.region,
+          duration_seconds: room.duration_seconds,
+        },
+      });
+
+      if (res.error) {
+        xpAwardedRef.current = false;
+        console.error("[WheelDuel] XP yazılamadı:", res.error);
+        return;
+      }
+
+      // prev değerlerini RPC dönüşünden geriye türet (snapshot güvensiz).
+      const prevModeXp  = res.awarded ? Math.max(0, res.modeXp  - res.xpEarned) : res.modeXp;
+      const prevTotalXp = res.awarded ? Math.max(0, res.totalXp - res.xpEarned) : res.totalXp;
+
+      setXpResult({
+        awarded:     res.awarded,
+        xpEarned:    res.xpEarned,
+        prevTotalXp,
+        totalXp:     res.totalXp,
+        prevModeXp,
+        modeXp:      res.modeXp,
+        breakdown,
+        roomKey:     matchId,
+        dismissed:   false,
+      });
+    })();
+  }, [
+    phase,
+    room,
+    players,
+    isLoggedInPlayer,
+    profile?.id,
+  ]);
+
+  /* ── XP barı: kazandın/kaybettin sesi başladıktan sonra ekrana çıkar ── */
+  const [xpFooterVisible, setXpFooterVisible] = useState(false);
+  useEffect(() => {
+    if (!xpResult) {
+      setXpFooterVisible(false);
+      return;
+    }
+    const t = setTimeout(() => setXpFooterVisible(true), 1200);
+    return () => clearTimeout(t);
+  }, [xpResult]);
+
+  /* ── Status finished'dan çıkışta XP state'ini sıfırla (yeni maça hazırlık) ── */
+  useEffect(() => {
+    if (room?.status !== "finished") {
+      setXpResult(null);
+      xpAwardedRef.current = false;
+    }
+  }, [room?.status]);
+
+  /* ───────────────────────────────────────────────────────────
      PAS GEÇ — request + host-side skip processor
   ─────────────────────────────────────────────────────────── */
 
@@ -984,6 +1116,10 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     }
 
     // 2) Room'u tamamen sıfırla. Guard concurrent host-yarışını engeller.
+    //    match_seq +1 (debug/segment), current_match_id yeni UUID
+    //    (XP RPC idempotency anahtarı; aynı oda satırında ikinci maç
+    //    aynı xp_events satırına çakışmasın diye). Host üretir, realtime
+    //    UPDATE her iki client'a da aynı değeri yayar.
     const { error: roomErr } = await supabase
       .from("wheel_duel_rooms")
       .update({
@@ -997,6 +1133,8 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         pass_requested_by: [],
         pass_target_topoid: null,
         rematch_requested_by: [],
+        match_seq: (r.match_seq ?? 1) + 1,
+        current_match_id: crypto.randomUUID(),
       })
       .eq("id", r.id)
       .eq("status", "finished");
@@ -1261,6 +1399,8 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     setWrongId(null);
     setLastClaimedTopoId(null);
     setIPressedLocally(false);
+    setXpResult(null);
+    xpAwardedRef.current = false;
     endingRef.current = false;
     prevTargetRef.current = null;
     if (wrongFlashTimerRef.current) {
@@ -2108,6 +2248,24 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           </div>
         );
       })()}
+
+      {/* ════════ XP KAZANIMI — fixed footer ════════ */}
+      {xpResult && xpFooterVisible && !xpResult.dismissed && (
+        <XpGainBar
+          key={xpResult.roomKey}
+          modeLabel="Çark 1v1"
+          prevTotalXp={xpResult.prevTotalXp}
+          newTotalXp={xpResult.totalXp}
+          prevModeXp={xpResult.prevModeXp}
+          newModeXp={xpResult.modeXp}
+          xpEarned={xpResult.xpEarned}
+          awarded={xpResult.awarded}
+          breakdown={xpResult.breakdown}
+          onDismiss={() =>
+            setXpResult(prev => (prev ? { ...prev, dismissed: true } : null))
+          }
+        />
+      )}
     </div>
   );
 }
