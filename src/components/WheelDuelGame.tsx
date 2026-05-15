@@ -32,7 +32,12 @@ import {
   type WheelDuelRoom,
   type WheelDuelPlayer,
 } from "../lib/supabase";
-import { playSound } from "../lib/sound";
+import {
+  playSound,
+  stopSound,
+  getCountdownSoundMode,
+  shouldPlayCountdownSound,
+} from "../lib/sound";
 import {
   getFlagPool,
   getContinentIds,
@@ -263,6 +268,10 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   const roomRef = useRef<WheelDuelRoom | null>(null);
   const timeLeftRef = useRef<number>(0);
   const finishGameRef = useRef<((reason: "timeout" | "pool") => Promise<void>) | null>(null);
+
+  /* ── Sound guards (countdown + result tek sefer trigger) ── */
+  const countdownPlayedRef = useRef(false);
+  const resultSoundPlayedRef = useRef(false);
 
   /* ── Derived ─────────────────────────────────────────────── */
   const isHost = !!room && room.host_player_id === myIdRef.current;
@@ -717,6 +726,74 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     room?.duration_seconds,
     finishGame,
   ]);
+
+  /* ───────────────────────────────────────────────────────────
+     SES — geri sayım (last10 / last20 ayarına bağlı, diğer
+     modlardaki guard mantığı). Genel Ses kapalıysa playSound
+     zaten erkenden return ediyor.
+  ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (phase !== "playing") {
+      countdownPlayedRef.current = false;
+      stopSound("countdown20");
+      return;
+    }
+
+    const mode = getCountdownSoundMode();
+    const limit = mode === "last20" ? 20 : mode === "last10" ? 10 : 0;
+    const durationSeconds = Number(room?.duration_seconds ?? 0);
+
+    if (limit === 0 || durationSeconds <= limit) {
+      countdownPlayedRef.current = false;
+      stopSound("countdown20");
+      return;
+    }
+
+    if (!shouldPlayCountdownSound(timeLeft, mode)) {
+      countdownPlayedRef.current = false;
+      stopSound("countdown20");
+      return;
+    }
+
+    if (timeLeft > 0 && !countdownPlayedRef.current) {
+      countdownPlayedRef.current = true;
+      playSound("countdown20");
+    }
+
+    if (timeLeft <= 0) {
+      stopSound("countdown20");
+    }
+  }, [phase, timeLeft, room?.duration_seconds]);
+
+  /* ── Unmount: countdown sesini garanti durdur ── */
+  useEffect(() => {
+    return () => {
+      stopSound("countdown20");
+    };
+  }, []);
+
+  /* ───────────────────────────────────────────────────────────
+     SES — sonuç ekranı (win/lose tek sefer). Berabere'de hiç
+     çalma (diğer modlarla aynı).
+  ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (phase !== "finished" || !room) {
+      resultSoundPlayedRef.current = false;
+      return;
+    }
+    if (resultSoundPlayedRef.current) return;
+    resultSoundPlayedRef.current = true;
+
+    const winnerId = room.winner_player_id;
+    const iWon = !!winnerId && winnerId === myIdRef.current;
+    const isTie = !winnerId;
+
+    if (iWon) {
+      playSound("win", { restart: true });
+    } else if (!isTie) {
+      playSound("lose", { restart: true });
+    }
+  }, [phase, room?.winner_player_id, room]);
 
   /* ───────────────────────────────────────────────────────────
      PAS GEÇ — request + host-side skip processor
@@ -1644,8 +1721,8 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         </div>
       )}
 
-      {/* ════════ PLAYING ════════ */}
-      {phase === "playing" && room && (() => {
+      {/* ════════ PLAYING (finished'da da render — arka plan blur'lansın) ════════ */}
+      {(phase === "playing" || phase === "finished") && room && (() => {
         const me = players.find(p => p.id === myIdRef.current);
         const opp = players.find(p => p.id !== myIdRef.current);
         const myScore = me?.score ?? 0;
@@ -1788,7 +1865,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         );
       })()}
 
-      {/* ════════ FINISHED ════════ */}
+      {/* ════════ FINISHED — overlay (arka plan = blur'lu playing UI) ════════ */}
       {phase === "finished" && room && (() => {
         const me = players.find(p => p.id === myIdRef.current);
         const opp = players.find(p => p.id !== myIdRef.current);
@@ -1801,19 +1878,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           room.finished_reason === "pool"
             ? "Tüm ülkeler kullanıldı."
             : "Süre doldu.";
+        const titleText = isTie ? "BERABERE" : iWon ? "KAZANDIN!" : "KAYBETTİN";
+        const emoji = isTie ? "🤝" : iWon ? "🏆" : "💀";
 
         return (
-          <div className="duel-lobby">
-            <div className="duel-lobby-card" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 56, marginBottom: 8 }}>
-                {isTie ? "🤝" : iWon ? "🏆" : "💀"}
-              </div>
-              <h2 className="duel-lobby-title" style={{ marginBottom: 6 }}>
-                {isTie ? "Berabere" : iWon ? "Kazandın!" : "Kaybettin"}
-              </h2>
+          <div className="wheel-result-backdrop">
+            <div className="wheel-result-panel">
+              <div className="wheel-result-emoji">{emoji}</div>
+              <h2 className="wheel-result-title">{titleText}</h2>
               <p
                 className="duel-lobby-desc"
-                style={{ maxWidth: 460, margin: "0 auto 16px" }}
+                style={{ margin: "0 0 4px", fontSize: "0.95rem" }}
               >
                 {reasonText}
               </p>
@@ -1830,27 +1905,44 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  justifyContent: "center",
-                  flexWrap: "wrap",
-                  marginTop: 20,
-                }}
-              >
-                <button className="btn btn-accent" onClick={leaveRoom}>
-                  ← Lobiye Dön
-                </button>
+              <div className="wheel-result-rows">
+                <div className="wheel-result-row">
+                  <span>Süre</span>
+                  <strong>{durationLabel(room.duration_seconds)}</strong>
+                </div>
+                <div className="wheel-result-row">
+                  <span>Bölge</span>
+                  <strong>{regionLabel(room.region)}</strong>
+                </div>
+              </div>
+
+              <div className="wheel-result-actions">
                 <button
-                  className="btn btn-ghost"
+                  type="button"
+                  className="wheel-primary-btn"
                   onClick={() => {
                     playSound("click");
-                    if (room) leaveRoom();
+                    leaveRoom();
                     onHome();
                   }}
                 >
                   ⌂ Ana Menü
+                </button>
+                <button
+                  type="button"
+                  className="wheel-ghost-btn"
+                  disabled
+                  title="Yakında"
+                >
+                  ↺ Rövanş · Yakında
+                </button>
+                <button
+                  type="button"
+                  className="wheel-ghost-btn"
+                  disabled
+                  title="Yakında"
+                >
+                  ⚡ Hızlı Eşleş · Yakında
                 </button>
               </div>
             </div>
