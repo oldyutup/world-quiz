@@ -100,6 +100,11 @@ export interface WheelDuelRoom {
    *  ihlal etmemek adına her rövanş reset'inde yeni UUID atanır (host atomik
    *  UPDATE ile yayar, realtime sayesinde iki client da aynı değeri görür). */
   current_match_id:      string;
+  /** Oda nasıl oluşturuldu:
+   *   - 'manual'      → "Oda Kur" / "Kodla Katıl" (lobby gösterilir, host start atar)
+   *   - 'quick_match' → wheel_duel_quick_match RPC (lobby YOK, started_at +3s
+   *                     buffer ile direkt 'playing'; client countdown gösterir) */
+  room_source:           "manual" | "quick_match";
   created_at:            string;
   updated_at:            string;
 }

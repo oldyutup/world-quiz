@@ -6663,6 +6663,11 @@ body {
   backdrop-filter: blur(4px);
 }
 
+@keyframes wd-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .wheel-result-panel {
   background: var(--surface);
   border: 1px solid var(--border);
