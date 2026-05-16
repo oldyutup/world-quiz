@@ -2319,8 +2319,8 @@ setXpResult(null); xpAwardedRef.current = false;
         </div>
       )}
       
-      {/* ════════ PLAYING ════════ */}
-      {phase === "playing" && (
+      {/* ════════ PLAYING (finished'da da render — arka plan blur'lansın) ════════ */}
+      {(phase === "playing" || phase === "finished") && (
         <>
           {/* Score bar — with quit button and label toggle */}
           <div className="duel-score-bar">
@@ -2470,10 +2470,10 @@ setXpResult(null); xpAwardedRef.current = false;
         </>
       )}
 
-      {/* ════════ FINISHED ════════ */}
+      {/* ════════ FINISHED — overlay (arka plan = blur'lu playing UI) ════════ */}
       {phase === "finished" && (
-        <div className="duel-lobby">
-          <div className="duel-lobby-card">
+        <div className="wheel-result-backdrop">
+          <div className="duel-result-card">
             <div className="duel-result-emoji">{result.emoji}</div>
             <h2 className="duel-result-title">{result.title}</h2>
             {result.subtitle && (
@@ -2500,14 +2500,20 @@ setXpResult(null); xpAwardedRef.current = false;
             </div>
 
             {/* Meta */}
-            <div className="duel-result-meta">
-              <span>⏱ {durationLabel}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>{regionLabel}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>Toplam {claims.length} ülke</span>
+            <div className="wheel-result-rows">
+              <div className="wheel-result-row">
+                <span>Süre</span>
+                <strong>{durationLabel}</strong>
+              </div>
+              <div className="wheel-result-row">
+                <span>Bölge</span>
+                <strong>{regionLabel}</strong>
+              </div>
+              <div className="wheel-result-row">
+                <span>Yazılan ülke</span>
+                <strong>{claims.length}</strong>
+              </div>
             </div>
-            
 
             {errorMsg && <p className="duel-error">{errorMsg}</p>}
 
