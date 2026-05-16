@@ -25,7 +25,20 @@ function loadTopo(): Promise<Feature<Geometry>[]> {
       .then(r => r.json())
       .then((topo: Topology) => {
         const fc = feature(topo, topo.objects.countries as GeometryCollection) as FeatureCollection<Geometry>;
-        _topoCache = fc.features as Feature<Geometry>[];
+        // Kosovo: no ISO id in world-atlas → assign "XK" to match our country entry.
+        // Somaliland: no ISO id, not a separate country → assign Somalia's id "706"
+        //   so its polygon is painted whenever Somalia is guessed.
+        // W. Sahara: has id "732" but is treated as part of Morocco (id "504")
+        //   so its polygon is painted whenever Morocco is guessed.
+        _topoCache = (fc.features as Feature<Geometry>[]).map(f => {
+          const props = (f as unknown as { properties?: { name?: string } }).properties;
+          if (f.id == null || f.id === "") {
+            if (props?.name === "Kosovo")     return { ...f, id: "XK" };
+            if (props?.name === "Somaliland") return { ...f, id: "706" };
+          }
+          if (f.id === "732") return { ...f, id: "504" }; // W. Sahara → Morocco
+          return f;
+        });
         _topoWaiters.forEach(fn => fn(_topoCache!));
         _topoWaiters.length = 0;
       });
@@ -248,6 +261,13 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const cssTransform = `translate(${xf.tx}px,${xf.ty}px) scale(${xf.k})`;
   const labelScale   = 1 / xf.k;
 
+  // For ids shared by multiple features (e.g. Somaliland→Somalia), track the
+  // primary feature (largest area) so we render labels once and mark extras.
+  const maxAreaById = new Map<string, number>();
+  computed.forEach(cf => {
+    if ((maxAreaById.get(cf.id) ?? -1) < cf.area) maxAreaById.set(cf.id, cf.area);
+  });
+
   return (
     <div ref={containerRef} className="map-container-inner">
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="world-svg"
@@ -262,16 +282,18 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
             const isGuessed = guessedISOs.has(cf.id);
             const isLast    = cf.id === lastGuessed;
             const isWrong   = wrongId === cf.id;
+            const isSecondary = cf.area < (maxAreaById.get(cf.id) ?? cf.area);
             return (
               <path key={cf.id + cf.d.slice(1, 8)} d={cf.d}
                 data-topo-id={cf.id}
-                className={["country-path",!inScope?"out-of-scope":"",isGuessed?"guessed":"",isLast?"last":"",isWrong?"wheel-wrong":""].filter(Boolean).join(" ")}
+                className={["country-path",!inScope?"out-of-scope":"",isGuessed?"guessed":"",isLast?"last":"",isWrong?"wheel-wrong":"",isSecondary?"merged-secondary":""].filter(Boolean).join(" ")}
                 style={onCountryClick ? { cursor: "pointer" } : undefined}
               />
             );
           })}
           {showLabels && computed
-            .filter(cf => guessedISOs.has(cf.id) && cf.display && cf.area >= MIN_LABEL && cf.cx !== 0)
+            .filter(cf => guessedISOs.has(cf.id) && cf.display && cf.area >= MIN_LABEL && cf.cx !== 0
+              && cf.area === maxAreaById.get(cf.id))
             .map(cf => {
               const base = Math.min(11, Math.max(5, Math.sqrt(cf.area) * 0.27));
               return (
@@ -706,6 +728,11 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
 
   const t3 = `translate(${xf3.tx}px,${xf3.ty}px) scale(${xf3.k})`;
 
+  const maxAreaById3 = new Map<string, number>();
+  computed3.forEach(cf => {
+    if ((maxAreaById3.get(cf.id) ?? -1) < cf.area) maxAreaById3.set(cf.id, cf.area);
+  });
+
   return (
     <div ref={containerRef} className="map-container-inner">
       <svg
@@ -728,7 +755,8 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
           {computed3.map(cf => {
             const isMine = myTopoIds.has(cf.id);
             const isOpp  = oppTopoIds.has(cf.id);
-            const cls = ["country-path", isMine ? "duel-mine" : isOpp ? "duel-opp" : ""].filter(Boolean).join(" ");
+            const isSecondary3 = cf.area < (maxAreaById3.get(cf.id) ?? cf.area);
+            const cls = ["country-path", isMine ? "duel-mine" : isOpp ? "duel-opp" : "", isSecondary3 ? "merged-secondary" : ""].filter(Boolean).join(" ");
             return <path key={cf.id+cf.d.slice(1,8)} d={cf.d} className={cls}/>;
           })}
         </g>
@@ -748,6 +776,8 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
 
   const effectiveMin = 40 / (xf3.k * xf3.k);
   if (cf.area < effectiveMin) return false;
+
+  if (cf.area < (maxAreaById3.get(cf.id) ?? cf.area)) return false;
 
   return true;
 })

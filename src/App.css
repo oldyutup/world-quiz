@@ -337,6 +337,10 @@ body {
 .country-path.out-of-scope { fill:var(--land-oos); opacity:.55; }
 .country-path.guessed   { fill:var(--guessed); opacity:.82; }
 .country-path.last      { fill:var(--guessed-last); opacity:1; animation:pop .4s ease; }
+/* Secondary features sharing a primary country's id (e.g. Somaliland→Somalia):
+   match stroke to fill so the inner border between them is invisible. */
+.country-path.guessed.merged-secondary { stroke:var(--guessed); }
+.country-path.last.merged-secondary    { stroke:var(--guessed-last); }
 @keyframes pop { 0%{opacity:.25} 60%{opacity:1} }
 .country-label { font-family:var(--font-body); font-weight:700; fill:rgba(255,255,255,.92); pointer-events:none; paint-order:stroke; stroke:rgba(0,0,0,.6); stroke-width:1.5px; }
 .label-last    { fill:#fff; stroke:rgba(0,45,10,.8); }
