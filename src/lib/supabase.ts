@@ -43,6 +43,12 @@ export interface DuelRoom {
   disconnected_player_id: string | null;
   /** Timestamp when the disconnect was recorded — used to compute remaining grace */
   disconnect_at:          string | null;
+
+  /** Oda nasıl oluşturuldu:
+   *   - 'manual'      → createRoom + kod ile katıl + host startGame (lobby)
+   *   - 'quick_match' → flag_duel_quick_match RPC (lobby YOK, started_at +3s)
+   *  Default 'manual'; country DuelGame manuel akışı bu varsayılan ile çalışır. */
+  room_source?:           "manual" | "quick_match";
 }
 
 export interface DuelPlayer {
