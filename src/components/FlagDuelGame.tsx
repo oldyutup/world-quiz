@@ -292,6 +292,14 @@ function buildFlagPoolForRegion(region: string): CountryEntry[] {
   return getFlagPool(denorm as Continent | "world", "all");
 }
 
+/* Ortak pas kotası — tur sayısına göre */
+function passQuota(totalRounds: number): number {
+  if (totalRounds <= 5)  return 3;
+  if (totalRounds <= 10) return 5;
+  if (totalRounds <= 15) return 7;
+  return 10;
+}
+
 /* claim sınıflandırma */
 const isPassClaim    = (c: DuelClaim) => c.country_code.startsWith("PASS:");
 const isTimeoutClaim = (c: DuelClaim) => c.country_code.startsWith("TIMEOUT:");
@@ -560,14 +568,15 @@ useEffect(() => {
   const roundKey = room ? `R${room.current_round}:${room.current_flag ?? ""}` : "";
 
   const passedThisRound = useMemo(() => {
-    if (!room?.current_round) return new Set<string>();
-    const prefix = `PASS:R${room.current_round}:`;
+    if (!room?.current_round || !room?.current_flag) return new Set<string>();
+    // Yeni format: PASS:R{round}:{flagCode}:{playerId}
+    const prefix = `PASS:R${room.current_round}:${room.current_flag}:`;
     const set = new Set<string>();
     claims.forEach(c => {
       if (c.country_code.startsWith(prefix)) set.add(c.player_id);
     });
     return set;
-  }, [claims, room?.current_round]);
+  }, [claims, room?.current_round, room?.current_flag]);
 
   const winnerOfThisRound = useMemo(() => {
     if (!room?.current_flag) return null;
@@ -583,6 +592,7 @@ useEffect(() => {
 
   const myPassed      = passedThisRound.has(myId);
   const oppPassed     = oppPlayer ? passedThisRound.has(oppPlayer.id) : false;
+
   const roundAnswered = winnerOfThisRound !== null;
   const roundTimedOut = timeoutOfThisRound !== null;
   const roundResolved = roundAnswered || roundTimedOut;
@@ -595,6 +605,28 @@ useEffect(() => {
   const continentLabel = CONTINENT_OPTIONS_UI.find(c => c.value === regionUiVal)?.label ?? "🌍 Dünya";
   const totalRounds = room?.total_rounds ?? hostRounds;
   const roundsLabel = `🎯 ${totalRounds} Tur`;
+
+  /* Tamamlanmış ortak pas sayısı ve kalan hak
+     Format: PASS:R{round}:{flagCode}:{playerId} → parts[2] = flagCode */
+  const completedPasses = useMemo(() => {
+    const passByFlag = new Map<string, Set<string>>();
+    claims.filter(isPassClaim).forEach(c => {
+      const parts = c.country_code.split(":");
+      if (parts.length >= 4) {
+        const roundNum = parseInt(parts[1].slice(1), 10);
+        if (roundNum <= totalRounds) {
+          const flagCode = parts[2];
+          if (!passByFlag.has(flagCode)) passByFlag.set(flagCode, new Set());
+          passByFlag.get(flagCode)!.add(c.player_id);
+        }
+      }
+    });
+    let count = 0;
+    passByFlag.forEach(players => { if (players.size >= 2) count++; });
+    return count;
+  }, [claims, totalRounds]);
+
+  const passesRemaining = passQuota(totalRounds) - completedPasses;
 
   /* davet linki */
   const shareLink = room ? `${location.origin}${location.pathname}?flagDuel=${room.code}` : "";
@@ -647,77 +679,98 @@ useEffect(() => {
       const usedFlagCodes = new Set<string>();
       cs.forEach(c => {
         if (isPassClaim(c) || isTimeoutClaim(c)) {
-          // PASS:R{n}:{code} veya TIMEOUT:R{n}:{code}
+          // PASS:R{n}:{flagCode}:{playerId} → parts[2] = flagCode
+          // TIMEOUT:R{n}:{flagCode}          → parts[2] = flagCode
           const parts = c.country_code.split(":");
-          if (parts.length === 3) usedFlagCodes.add(parts[2]);
+          if (parts.length >= 3) usedFlagCodes.add(parts[2]);
         } else {
-          // Doğru cevap
           usedFlagCodes.add(c.country_code);
         }
       });
 
       const pool = flagPoolRef.current;
-      const nextFlag = pool.find(f => !usedFlagCodes.has(f.code));
-      
-      const nextRoundNum = r.current_round + 1;
       const inGolden = r.is_golden_round && r.current_round > r.total_rounds;
 
+      // ── BOTH_PASSED: tur sayacı artmaz, sadece bayrak ve timer değişir ──
+      if (reason === "both_passed") {
+        if (!inGolden) {
+          // Normal tur: kotayı fresh claims üzerinden kontrol et
+          const passByFlag = new Map<string, Set<string>>();
+          cs.filter(isPassClaim).forEach(c => {
+            const parts = c.country_code.split(":");
+            if (parts.length >= 4) {
+              const roundNum = parseInt(parts[1].slice(1), 10);
+              if (roundNum <= r.total_rounds) {
+                const flagCode = parts[2];
+                if (!passByFlag.has(flagCode)) passByFlag.set(flagCode, new Set());
+                passByFlag.get(flagCode)!.add(c.player_id);
+              }
+            }
+          });
+          const completedPassCount = [...passByFlag.values()].filter(p => p.size >= 2).length;
+          if (completedPassCount > passQuota(r.total_rounds)) {
+            dbgErr("both_passed: pas kotası aşıldı, atlandı");
+            return;
+          }
+        }
+        const nextFlag = pool.find(f => !usedFlagCodes.has(f.code));
+        if (!nextFlag) { dbgErr("both_passed: bayrak havuzu tükendi"); return; }
+        await supabase.from("duel_rooms").update({
+          current_flag: nextFlag.code,
+          current_flag_at: new Date().toISOString(),
+        } as Partial<FlagDuelRoom>).eq("id", r.id);
+        return;
+      }
+
+      // ── ANSWERED / TIMEOUT: tur ilerle ──────────────────────────────────
+      const nextFlag = pool.find(f => !usedFlagCodes.has(f.code));
+      const nextRoundNum = r.current_round + 1;
+
       if (!inGolden && nextRoundNum > r.total_rounds) {
-  const realCs = cs.filter(isRealAnswer);
-  const counts: Record<string, number> = {};
+        const realCs = cs.filter(isRealAnswer);
+        const counts: Record<string, number> = {};
+        realCs.forEach(c => {
+          counts[c.player_id] = (counts[c.player_id] ?? 0) + 1;
+        });
+        const { data: freshPlayers } = await supabase
+          .from("duel_players").select("id").eq("room_id", r.id);
+        const ids = (freshPlayers ?? []).map(p => p.id);
+        const sA = counts[ids[0]] ?? 0;
+        const sB = counts[ids[1]] ?? 0;
 
-  realCs.forEach(c => {
-    counts[c.player_id] = (counts[c.player_id] ?? 0) + 1;
-  });
+        if (sA === sB) {
+          await supabase.from("duel_rooms").update({
+            current_round: nextRoundNum,
+            current_flag: nextFlag?.code ?? null,
+            current_flag_at: new Date().toISOString(),
+            is_golden_round: true,
+            winner_player_id: null,
+            finished_reason: null,
+          }).eq("id", r.id);
+          return;
+        }
 
-  const { data: freshPlayers } = await supabase
-  .from("duel_players")
-  .select("id")
-  .eq("room_id", r.id);
-
-  const ids = (freshPlayers ?? []).map(p => p.id);
-  const sA = counts[ids[0]] ?? 0;
-  const sB = counts[ids[1]] ?? 0;
-
-  if (sA === sB) {
-    await supabase.from("duel_rooms").update({
-      current_round: nextRoundNum,
-      current_flag: nextFlag?.code ?? null,
-      current_flag_at: new Date().toISOString(),
-      is_golden_round: true,
-      winner_player_id: null,
-      finished_reason: null,
-    }).eq("id", r.id);
-
-    return;
-  }
-
-  const winner = sA > sB ? ids[0] : ids[1];
-
-  await supabase.from("duel_rooms").update({
-    status: "finished",
-    finished_reason: "score",
-    winner_player_id: winner,
-  }).eq("id", r.id);
-
-  return;
-}
+        const winner = sA > sB ? ids[0] : ids[1];
+        await supabase.from("duel_rooms").update({
+          status: "finished",
+          finished_reason: "score",
+          winner_player_id: winner,
+        }).eq("id", r.id);
+        return;
+      }
 
       if (inGolden && reason === "answered") {
-  const goldenClaims = cs.filter(
-    c => isRealAnswer(c) && c.country_code === r.current_flag
-  );
-
-  const goldenWinnerClaim = goldenClaims[goldenClaims.length - 1];
-
-  await supabase.from("duel_rooms").update({
-    status: "finished",
-    finished_reason: "score",
-    winner_player_id: goldenWinnerClaim?.player_id ?? null,
-  }).eq("id", r.id);
-
-  return;
-}
+        const goldenClaims = cs.filter(
+          c => isRealAnswer(c) && c.country_code === r.current_flag
+        );
+        const goldenWinnerClaim = goldenClaims[goldenClaims.length - 1];
+        await supabase.from("duel_rooms").update({
+          status: "finished",
+          finished_reason: "score",
+          winner_player_id: goldenWinnerClaim?.player_id ?? null,
+        }).eq("id", r.id);
+        return;
+      }
 
       await supabase.from("duel_rooms").update({
         current_round: nextRoundNum,
@@ -901,25 +954,22 @@ const declineRematch = useCallback(() => {
             return;
           }
 
-          // 3) Pas geldi → ikisi de pas mı?
-          if (c.country_code.startsWith(`PASS:R${r.current_round}:`)) {
-            const passPrefix = `PASS:R${r.current_round}:`;
-
-const { data: latestPassClaims } = await supabase
-  .from("duel_claims")
-  .select("*")
-  .eq("room_id", r.id);
-
-const passers = new Set(
-  ((latestPassClaims ?? []) as DuelClaim[])
-    .filter(x => x.country_code.startsWith(passPrefix))
-    .map(x => x.player_id)
-);
-
-if (passers.size >= 2) {
-  await new Promise(res => setTimeout(res, PASS_REVEAL_MS));
-  await advanceRoundAsHost("both_passed");
-}
+          // 3) Pas geldi → mevcut bayrak için ikisi de pas mı?
+          const currentPassPrefix = `PASS:R${r.current_round}:${currentFlagCode}:`;
+          if (c.country_code.startsWith(currentPassPrefix)) {
+            const { data: latestClaims } = await supabase
+              .from("duel_claims")
+              .select("*")
+              .eq("room_id", r.id);
+            const passers = new Set(
+              ((latestClaims ?? []) as DuelClaim[])
+                .filter(x => x.country_code.startsWith(currentPassPrefix))
+                .map(x => x.player_id)
+            );
+            if (passers.size >= 2) {
+              await new Promise(res => setTimeout(res, PASS_REVEAL_MS));
+              await advanceRoundAsHost("both_passed");
+            }
           }
         }
       )
@@ -1168,12 +1218,13 @@ if (!code) {
     if (phaseRef.current !== "playing") return;
     if (!room || !currentFlag) return;
     if (roundResolved || myPassed) return;
+    if (passesRemaining <= 0 && !room.is_golden_round) return;
 
-    const passCode = `PASS:R${room.current_round}:${currentFlag.code}`;
+    const passCode = `PASS:R${room.current_round}:${currentFlag.code}:${myIdRef.current}`;
     const { error } = await supabase.from("duel_claims").insert({
       room_id: room.id, player_id: myIdRef.current, country_code: passCode,
     });
-    if (error && error.code !== "23505") dbgErr("pass insert failed", error);
+    if (error) dbgErr("pass insert failed", error);
   };
 
   /* ESC = pas */
@@ -1183,7 +1234,7 @@ if (!code) {
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, myPassed, roundResolved, currentFlag, room?.current_round]);
+  }, [phase, myPassed, roundResolved, currentFlag, room?.current_round, completedPasses]);
 
   /* her tur değişiminde input'a focus */
   useEffect(() => {
@@ -1567,16 +1618,26 @@ ${shareLink}`;
             onBuyHint={handleBuyHint}
           />
 
-          {/* Pas Geç bar (offline ile birebir) */}
+          {/* Pas Geç bar */}
           {isPlaying && (
             <div className="pas-gec-bar">
-              <button className="btn-pas-gec" onClick={handlePass}>
-                <span>⏭️</span> Pas Geç
-              </button>
+              {room?.is_golden_round ? (
+                <button className="btn-pas-gec" onClick={handlePass}>
+                  <span>⏭️</span> Pas Geç
+                </button>
+              ) : passesRemaining > 0 ? (
+                <button className="btn-pas-gec" onClick={handlePass}>
+                  <span>⏭️</span> Pas Geç ({passesRemaining} kaldı)
+                </button>
+              ) : (
+                <button className="btn-pas-gec" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
+                  <span>⏭️</span> Pas hakkı bitti
+                </button>
+              )}
               <span className="pas-gec-hint">ESC</span>
-              {oppPassed && !myPassed && (
+              {oppPassed && (
                 <span className="pas-gec-answer" style={{ marginLeft: "auto" }}>
-                  Rakip pas geçti — sen de geçersen sıradakine geçilir
+                  ⚠️ Rakip pas geçmek istiyor!
                 </span>
               )}
             </div>
@@ -1584,7 +1645,9 @@ ${shareLink}`;
           {!isPlaying && myPassed && !roundResolved && (
             <div className="pas-gec-bar">
               <span className="pas-gec-answer">
-                ⏳ Pas geçtin — rakibin cevabını bekliyoruz…
+                {oppPassed
+                  ? "⏭️ Bayrak pas geçildi — yeni bayrak geliyor…"
+                  : "⏳ Pas isteğin gönderildi — rakip bekleniyor…"}
               </span>
             </div>
           )}
