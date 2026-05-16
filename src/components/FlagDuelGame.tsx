@@ -1261,8 +1261,8 @@ ${shareLink}`;
   return (
     <div className={"app duel-screen" + (phase === "playing" ? " duel-game-active" : "")}>
 
-      {/* ════════ HEADER (lobby/waiting/finished için) ════════ */}
-      {phase !== "playing" && (
+      {/* ════════ HEADER (lobby/waiting için — finished'da playing UI arka planda) ════════ */}
+      {phase !== "playing" && phase !== "finished" && (
         <div className="duel-header">
           <button className="back-btn" onClick={handleLeave}>
             <span>←</span><span className="back-label">Menü</span>
@@ -1272,9 +1272,7 @@ ${shareLink}`;
             {room && phase !== "lobby" && (
               <>
                 <span className="duel-code-badge">#{room.code}</span>
-                {phase !== "finished" && (
-                  <span className="duel-region-badge">{continentLabel}</span>
-                )}
+                <span className="duel-region-badge">{continentLabel}</span>
               </>
             )}
           </div>
@@ -1435,8 +1433,8 @@ ${shareLink}`;
         </div>
       )}
 
-      {/* ════════ PLAYING — offline ile birebir ════════ */}
-      {phase === "playing" && (
+      {/* ════════ PLAYING (finished'da da render — arka plan blur'lansın) ════════ */}
+      {(phase === "playing" || phase === "finished") && (
         <>
           {/* ── TopBar (offline kopyası) ── */}
           <div className="control-bar">
@@ -1651,124 +1649,86 @@ ${shareLink}`;
         </>
       )}
 
-      {/* ════════ FINISHED ════════ */}
-{phase === "finished" && (
-  <div style={{
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "2rem 1rem",
-    boxSizing: "border-box",
-  }}>
-    <div style={{
-      background: "var(--color-background-primary, #1e2130)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 16,
-      padding: "2rem 1.5rem 1.5rem",
-      width: "100%",
-      maxWidth: 420,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "1.25rem",
-    }}>
+      {/* ════════ FINISHED — overlay (arka plan = blur'lu playing UI) ════════ */}
+      {phase === "finished" && (
+        <div className="wheel-result-backdrop">
+          <div className="duel-result-card">
 
-      {/* Emoji + başlık */}
-      <div style={{ fontSize: 48, lineHeight: 1 }}>{result.emoji}</div>
-      <h2 style={{ fontSize: 22, fontWeight: 500, margin: 0, textAlign: "center", color: "var(--color-text-primary)" }}>
-        {result.title}
-      </h2>
-      {result.subtitle && (
-        <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-secondary)", textAlign: "center" }}>
-          {result.subtitle}
-        </p>
-      )}
+            {/* Emoji + başlık */}
+            <div className="duel-result-emoji">{result.emoji}</div>
+            <h2 className="duel-result-title">{result.title}</h2>
+            {result.subtitle && (
+              <p className="duel-result-subtitle">{result.subtitle}</p>
+            )}
 
-      {/* Skor kutusu */}
-<div style={{
-  width: "100%",
-  background: "rgba(255,255,255,0.04)",
-  borderRadius: 10,
-  padding: "1rem 1.5rem",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "1rem",
-  boxSizing: "border-box",
-}}>
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flex: 1 }}>
-    <span style={{ fontSize: 32, fontWeight: 500, lineHeight: 1.1, color: myScore > oppScore ? "#22c55e" : "#ef4444" }}>
-      {myScore}
-    </span>
-    <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{myPlayer?.name ?? "Sen"}</span>
-  </div>
-  <span style={{ fontSize: 20, color: "var(--color-text-tertiary)", flexShrink: 0 }}>—</span>
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flex: 1 }}>
-    <span style={{ fontSize: 32, fontWeight: 500, lineHeight: 1.1, color: oppScore > myScore ? "#22c55e" : "#ef4444" }}>
-      {oppScore}
-    </span>
-    <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{oppPlayer?.name ?? "Rakip"}</span>
-  </div>
-</div>
-
-      {/* Meta bilgi — 30sn yerine tur sayısı, ülke yerine bayrak */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: "var(--color-text-secondary)", flexWrap: "wrap", justifyContent: "center" }}>
-        <span>🎯 {totalRounds} Tur</span>
-        <span style={{ opacity: 0.4 }}>·</span>
-        <span>{continentLabel}</span>
-        <span style={{ opacity: 0.4 }}>·</span>
-        <span>Toplam {myScore + oppScore} bayrak</span>
-      </div>
-
-      {/* Rövanş alanı */}
-      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
-        {rematch === "idle" && oppPlayer && (
-          <button className="btn duel-rematch-btn" onClick={requestRematch} style={{ width: "100%" }}>
-            ⚔️ Rövanş İste
-          </button>
-        )}
-        {rematch === "requested" && (
-          <p className="duel-rematch-status waiting">⏳ Rövanş isteği gönderildi, rakip bekleniyor…</p>
-        )}
-        {rematch === "received" && (
-          <div className="duel-rematch-incoming" style={{ width: "100%" }}>
-            <p className="duel-rematch-status">⚔️ Rakibin rövanş istiyor!</p>
-            <div className="duel-rematch-btns">
-              <button className="btn btn-accent btn-sm" onClick={acceptRematch}>Kabul Et</button>
-              <button className="btn btn-ghost btn-sm" onClick={declineRematch}>Reddet</button>
+            {/* Skor */}
+            <div className="duel-result-scores">
+              <div className="duel-result-col mine">
+                <span className="duel-result-name">{myPlayer?.name ?? "Ben"}</span>
+                <span className="duel-result-num">{myScore}</span>
+                <span className="duel-result-sub">tur</span>
+              </div>
+              <span className="duel-result-vs">—</span>
+              <div className="duel-result-col opp">
+                <span className="duel-result-num">{oppScore}</span>
+                <span className="duel-result-name">{oppPlayer?.name ?? "Rakip"}</span>
+                <span className="duel-result-sub">tur</span>
+              </div>
             </div>
+
+            {/* Meta */}
+            <div className="wheel-result-rows">
+              <div className="wheel-result-row">
+                <span>Tur</span>
+                <strong>{totalRounds}</strong>
+              </div>
+              <div className="wheel-result-row">
+                <span>Bölge</span>
+                <strong>{continentLabel}</strong>
+              </div>
+              <div className="wheel-result-row">
+                <span>Toplam bayrak</span>
+                <strong>{myScore + oppScore}</strong>
+              </div>
+            </div>
+
+            {/* Rövanş alanı */}
+            <div className="duel-rematch-area">
+              {rematch === "idle" && oppPlayer && (
+                <button className="btn duel-rematch-btn" onClick={requestRematch}>
+                  ⚔️ Rövanş İste
+                </button>
+              )}
+              {rematch === "requested" && (
+                <p className="duel-rematch-status waiting">⏳ Rövanş isteği gönderildi, rakip bekleniyor…</p>
+              )}
+              {rematch === "received" && (
+                <div className="duel-rematch-incoming">
+                  <p className="duel-rematch-status">⚔️ Rakibin rövanş istiyor!</p>
+                  <div className="duel-rematch-btns">
+                    <button className="btn btn-accent btn-sm" onClick={acceptRematch}>Kabul Et</button>
+                    <button className="btn btn-ghost btn-sm" onClick={declineRematch}>Reddet</button>
+                  </div>
+                </div>
+              )}
+              {rematch === "declined" && (
+                <p className="duel-rematch-status declined">😞 Rakip rövanşı reddetti.</p>
+              )}
+            </div>
+
+            {/* Alt butonlar */}
+            <div className="duel-result-actions">
+              <button className="btn btn-ghost" disabled style={{ opacity: 0.4, cursor: "not-allowed" }}>
+                ⚡ Hızlı Eşleş
+              </button>
+              <button className="btn btn-accent" onClick={() => { playSound("click"); onHome(); }}>
+                ⌂ Ana Menü
+              </button>
+            </div>
+
           </div>
-        )}
-        {rematch === "declined" && (
-          <p className="duel-rematch-status declined">😞 Rakip rövanşı reddetti.</p>
-        )}
-      </div>
-
-      {/* Alt butonlar */}
-<div style={{ width: "100%", display: "flex", gap: 8 }}>
-  <button
-    className="btn btn-accent"
-    style={{ flex: 1, opacity: 0.4, cursor: "not-allowed" }}
-    disabled
-  >
-    ⚡ Hızlı Eşleş
-  </button>
-  <button
-  className="btn btn-accent"
-  style={{ flex: 1 }}
-  onClick={() => {
-    playSound("click");
-    onHome();
-  }}
->
-    ⌂ Ana Menü
-  </button>
-</div>
-
-    </div>
-  </div>
-)}
+        </div>
+      )}
 
       {/* ════════ QUIT MODAL — oyun sırasında menü tuşuna basınca ════════ */}
       {quitModalOpen && (
