@@ -159,6 +159,107 @@ function isTypingTarget(t: EventTarget | null): boolean {
   return t.isContentEditable;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   MAP THEME SYSTEM
+   Each theme overrides only the canvas-side CSS vars (ocean, land,
+   land-stroke, land-oos) via inline custom properties on the map
+   container. Game-feedback colors (--guessed/--guessed-last/--green/
+   --red/--amber) intentionally stay global so route/duel semantics
+   remain consistent across themes.
+═══════════════════════════════════════════════════════════════ */
+type MapThemeId = "classic" | "minimal" | "atlas" | "night";
+interface MapThemeDef {
+  id:   MapThemeId;
+  name: string;
+  vars: { "--ocean": string; "--land": string; "--land-stroke": string; "--land-oos": string };
+}
+const MAP_THEMES: Record<MapThemeId, MapThemeDef> = {
+  classic: { id: "classic", name: "Classic",
+    vars: { "--ocean": "#0d2137", "--land": "#1e2d40", "--land-stroke": "#2a3e55", "--land-oos": "#151e2a" } },
+  minimal: { id: "minimal", name: "Minimal",
+    vars: { "--ocean": "#1d2735", "--land": "#2f3a4a", "--land-stroke": "#45506a", "--land-oos": "#232c38" } },
+  atlas:   { id: "atlas",   name: "Atlas",
+    vars: { "--ocean": "#2a4e6c", "--land": "#475347", "--land-stroke": "#6b7869", "--land-oos": "#2e362d" } },
+  night:   { id: "night",   name: "Night",
+    vars: { "--ocean": "#050b14", "--land": "#15202d", "--land-stroke": "#243443", "--land-oos": "#0a0f15" } },
+};
+const MAP_THEME_ORDER: MapThemeId[] = ["classic", "minimal", "atlas", "night"];
+const THEME_STORAGE_KEY = "world-quiz:map-theme";
+
+function useMapTheme(): [MapThemeId, (t: MapThemeId) => void] {
+  const [theme, setThemeState] = useState<MapThemeId>(() => {
+    if (typeof window === "undefined") return "classic";
+    try {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as MapThemeId | null;
+      if (stored && MAP_THEMES[stored]) return stored;
+    } catch { /* localStorage may be unavailable */ }
+    return "classic";
+  });
+  const setTheme = useCallback((t: MapThemeId) => {
+    setThemeState(t);
+    try { window.localStorage.setItem(THEME_STORAGE_KEY, t); } catch { /* ignore */ }
+  }, []);
+  return [theme, setTheme];
+}
+
+function MapThemePicker({ active, onChange }: { active: MapThemeId; onChange: (t: MapThemeId) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("touchstart", onDown);
+    };
+  }, [open]);
+  return (
+    <div ref={rootRef} className="map-theme-picker">
+      {open && (
+        <div className="map-theme-panel" role="menu" aria-label="Harita teması">
+          {MAP_THEME_ORDER.map(id => {
+            const t = MAP_THEMES[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                className={"map-theme-option" + (id === active ? " active" : "")}
+                onClick={() => { onChange(id); setOpen(false); }}
+                role="menuitemradio"
+                aria-checked={id === active}
+              >
+                <span className="map-theme-swatch"
+                  style={{ background: `linear-gradient(135deg, ${t.vars["--ocean"]} 0%, ${t.vars["--land"]} 100%)` }}
+                />
+                <span className="map-theme-name">{t.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <button
+        type="button"
+        className={"map-theme-toggle" + (open ? " open" : "")}
+        onClick={() => setOpen(o => !o)}
+        aria-label="Harita teması"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Harita teması"
+      >
+        {/* layers icon */}
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 22 8 12 14 2 8 12 2" />
+          <polyline points="2 14 12 20 22 14" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 
 /**
@@ -243,6 +344,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const [computed, setComputed] = useState<ComputedFeature[]>([]);
   const [dims, setDims]         = useState({ w: 960, h: 500 });
   const [loading, setLoading]   = useState(true);
+  const [mapTheme, setMapTheme] = useMapTheme();
 
   const xfRef   = useRef({ k: 1, tx: 0, ty: 0 });
   const [xf, setXf] = useState({ k: 1, tx: 0, ty: 0 });
@@ -417,7 +519,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   });
 
   return (
-    <div ref={containerRef} className="map-container-inner">
+    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Dünya haritası"
@@ -464,6 +566,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
         <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>
   );
 }
@@ -605,6 +708,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const [computed2, setComputed2] = useState<ComputedFeature[]>([]);
   const [dims2, setDims2]         = useState({ w: 960, h: 500 });
   const [loading2, setLoading2]   = useState(true);
+  const [mapTheme, setMapTheme]   = useMapTheme();
 
   const xf2Ref  = useRef({ k: 1, tx: 0, ty: 0 });
   const [xf2, setXf2] = useState({ k: 1, tx: 0, ty: 0 });
@@ -735,7 +839,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const labelScale2   = 1 / xf2.k;
 
   return (
-    <div ref={containerRef} className="map-container-inner">
+    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims2.w} ${dims2.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: drag2Ref.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Rota haritası"
@@ -792,6 +896,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
         <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>
   );
 }
@@ -818,6 +923,7 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const [computed3, setComputed3] = useState<ComputedFeature[]>([]);
   const [dims3, setDims3]         = useState({ w: 960, h: 500 });
   const [loading3, setLoading3]   = useState(true);
+  const [mapTheme, setMapTheme]   = useMapTheme();
 
   const xf3Ref  = useRef({ k: 1, tx: 0, ty: 0 });
   const [xf3, setXf3] = useState({ k: 1, tx: 0, ty: 0 });
@@ -942,7 +1048,7 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   });
 
   return (
-    <div ref={containerRef} className="map-container-inner">
+    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
       <svg
   ref={svgRef}
   viewBox={`0 0 ${dims3.w} ${dims3.h}`}
@@ -1019,6 +1125,7 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
         <button className="zoom-btn" onClick={()=>applyZoom3(xf3Ref.current.k/ZOOM_STEP)}>&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      <MapThemePicker active={mapTheme} onChange={setMapTheme} />
 
       {/* Legend */}
       <div className="duel-legend">
