@@ -27,8 +27,8 @@ const SOURCE_URL = "https://assets.science.nasa.gov/content/dam/science/esd/eo/i
 const CACHE_PATH = join(ROOT, "scripts/.cache-blue-marble-source.jpg");
 const OUT_PATH   = join(ROOT, "public/assets/map/blue-marble-ne.jpg");
 
-const OUT_W = 2048;
-const OUT_H = 1024;
+const OUT_W = 4096;
+const OUT_H = 2048;
 // Fallback colour for pixels that fall outside the NaturalEarth envelope
 // (the projection has curved edges so the rectangular output has corners
 // that don't map back to a real lat/lon). Matches the Classic theme ocean
@@ -110,7 +110,7 @@ async function main() {
   process.stdout.write(`\r  reprojection done in ${dt}s\n`);
 
   console.log("Encoding output JPEG...");
-  const encoded = jpeg.encode({ data: out, width: OUT_W, height: OUT_H }, 82);
+  const encoded = jpeg.encode({ data: out, width: OUT_W, height: OUT_H }, 85);
   mkdirSync(dirname(OUT_PATH), { recursive: true });
   writeFileSync(OUT_PATH, encoded.data);
   console.log(`Wrote ${(encoded.data.length / 1024).toFixed(0)} KB → ${OUT_PATH}`);
