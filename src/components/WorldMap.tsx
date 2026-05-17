@@ -76,7 +76,63 @@ const ZOOM_MIN  = 1;
 const ZOOM_MAX  = 12;
 const ZOOM_STEP = 1.4;
 
+/** Keyboard zoom presets — must stay within [ZOOM_MIN, ZOOM_MAX]. */
+const ZOOM_PRESETS: Record<string, number> = {
+  "1": 1,    // world / max-out
+  "2": 2,    // continent
+  "3": 3.5,  // region
+  "4": 5.5,  // country group
+  "5": 8,    // close detail
+};
+
+/** Skip global shortcuts when the user is typing in a form field. */
+function isTypingTarget(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  const tag = t.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return t.isContentEditable;
+}
+
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+
+/**
+ * Clamp pan offsets so the map cannot drift past the viewport edges.
+ *
+ * The map is projected with geoNaturalEarth1().scale(w/6.2).translate([w/2, h/2]) —
+ * that puts the map width = w and the map height ≈ 0.52 * w (NaturalEarth aspect),
+ * centred at (w/2, h/2) in the un-transformed <g>. The CSS transform applied to
+ * that <g> is `translate(tx, ty) scale(k)`, so a map point (x, y) lands on screen
+ * at (tx + k*x, ty + k*y).
+ *
+ * Allowance ramps in with k. At k ≤ 1.05 the map is locked to its initial
+ * centred position (txCentre, tyCentre); at k ≈ 1.55 the user gets the full
+ * geometric range so they can reach all of the scaled map plus a 30 px slack.
+ * Between those, allowance interpolates linearly. This stops the world from
+ * drifting at zoom-out while keeping pan rich when zoomed in.
+ */
+const MAP_ASPECT = 0.52; // NaturalEarth height-to-width
+function clampPan(tx: number, ty: number, k: number, w: number, h: number) {
+  const mapW = w;
+  const mapH = w * MAP_ASPECT;
+
+  const slack = clamp((k - 1.05) * 60, 0, 30);
+  const ramp  = slack / 30;
+
+  // Centred transform: keeps projection centre (w/2, h/2) at screen centre.
+  const txCentre = (1 - k) * w / 2;
+  const tyCentre = (1 - k) * h / 2;
+
+  // Half-range the user may stray from centre. Excess past the viewport plus
+  // slack, gated by the ramp so low k stays locked even if the map already
+  // extends past the viewport (tall-projection / short-viewport case).
+  const txAllowance = Math.max(0, (k * mapW - w) / 2 + slack) * ramp;
+  const tyAllowance = Math.max(0, (k * mapH - h) / 2 + slack) * ramp;
+
+  return {
+    tx: clamp(tx, txCentre - txAllowance, txCentre + txAllowance),
+    ty: clamp(ty, tyCentre - tyAllowance, tyCentre + tyAllowance),
+  };
+}
 
 /**
  * Compute the transform {k, tx, ty} that fits all countries in activeIds
@@ -193,8 +249,8 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     const fx  = focalX ?? dims.w / 2;
     const fy  = focalY ?? dims.h / 2;
     const ratio = k / old.k;
-    const maxP  = dims.w * (k - 1) * 0.6 + dims.w * 0.3;
-    const next  = { k, tx: clamp(fx - ratio*(fx-old.tx), -maxP, maxP), ty: clamp(fy - ratio*(fy-old.ty), -maxP, maxP) };
+    const { tx, ty } = clampPan(fx - ratio*(fx-old.tx), fy - ratio*(fy-old.ty), k, dims.w, dims.h);
+    const next  = { k, tx, ty };
     xfRef.current = next; setXf({ ...next });
   }, [dims]);
 
@@ -210,6 +266,29 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     return () => el.removeEventListener("wheel", handler);
   }, [applyZoom]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "0") {
+        const reset = { k: 1, tx: 0, ty: 0 };
+        xfRef.current = reset; setXf(reset);
+        e.preventDefault();
+        return;
+      }
+      const presetK = ZOOM_PRESETS[e.key];
+      if (presetK !== undefined && dims.w > 0) {
+        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
+        const { tx, ty } = clampPan((1 - k) * dims.w / 2, (1 - k) * dims.h / 2, k, dims.w, dims.h);
+        const next = { k, tx, ty };
+        xfRef.current = next; setXf(next);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dims]);
+
   const onPD = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx0: xfRef.current.tx, ty0: xfRef.current.ty };
@@ -224,8 +303,12 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
       if (dx + dy > 5) wasDragRef.current = true;
     }
     const { k } = xfRef.current;
-    const maxP  = dims.w * (k - 1) * 0.6 + dims.w * 0.3;
-    const next  = { k, tx: clamp(dragRef.current.tx0+e.clientX-dragRef.current.sx,-maxP,maxP), ty: clamp(dragRef.current.ty0+e.clientY-dragRef.current.sy,-maxP,maxP) };
+    const { tx, ty } = clampPan(
+      dragRef.current.tx0 + e.clientX - dragRef.current.sx,
+      dragRef.current.ty0 + e.clientY - dragRef.current.sy,
+      k, dims.w, dims.h,
+    );
+    const next  = { k, tx, ty };
     xfRef.current = next; setXf({ ...next });
   };
   const onPU = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -271,7 +354,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   return (
     <div ref={containerRef} className="map-container-inner">
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="world-svg"
-        style={{ width: "100%", height: "100%", cursor: dragRef.current ? "grabbing" : "grab" }}
+        style={{ width: "100%", height: "100%", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Dünya haritası"
         onPointerDown={onPD} onPointerMove={onPM} onPointerUp={onPU} onPointerCancel={onPU}
       >
@@ -506,8 +589,8 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     const fx  = focalX ?? dims2.w / 2;
     const fy  = focalY ?? dims2.h / 2;
     const ratio = k / old.k;
-    const maxP  = dims2.w * (k - 1) * 0.6 + dims2.w * 0.3;
-    const next  = { k, tx: clamp(fx - ratio*(fx-old.tx), -maxP, maxP), ty: clamp(fy - ratio*(fy-old.ty), -maxP, maxP) };
+    const { tx, ty } = clampPan(fx - ratio*(fx-old.tx), fy - ratio*(fy-old.ty), k, dims2.w, dims2.h);
+    const next  = { k, tx, ty };
     xf2Ref.current = next; setXf2({ ...next });
   }, [dims2]);
 
@@ -523,6 +606,29 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     return () => el.removeEventListener("wheel", h);
   }, [applyZoom2]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "0") {
+        const reset = { k: 1, tx: 0, ty: 0 };
+        xf2Ref.current = reset; setXf2(reset);
+        e.preventDefault();
+        return;
+      }
+      const presetK = ZOOM_PRESETS[e.key];
+      if (presetK !== undefined && dims2.w > 0) {
+        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
+        const { tx, ty } = clampPan((1 - k) * dims2.w / 2, (1 - k) * dims2.h / 2, k, dims2.w, dims2.h);
+        const next = { k, tx, ty };
+        xf2Ref.current = next; setXf2(next);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dims2]);
+
   const onPD2 = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
     drag2Ref.current = { sx: e.clientX, sy: e.clientY, tx0: xf2Ref.current.tx, ty0: xf2Ref.current.ty };
@@ -530,8 +636,12 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const onPM2 = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!drag2Ref.current) return;
     const { k } = xf2Ref.current;
-    const maxP  = dims2.w * (k - 1) * 0.6 + dims2.w * 0.3;
-    const next  = { k, tx: clamp(drag2Ref.current.tx0+e.clientX-drag2Ref.current.sx,-maxP,maxP), ty: clamp(drag2Ref.current.ty0+e.clientY-drag2Ref.current.sy,-maxP,maxP) };
+    const { tx, ty } = clampPan(
+      drag2Ref.current.tx0 + e.clientX - drag2Ref.current.sx,
+      drag2Ref.current.ty0 + e.clientY - drag2Ref.current.sy,
+      k, dims2.w, dims2.h,
+    );
+    const next  = { k, tx, ty };
     xf2Ref.current = next; setXf2({ ...next });
   };
   const onPU2 = () => { drag2Ref.current = null; };
@@ -562,7 +672,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   return (
     <div ref={containerRef} className="map-container-inner">
       <svg ref={svgRef} viewBox={`0 0 ${dims2.w} ${dims2.h}`} className="world-svg"
-        style={{ width: "100%", height: "100%", cursor: drag2Ref.current ? "grabbing" : "grab" }}
+        style={{ width: "100%", height: "100%", cursor: drag2Ref.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Rota haritası"
         onPointerDown={onPD2} onPointerMove={onPM2} onPointerUp={onPU2} onPointerCancel={onPU2}
       >
@@ -698,8 +808,9 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const applyZoom3 = useCallback((nk: number, fx?: number, fy?: number) => {
     const old = xf3Ref.current; const k = clamp(nk, ZOOM_MIN, ZOOM_MAX);
     const _fx = fx ?? dims3.w/2; const _fy = fy ?? dims3.h/2;
-    const r = k/old.k; const maxP = dims3.w*(k-1)*0.6+dims3.w*0.3;
-    const next = { k, tx: clamp(_fx-r*(_fx-old.tx),-maxP,maxP), ty: clamp(_fy-r*(_fy-old.ty),-maxP,maxP) };
+    const r = k/old.k;
+    const { tx, ty } = clampPan(_fx - r*(_fx-old.tx), _fy - r*(_fy-old.ty), k, dims3.w, dims3.h);
+    const next = { k, tx, ty };
     xf3Ref.current = next; setXf3({...next});
   }, [dims3]);
 
@@ -714,6 +825,29 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     return () => el.removeEventListener("wheel", h);
   }, [applyZoom3]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "0") {
+        const reset = { k: 1, tx: 0, ty: 0 };
+        xf3Ref.current = reset; setXf3(reset);
+        e.preventDefault();
+        return;
+      }
+      const presetK = ZOOM_PRESETS[e.key];
+      if (presetK !== undefined && dims3.w > 0) {
+        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
+        const { tx, ty } = clampPan((1 - k) * dims3.w / 2, (1 - k) * dims3.h / 2, k, dims3.w, dims3.h);
+        const next = { k, tx, ty };
+        xf3Ref.current = next; setXf3(next);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dims3]);
+
  const onPD3 = (e: ReactPointerEvent<SVGSVGElement>) => {
   e.preventDefault();
   e.stopPropagation();
@@ -723,8 +857,13 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   };
   const onPM3 = (e: ReactPointerEvent<SVGSVGElement>) => {
     if (!drag3Ref.current) return;
-    const { k } = xf3Ref.current; const maxP = dims3.w*(k-1)*0.6+dims3.w*0.3;
-    const next = { k, tx: clamp(drag3Ref.current.tx0+e.clientX-drag3Ref.current.sx,-maxP,maxP), ty: clamp(drag3Ref.current.ty0+e.clientY-drag3Ref.current.sy,-maxP,maxP) };
+    const { k } = xf3Ref.current;
+    const { tx, ty } = clampPan(
+      drag3Ref.current.tx0 + e.clientX - drag3Ref.current.sx,
+      drag3Ref.current.ty0 + e.clientY - drag3Ref.current.sy,
+      k, dims3.w, dims3.h,
+    );
+    const next = { k, tx, ty };
     xf3Ref.current = next; setXf3({...next});
   };
   const onPU3 = () => { drag3Ref.current = null; };
