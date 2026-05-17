@@ -67,6 +67,70 @@ interface ComputedFeature {
 
 const MIN_LABEL = 120;
 
+/**
+ * Zoom-dependent area threshold for labels.
+ *   k=1   → ~800   (only large countries pass; mid-large rely on ALWAYS_LABEL_IDS)
+ *   k=2   → ~230   (medium European/Asian countries appear)
+ *   k=4   → ~65    (small countries — Belgium, Netherlands, Switzerland)
+ *   k=8   → ~18    (micro-states emerge)
+ *   k=12  → ~9     (everything)
+ */
+function visibleAreaMin(k: number): number {
+  return 800 / Math.pow(k, 1.8);
+}
+
+/**
+ * Target on-screen font size for a country label, in screen pixels.
+ *
+ * Two contributions:
+ *   • areaBase: bigger countries get slightly bigger labels (sqrt-damped so
+ *     the range stays sane between Singapore and Russia).
+ *   • zoomBoost: log2(k) so labels grow gently as the user zooms in
+ *     (k=1 → +0, k=2 → +1.5, k=4 → +3, k=8 → +4.5).
+ * Clamped to [10, 22] px so labels never become microscopic or huge.
+ *
+ * Callers should divide by k when setting the SVG fontSize attribute, because
+ * the label group is rendered inside a `transform: scale(k)` <g>.
+ */
+function labelScreenSize(area: number, k: number): number {
+  const areaBase  = Math.sqrt(area) * 0.12;
+  const zoomBoost = Math.log2(Math.max(1, k)) * 0.7;
+  return clamp(7.5 + areaBase + zoomBoost, 9, 13.5);
+}
+
+/**
+ * Mid-to-large countries that should always be labelled when the toggle is on
+ * (and mode-specific conditions are met), regardless of zoom level. These have
+ * a projected area below 800 px² at scale w/6.2 but are prominent enough that
+ * the world view feels incomplete without them.
+ */
+const ALWAYS_LABEL_IDS: Set<string> = new Set([
+  "792", // Türkiye
+  "250", // Fransa
+  "276", // Almanya
+  "724", // İspanya
+  "380", // İtalya
+  "364", // İran
+  "818", // Mısır
+  "682", // Suudi Arabistan
+  "710", // Güney Afrika
+  "360", // Endonezya
+  "032", // Arjantin
+  "012", // Cezayir
+  "566", // Nijerya
+  "484", // Meksika
+  "586", // Pakistan
+  "804", // Ukrayna
+  "616", // Polonya
+  "643", // Rusya
+  "156", // Çin
+  "840", // ABD
+  "124", // Kanada
+  "076", // Brezilya
+  "036", // Avustralya
+  "356", // Hindistan
+]);
+
 /** Manual label offsets for countries whose centroid is pulled off mainland by overseas territories.
  *  Values are projected SVG units at k=1. */
 const LABEL_OFFSET: Record<string, [number, number]> = {
@@ -76,9 +140,11 @@ const ZOOM_MIN  = 1;
 const ZOOM_MAX  = 12;
 const ZOOM_STEP = 1.4;
 
-/** Keyboard zoom presets — must stay within [ZOOM_MIN, ZOOM_MAX]. */
+/** Keyboard zoom presets — must stay within [ZOOM_MIN, ZOOM_MAX].
+ *  Keys 0 and 1 are handled separately as full resets to the world view.
+ *  Keys 2–5 keep the viewport centre anchored, so the region the user is
+ *  looking at stays in frame as zoom changes. */
 const ZOOM_PRESETS: Record<string, number> = {
-  "1": 1,    // world / max-out
   "2": 2,    // continent
   "3": 3.5,  // region
   "4": 5.5,  // country group
@@ -270,24 +336,24 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "0") {
+      // 0 and 1 both jump back to the initial world view (k=1, centred).
+      if (e.key === "0" || e.key === "1") {
         const reset = { k: 1, tx: 0, ty: 0 };
         xfRef.current = reset; setXf(reset);
         e.preventDefault();
         return;
       }
+      // 2–5: change zoom while keeping the viewport centre anchored — same
+      // math the wheel uses with focal=(w/2, h/2), via applyZoom().
       const presetK = ZOOM_PRESETS[e.key];
-      if (presetK !== undefined && dims.w > 0) {
-        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
-        const { tx, ty } = clampPan((1 - k) * dims.w / 2, (1 - k) * dims.h / 2, k, dims.w, dims.h);
-        const next = { k, tx, ty };
-        xfRef.current = next; setXf(next);
+      if (presetK !== undefined) {
+        applyZoom(presetK);
         e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dims]);
+  }, [applyZoom]);
 
   const onPD = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
@@ -342,7 +408,6 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   }
 
   const cssTransform = `translate(${xf.tx}px,${xf.ty}px) scale(${xf.k})`;
-  const labelScale   = 1 / xf.k;
 
   // For ids shared by multiple features (e.g. Somaliland→Somalia), track the
   // primary feature (largest area) so we render labels once and mark extras.
@@ -375,13 +440,16 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
             );
           })}
           {showLabels && computed
-            .filter(cf => guessedISOs.has(cf.id) && cf.display && cf.area >= MIN_LABEL && cf.cx !== 0
-              && cf.area === maxAreaById.get(cf.id))
+            .filter(cf =>
+              guessedISOs.has(cf.id) && cf.display && cf.cx !== 0
+              && cf.area === maxAreaById.get(cf.id)
+              && (ALWAYS_LABEL_IDS.has(cf.id) || cf.area >= visibleAreaMin(xf.k))
+            )
             .map(cf => {
-              const base = Math.min(11, Math.max(5, Math.sqrt(cf.area) * 0.27));
+              const fontSize = labelScreenSize(cf.area, xf.k) / xf.k;
               return (
                 <g key={"lbl-"+cf.id} transform={`translate(${cf.cx + (LABEL_OFFSET[cf.id]?.[0] ?? 0)},${cf.cy + (LABEL_OFFSET[cf.id]?.[1] ?? 0)})`}>
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={base*labelScale}
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={fontSize}
                     className={"country-label"+(cf.id===lastGuessed?" label-last":"")}>
                     {cf.display}
                   </text>
@@ -610,24 +678,21 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "0") {
+      if (e.key === "0" || e.key === "1") {
         const reset = { k: 1, tx: 0, ty: 0 };
         xf2Ref.current = reset; setXf2(reset);
         e.preventDefault();
         return;
       }
       const presetK = ZOOM_PRESETS[e.key];
-      if (presetK !== undefined && dims2.w > 0) {
-        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
-        const { tx, ty } = clampPan((1 - k) * dims2.w / 2, (1 - k) * dims2.h / 2, k, dims2.w, dims2.h);
-        const next = { k, tx, ty };
-        xf2Ref.current = next; setXf2(next);
+      if (presetK !== undefined) {
+        applyZoom2(presetK);
         e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dims2]);
+  }, [applyZoom2]);
 
   const onPD2 = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
@@ -829,24 +894,21 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "0") {
+      if (e.key === "0" || e.key === "1") {
         const reset = { k: 1, tx: 0, ty: 0 };
         xf3Ref.current = reset; setXf3(reset);
         e.preventDefault();
         return;
       }
       const presetK = ZOOM_PRESETS[e.key];
-      if (presetK !== undefined && dims3.w > 0) {
-        const k = clamp(presetK, ZOOM_MIN, ZOOM_MAX);
-        const { tx, ty } = clampPan((1 - k) * dims3.w / 2, (1 - k) * dims3.h / 2, k, dims3.w, dims3.h);
-        const next = { k, tx, ty };
-        xf3Ref.current = next; setXf3(next);
+      if (presetK !== undefined) {
+        applyZoom3(presetK);
         e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [dims3]);
+  }, [applyZoom3]);
 
  const onPD3 = (e: ReactPointerEvent<SVGSVGElement>) => {
   e.preventDefault();
@@ -920,27 +982,26 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const isClaimed = myTopoIds.has(cf.id) || oppTopoIds.has(cf.id);
   if (!isClaimed) return false;
 
-  const effectiveMin = 40 / (xf3.k * xf3.k);
-  if (cf.area < effectiveMin) return false;
-
+  // duplicate-label guard (Somaliland→Somalia, W. Sahara→Morocco share an id;
+  // only the largest polygon for each id gets a label).
   if (cf.area < (maxAreaById3.get(cf.id) ?? cf.area)) return false;
+
+  // Always-on for prominent mid-large countries; otherwise zoom-aware threshold.
+  if (ALWAYS_LABEL_IDS.has(cf.id)) return true;
+  if (cf.area < visibleAreaMin(xf3.k)) return false;
 
   return true;
 })
               .map(cf => {
-                // Font size: based on sqrt(area) scaled by label-scale,
-                // clamped so it stays readable but not huge.
-                const labelScale3 = Math.max(0.6, 1 / Math.sqrt(xf3.k));
-                const base = Math.min(10, Math.max(4.5, Math.sqrt(cf.area) * 0.22));
-                const finalSize = base * labelScale3;
-                // Don't render if too tiny to read
-                if (finalSize < 2) return null;
+                // Screen-pixel target size, divided by k to compensate for the
+                // <g> scale wrapping the labels. See labelScreenSize() docs.
+                const fontSize = labelScreenSize(cf.area, xf3.k) / xf3.k;
                 return (
                   <g key={"dl-" + cf.id} transform={`translate(${cf.cx + (LABEL_OFFSET[cf.id]?.[0] ?? 0)},${cf.cy + (LABEL_OFFSET[cf.id]?.[1] ?? 0)})`}>
                     <text
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fontSize={finalSize}
+                      fontSize={fontSize}
                       className="country-label label-last"
                       style={{ pointerEvents: "none" }}
                     >

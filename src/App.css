@@ -342,8 +342,12 @@ body {
 .country-path.guessed.merged-secondary { stroke:var(--guessed); }
 .country-path.last.merged-secondary    { stroke:var(--guessed-last); }
 @keyframes pop { 0%{opacity:.25} 60%{opacity:1} }
-.country-label { font-family:var(--font-body); font-weight:700; fill:rgba(255,255,255,.92); pointer-events:none; paint-order:stroke; stroke:rgba(0,0,0,.6); stroke-width:1.5px; }
-.label-last    { fill:#fff; stroke:rgba(0,45,10,.8); }
+/* Label halo via non-scaling stroke: width stays constant in screen pixels
+   regardless of map zoom, so the outline doesn't bloom into a "black box"
+   look at higher zoom levels. paint-order:stroke draws the dark halo under
+   the white fill — Google-Maps style. */
+.country-label { font-family:var(--font-body); font-weight:600; fill:#fff; pointer-events:none; paint-order:stroke; stroke:rgba(0,0,0,.85); stroke-width:2px; vector-effect:non-scaling-stroke; letter-spacing:.1px; }
+.label-last    { fill:#fff; stroke:rgba(0,55,15,.9); }
 .zoom-controls { position:absolute; bottom:20px; left:16px; display:flex; flex-direction:column; background:rgba(13,17,23,.82); border:1px solid var(--border); border-radius:10px; overflow:hidden; backdrop-filter:blur(6px); z-index:10; box-shadow:0 4px 16px rgba(0,0,0,.4); }
 .zoom-btn { width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; color:var(--text); font-size:1.2rem; font-weight:700; cursor:pointer; line-height:1; transition:background .15s, color .15s; }
 .zoom-btn:hover { background:rgba(88,166,255,.15); color:var(--accent); }
