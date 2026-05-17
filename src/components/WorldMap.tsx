@@ -167,23 +167,35 @@ function isTypingTarget(t: EventTarget | null): boolean {
    --red/--amber) intentionally stay global so route/duel semantics
    remain consistent across themes.
 ═══════════════════════════════════════════════════════════════ */
-type MapThemeId = "classic" | "minimal" | "atlas" | "night";
+type MapThemeId = "classic" | "minimal" | "atlas" | "night" | "satellite";
 interface MapThemeDef {
   id:   MapThemeId;
   name: string;
   vars: { "--ocean": string; "--land": string; "--land-stroke": string; "--land-oos": string };
+  /** When set, the map renders this image as a backdrop inside the pan/zoom
+   *  group. Country paths still render on top (so click/colour/state still
+   *  work). The image is offline-reprojected to match geoNaturalEarth1. */
+  imageUrl?:    string;
+  /** Caption shown at the bottom-right while this theme is active. */
+  attribution?: string;
 }
 const MAP_THEMES: Record<MapThemeId, MapThemeDef> = {
-  classic: { id: "classic", name: "Classic",
+  classic:   { id: "classic", name: "Classic",
     vars: { "--ocean": "#0d2137", "--land": "#1e2d40", "--land-stroke": "#2a3e55", "--land-oos": "#151e2a" } },
-  minimal: { id: "minimal", name: "Minimal",
+  minimal:   { id: "minimal", name: "Minimal",
     vars: { "--ocean": "#1d2735", "--land": "#2f3a4a", "--land-stroke": "#45506a", "--land-oos": "#232c38" } },
-  atlas:   { id: "atlas",   name: "Atlas",
+  atlas:     { id: "atlas",   name: "Atlas",
     vars: { "--ocean": "#2a4e6c", "--land": "#475347", "--land-stroke": "#6b7869", "--land-oos": "#2e362d" } },
-  night:   { id: "night",   name: "Night",
+  night:     { id: "night",   name: "Night",
     vars: { "--ocean": "#050b14", "--land": "#15202d", "--land-stroke": "#243443", "--land-oos": "#0a0f15" } },
+  satellite: { id: "satellite", name: "Satellite",
+    // vars stay close to classic so the brief moment before the image loads
+    // doesn't flash a wildly different colour scheme.
+    vars: { "--ocean": "#0d2137", "--land": "#1e2d40", "--land-stroke": "#1a1a1a", "--land-oos": "#0a0f14" },
+    imageUrl:    "/assets/map/blue-marble-ne.jpg",
+    attribution: "Imagery: NASA Blue Marble" },
 };
-const MAP_THEME_ORDER: MapThemeId[] = ["classic", "minimal", "atlas", "night"];
+const MAP_THEME_ORDER: MapThemeId[] = ["classic", "minimal", "atlas", "night", "satellite"];
 const THEME_STORAGE_KEY = "world-quiz:map-theme";
 
 function useMapTheme(): [MapThemeId, (t: MapThemeId) => void] {
@@ -518,8 +530,9 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     if ((maxAreaById.get(cf.id) ?? -1) < cf.area) maxAreaById.set(cf.id, cf.area);
   });
 
+  const themeDef = MAP_THEMES[mapTheme];
   return (
-    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
+    <div ref={containerRef} className={`map-container-inner map-theme-${mapTheme}`} style={themeDef.vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Dünya haritası"
@@ -527,6 +540,14 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
       >
         <rect width={dims.w} height={dims.h} fill="var(--ocean)" />
         <g style={{ transform: cssTransform, transformOrigin: "0 0" }}>
+          {themeDef.imageUrl && (
+            <image href={themeDef.imageUrl}
+              x={0} y={(dims.h - dims.w / 2) / 2}
+              width={dims.w} height={dims.w / 2}
+              preserveAspectRatio="none"
+              style={{ pointerEvents: "none" }}
+            />
+          )}
           {computed.map(cf => {
             const inScope   = activeIds.has(cf.id);
             const isGuessed = guessedISOs.has(cf.id);
@@ -566,6 +587,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
         <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      {themeDef.attribution && <div className="map-attribution">{themeDef.attribution}</div>}
       <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>
   );
@@ -838,8 +860,9 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const cssTransform2 = `translate(${xf2.tx}px,${xf2.ty}px) scale(${xf2.k})`;
   const labelScale2   = 1 / xf2.k;
 
+  const themeDef = MAP_THEMES[mapTheme];
   return (
-    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
+    <div ref={containerRef} className={`map-container-inner map-theme-${mapTheme}`} style={themeDef.vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims2.w} ${dims2.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: drag2Ref.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Rota haritası"
@@ -847,6 +870,14 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
       >
         <rect width={dims2.w} height={dims2.h} fill="var(--ocean)" />
         <g style={{ transform: cssTransform2, transformOrigin: "0 0" }}>
+          {themeDef.imageUrl && (
+            <image href={themeDef.imageUrl}
+              x={0} y={(dims2.h - dims2.w / 2) / 2}
+              width={dims2.w} height={dims2.w / 2}
+              preserveAspectRatio="none"
+              style={{ pointerEvents: "none" }}
+            />
+          )}
           {computed2.map(cf => {
             const isStart   = cf.id === startId;
             const isTarget  = cf.id === targetId;
@@ -896,6 +927,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
         <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      {themeDef.attribution && <div className="map-attribution">{themeDef.attribution}</div>}
       <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>
   );
@@ -1047,8 +1079,9 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     if ((maxAreaById3.get(cf.id) ?? -1) < cf.area) maxAreaById3.set(cf.id, cf.area);
   });
 
+  const themeDef = MAP_THEMES[mapTheme];
   return (
-    <div ref={containerRef} className="map-container-inner" style={MAP_THEMES[mapTheme].vars as React.CSSProperties}>
+    <div ref={containerRef} className={`map-container-inner map-theme-${mapTheme}`} style={themeDef.vars as React.CSSProperties}>
       <svg
   ref={svgRef}
   viewBox={`0 0 ${dims3.w} ${dims3.h}`}
@@ -1066,6 +1099,14 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
 >
         <rect width={dims3.w} height={dims3.h} fill="var(--ocean)"/>
         <g style={{ transform:t3, transformOrigin:"0 0" }}>
+          {themeDef.imageUrl && (
+            <image href={themeDef.imageUrl}
+              x={0} y={(dims3.h - dims3.w / 2) / 2}
+              width={dims3.w} height={dims3.w / 2}
+              preserveAspectRatio="none"
+              style={{ pointerEvents: "none" }}
+            />
+          )}
           {computed3.map(cf => {
             const isMine = myTopoIds.has(cf.id);
             const isOpp  = oppTopoIds.has(cf.id);
@@ -1125,6 +1166,7 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
         <button className="zoom-btn" onClick={()=>applyZoom3(xf3Ref.current.k/ZOOM_STEP)}>&#8722;</button>
       </div>
       <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      {themeDef.attribution && <div className="map-attribution">{themeDef.attribution}</div>}
       <MapThemePicker active={mapTheme} onChange={setMapTheme} />
 
       {/* Legend */}
