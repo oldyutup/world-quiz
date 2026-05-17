@@ -550,6 +550,12 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const visitedIds = new Set(routeKeys.slice(0, -1).map(k => keyToTopoId[k]).filter(Boolean));
   const currentId  = keyToTopoId[routeKeys[routeKeys.length - 1]] ?? "";
 
+  /* Track largest feature per topoId to avoid duplicate labels (e.g. Somaliland→Somalia) */
+  const maxAreaById2 = new Map<string, number>();
+  computed2.forEach(cf => {
+    if ((maxAreaById2.get(cf.id) ?? -1) < cf.area) maxAreaById2.set(cf.id, cf.area);
+  });
+
   const cssTransform2 = `translate(${xf2.tx}px,${xf2.ty}px) scale(${xf2.k})`;
   const labelScale2   = 1 / xf2.k;
 
@@ -583,6 +589,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
           {computed2
             .filter(cf =>
               cf.area >= MIN_LABEL && cf.cx !== 0 && cf.display &&
+              cf.area === maxAreaById2.get(cf.id) &&
               (visitedIds.has(cf.id) || cf.id === currentId || cf.id === targetId || cf.id === startId)
             )
             .map(cf => {

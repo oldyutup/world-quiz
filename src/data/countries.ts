@@ -366,7 +366,7 @@ const ROUTE_GRAPH_RAW: Record<string, string[]> = {
   "Greece":                 ["Albania","North Macedonia","Bulgaria","Turkey"],
   "Hungary":                ["Austria","Slovakia","Ukraine","Romania","Serbia","Croatia","Slovenia"],
   "Italy":                  ["France","Switzerland","Austria","Slovenia"],
-  "Kosovo":                 [],                                          // excluded — not universally recognised
+  "Kosovo":                 ["Albania","North Macedonia","Montenegro","Serbia"],
   "Latvia":                 ["Estonia","Lithuania","Belarus","Russia"],
   "Lithuania":              ["Latvia","Belarus","Poland","Russia"],
   "Luxembourg":             ["Belgium","France","Germany"],

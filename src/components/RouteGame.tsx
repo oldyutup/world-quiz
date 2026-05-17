@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { playSound } from "../lib/sound";
 import { RouteMapView } from "./WorldMap";
 import {
   NORM_TO_ROUTE_KEY,
@@ -21,10 +22,26 @@ function saveGold(n: number) {
   try { localStorage.setItem(GOLD_KEY, String(Math.max(0, n))); } catch {}
 }
 
+/* ─── route reward dedup helpers ─── */
+function buildRewardKey(start: string, target: string, diff: RouteDifficulty, shortest: number): string {
+  return `routeReward:${start}:${target}:${diff}:${shortest}`;
+}
+function hasClaimedReward(start: string, target: string, diff: RouteDifficulty, shortest: number): boolean {
+  try { return localStorage.getItem(buildRewardKey(start, target, diff, shortest)) === "1"; }
+  catch { return false; }
+}
+function claimReward(start: string, target: string, diff: RouteDifficulty, shortest: number) {
+  try { localStorage.setItem(buildRewardKey(start, target, diff, shortest), "1"); } catch {}
+}
+
 /* ─── constants ─── */
-const GOLD_PER_STEP       = 2;
-const GOLD_ON_WIN         = 20;
 const HINT_COST_NEIGHBORS = 20;
+
+const ROUTE_GOLD: Record<RouteDifficulty, { base: number; optimal: number }> = {
+  easy:   { base:  5, optimal:  7 },
+  normal: { base: 15, optimal: 20 },
+  hard:   { base: 30, optimal: 40 },
+};
 
 const DIFF_LABELS: Record<RouteDifficulty, string> = {
   easy:   "🟢 Kolay (2-3 adım)",
@@ -72,14 +89,15 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   const [shortestPath, setShortestPath] = useState<string[]>(() => bfsPath(initialTask.start, initialTask.end) ?? []);
 
   /* ── game state ── */
-  const [phase,       setPhase]      = useState<RoutePhase>("setup");
-  const [route,       setRoute]      = useState<string[]>([]);
-  const [input,       setInput]      = useState("");
-  const [errMsg,      setErrMsg]     = useState<string | null>(null);
-  const [okMsg,       setOkMsg]      = useState<string | null>(null);
-  const [gold,        setGold]       = useState<number>(() => loadGold());
-  const [pendingGold, setPendingGold] = useState(0);
-  const [joker,       setJoker]      = useState<JokerState>(EMPTY_JOKER);
+  const [phase,         setPhase]        = useState<RoutePhase>("setup");
+  const [route,         setRoute]        = useState<string[]>([]);
+  const [input,         setInput]        = useState("");
+  const [errMsg,        setErrMsg]       = useState<string | null>(null);
+  const [okMsg,         setOkMsg]        = useState<string | null>(null);
+  const [gold,          setGold]         = useState<number>(() => loadGold());
+  const [pendingGold,   setPendingGold]  = useState(0);
+  const [joker,         setJoker]        = useState<JokerState>(EMPTY_JOKER);
+  const [rewardClaimed, setRewardClaimed] = useState(false);
   const goldFlushedRef = useRef(false);
 
   const inputRef    = useRef<HTMLInputElement>(null);
@@ -103,6 +121,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
 
   /* ── start game ── */
   const startGame = useCallback(() => {
+    setRewardClaimed(hasClaimedReward(startKey, targetKey, difficulty, shortestPath.length - 1));
     setRoute([startKey]);
     setPhase("playing");
     setInput("");
@@ -112,7 +131,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
     setJoker(EMPTY_JOKER);
     goldFlushedRef.current = false;
     setTimeout(() => inputRef.current?.focus(), 80);
-  }, [startKey]);
+  }, [startKey, targetKey, difficulty, shortestPath]);
 
   /* ── restart (pick new task, go back to setup) ── */
   const restartSetup = useCallback(() => {
@@ -186,25 +205,33 @@ export default function RouteGame({ onHome }: RouteGameProps) {
     if (!norm) return;
 
     const key = NORM_TO_ROUTE_KEY[norm];
-    if (!key) { showErr("Bu ülke tanınmıyor."); return; }
-    if (route.includes(key)) { showErr("Bu ülkeyi zaten kullandın."); return; }
+    if (!key) { showErr("Bu ülke tanınmıyor."); playSound("wrong"); return; }
+    if (key === currentKey) { showErr("Zaten bu ülkedesin."); playSound("wrong"); return; }
     if (!neighbours.includes(key)) {
       showErr(`"${routeKeyToDisplay(key)}" — ${curDisplay} ile komşu değil.`);
+      playSound("wrong");
       return;
     }
 
     const newRoute = [...route, key];
     setRoute(newRoute);
     setInput("");
-    showOk("✓ Doğru komşu!");
-    setPendingGold(prev => prev + GOLD_PER_STEP);
-    resetJoker();   // always reset joker on advance
+    resetJoker();
 
-    if (key === targetKey) {
-      flushGold(GOLD_ON_WIN);
+    if (key === targetKey || getNeighbors(key).includes(targetKey)) {
+      const isOptimal = (newRoute.length - 1) <= (shortestPath.length - 1);
+      if (!rewardClaimed) {
+        const reward = ROUTE_GOLD[difficulty][isOptimal ? "optimal" : "base"];
+        claimReward(startKey, targetKey, difficulty, shortestPath.length - 1);
+        flushGold(reward);
+      }
       setPhase("won");
+      playSound(isOptimal ? "win" : "lose");
+    } else {
+      showOk("✓ Doğru komşu!");
+      playSound("correct");
     }
-  }, [phase, input, route, neighbours, curDisplay, targetKey, showErr, showOk, flushGold, resetJoker]);
+  }, [phase, input, route, neighbours, curDisplay, targetKey, shortestPath, rewardClaimed, startKey, difficulty, showErr, showOk, flushGold, resetJoker]);
 
   /* keyboard */
   useEffect(() => {
@@ -219,8 +246,19 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   /* ════════════════════════════════════════════════
      RENDER
   ════════════════════════════════════════════════ */
-  const totalEarned = GOLD_PER_STEP * stepsCount + GOLD_ON_WIN;
-  const shortestLen = shortestPath.length - 1;
+  const shortestLen   = shortestPath.length - 1;
+  const wonByNeighbor = phase === "won" && currentKey !== targetKey;
+  const wonOptimally  = stepsCount <= shortestLen;
+  const rewardAmount  = rewardClaimed ? 0 : ROUTE_GOLD[difficulty][wonOptimally ? "optimal" : "base"];
+
+  const locationDesc = wonByNeighbor
+    ? `${stepsCount} adımda ${curDisplay}'a ulaştın — ${targetDisplay}'ın komşusu`
+    : `${stepsCount} adımda ${targetDisplay}'ya ulaştın`;
+  const resultDesc = rewardClaimed
+    ? " — Bu görev için ödül daha önce alındı. +0 gold"
+    : wonOptimally
+      ? ` — En kısa rotada tamamladın! +${rewardAmount} gold 🏆`
+      : ` — Hedefe ulaştın ama en kısa rota kaçtı. +${rewardAmount} gold`;
 
   return (
     <div className="route-screen">
@@ -314,7 +352,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
               </span>
               <div className="route-path-chips">
                 {route.map((key, i) => (
-                  <span key={key} className="route-step-wrap">
+                  <span key={`${key}-${i}`} className="route-step-wrap">
                     <span className={
                       "route-step " + (
                         i === 0 ? "route-step-start" :
@@ -386,20 +424,19 @@ export default function RouteGame({ onHome }: RouteGameProps) {
         {phase === "won" && (
           <div className="route-win-inline">
             <div className="route-win-header">
-              <span className="route-win-emoji">🎉</span>
+              <span className="route-win-emoji">{wonOptimally ? "🎉" : "😓"}</span>
               <div className="route-win-text">
-                <p className="route-win-title">Başardın!</p>
-                <p className="route-win-steps">
-                  {stepsCount} adımda {targetDisplay}&apos;ya ulaştın
-                  {stepsCount === shortestLen
-                    ? " (en kısa rota! 🏆)"
-                    : ` (en kısa: ${shortestLen} adım)`}
-                </p>
+                <p className="route-win-title">{wonOptimally ? "Başardın!" : "Rota Tamamlandı"}</p>
+                <p className="route-win-steps">{locationDesc}{resultDesc}</p>
               </div>
-              <div className="route-win-gold-badge">
-                <span>🟡</span>
-                <span>+{totalEarned}</span>
-              </div>
+              {rewardClaimed ? (
+                <span className="route-reward-claimed-note">+0 gold</span>
+              ) : (
+                <div className="route-win-gold-badge">
+                  <span>🟡</span>
+                  <span>+{rewardAmount}</span>
+                </div>
+              )}
             </div>
 
             {/* Optimal path if not found */}
@@ -428,7 +465,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
             {/* Completed route */}
             <div className="route-path-chips route-win-chips">
               {route.map((key, i) => (
-                <span key={key} className="route-step-wrap">
+                <span key={`${key}-${i}`} className="route-step-wrap">
                   <span className={
                     "route-step " + (
                       i === 0 ? "route-step-start" :

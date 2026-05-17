@@ -1117,6 +1117,15 @@ body {
 
 .route-win-chips { max-height: 60px; }
 
+.route-reward-claimed-note {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: .78rem;
+  color: var(--muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 .route-win-actions {
   display: flex; gap: 8px;
   justify-content: flex-end;
