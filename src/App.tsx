@@ -85,11 +85,12 @@ const GOLD_KEY       = "geoquiz_gold";
 const GOLD_BONUS_KEY = "geoquiz_daily_bonus";
 const DAILY_BONUS    = 50;
 
-/** Per-correct-answer gold, awarded in bulk at game end. */
+/** Per-correct-answer gold, awarded in bulk at game end.
+ *  flag-game uses value=1 as a correct-answer counter; real gold is computed at flush via calcFlagGold. */
 const GOLD_RATES: Record<AppScreen, number> = {
   "home": 0,
   "map-game": 2,
-  "flag-game": 6,
+  "flag-game": 1,       // counts correct answers; banded reward applied at end
   "silhouette-game": 8,
   "route-game": 0,
   "duel-game": 0,
@@ -98,6 +99,21 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "wheel-game": 0,
   "wheel-duel-game": 0,
 };
+
+/** Band + duration-cap based gold for solo Flag Game. */
+function calcFlagGold(correctCount: number, durationSec: number): number {
+  const band =
+    correctCount >= 25 ? 25 :
+    correctCount >= 20 ? 20 :
+    correctCount >= 15 ? 15 :
+    correctCount >= 10 ? 10 :
+    correctCount >=  5 ?  5 : 0;
+  const cap =
+    durationSec >= 300 ? 70 :
+    durationSec >= 120 ? 40 :
+    durationSec >=  60 ? 25 : 10;
+  return Math.min(band, cap);
+}
 
 /** Hint costs */
 const HINT_COSTS = {
@@ -870,7 +886,8 @@ function useGameCore(
   /** Accumulate pending gold for ONE correct answer (call from game components) */
   const addPendingGold = useCallback((hintUsed: boolean) => {
     const base = GOLD_RATES[gameType] ?? 0;
-    const reward = hintUsed ? Math.floor(base * 0.5) : base;
+    // flag-game: base=1 acts as a counter; banding is applied at flush, so no hint penalty here
+    const reward = (gameType === "flag-game") ? base : (hintUsed ? Math.floor(base * 0.5) : base);
     pendingGoldRef.current += reward;
   }, [gameType]);
 
@@ -878,7 +895,12 @@ function useGameCore(
   const flushGold = useCallback(() => {
     if (goldRewardedRef.current) return; // already flushed this session
     goldRewardedRef.current = true;
-    const pending = pendingGoldRef.current;
+    let pending = pendingGoldRef.current;
+    // flag-game: pendingGoldRef holds correct-answer count; convert to banded reward
+    if (gameType === "flag-game") {
+      pending = calcFlagGold(pendingGoldRef.current, selectedDuration);
+      pendingGoldRef.current = pending; // update so modal shows the real earned amount
+    }
     if (pending > 0) {
       setGold(prev => {
         const next = prev + pending;
@@ -886,7 +908,7 @@ function useGameCore(
         return next;
       });
     }
-  }, []);
+  }, [gameType, selectedDuration]);
 
   const endGame = useCallback((won?: boolean) => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -1224,11 +1246,12 @@ function FlagGame({
     const norm = normalizeInput(g.input);
     if (!norm) return;
     const entry = NAME_TO_ENTRY[norm];
-    if (!entry || entry.code !== currentFlag.code) { 
-  g.triggerFeedback("wrong"); 
-  g.setInput(""); // input temizlenir
-  return;
-}
+    if (!entry || entry.code !== currentFlag.code) {
+      playSound("wrong");
+      g.triggerFeedback("wrong");
+      g.setInput("");
+      return;
+    }
     const topoId = currentFlag.topoId;
     if (topoId && g.guessedISOs.has(topoId)) {
       g.triggerFeedback("dup"); g.setInput(""); advanceTo(flagQueue, flagIndex); return;
@@ -1236,6 +1259,7 @@ function FlagGame({
     const next = new Set(g.guessedISOs);
     if (topoId) next.add(topoId);
     g.setGuessedISOs(next); g.setLastGuessed(topoId || null); g.setInput("");
+    playSound("correct");
     g.triggerFeedback("correct");
     g.addPendingGold(hintUsedThisQRef.current);
     advanceTo(flagQueue, flagIndex);

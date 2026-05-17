@@ -1529,7 +1529,7 @@ if (!code) {
 
     const entry = NAME_TO_ENTRY[norm];
     if (!entry || entry.code !== currentFlag.code) {
-      showFeedback("wrong"); setInput(""); return;
+      playSound("wrong"); showFeedback("wrong"); setInput(""); return;
     }
     setInput("");
 
@@ -1544,8 +1544,8 @@ if (!code) {
     });
     if (error) {
       if (error.code === "23505") showFeedback("dup");
-      else { dbgErr("claim insert failed", error); showFeedback("wrong"); }
-    } else { showFeedback("correct"); }
+      else { dbgErr("claim insert failed", error); playSound("wrong"); showFeedback("wrong"); }
+    } else { playSound("correct"); showFeedback("correct"); }
   };
 
   const handlePass = async () => {
