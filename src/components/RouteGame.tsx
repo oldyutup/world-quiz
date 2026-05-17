@@ -38,15 +38,15 @@ function claimReward(start: string, target: string, diff: RouteDifficulty, short
 const HINT_COST_NEIGHBORS = 20;
 
 const ROUTE_GOLD: Record<RouteDifficulty, { base: number; optimal: number }> = {
-  easy:   { base:  5, optimal:  7 },
-  normal: { base: 15, optimal: 20 },
-  hard:   { base: 30, optimal: 40 },
+  easy:   { base:  3, optimal:  7 },
+  normal: { base: 10, optimal: 20 },
+  hard:   { base: 20, optimal: 40 },
 };
 
 const DIFF_LABELS: Record<RouteDifficulty, string> = {
-  easy:   "🟢 Kolay (2-3 adım)",
-  normal: "🟡 Normal (4-5 adım)",
-  hard:   "🔴 Zor (6+ adım)",
+  easy:   "🟢 Kolay (2-3 ara ülke)",
+  normal: "🟡 Normal (4-5 ara ülke)",
+  hard:   "🔴 Zor (6+ ara ülke)",
 };
 
 type RoutePhase = "setup" | "playing" | "won";
@@ -219,7 +219,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
     resetJoker();
 
     if (key === targetKey || getNeighbors(key).includes(targetKey)) {
-      const isOptimal = (newRoute.length - 1) <= (shortestPath.length - 1);
+      const isOptimal = (newRoute.length - 1) <= (shortestPath.length - 2);
       if (!rewardClaimed) {
         const reward = ROUTE_GOLD[difficulty][isOptimal ? "optimal" : "base"];
         claimReward(startKey, targetKey, difficulty, shortestPath.length - 1);
@@ -248,7 +248,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   ════════════════════════════════════════════════ */
   const shortestLen   = shortestPath.length - 1;
   const wonByNeighbor = phase === "won" && currentKey !== targetKey;
-  const wonOptimally  = stepsCount <= shortestLen;
+  const wonOptimally  = stepsCount <= shortestLen - 1;
   const rewardAmount  = rewardClaimed ? 0 : ROUTE_GOLD[difficulty][wonOptimally ? "optimal" : "base"];
 
   const locationDesc = wonByNeighbor

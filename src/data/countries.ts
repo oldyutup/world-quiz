@@ -882,17 +882,21 @@ interface DiffBand {
   maxDist:  number;
 }
 
+// dist = edge count (BFS path length - 1).
+// With neighbor-win rule, player can finish in dist-1 steps.
+// "ara ülke" = intermediate countries written = dist - 1 (optimal).
+// To guarantee ≥N ara ülke, require dist ≥ N+1.
 const DIFF_BAND: Record<RouteDifficulty, DiffBand> = {
-  easy:   { minScore:  0, maxScore: 45, minDist: 2, maxDist:  5 },
-  normal: { minScore: 35, maxScore: 72, minDist: 3, maxDist:  7 },
-  hard:   { minScore: 65, maxScore: 999, minDist: 5, maxDist: 20 },
+  easy:   { minScore:  0, maxScore: 45, minDist: 3, maxDist:  4 },
+  normal: { minScore: 35, maxScore: 72, minDist: 5, maxDist:  6 },
+  hard:   { minScore: 65, maxScore: 999, minDist: 7, maxDist: 20 },
 };
 
 /* ── Fallbacks ── */
 const FALLBACKS: Record<RouteDifficulty, { start: string; end: string }> = {
-  easy:   { start: "Turkey",   end: "Bulgaria"  },
-  normal: { start: "Turkey",   end: "Germany"   },
-  hard:   { start: "Slovenia", end: "Myanmar"   },
+  easy:   { start: "Germany",    end: "Romania"  },  // dist=3, score≈34
+  normal: { start: "Kazakhstan", end: "France"   },  // dist=5, score≈54
+  hard:   { start: "Slovenia",   end: "Myanmar"  },  // dist=8+
 };
 
 /* ── BFS ── */
