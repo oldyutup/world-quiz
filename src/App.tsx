@@ -30,6 +30,7 @@ import {
   type CountdownSoundMode,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
+import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import {
   createProfile,
   getCurrentUser,
@@ -1623,7 +1624,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
-  const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
 
@@ -1672,6 +1672,14 @@ useEffect(() => {
     window.removeEventListener("keydown", handleFirstInteraction);
   };
 }, []);
+
+// When returning to the home screen, sync the App-level gold state from localStorage.
+// Game sub-components write earned gold via their own useGameCore flushGold(), which
+// saves to localStorage but does not update this state. Refreshing on home entry keeps
+// UserProfileDropdown gold in sync.
+useEffect(() => {
+  if (screen === "home") setGold(loadGold());
+}, [screen]);
 
 useEffect(() => {
   let alive = true;
@@ -1780,105 +1788,19 @@ useEffect(() => {
   if (screen === "home")
   return (
     <>
-      <div className="auth-mini-bar">
-        {authLoading ? (
-          <span>Kontrol ediliyor...</span>
-        ) : profile ? (
-          <>
-            <span>@{profile.username}</span>
-            <span>Lv. {profile.level}</span>
-            <button type="button" onClick={handleLogout}>
-              Çıkış
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={() => setAuthOpen(true)}>
-            Giriş Yap
-          </button>
-        )}
-      </div>
-      <button
-  className="sound-toggle-btn"
-  type="button"
-  onClick={() => setSoundSettingsOpen(true)}
-  title="Ses ayarları"
->
-  🔊 Ses Ayarları
-</button>
-
-{soundSettingsOpen && (
-  <div
-    className="sound-settings-backdrop"
-    onClick={() => setSoundSettingsOpen(false)}
-  >
-    <div
-      className="sound-settings-panel"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        type="button"
-        className="sound-settings-close"
-        onClick={() => setSoundSettingsOpen(false)}
-      >
-        ×
-      </button>
-
-      <h2 className="sound-settings-title">🔊 Ses Ayarları</h2>
-
-      <div className="sound-setting-section">
-        <p className="sound-setting-label">Genel Ses</p>
-
-        <div className="sound-setting-options two">
-          <button
-            type="button"
-            className={soundEnabled ? "sound-setting-option active" : "sound-setting-option"}
-            onClick={() => handleSetSoundEnabled(true)}
-          >
-            Açık
-          </button>
-
-          <button
-            type="button"
-            className={!soundEnabled ? "sound-setting-option active" : "sound-setting-option"}
-            onClick={() => handleSetSoundEnabled(false)}
-          >
-            Kapalı
-          </button>
-        </div>
-      </div>
-
-      <div className="sound-setting-section">
-        <p className="sound-setting-label">Geri Sayım Sesi</p>
-
-        <div className="sound-setting-options three">
-          <button
-            type="button"
-            className={countdownSoundMode === "off" ? "sound-setting-option active" : "sound-setting-option"}
-            onClick={() => handleSetCountdownSoundMode("off")}
-          >
-            Kapalı
-          </button>
-
-          <button
-            type="button"
-            className={countdownSoundMode === "last10" ? "sound-setting-option active" : "sound-setting-option"}
-            onClick={() => handleSetCountdownSoundMode("last10")}
-          >
-            Son 10 sn
-          </button>
-
-          <button
-            type="button"
-            className={countdownSoundMode === "last20" ? "sound-setting-option active" : "sound-setting-option"}
-            onClick={() => handleSetCountdownSoundMode("last20")}
-          >
-            Son 20 sn
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      <UserProfileDropdown
+        profile={profile}
+        authLoading={authLoading}
+        gold={gold}
+        canBonus={canBonus}
+        soundEnabled={soundEnabled}
+        countdownSoundMode={countdownSoundMode}
+        onClaimBonus={handleAppClaimBonus}
+        onSetSoundEnabled={handleSetSoundEnabled}
+        onSetCountdownSoundMode={handleSetCountdownSoundMode}
+        onLogout={handleLogout}
+        onLogin={() => setAuthOpen(true)}
+      />
 
       <HomeScreen onSelect={setScreen} />
 

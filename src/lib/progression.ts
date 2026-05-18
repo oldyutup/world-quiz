@@ -405,3 +405,30 @@ export async function awardXpEvent(
     );
   }
 }
+
+/* ────────────────────────────────────────────────
+   Toplam XP okuma (xp_events üzerinden)
+   ────────────────────────────────────────────────
+   profiles.xp kolonu RPC tarafından güncellenmiyor — gerçek XP
+   xp_events satırlarında tutuluyor. Bu helper kullanıcının tüm
+   modlardaki XP'sini toplayıp toplam XP'yi döner. Hata durumunda 0.
+
+   RLS: xp_events için kullanıcının kendi satırlarını okuyabilmesi gerekir.
+   ──────────────────────────────────────────────── */
+export async function fetchTotalXp(profileId: string): Promise<number> {
+  if (!profileId) return 0;
+  try {
+    const { data, error } = await supabase
+      .from("xp_events")
+      .select("xp_earned")
+      .eq("profile_id", profileId);
+    if (error || !data) return 0;
+    let sum = 0;
+    for (const row of data as Array<{ xp_earned: number | null }>) {
+      sum += Number(row.xp_earned ?? 0) || 0;
+    }
+    return Math.max(0, Math.floor(sum));
+  } catch {
+    return 0;
+  }
+}
