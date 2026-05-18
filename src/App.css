@@ -648,8 +648,10 @@ body {
   width: 100%;
   border-radius: 16px;
   overflow: hidden;
-  border: 2px solid rgba(140,174,221,.2);
-  box-shadow: 0 8px 40px rgba(0,0,0,.5);
+  border: 2px solid rgba(140,174,221,.28);
+  box-shadow:
+    0 8px 40px rgba(0,0,0,.55),
+    inset 0 0 0 1px rgba(255,255,255,.03);
   background: var(--sil-bg);
   transition: border-color .25s, box-shadow .25s;
 }
@@ -672,28 +674,38 @@ body {
 .sil-path {
   fill: var(--sil-fill);
   stroke: var(--sil-stroke);
-  stroke-width: 1.5px;
-  filter: drop-shadow(0 2px 12px rgba(200,216,240,.18));
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 2px 14px rgba(200,216,240,.22));
   transition: fill .25s, filter .25s;
 }
 
 /* Flash animations */
 .sil-flash-correct .sil-path {
   fill: var(--sil-correct);
-  filter: drop-shadow(0 0 20px rgba(34,197,94,.6));
+  filter: drop-shadow(0 0 24px rgba(34,197,94,.7));
+  animation: silPopCorrect .6s ease;
 }
 .sil-flash-correct .sil-card {
   border-color: var(--sil-correct);
-  box-shadow: 0 0 0 3px rgba(34,197,94,.25), 0 8px 40px rgba(0,0,0,.5);
+  box-shadow:
+    0 0 0 3px rgba(34,197,94,.28),
+    0 0 32px rgba(34,197,94,.22),
+    0 8px 40px rgba(0,0,0,.55);
 }
 
 .sil-flash-wrong .sil-path {
   fill: var(--sil-wrong);
-  filter: drop-shadow(0 0 16px rgba(248,81,73,.5));
+  filter: drop-shadow(0 0 18px rgba(248,81,73,.55));
 }
 .sil-flash-wrong .sil-card {
   border-color: var(--sil-wrong);
-  box-shadow: 0 0 0 3px rgba(248,81,73,.2), 0 8px 40px rgba(0,0,0,.5);
+  box-shadow:
+    0 0 0 3px rgba(248,81,73,.22),
+    0 0 28px rgba(248,81,73,.18),
+    0 8px 40px rgba(0,0,0,.55);
   animation: cardShake .35s ease;
 }
 
@@ -704,6 +716,12 @@ body {
   60%  { transform: translateX(-5px); }
   80%  { transform: translateX(5px); }
   100% { transform: translateX(0); }
+}
+
+@keyframes silPopCorrect {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
 }
 
 /* Mobile: smaller padding */

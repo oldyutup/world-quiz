@@ -952,3 +952,182 @@ export function randomRouteTask(
 
   return FALLBACKS[difficulty];
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   SILHOUETTE MODE — curated metadata
+   Pools, subregions, landlocked status, neighbor lookup.
+═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Silhouette-mode difficulty overrides, keyed by ISO alpha-2 code.
+ * These tune pool composition to shape recognizability rather than
+ * the more general fame-based difficulty used in flag mode.
+ *
+ * - easy/normal/hard pools below are EXACT lists; countries outside
+ *   any pool only appear when the user picks "Tümü" (all).
+ */
+const SIL_EASY_CODES = new Set<string>([
+  "tr","us","ca","br","ar","cl","mx","ru","cn","in","jp","au",
+  "it","fr","de","es","gb","no","se","fi","eg","za","sa","ir","kz",
+]);
+const SIL_NORMAL_CODES = new Set<string>([
+  "pl","ua","ro","gr","bg","rs","hu","at","pt","nl","be","ch",
+  "ma","dz","ly","et","ke","tz","co","pe","ve","pk","th","vn",
+  "ph","my","id","kr","kp",
+]);
+const SIL_HARD_CODES = new Set<string>([
+  "bt","np","la","kh","bn","tl","lk","mv","bh","qa","kw","lb",
+  "jo","am","ge","md","si","sk","hr","ba","me","xk","al","mk",
+  "ee","lv","lt","is","ie","mt","cy","lu","ad","mc","sm","li",
+  "bz","sv","hn","ni","cr","pa","jm","ht","do","tt","fj","ws",
+  "to","vu","sb",
+]);
+
+function silhouetteBucket(entry: CountryEntry): "easy" | "normal" | "hard" | null {
+  if (SIL_EASY_CODES.has(entry.code))   return "easy";
+  if (SIL_NORMAL_CODES.has(entry.code)) return "normal";
+  if (SIL_HARD_CODES.has(entry.code))   return "hard";
+  return null;
+}
+
+/**
+ * Silhouette-mode pool builder.
+ * - difficulty="all": all counted countries (with topoId), continent-filtered
+ * - difficulty="easy"|"normal"|"hard": ONLY countries listed in the matching
+ *   curated set above (continent-filtered)
+ */
+export function getSilhouettePool(
+  continent: Continent | "world",
+  difficulty: Difficulty = "all"
+): CountryEntry[] {
+  let pool = COUNTRIES.filter(c => c.counted && c.code && c.topoId);
+  if (continent !== "world") pool = pool.filter(c => c.continent === continent);
+  if (difficulty === "all") return pool;
+  return pool.filter(c => silhouetteBucket(c) === difficulty);
+}
+
+/**
+ * Sub-region (Turkish) for silhouette region hint.
+ * Returns null when the code is not mapped — caller should hide the hint chip.
+ */
+const SIL_SUBREGION: Record<string, string> = {
+  // ── EUROPE ──
+  // Balkanlar
+  "al":"Balkanlar","ba":"Balkanlar","hr":"Balkanlar","me":"Balkanlar",
+  "mk":"Balkanlar","rs":"Balkanlar","si":"Balkanlar","xk":"Balkanlar",
+  // Batı Avrupa
+  "fr":"Batı Avrupa","de":"Batı Avrupa","nl":"Batı Avrupa","be":"Batı Avrupa",
+  "ch":"Batı Avrupa","at":"Batı Avrupa","lu":"Batı Avrupa","gb":"Batı Avrupa",
+  "ie":"Batı Avrupa","mc":"Batı Avrupa","li":"Batı Avrupa",
+  // Kuzey Avrupa
+  "dk":"Kuzey Avrupa","se":"Kuzey Avrupa","no":"Kuzey Avrupa",
+  "fi":"Kuzey Avrupa","is":"Kuzey Avrupa","ee":"Kuzey Avrupa",
+  "lv":"Kuzey Avrupa","lt":"Kuzey Avrupa",
+  // Güney Avrupa
+  "it":"Güney Avrupa","es":"Güney Avrupa","pt":"Güney Avrupa","gr":"Güney Avrupa",
+  "mt":"Güney Avrupa","cy":"Güney Avrupa","ad":"Güney Avrupa",
+  "sm":"Güney Avrupa","va":"Güney Avrupa",
+  // Doğu Avrupa
+  "pl":"Doğu Avrupa","cz":"Doğu Avrupa","sk":"Doğu Avrupa","hu":"Doğu Avrupa",
+  "ro":"Doğu Avrupa","bg":"Doğu Avrupa","by":"Doğu Avrupa","ua":"Doğu Avrupa",
+  "md":"Doğu Avrupa","ru":"Doğu Avrupa",
+
+  // ── ASIA ──
+  // Orta Doğu
+  "tr":"Orta Doğu","ir":"Orta Doğu","iq":"Orta Doğu","il":"Orta Doğu",
+  "sy":"Orta Doğu","lb":"Orta Doğu","jo":"Orta Doğu","sa":"Orta Doğu",
+  "ye":"Orta Doğu","om":"Orta Doğu","ae":"Orta Doğu","qa":"Orta Doğu",
+  "kw":"Orta Doğu","bh":"Orta Doğu","ps":"Orta Doğu",
+  // Kafkaslar
+  "am":"Kafkaslar","az":"Kafkaslar","ge":"Kafkaslar",
+  // Orta Asya
+  "kz":"Orta Asya","uz":"Orta Asya","tm":"Orta Asya","tj":"Orta Asya",
+  "kg":"Orta Asya","mn":"Orta Asya","af":"Orta Asya",
+  // Güney Asya
+  "in":"Güney Asya","pk":"Güney Asya","bd":"Güney Asya","lk":"Güney Asya",
+  "mv":"Güney Asya","np":"Güney Asya","bt":"Güney Asya",
+  // Güneydoğu Asya
+  "id":"Güneydoğu Asya","my":"Güneydoğu Asya","sg":"Güneydoğu Asya",
+  "th":"Güneydoğu Asya","vn":"Güneydoğu Asya","ph":"Güneydoğu Asya",
+  "mm":"Güneydoğu Asya","kh":"Güneydoğu Asya","la":"Güneydoğu Asya",
+  "bn":"Güneydoğu Asya","tl":"Güneydoğu Asya",
+  // Doğu Asya
+  "cn":"Doğu Asya","jp":"Doğu Asya","kr":"Doğu Asya","kp":"Doğu Asya",
+  "tw":"Doğu Asya",
+
+  // ── AFRICA ──
+  // Kuzey Afrika
+  "eg":"Kuzey Afrika","ly":"Kuzey Afrika","tn":"Kuzey Afrika","dz":"Kuzey Afrika",
+  "ma":"Kuzey Afrika","sd":"Kuzey Afrika",
+  // Batı Afrika
+  "mr":"Batı Afrika","ml":"Batı Afrika","ne":"Batı Afrika","ng":"Batı Afrika",
+  "sn":"Batı Afrika","gm":"Batı Afrika","gn":"Batı Afrika","gw":"Batı Afrika",
+  "sl":"Batı Afrika","lr":"Batı Afrika","ci":"Batı Afrika","gh":"Batı Afrika",
+  "tg":"Batı Afrika","bj":"Batı Afrika","bf":"Batı Afrika","cv":"Batı Afrika",
+  // Doğu Afrika
+  "et":"Doğu Afrika","er":"Doğu Afrika","dj":"Doğu Afrika","so":"Doğu Afrika",
+  "ke":"Doğu Afrika","tz":"Doğu Afrika","ug":"Doğu Afrika","rw":"Doğu Afrika",
+  "bi":"Doğu Afrika","ss":"Doğu Afrika","mw":"Doğu Afrika","mz":"Doğu Afrika",
+  "mg":"Doğu Afrika","mu":"Doğu Afrika","km":"Doğu Afrika","sc":"Doğu Afrika",
+  // Orta Afrika
+  "td":"Orta Afrika","cm":"Orta Afrika","cf":"Orta Afrika","gq":"Orta Afrika",
+  "ga":"Orta Afrika","cg":"Orta Afrika","cd":"Orta Afrika","st":"Orta Afrika",
+  // Güney Afrika
+  "za":"Güney Afrika","na":"Güney Afrika","bw":"Güney Afrika","zw":"Güney Afrika",
+  "zm":"Güney Afrika","ao":"Güney Afrika","ls":"Güney Afrika","sz":"Güney Afrika",
+
+  // ── AMERICAS ──
+  "us":"Kuzey Amerika","ca":"Kuzey Amerika","mx":"Kuzey Amerika",
+  "bz":"Orta Amerika","gt":"Orta Amerika","hn":"Orta Amerika",
+  "sv":"Orta Amerika","ni":"Orta Amerika","cr":"Orta Amerika","pa":"Orta Amerika",
+  "cu":"Karayipler","jm":"Karayipler","ht":"Karayipler","do":"Karayipler",
+  "tt":"Karayipler","bs":"Karayipler","bb":"Karayipler","ag":"Karayipler",
+  "dm":"Karayipler","gd":"Karayipler","kn":"Karayipler","lc":"Karayipler",
+  "vc":"Karayipler",
+  "ar":"Güney Amerika","br":"Güney Amerika","cl":"Güney Amerika","co":"Güney Amerika",
+  "pe":"Güney Amerika","ve":"Güney Amerika","ec":"Güney Amerika","bo":"Güney Amerika",
+  "py":"Güney Amerika","uy":"Güney Amerika","gy":"Güney Amerika","sr":"Güney Amerika",
+
+  // ── OCEANIA ──
+  "au":"Okyanusya","nz":"Okyanusya","fj":"Okyanusya","vu":"Okyanusya",
+  "sb":"Okyanusya","pg":"Okyanusya","ws":"Okyanusya","to":"Okyanusya",
+  "tv":"Okyanusya","ki":"Okyanusya","mh":"Okyanusya","fm":"Okyanusya",
+  "nr":"Okyanusya","pw":"Okyanusya",
+};
+
+export function getSilhouetteRegion(code: string): string | null {
+  return SIL_SUBREGION[code] ?? null;
+}
+
+/**
+ * Landlocked countries (no sea/ocean coastline).
+ * Caspian-bordering states are treated as landlocked, following UN usage.
+ */
+const SIL_LANDLOCKED = new Set<string>([
+  // Europe
+  "ad","at","by","cz","hu","li","lu","md","mk","sm","rs","sk","ch","va","xk",
+  // Asia
+  "af","am","az","bt","kz","kg","la","mn","np","tj","tm","uz",
+  // Africa
+  "bw","bf","bi","cf","td","sz","et","ls","mw","ml","ne","rw","ss","ug","zm","zw",
+  // South America
+  "bo","py",
+]);
+
+export function isLandlocked(code: string): boolean {
+  return SIL_LANDLOCKED.has(code);
+}
+
+/**
+ * Land-border neighbor count derived from the Route Mode graph.
+ * Returns null when the country is not represented in NEIGHBOR_GRAPH
+ * (mostly islands / micro-states) — caller should hide the hint chip.
+ */
+export function getNeighborCount(entry: CountryEntry): number | null {
+  const candidates = [entry.display, ...entry.names];
+  for (const cand of candidates) {
+    const key = NORM_TO_ROUTE_KEY[normalizeInput(cand)];
+    if (key && NEIGHBOR_GRAPH[key]) return NEIGHBOR_GRAPH[key].length;
+  }
+  return null;
+}

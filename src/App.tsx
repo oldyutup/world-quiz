@@ -13,6 +13,10 @@ import {
   normalizeInput,
   getContinentIds,
   getFlagPool,
+  getSilhouettePool,
+  getSilhouetteRegion,
+  isLandlocked,
+  getNeighborCount,
   type Continent,
   type CountryEntry,
   type Difficulty,
@@ -121,15 +125,21 @@ const HINT_COSTS = {
   firstLetter: 15,
   continent:   20,
   letterCount: 25,
+  region:      25,
+  coast:       20,
+  neighbors:   30,
 } as const;
 type HintType = keyof typeof HINT_COSTS;
 
-interface HintState {
-  firstLetter: boolean;
-  continent:   boolean;
-  letterCount: boolean;
-}
-const EMPTY_HINTS: HintState = { firstLetter: false, continent: false, letterCount: false };
+type HintState = Record<HintType, boolean>;
+const EMPTY_HINTS: HintState = {
+  firstLetter: false,
+  continent:   false,
+  letterCount: false,
+  region:      false,
+  coast:       false,
+  neighbors:   false,
+};
 
 /* ─── Gold localStorage helpers ─── */
 function loadGold(): number {
@@ -493,9 +503,10 @@ interface HintPanelProps {
   hints: HintState;
   currentEntry: CountryEntry | null;
   isPlaying: boolean;
+  mode?: "flag" | "silhouette";
   onBuyHint: (type: HintType) => void;
 }
-function HintPanel({ gold, hints, currentEntry, isPlaying, onBuyHint }: HintPanelProps) {
+function HintPanel({ gold, hints, currentEntry, isPlaying, mode = "flag", onBuyHint }: HintPanelProps) {
   if (!isPlaying || !currentEntry) return null;
 
   const display = currentEntry.display;
@@ -506,6 +517,26 @@ function HintPanel({ gold, hints, currentEntry, isPlaying, onBuyHint }: HintPane
     { type: "continent",   label: "Kıta",         cost: HINT_COSTS.continent,   value: contOpt?.label ?? currentEntry.continent      },
     { type: "letterCount", label: "Harf Sayısı",  cost: HINT_COSTS.letterCount, value: display.replace(/\s/g, "").length + " harf"  },
   ];
+
+  if (mode === "silhouette") {
+    const region = getSilhouetteRegion(currentEntry.code);
+    if (region) defs.push({ type: "region", label: "Bölge", cost: HINT_COSTS.region, value: region });
+    defs.push({
+      type: "coast",
+      label: "Denize Kıyı",
+      cost: HINT_COSTS.coast,
+      value: isLandlocked(currentEntry.code) ? "Kıyısı yok" : "Kıyısı var",
+    });
+    const nbCount = getNeighborCount(currentEntry);
+    if (nbCount !== null) {
+      defs.push({
+        type: "neighbors",
+        label: "Komşu Sayısı",
+        cost: HINT_COSTS.neighbors,
+        value: nbCount + " komşu",
+      });
+    }
+  }
 
   return (
     <div className="hint-panel">
@@ -1425,7 +1456,7 @@ function SilhouetteGame({
     hintUsedThisQRef.current = true;
   }, [g]);
 
-  const silPool  = useMemo(() => getFlagPool(continent, difficulty).filter(c => c.topoId), [continent, difficulty]);
+  const silPool  = useMemo(() => getSilhouettePool(continent, difficulty), [continent, difficulty]);
   const silTotal = silPool.length;
   const silScore = useMemo(() => {
     const ids = new Set(silPool.map(c => c.topoId).filter(Boolean));
@@ -1485,8 +1516,9 @@ function SilhouetteGame({
     const entry  = NAME_TO_ENTRY[norm];
     const isMatch = (topoId && topoId === currentSil.topoId) || (entry && entry.code === currentSil.code);
     if (!isMatch) {
+  playSound("wrong");
   g.triggerFeedback("wrong");
-  g.setInput(""); // 🔥 EKLE
+  g.setInput("");
   setFlash("wrong");
   setTimeout(() => setFlash(null), 500);
   return;
@@ -1498,6 +1530,7 @@ function SilhouetteGame({
     const next = new Set(g.guessedISOs);
     if (tid) next.add(tid);
     g.setGuessedISOs(next); g.setLastGuessed(tid || null); g.setInput("");
+    playSound("correct");
     g.triggerFeedback("correct");
     g.addPendingGold(hintUsedThisQRef.current);
     setFlash("correct");
@@ -1537,7 +1570,7 @@ function SilhouetteGame({
         onDurationChange={onDurationChange}
         gold={g.gold} canBonus={g.canBonus} onClaimBonus={g.handleClaimBonus}
       />
-      <HintPanel gold={g.gold} hints={hints} currentEntry={currentSil} isPlaying={g.isPlaying} onBuyHint={handleBuyHint} />
+      <HintPanel gold={g.gold} hints={hints} currentEntry={currentSil} isPlaying={g.isPlaying} mode="silhouette" onBuyHint={handleBuyHint} />
 
       {/* Pas Geç bar */}
       {g.isPlaying && (
