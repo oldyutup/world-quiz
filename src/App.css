@@ -7214,10 +7214,6 @@ body {
   padding: 12px 12px 24px;
   box-sizing: border-box;
   align-items: stretch;
-  /* duel-lobby yüksekliğini doldur, içerik uzamasın */
-  align-self: stretch;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* ── Sol kart: Oyuncular ── */
@@ -7271,20 +7267,40 @@ body {
   border-radius: 4px;
 }
 
-/* ── Sağ kart: Sohbet ── */
+/* ── Sağ kart: Sohbet ──
+   position:relative → lc-panel'in absolute referansı.
+   in-flow içerik yok → grid row yüksekliğini chat büyümesi etkilemiyor. */
 .wgg-chat-card {
   grid-area: chat;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 
-/* lc-panel sohbet kartını doldursun */
+/* lc-panel: chat card'ı tam doldur (absolute).
+   Flow'dan çıktığı için kart yüksekliğine katkısı sıfır;
+   row sadece players/middle karttan boyutlanır. */
 .wgg-chat-card .lc-panel {
-  width: 100% !important;
-  flex: 1 !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
   max-height: none !important;
   min-height: 0 !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Mesaj listesi: lc-panel içinde scroll — card dışına taşmaz */
+.wgg-chat-card .lc-messages {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+/* Input: altta sabit */
+.wgg-chat-card .lc-input-row {
+  flex-shrink: 0 !important;
 }
 
 /* ════ Mobil: tek kolon, sıra: Orta → Oyuncular → (Chat FAB) ════ */
