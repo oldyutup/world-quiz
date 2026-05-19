@@ -351,6 +351,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     url.searchParams.delete("duel");
     url.searchParams.delete("duelGroup");
     url.searchParams.delete("flagDuel");
+    url.searchParams.delete("wheelGroup");
     url.searchParams.set("wheelDuel", room.code);
     return url.toString();
   }, [room]);

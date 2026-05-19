@@ -123,3 +123,33 @@ export interface WheelDuelPlayer {
   joined_at:    string;
   last_seen_at: string;
 }
+
+/* ── Wheel Group (Çark Çok Oyunculu — 3–10 kişi) ── */
+export interface WheelGroupRoom {
+  id:                    string;
+  code:                  string;
+  status:                "waiting" | "playing" | "finished";
+  duration_seconds:      number;
+  region:                string;
+  penalty_enabled:       boolean;
+  max_players:           number;
+  host_player_id:        string | null;
+  started_at:            string | null;
+  finished_at:           string | null;
+  finished_reason:       string | null;
+  current_target_topoid: string | null;
+  used_target_topoids:   string[];
+  match_seq:             number;
+  current_match_id:      string;
+  created_at:            string;
+  updated_at:            string;
+}
+
+export interface WheelGroupPlayer {
+  id:           string;
+  room_id:      string;
+  name:         string;
+  score:        number;
+  joined_at:    string;
+  last_seen_at: string;
+}

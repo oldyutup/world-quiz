@@ -22,8 +22,11 @@ import { supabase } from "./supabase";
    Type'lar
    ──────────────────────────────────────────────── */
 
-/** Şu an XP destekli online 1v1 modlar. İleride buraya yeni mod eklenebilir. */
-export type ModeKey = "country_duel" | "flag_duel" | "wheel_duel";
+/** Şu an XP destekli online modlar. İleride buraya yeni mod eklenebilir.
+ *  Not: RPC tarafı server-side mode_key whitelist'i uygulayabilir; yeni bir
+ *  mode eklerken DB'deki check constraint'inin de güncellenmesi gerekebilir.
+ *  awardXpEvent hata durumunda fırlatmaz, sadece result.error doldurur. */
+export type ModeKey = "country_duel" | "flag_duel" | "wheel_duel" | "wheel_group";
 
 /** Maç sonucu. */
 export type MatchResult = "win" | "loss" | "draw";
@@ -61,6 +64,15 @@ export interface XpBreakdown {
   resultBonus: number;
   resultBonusLabel: "win" | "draw" | "loss";
   total: number;
+  /**
+   * Opsiyonel: XpGainBar'ın breakdown satırındaki 3. parçayı (win/draw/loss
+   * etiketinin yerine) override eder. Sıra-bazlı modlar (örn. wheel_group)
+   * için "Sıra #1 +10" gibi anlamlı bir metin sağlayabilir.
+   *
+   * undefined ise XpGainBar mevcut resultBonusLabel switch'ini kullanır →
+   * country_duel / flag_duel / wheel_duel davranışı değişmez.
+   */
+  bonusLabelText?: string;
 }
 
 /** Bir level'ın ilerleme durumu — UI bar'ı için. */
@@ -250,6 +262,69 @@ export function calculateFlagDuelXp(
   };
 }
 
+/** Wheel Group XP — sıralama bonusu hesabı için input. */
+export interface WheelGroupXpParams {
+  /** Oyuncunun haritada ilk bulduğu doğru ülke sayısı. */
+  correctCount: number;
+  /** Toplam puana göre nihai sıralama (1 = ilk). */
+  finalRank: number;
+  /** Toplam oyuncu sayısı (bilgi amaçlı; bonus hesabı sadece rank'a bağlı). */
+  totalPlayers: number;
+}
+
+/** Wheel Group breakdown — sıralama bonusu için ekstra alan. */
+export interface WheelGroupXpBreakdown extends XpBreakdown {
+  rankBonus: number;
+  finalRank: number;
+}
+
+/**
+ * Çark Çok Oyunculu (Wheel Group) XP:
+ *   - Katılım:        +5
+ *   - Her doğru ülke: +3
+ *   - 1. sıra bonusu: +10
+ *   - 2. sıra bonusu: +5
+ *   - 3. sıra bonusu: +3
+ *   - Diğer sıralar:  +0
+ *
+ * Not: Gold verilmez — bu mod yalnız XP üretir.
+ */
+export function calculateWheelGroupXp(
+  params: WheelGroupXpParams
+): WheelGroupXpBreakdown {
+  const participation = 5;
+  const perCorrect = 3;
+  const correctCount = Math.max(0, Math.floor(params.correctCount || 0));
+  const correctTotal = perCorrect * correctCount;
+  const rank = Math.max(1, Math.floor(params.finalRank || 1));
+  let rankBonus = 0;
+  if (rank === 1) rankBonus = 10;
+  else if (rank === 2) rankBonus = 5;
+  else if (rank === 3) rankBonus = 3;
+  const total = participation + correctTotal + rankBonus;
+
+  // XpGainBar bu metni 3. breakdown parçası olarak gösterir (Galibiyet/
+  // Beraberlik/Mağlubiyet yerine). Rank > 3 için "podyum dışı, bonus yok".
+  const bonusLabelText =
+    rank === 1 ? `🥇 Sıra #1 +${rankBonus}` :
+    rank === 2 ? `🥈 Sıra #2 +${rankBonus}` :
+    rank === 3 ? `🥉 Sıra #3 +${rankBonus}` :
+                 `#${rank} sıra · bonus yok`;
+
+  return {
+    participation,
+    perCorrect,
+    correctCount,
+    correctTotal,
+    resultBonus: rankBonus,
+    resultBonusLabel: rank === 1 ? "win" : rank <= 3 ? "draw" : "loss",
+    bonusLabelText,
+    rankBonus,
+    finalRank: rank,
+    total,
+  };
+}
+
 /**
  * Wheel Duel (Online Çark 1v1) XP:
  *   - Katılım:        +10
@@ -365,18 +440,36 @@ export async function awardXpEvent(
     return emptyAwardResult(null);
   }
 
+  // wheel_group için adanmış RPC: mevcut award_xp_event'in mode_key whitelist'i
+  // 'wheel_group'u içermediği için (eski modlar oluşturulduktan sonra eklendi)
+  // o modu kendi SECURITY DEFINER fonksiyonu üzerinden yazıyoruz. Sözleşme aynı;
+  // sadece mode_key argümanı ve RPC adı farklı.
+  // Migration: 20260518130000_wheel_group_xp_rpc.sql
+  const useDedicatedWheelGroupRpc = params.modeKey === "wheel_group";
+
   try {
-    const { data, error } = await supabase.rpc("award_xp_event", {
-      p_profile_id: params.profileId,
-      p_mode_key:   params.modeKey,
-      p_room_id:    params.roomId,
-      p_xp_earned:  xpEarned,
-      p_result:     params.result,
-      p_details:    params.details ?? {},
-    });
+    const { data, error } = useDedicatedWheelGroupRpc
+      ? await supabase.rpc("award_wheel_group_xp_event", {
+          p_profile_id: params.profileId,
+          p_room_id:    params.roomId,
+          p_xp_earned:  xpEarned,
+          p_result:     params.result,
+          p_details:    params.details ?? {},
+        })
+      : await supabase.rpc("award_xp_event", {
+          p_profile_id: params.profileId,
+          p_mode_key:   params.modeKey,
+          p_room_id:    params.roomId,
+          p_xp_earned:  xpEarned,
+          p_result:     params.result,
+          p_details:    params.details ?? {},
+        });
 
     if (error) {
-      console.error("[progression] award_xp_event RPC error:", error);
+      const rpcName = useDedicatedWheelGroupRpc
+        ? "award_wheel_group_xp_event"
+        : "award_xp_event";
+      console.error(`[progression] ${rpcName} RPC error:`, error);
       return emptyAwardResult(error.message ?? "RPC failed");
     }
 

@@ -7197,3 +7197,145 @@ body {
   .upd-avatar { width: 22px; height: 22px; font-size: 10px; }
   .upd-dropdown { width: min(270px, calc(100vw - 20px)); }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   WheelGroup Lobby — 3-card grid
+   Sol: Oyuncular · Orta: Oda/Ayarlar · Sağ: Sohbet
+══════════════════════════════════════════════════════════════ */
+
+.wgg-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.15fr) minmax(280px, 1fr);
+  grid-template-areas: "players middle chat";
+  gap: 16px;
+  width: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 12px 12px 24px;
+  box-sizing: border-box;
+  align-items: stretch;
+  /* duel-lobby yüksekliğini doldur, içerik uzamasın */
+  align-self: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Sol kart: Oyuncular ── */
+.wgg-players-card {
+  grid-area: players;
+  max-width: none !important;
+  width: 100% !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding: 18px 16px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  transform: none !important; /* .duel-screen .duel-lobby-card { translateY(48px) } override */
+}
+
+/* ── Orta kart: Oda / Ayarlar ── */
+.wgg-middle-card {
+  grid-area: middle;
+  max-width: none !important;
+  width: 100% !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding: 22px 22px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  transform: none !important; /* .duel-screen .duel-lobby-card { translateY(48px) } override */
+}
+
+/* ── Oyuncu listesi (scroll alanı) ── */
+.wgg-player-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.wgg-player-list::-webkit-scrollbar { width: 4px; }
+.wgg-player-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 4px;
+}
+
+/* ── Sağ kart: Sohbet ── */
+.wgg-chat-card {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* lc-panel sohbet kartını doldursun */
+.wgg-chat-card .lc-panel {
+  width: 100% !important;
+  flex: 1 !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+/* ════ Mobil: tek kolon, sıra: Orta → Oyuncular → (Chat FAB) ════ */
+@media (max-width: 899px) {
+  .wgg-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 8px 10px 24px;
+  }
+
+  .wgg-middle-card  { order: 1; }
+  .wgg-players-card { order: 2; }
+  .wgg-chat-card    { order: 3; }
+
+  /* Sohbet kartı: layout'tan kaldır ama FAB için children DOM'da kalsın */
+  .wgg-chat-card {
+    display: contents !important;
+  }
+
+  /* Mobilde panel gizle */
+  .wgg-chat-card .lc-panel {
+    display: none !important;
+  }
+
+  /* FAB görünsün (global min-width:861px kuralını override et) */
+  .wgg-chat-card .lc-fab {
+    display: inline-flex !important;
+    position: fixed !important;
+    right: 24px !important;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    z-index: 80 !important;
+  }
+
+  .wgg-chat-card .lc-sheet-backdrop { z-index: 999 !important; }
+  .wgg-chat-card .lc-sheet          { z-index: 1000 !important; }
+
+  /* Mobilde oyuncu kartı yüksekliği sabit olmasın */
+  .wgg-players-card {
+    overflow: visible !important;
+  }
+  .wgg-player-list {
+    overflow-y: visible !important;
+    flex: 0 0 auto !important;
+  }
+
+  /* Ayarlar: 2+1 düzeni (Ceza kendi satırında) */
+  .wgg-middle-card section[aria-label="Oda Ayarları"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .wgg-middle-card section[aria-label="Oda Ayarları"] .duel-select-wrap:last-child {
+    grid-column: 1 / -1;
+  }
+}

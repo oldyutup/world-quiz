@@ -6,6 +6,7 @@ import FlagDuelGame from "./components/FlagDuelGame";
 import DuelGroupGame from "./components/DuelGroupGame";
 import WheelGame from "./components/WheelGame";
 import WheelDuelGame from "./components/WheelDuelGame";
+import WheelGroupGame from "./components/WheelGroupGame";
 import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
@@ -46,7 +47,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -103,6 +104,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "flag-duel-game": 0,
   "wheel-game": 0,
   "wheel-duel-game": 0,
+  "wheel-group-game": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -447,12 +449,14 @@ const [showWheelMenu, setShowWheelMenu] = useState(false);
       </button>
 
       <button
-        className="modal-btn modal-btn-soon"
-        disabled
-        title="Yakında"
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowWheelMenu(false);
+          onSelect("wheel-group-game");
+        }}
       >
         🏆 Çok Oyunculu
-        <span className="modal-btn-soon-tag">Yakında</span>
       </button>
 
       <button
@@ -1779,6 +1783,12 @@ async function handleLogout() {
     const duelGroupCode = params.get("duelGroup");
     const flagDuelCode = params.get("flagDuel");
     const wheelDuelCode = params.get("wheelDuel");
+    const wheelGroupCode = params.get("wheelGroup");
+
+    if (wheelGroupCode) {
+      setScreen("wheel-group-game");
+      return;
+    }
 
     if (wheelDuelCode) {
       setScreen("wheel-duel-game");
@@ -1811,7 +1821,7 @@ useEffect(() => {
 
   // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin
   const params = new URLSearchParams(window.location.search);
-  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel")) {
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup")) {
     return;
   }
 
@@ -1885,6 +1895,12 @@ useEffect(() => {
   if (screen === "wheel-game") return <WheelGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-duel-game") return (
     <WheelDuelGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "wheel-group-game") return (
+    <WheelGroupGame
       onHome={() => setScreen("home")}
       profile={profile}
     />

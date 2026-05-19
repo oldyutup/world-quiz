@@ -183,9 +183,15 @@ export default function XpGainBar({
             <span>{breakdown.correctCount} doğru +{breakdown.correctTotal}</span>
             <span className="xpgain-dot">·</span>
             <span>
-              {breakdown.resultBonusLabel === "win"  && `Galibiyet +${breakdown.resultBonus}`}
-              {breakdown.resultBonusLabel === "draw" && `Beraberlik +${breakdown.resultBonus}`}
-              {breakdown.resultBonusLabel === "loss" && `Mağlubiyet +${breakdown.resultBonus}`}
+              {breakdown.bonusLabelText ? (
+                breakdown.bonusLabelText
+              ) : (
+                <>
+                  {breakdown.resultBonusLabel === "win"  && `Galibiyet +${breakdown.resultBonus}`}
+                  {breakdown.resultBonusLabel === "draw" && `Beraberlik +${breakdown.resultBonus}`}
+                  {breakdown.resultBonusLabel === "loss" && `Mağlubiyet +${breakdown.resultBonus}`}
+                </>
+              )}
             </span>
           </div>
 
