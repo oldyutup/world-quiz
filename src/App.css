@@ -7203,6 +7203,10 @@ body {
    Sol: Oyuncular · Orta: Oda/Ayarlar · Sağ: Sohbet
 ══════════════════════════════════════════════════════════════ */
 
+.duel-lobby:has(.wgg-grid) {
+  align-items: center;
+}
+
 .wgg-grid {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.15fr) minmax(280px, 1fr);
