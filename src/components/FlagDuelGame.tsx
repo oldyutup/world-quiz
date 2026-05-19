@@ -1203,12 +1203,42 @@ const declineRematch = useCallback(() => {
   }
 )
       .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "duel_players", filter: `room_id=eq.${roomId}` },
-        (payload) => {
-          setPlayers(prev => {
-            if (prev.some(p => p.id === (payload.new as DuelPlayer).id)) return prev;
-            return [...prev, payload.new as DuelPlayer];
-          });
+        { event: "DELETE", schema: "public", table: "duel_rooms", filter: `id=eq.${roomId}` },
+        () => {
+          // Host "Lobiden Çık" in waiting → handleLeave deletes the duel_rooms row
+          // (line ~1611). Guest must react: notify + drop the room and return to
+          // the Flag Duel menu so they're not stuck in a hostless lobby.
+          // Filter is on PK (id), so this works under default REPLICA IDENTITY
+          // without a migration.
+          if (isHostRef.current) return;  // host themselves navigates via handleLeave/onHome
+          clearSession();
+          setRoom(null);
+          setPlayers([]);
+          setClaims([]);
+          setIsHost(false); isHostRef.current = false;
+          setStatusMsg(null);
+          setErrorMsg("Oda sahibi odayı kapattı.");
+          setPhase("lobby");
+        }
+      )
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "duel_players", filter: `room_id=eq.${roomId}` },
+        () => {
+          // Any change (INSERT/UPDATE/DELETE) → re-fetch the full list. This mirrors
+          // WheelDuelGame's pattern and keeps the host's "Oyuncular" view consistent
+          // when a guest hits "Lobiden Çık": the DB row is deleted in handleLeave
+          // but without this re-fetch the host's local state would retain the stale
+          // entry, and a rejoin would appear as a duplicate.
+          // Requires `alter table duel_players replica identity full;` so DELETE
+          // events match the room_id filter server-side (see migration).
+          supabase
+            .from("duel_players")
+            .select("*")
+            .eq("room_id", roomId)
+            .order("joined_at", { ascending: true })
+            .then(({ data }) => {
+              if (data) setPlayers(data as DuelPlayer[]);
+            });
         }
       )
       .on("postgres_changes",

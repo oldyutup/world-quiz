@@ -1,0 +1,21 @@
+-- ============================================================================
+-- duel_players: REPLICA IDENTITY FULL
+-- ============================================================================
+-- Flag Duel (Bayrak 1v1) Online lobby'de guest "Lobiden Çık" yaptığında
+-- host tarafında oyuncu listesi stale kalıyordu ve guest yeniden katılınca
+-- listede iki kez görünüyordu.
+--
+-- Root cause: supabase_realtime postgres_changes DELETE event'leri için filtre
+-- karşılaştırması "old" payload üzerinden yapılır. REPLICA IDENTITY DEFAULT'ta
+-- "old" yalnızca PK (id) içerir; non-PK kolonlar (room_id) "old"a girmediği
+-- için `filter: room_id=eq.<roomId>` server-side eşleşmiyor ve DELETE event
+-- hiç teslim edilmiyor. wheel_duel_players zaten REPLICA IDENTITY FULL ile
+-- kurulmuş; aynı garantiyi duel_players için de açıyoruz.
+--
+-- Idempotent: replica identity tekrar uygulanabilir, mevcut veriyi etkilemez.
+-- Diğer modlar (DuelGame, DuelGroupGame) zaten select-by-room re-fetch
+-- desenlerini kullanıyor; bu değişiklik onları kırmaz, sadece DELETE realtime
+-- event'lerinin doğru iletilmesini sağlar.
+-- ============================================================================
+
+alter table public.duel_players replica identity full;
