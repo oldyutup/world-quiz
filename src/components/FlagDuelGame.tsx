@@ -1498,6 +1498,25 @@ if (!code) {
   };
 
   /* ════════════════════════════════════════════════════════════════
+     HOST LOBBY AYARLARI (Tur + Bölge) — realtime
+  ════════════════════════════════════════════════════════════════ */
+  const updateHostSetting = async (
+    next: { total_rounds?: number; region?: string },
+  ) => {
+    if (!room || !isHost) return;
+
+    setRoom(prev => (prev ? { ...prev, ...next } : prev));
+    if (next.region) buildPool(next.region);
+
+    const { error } = await supabase
+      .from("duel_rooms")
+      .update(next as Partial<FlagDuelRoom>)
+      .eq("id", room.id);
+
+    if (error) dbgErr("updateHostSetting failed", error);
+  };
+
+  /* ════════════════════════════════════════════════════════════════
      OYUNU BAŞLAT
   ════════════════════════════════════════════════════════════════ */
   const startGame = async () => {
@@ -1847,30 +1866,69 @@ ${shareLink}`;
                   onFocus={e => e.target.select()} />
               </div>
 
-              <div className="duel-settings-summary">
-                <span>{roundsLabel}</span>
-                <span className="duel-sum-dot">·</span>
-                <span>{continentLabel}</span>
-              </div>
+              <div className="flag-duel-lobby-row">
+                <div className="flag-duel-players-col">
+                  <div className="duel-room-settings-title">👥 Oyuncular</div>
+                  <div className="duel-players-list">
+                    {players.map(p => (
+                      <div key={p.id}
+                        className={"duel-player-chip" + (p.id === myId ? " mine" : "")}>
+                        <span className="duel-player-dot"/>
+                        <span className="duel-player-name">{p.name}</span>
+                        <div className="duel-player-tags">
+                          {p.id === myId && <span className="duel-tag">Sen</span>}
+                          {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {players.length < 2 && (
+                      <div className="duel-player-chip waiting">
+                        <span className="duel-player-dot waiting"/>
+                        <span>Rakip bekleniyor…</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-              <div className="duel-players-list">
-                {players.map(p => (
-                  <div key={p.id}
-                    className={"duel-player-chip" + (p.id === myId ? " mine" : "")}>
-                    <span className="duel-player-dot"/>
-                    <span className="duel-player-name">{p.name}</span>
-                    <div className="duel-player-tags">
-                      {p.id === myId && <span className="duel-tag">Sen</span>}
-                      {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}
-                    </div>
+                <div className="duel-room-settings-box flag-duel-settings">
+                  <div className="duel-room-settings-title">⚙️ Oda Ayarları</div>
+                  <div className="duel-room-settings-grid">
+                    <label className="duel-room-setting-field">
+                      <span>Tur</span>
+                      <select
+                        value={room?.total_rounds ?? hostRounds}
+                        disabled={!isHost}
+                        onChange={e =>
+                          updateHostSetting({ total_rounds: Number(e.target.value) })
+                        }
+                      >
+                        {ROUND_OPTS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="duel-room-setting-field">
+                      <span>Bölge</span>
+                      <select
+                        value={denormalizeRegion(room?.region ?? hostRegion)}
+                        disabled={!isHost}
+                        onChange={e =>
+                          updateHostSetting({ region: normalizeRegion(e.target.value) })
+                        }
+                      >
+                        {REGION_OPTS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
-                ))}
-                {players.length < 2 && (
-                  <div className="duel-player-chip waiting">
-                    <span className="duel-player-dot waiting"/>
-                    <span>Rakip bekleniyor…</span>
-                  </div>
-                )}
+                  {!isHost && (
+                    <p className="duel-room-settings-note">
+                      Yalnızca oda sahibi değiştirebilir.
+                    </p>
+                  )}
+                </div>
               </div>
 
               {isHost ? (
