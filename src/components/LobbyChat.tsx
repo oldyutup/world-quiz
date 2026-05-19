@@ -24,6 +24,8 @@ const MAX_LEN = 200;
 interface Props {
   roomCode:   string;
   playerName: string;
+  mobileSheetOpen?:         boolean;
+  onMobileSheetOpenChange?: (open: boolean) => void;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -102,8 +104,9 @@ const InputRow = memo(({ draft, setDraft, onSend, sending, inputRef }: InputRowP
    Ana bileşen
    ──────────────────────────────────────────────────────────── */
 
-export default function LobbyChat({ roomCode, playerName }: Props) {
+export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMobileSheetOpenChange }: Props) {
   const myName = playerName.trim();
+  const isControlled = onMobileSheetOpenChange !== undefined;
 
   const [messages, setMessages] = useState<DuelMessage[]>([]);
   const [draft,    setDraft]    = useState("");
@@ -111,6 +114,10 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
   const [sheetOpen,setSheetOpen]= useState(false);
   const [unread,   setUnread]   = useState(0);
   const [sending,  setSending]  = useState(false);
+
+  const effectiveSheetOpen = isControlled ? (mobileSheetOpen ?? false) : sheetOpen;
+  const openSheet  = () => { if (isControlled) onMobileSheetOpenChange!(true);  else setSheetOpen(true);  };
+  const closeSheet = () => { if (isControlled) onMobileSheetOpenChange!(false); else setSheetOpen(false); };
 
   const scrollRef     = useRef<HTMLDivElement>(null);
   const desktopRef    = useRef<HTMLInputElement>(null);
@@ -186,7 +193,7 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
   }, [messages]);
 
   useEffect(() => { if (open) setUnread(0); }, [open]);
-  useEffect(() => { if (sheetOpen) setUnread(0); }, [sheetOpen]);
+  useEffect(() => { if (effectiveSheetOpen) setUnread(0); }, [effectiveSheetOpen]);
 
   /* ── 4) Mesaj gönder ──
      Adımlar:
@@ -249,11 +256,12 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
       setSending(false);
       // Focus geri ver — hangi panel açıksa ona
       setTimeout(() => {
-        if (sheetOpen) sheetRef.current?.focus();
-        else           desktopRef.current?.focus();
+        if (effectiveSheetOpen) sheetRef.current?.focus();
+        else                    desktopRef.current?.focus();
       }, 0);
     }
-  }, [draft, myName, roomCode, sending, sheetOpen]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, myName, roomCode, sending, effectiveSheetOpen]);
 
   /* ─────────── render ─────────── */
   return (
@@ -291,7 +299,7 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
       {/* ════ MOBILE FAB ════ */}
       <button
         className="lc-fab"
-        onClick={() => setSheetOpen(true)}
+        onClick={openSheet}
         type="button"
         aria-label="Sohbeti aç"
       >
@@ -301,8 +309,8 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
       </button>
 
       {/* ════ MOBILE BOTTOM-SHEET ════ */}
-      {sheetOpen && (
-        <div className="lc-sheet-backdrop" onClick={() => setSheetOpen(false)}>
+      {effectiveSheetOpen && (
+        <div className="lc-sheet-backdrop" onClick={closeSheet}>
           <div className="lc-sheet" onClick={e => e.stopPropagation()}>
             <div className="lc-sheet-handle" />
             <header className="lc-sheet-header">
@@ -312,7 +320,7 @@ export default function LobbyChat({ roomCode, playerName }: Props) {
               </span>
               <button
                 className="lc-sheet-close"
-                onClick={() => setSheetOpen(false)}
+                onClick={closeSheet}
                 type="button"
                 aria-label="Kapat"
               >

@@ -7307,18 +7307,22 @@ body {
   flex-shrink: 0 !important;
 }
 
-/* ════ Mobil: tek kolon, sıra: Orta → Oyuncular → (Chat FAB) ════ */
+/* ════ Mobil: tek kolon, sıra: sadece Orta kart + iki FAB ════ */
 @media (max-width: 899px) {
   .wgg-grid {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    padding: 8px 10px 24px;
+    /* FABlar altta fixed; içerik arkasına gizlenmesin */
+    padding: 8px 10px calc(88px + env(safe-area-inset-bottom, 0px));
   }
 
-  .wgg-middle-card  { order: 1; }
-  .wgg-players-card { order: 2; }
-  .wgg-chat-card    { order: 3; }
+  .wgg-middle-card { order: 1; }
+
+  /* Oyuncular kartı: mobilde gizle — bottom-sheet ile açılacak */
+  .wgg-players-card {
+    display: none !important;
+  }
 
   /* Sohbet kartı: layout'tan kaldır ama FAB için children DOM'da kalsın */
   .wgg-chat-card {
@@ -7330,25 +7334,26 @@ body {
     display: none !important;
   }
 
-  /* FAB görünsün (global min-width:861px kuralını override et) */
+  /* Chat FAB: sağ altta */
   .wgg-chat-card .lc-fab {
     display: inline-flex !important;
     position: fixed !important;
-    right: 24px !important;
-    bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 16px !important;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
     z-index: 80 !important;
   }
 
   .wgg-chat-card .lc-sheet-backdrop { z-index: 999 !important; }
   .wgg-chat-card .lc-sheet          { z-index: 1000 !important; }
 
-  /* Mobilde oyuncu kartı yüksekliği sabit olmasın */
-  .wgg-players-card {
-    overflow: visible !important;
+  /* Players FAB: sol altta — görünsün */
+  .wgg-players-fab {
+    display: inline-flex !important;
   }
-  .wgg-player-list {
-    overflow-y: visible !important;
-    flex: 0 0 auto !important;
+
+  /* Players sheet backdrop: görünsün */
+  .wgg-ps-backdrop {
+    display: flex !important;
   }
 
   /* Ayarlar: 2+1 düzeni (Ceza kendi satırında) */
@@ -7358,4 +7363,158 @@ body {
   .wgg-middle-card section[aria-label="Oda Ayarları"] .duel-select-wrap:last-child {
     grid-column: 1 / -1;
   }
+}
+
+/* ── Players FAB (default: hidden on desktop) ── */
+.wgg-players-fab {
+  display: none;
+  position: fixed;
+  left: 16px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(135deg, var(--accent), #4a93e8);
+  color: #0d1117;
+  border: none;
+  border-radius: 28px;
+  padding: 12px 20px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(88,166,255,0.45);
+  z-index: 80;
+  align-items: center;
+  gap: 8px;
+}
+.wgg-players-fab:active { transform: scale(0.96); }
+
+.wgg-players-fab-badge {
+  background: rgba(0,0,0,0.22);
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 1.5;
+}
+
+/* ── Players bottom-sheet (only rendered when open, so no display:none needed) ── */
+.wgg-ps-backdrop {
+  display: none; /* shown via mobile media query override */
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 999;
+  align-items: flex-end;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: lc-fade 0.2s ease;
+}
+
+.wgg-ps-sheet {
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-height: 60dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 12px);
+  animation: lc-slide 0.24s cubic-bezier(0.18, 0.89, 0.32, 1.15);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+}
+
+.wgg-ps-handle {
+  width: 44px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+
+.wgg-ps-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wgg-ps-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1rem;
+  flex: 1;
+}
+
+.wgg-ps-counter {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  letter-spacing: 0.04em;
+}
+
+.wgg-ps-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+.wgg-ps-close:hover { background: var(--surface2); color: var(--text); }
+
+.wgg-ps-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.wgg-ps-list::-webkit-scrollbar { width: 4px; }
+.wgg-ps-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 4px;
+}
+
+.wgg-ps-empty-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255,255,255,0.10);
+  opacity: 0.22;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.wgg-ps-dot-empty {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+
+.wgg-ps-warning {
+  flex-shrink: 0;
+  margin: 0 18px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(212,160,44,0.16);
+  border: 1px solid rgba(212,160,44,0.45);
+  color: var(--amber, #d4a02c);
+  text-align: center;
 }

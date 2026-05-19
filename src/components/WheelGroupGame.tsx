@@ -239,6 +239,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   const [players, setPlayers] = useState<WheelGroupPlayer[]>([]);
   const [kickTarget, setKickTarget] = useState<WheelGroupPlayer | null>(null);
   const [copied, setCopied] = useState(false);
+  const [wggPlayersOpen, setWggPlayersOpen] = useState(false);
+  const [wggChatOpen,    setWggChatOpen]    = useState(false);
 
   /* ── Gameplay state ───────────────────────────────────────── */
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -1487,6 +1489,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
       {/* ════════ LOBBY — 3-card grid ════════ */}
       {phase === "lobby" && room && (
+        <>
         <div className="duel-lobby">
           <div className="wgg-grid">
 
@@ -1698,10 +1701,93 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
               <LobbyChat
                 roomCode={room.code}
                 playerName={isLoggedInPlayer ? (profile?.username ?? "").trim() : playerName.trim()}
+                mobileSheetOpen={wggChatOpen}
+                onMobileSheetOpenChange={v => { setWggChatOpen(v); if (v) setWggPlayersOpen(false); }}
               />
             </div>
           </div>
         </div>
+
+        {/* ════ MOBİL: Oyuncular FAB ════ */}
+        <button
+          type="button"
+          className="wgg-players-fab"
+          aria-label="Oyuncuları aç"
+          onClick={() => { setWggPlayersOpen(v => !v); setWggChatOpen(false); }}
+        >
+          <span>👥</span>
+          <span>Oyuncular</span>
+          <span className="wgg-players-fab-badge">{players.length}/{room.max_players}</span>
+        </button>
+
+        {/* ════ MOBİL: Oyuncular bottom-sheet ════ */}
+        {wggPlayersOpen && (
+          <div className="wgg-ps-backdrop" onClick={() => setWggPlayersOpen(false)}>
+            <div className="wgg-ps-sheet" onClick={e => e.stopPropagation()}>
+              <div className="wgg-ps-handle" />
+              <header className="wgg-ps-header">
+                <span className="wgg-ps-title">
+                  <span>👥</span>
+                  <span>Oyuncular</span>
+                </span>
+                <span className="wgg-ps-counter">{players.length}/{room.max_players}</span>
+                <button
+                  type="button"
+                  className="wgg-ps-close"
+                  onClick={() => setWggPlayersOpen(false)}
+                  aria-label="Kapat"
+                >
+                  ✕
+                </button>
+              </header>
+              <div className="wgg-ps-list">
+                {Array.from({ length: room.max_players }, (_, i) => {
+                  const p = players[i] ?? null;
+                  if (!p) return (
+                    <div key={`empty-${i}`} className="wgg-ps-empty-slot">
+                      <span className="wgg-ps-dot-empty" />
+                      <span>Boş slot</span>
+                    </div>
+                  );
+                  const isMe = p.id === myIdRef.current;
+                  const isPlayerHost = p.id === room.host_player_id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={"duel-player-chip" + (isMe ? " mine" : "")}
+                      style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, paddingBottom: 6, minWidth: 0 }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
+                        <span className="duel-player-dot" style={{ flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {p.name}
+                        </span>
+                        {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                        {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
+                      </div>
+                      {isHost && !isPlayerHost && (
+                        <button
+                          type="button"
+                          className="dgg-kick-btn"
+                          style={{ flexShrink: 0 }}
+                          onClick={() => { setKickTarget(p); setWggPlayersOpen(false); }}
+                        >
+                          At
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {players.length < MIN_PLAYERS && (
+                <div className="wgg-ps-warning">
+                  En az {MIN_PLAYERS} oyuncu gerekli — {MIN_PLAYERS - players.length} bekleniyor
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* ════════ PLAYING (finished'da da arka plan render kalsın) ════════ */}
