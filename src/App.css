@@ -7518,3 +7518,118 @@ body {
   color: var(--amber, #d4a02c);
   text-align: center;
 }
+
+/* ── Wheel Group: max-players badge + dropdown ─────────────────────────────
+   Mevcut "1/10" sayacinin yerine geclen interaktif buton. Boyut/spacing
+   eski stilistlere birebir uyumlu (font-size 11px desktop, 0.8rem sheet,
+   padding 2px 8px, border-radius 999) → host icin tiklanabilir, non-host
+   icin disabled gorunum.                                                     */
+.wgg-max-badge {
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  color: inherit;
+  border: 1px solid transparent;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.wgg-max-badge--sheet { font-size: 0.8rem; }
+.wgg-max-badge[disabled] { opacity: 1; }  /* non-host: gorunum ayni, sadece tiklanamaz */
+.wgg-max-badge--host {
+  cursor: pointer;
+  border-color: rgba(79,139,255,0.22);
+}
+.wgg-max-badge--host:hover {
+  background: rgba(79,139,255,0.18);
+  border-color: rgba(79,139,255,0.45);
+  color: var(--accent, #4f8bff);
+}
+.wgg-max-badge--host:focus-visible {
+  outline: 2px solid rgba(79,139,255,0.55);
+  outline-offset: 2px;
+}
+
+.wgg-max-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 108px;
+  background: rgba(13,20,32,0.96);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(0,0,0,0.50);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: wggMaxMenuIn 0.12s ease-out;
+}
+@keyframes wggMaxMenuIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Sheet icinde: bottom-sheet container'i overflow-clip ediyor olabilir →
+   menuyu sheet'in icine sigdir, sag uca yanas. */
+.wgg-max-menu--sheet { right: 0; max-height: 280px; overflow-y: auto; }
+
+.wgg-max-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text, #e6ecf5);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.wgg-max-opt:hover { background: rgba(255,255,255,0.06); }
+.wgg-max-opt--sel  { color: var(--accent, #4f8bff); background: rgba(79,139,255,0.14); }
+.wgg-max-opt--sel:hover { background: rgba(79,139,255,0.22); }
+.wgg-max-opt--lo {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.wgg-max-opt--lo:hover { background: transparent; }
+
+/* ── Wheel Group: closed slot (max_players ustu kapali slot) ───────────────
+   Aktif "Bos slot"tan net ayrismasi icin: solid (dashed degil), kosegen
+   stripe tinted background + kilit ikonu. Hover yok, tiklanamaz.            */
+.wgg-slot-closed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background-color: rgba(15,22,34,0.55);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255,255,255,0.045) 0 4px,
+    transparent           4px 8px
+  );
+  color: rgba(255,255,255,0.42);
+  font-size: 12px;
+  font-style: normal;
+  user-select: none;
+  pointer-events: none;
+}
+.wgg-slot-closed--sheet { padding: 6px 10px; }
+.wgg-slot-closed-icon  { font-size: 11px; opacity: 0.7; flex-shrink: 0; }
+.wgg-slot-closed-label { letter-spacing: 0.01em; }

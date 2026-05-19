@@ -80,6 +80,11 @@ type Region =
   | "oceania";
 
 const MIN_PLAYERS = 3;
+/** Lobide gosterilen toplam slot sayisi. max_players bunun altinda kalirsa
+ *  fazlasi "Kapali slot" olarak render edilir. */
+const TOTAL_SLOTS = 10;
+/** Host max_players dropdown'inda gosterilen secenekler (3..10). */
+const MAX_PLAYER_OPTIONS: number[] = [3, 4, 5, 6, 7, 8, 9, 10];
 
 const FEEDBACK_MS    = 1000; // Doğru claim sonrası yeni hedef gelmeden bekleme
 const WRONG_FLASH_MS = 600;  // Yanlış tıklama kırmızı flash süresi (lokal)
@@ -242,6 +247,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   const [wggPlayersOpen, setWggPlayersOpen] = useState(false);
   const [wggChatOpen,    setWggChatOpen]    = useState(false);
 
+  /** Max-players dropdown'in iki ayri ankrajdan acilabilmesi icin tek state.
+   *  null = kapali, 'desktop' = sol kart sayacindan, 'mobile' = mobile sheet
+   *  basligindan. Sadece host icin acilir; non-host icin badge non-interactive. */
+  const [maxMenuAnchor, setMaxMenuAnchor] = useState<null | "desktop" | "mobile">(null);
+  const maxMenuDesktopRef = useRef<HTMLDivElement | null>(null);
+  const maxMenuMobileRef  = useRef<HTMLDivElement | null>(null);
+
   /* ── Gameplay state ───────────────────────────────────────── */
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [wrongId, setWrongId] = useState<string | null>(null);
@@ -370,6 +382,27 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     const pathname = window.location.pathname;
     return `${origin}${pathname}?wheelGroup=${room.code}`;
   }, [room]);
+
+  /* ── Max-players dropdown: click-outside + Esc kapanis ─────── */
+  useEffect(() => {
+    if (!maxMenuAnchor) return;
+    function onDoc(ev: MouseEvent) {
+      const t = ev.target as Node | null;
+      if (!t) return;
+      const inDesk = maxMenuDesktopRef.current?.contains(t) ?? false;
+      const inMob  = maxMenuMobileRef.current?.contains(t) ?? false;
+      if (!inDesk && !inMob) setMaxMenuAnchor(null);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setMaxMenuAnchor(null);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [maxMenuAnchor]);
 
   const inviteMessage = useMemo(() => {
     if (!room) return "";
@@ -1058,7 +1091,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       });
 
     if (pe) {
-      const friendly = describeSupabaseError(pe.code) ?? "Odaya katılınamadı.";
+      // Server capacity trigger: 20260519120000_wheel_group_capacity_trigger.sql
+      // tarafindan raise edilen "wheel_group_room_full" mesajini yakala →
+      // race condition'da bile (iki client ayni anda 10. ve 11. olarak girerse)
+      // kullaniciya "Oda dolu" gosterilir.
+      const isCapacityErr = (pe.message ?? "").includes("wheel_group_room_full");
+      const friendly = isCapacityErr
+        ? "Oda dolu."
+        : describeSupabaseError(pe.code) ?? "Odaya katılınamadı.";
       setErrorMsg(friendly);
       setStatusMsg(null);
       setPhase("setup");
@@ -1498,19 +1538,73 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
               {/* Başlık */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexShrink: 0 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.02em" }}>👥 Oyuncular</span>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: "2px 8px",
-                  borderRadius: 999, background: "rgba(255,255,255,0.08)", letterSpacing: "0.04em",
-                }}>
-                  {players.length}/{room.max_players}
-                </span>
+                <div ref={maxMenuDesktopRef} style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className={"wgg-max-badge" + (isHost ? " wgg-max-badge--host" : "")}
+                    aria-haspopup={isHost ? "listbox" : undefined}
+                    aria-expanded={isHost ? maxMenuAnchor === "desktop" : undefined}
+                    disabled={!isHost}
+                    onClick={() => {
+                      if (!isHost) return;
+                      playSound("click");
+                      setMaxMenuAnchor(prev => prev === "desktop" ? null : "desktop");
+                    }}
+                  >
+                    {players.length}/{room.max_players}
+                  </button>
+                  {maxMenuAnchor === "desktop" && isHost && (
+                    <ul className="wgg-max-menu" role="listbox" aria-label="Maksimum oyuncu sayısı">
+                      {MAX_PLAYER_OPTIONS.map(n => {
+                        const selected = n === room.max_players;
+                        const tooLow   = n < players.length;
+                        return (
+                          <li key={n} role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              disabled={tooLow}
+                              className={
+                                "wgg-max-opt"
+                                + (selected ? " wgg-max-opt--sel" : "")
+                                + (tooLow   ? " wgg-max-opt--lo"  : "")
+                              }
+                              onClick={() => {
+                                if (tooLow) return;
+                                playSound("click");
+                                setMaxMenuAnchor(null);
+                                if (n !== room.max_players) {
+                                  updateHostSetting({ max_players: n });
+                                }
+                              }}
+                              title={tooLow ? `Şu an ${players.length} oyuncu var` : undefined}
+                            >
+                              <span>{n} kişi</span>
+                              {selected && <span aria-hidden="true">✓</span>}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               </div>
 
               {/* Oyuncu listesi — kart içinde scroll */}
               <div className="wgg-player-list">
-                {Array.from({ length: room.max_players }, (_, i) => {
+                {Array.from({ length: Math.max(TOTAL_SLOTS, players.length) }, (_, i) => {
                   const p = players[i] ?? null;
+                  const isClosed = i >= room.max_players;
                   if (!p) {
+                    if (isClosed) {
+                      return (
+                        <div key={`closed-${i}`} className="wgg-slot-closed" aria-disabled="true">
+                          <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                          <span className="wgg-slot-closed-label">Kapalı slot</span>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={`empty-${i}`} style={{
                         display: "flex", alignItems: "center", gap: 6,
@@ -1733,7 +1827,57 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                   <span>👥</span>
                   <span>Oyuncular</span>
                 </span>
-                <span className="wgg-ps-counter">{players.length}/{room.max_players}</span>
+                <div ref={maxMenuMobileRef} style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    className={"wgg-max-badge wgg-max-badge--sheet" + (isHost ? " wgg-max-badge--host" : "")}
+                    aria-haspopup={isHost ? "listbox" : undefined}
+                    aria-expanded={isHost ? maxMenuAnchor === "mobile" : undefined}
+                    disabled={!isHost}
+                    onClick={() => {
+                      if (!isHost) return;
+                      playSound("click");
+                      setMaxMenuAnchor(prev => prev === "mobile" ? null : "mobile");
+                    }}
+                  >
+                    {players.length}/{room.max_players}
+                  </button>
+                  {maxMenuAnchor === "mobile" && isHost && (
+                    <ul className="wgg-max-menu wgg-max-menu--sheet" role="listbox" aria-label="Maksimum oyuncu sayısı">
+                      {MAX_PLAYER_OPTIONS.map(n => {
+                        const selected = n === room.max_players;
+                        const tooLow   = n < players.length;
+                        return (
+                          <li key={n} role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              disabled={tooLow}
+                              className={
+                                "wgg-max-opt"
+                                + (selected ? " wgg-max-opt--sel" : "")
+                                + (tooLow   ? " wgg-max-opt--lo"  : "")
+                              }
+                              onClick={() => {
+                                if (tooLow) return;
+                                playSound("click");
+                                setMaxMenuAnchor(null);
+                                if (n !== room.max_players) {
+                                  updateHostSetting({ max_players: n });
+                                }
+                              }}
+                              title={tooLow ? `Şu an ${players.length} oyuncu var` : undefined}
+                            >
+                              <span>{n} kişi</span>
+                              {selected && <span aria-hidden="true">✓</span>}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="wgg-ps-close"
@@ -1744,14 +1888,25 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 </button>
               </header>
               <div className="wgg-ps-list">
-                {Array.from({ length: room.max_players }, (_, i) => {
+                {Array.from({ length: Math.max(TOTAL_SLOTS, players.length) }, (_, i) => {
                   const p = players[i] ?? null;
-                  if (!p) return (
-                    <div key={`empty-${i}`} className="wgg-ps-empty-slot">
-                      <span className="wgg-ps-dot-empty" />
-                      <span>Boş slot</span>
-                    </div>
-                  );
+                  const isClosed = i >= room.max_players;
+                  if (!p) {
+                    if (isClosed) {
+                      return (
+                        <div key={`closed-${i}`} className="wgg-slot-closed wgg-slot-closed--sheet" aria-disabled="true">
+                          <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                          <span className="wgg-slot-closed-label">Kapalı slot</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={`empty-${i}`} className="wgg-ps-empty-slot">
+                        <span className="wgg-ps-dot-empty" />
+                        <span>Boş slot</span>
+                      </div>
+                    );
+                  }
                   const isMe = p.id === myIdRef.current;
                   const isPlayerHost = p.id === room.host_player_id;
                   return (
