@@ -410,6 +410,8 @@ useEffect(() => {
 
   /* quit modal */
   const [quitModalOpen, setQuitModalOpen] = useState(false);
+  /* host odayı kapattığında guest'e gösterilen modal */
+  const [roomClosed, setRoomClosed] = useState(false);
   /* rematch */
 const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "declined">("idle");
 
@@ -1206,10 +1208,10 @@ const declineRematch = useCallback(() => {
         { event: "DELETE", schema: "public", table: "duel_rooms", filter: `id=eq.${roomId}` },
         () => {
           // Host "Lobiden Çık" in waiting → handleLeave deletes the duel_rooms row
-          // (line ~1611). Guest must react: notify + drop the room and return to
-          // the Flag Duel menu so they're not stuck in a hostless lobby.
-          // Filter is on PK (id), so this works under default REPLICA IDENTITY
-          // without a migration.
+          // (line ~1611). Guest must react: drop the room, return to the Flag Duel
+          // menu, and surface a focused modal so they're not stuck in a hostless
+          // lobby. Filter is on PK (id), so this works under default REPLICA
+          // IDENTITY without a migration.
           if (isHostRef.current) return;  // host themselves navigates via handleLeave/onHome
           clearSession();
           setRoom(null);
@@ -1217,8 +1219,9 @@ const declineRematch = useCallback(() => {
           setClaims([]);
           setIsHost(false); isHostRef.current = false;
           setStatusMsg(null);
-          setErrorMsg("Oda sahibi odayı kapattı.");
+          setErrorMsg(null);
           setPhase("lobby");
+          setRoomClosed(true);
         }
       )
       .on("postgres_changes",
@@ -2339,6 +2342,33 @@ ${shareLink}`;
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ════════ ROOM CLOSED MODAL — host lobiden çıktığında guest'e ════════ */}
+      {roomClosed && (
+        <div
+          className="fd-room-closed-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="fd-room-closed-title"
+        >
+          <div className="fd-room-closed-modal">
+            <div className="fd-room-closed-icon" aria-hidden="true">🚪</div>
+            <h2 id="fd-room-closed-title" className="fd-room-closed-title">
+              ODA KAPATILDI
+            </h2>
+            <p className="fd-room-closed-sub">
+              Oda sahibi odadan ayrıldı ve oturumu sonlandırdı.
+            </p>
+            <button
+              className="btn btn-accent fd-room-closed-action"
+              autoFocus
+              onClick={() => setRoomClosed(false)}
+            >
+              ← Lobiye Dön
+            </button>
           </div>
         </div>
       )}

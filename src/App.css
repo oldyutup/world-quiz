@@ -7797,3 +7797,101 @@ body {
     gap: 8px;
   }
 }
+
+/* ── Flag Duel: Room Closed modal ─────────────────────────────────────────
+   Shown to the guest only when the host deletes the room while waiting.
+   Focused dialog: backdrop blocks interaction with the lobby behind it,
+   single primary action returns the guest to the menu (state is already
+   reset by the realtime DELETE handler).
+   Scoped via .fd-room-closed-* so other modals are untouched. */
+.fd-room-closed-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 10, 18, 0.68);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fd-room-closed-fade 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fd-room-closed-modal {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid rgba(120, 160, 220, 0.18);
+  border-radius: 20px;
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(255, 255, 255, 0.02) inset;
+  animation: fd-room-closed-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fd-room-closed-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  line-height: 1;
+  border-radius: 50%;
+  background: rgba(88, 166, 255, 0.10);
+  border: 1px solid rgba(88, 166, 255, 0.20);
+  margin-bottom: 2px;
+}
+
+.fd-room-closed-title {
+  margin: 2px 0 0;
+  font-family: var(--font-head);
+  font-size: 1.3rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: rgba(245, 248, 255, 0.96);
+}
+
+.fd-room-closed-sub {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: rgba(210, 220, 235, 0.74);
+  text-align: center;
+}
+
+.fd-room-closed-action {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  border-radius: 12px;
+}
+
+@keyframes fd-room-closed-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fd-room-closed-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);     }
+}
+
+@media (max-width: 420px) {
+  .fd-room-closed-modal {
+    padding: 24px 20px 20px;
+    border-radius: 18px;
+  }
+  .fd-room-closed-title {
+    font-size: 1.2rem;
+  }
+}
