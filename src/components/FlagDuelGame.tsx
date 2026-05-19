@@ -1825,7 +1825,7 @@ ${shareLink}`;
       {/* ════════ WAITING ════════ */}
       {phase === "waiting" && room && (
         <div className="duel-lobby">
-          <div className="duel-lobby-with-chat">
+          <div className="duel-lobby-with-chat flag-duel-with-chat">
             <div className="duel-lobby-card">
               <h2 className="duel-lobby-title">Rakip Bekleniyor…</h2>
 

@@ -7633,3 +7633,72 @@ body {
 .wgg-slot-closed--sheet { padding: 6px 10px; }
 .wgg-slot-closed-icon  { font-size: 11px; opacity: 0.7; flex-shrink: 0; }
 .wgg-slot-closed-label { letter-spacing: 0.01em; }
+
+/* ── Flag Duel waiting lobby: two-card balanced layout ───────────────────
+   DuelGroupGame's .duel-lobby-with-chat block (lines ~3566) overrides the
+   shared class with grid + align-items:start + height:auto !important —
+   un-scoped, so it leaks into Flag Duel. .flag-duel-with-chat re-wins the
+   cascade for Flag Duel only and tunes the two-card sizing to feel compact
+   and equal-height. Chat is pinned at 360px to match its base width and the
+   widths used by other modes, so it no longer dwarfs the lobby card.
+   Mobile: column + auto-height restored in the 860px breakpoint below.       */
+
+.flag-duel-with-chat {
+  display:         flex          !important;
+  flex-direction:  row           !important;
+  align-items:     stretch       !important;
+  justify-content: center        !important;
+  gap:             20px          !important;
+  width:           min(820px, calc(100vw - 32px)) !important;
+  max-width:       820px         !important;
+  height:          min(600px, calc(100vh - 120px)) !important;
+  max-height:      600px         !important;
+  min-height:      520px         !important;
+  margin:          auto          !important;
+  padding:         0             !important;
+  align-self:      center        !important;
+  box-sizing:      border-box    !important;
+}
+
+.flag-duel-with-chat > .duel-lobby-card {
+  flex:       0 0 440px   !important;
+  width:      440px       !important;
+  max-width:  440px       !important;
+  align-self: stretch     !important;
+  margin:     0           !important;
+  overflow-y: auto        !important;
+  overflow-x: hidden      !important;
+  min-height: 0           !important;
+  transform:  none        !important;  /* cancel .duel-screen .duel-lobby-card translateY(48px) so top matches chat */
+}
+
+.flag-duel-with-chat .lc-panel.is-open {
+  flex:       0 0 360px   !important;
+  width:      360px       !important;
+  max-width:  360px       !important;
+  height:     100%        !important;
+  max-height: none        !important;
+  min-height: 0           !important;
+  align-self: stretch     !important;
+  margin-top: 0           !important;
+}
+
+/* Mobile: undo desktop overrides; sheet-based chat takes over */
+@media (max-width: 860px) {
+  .flag-duel-with-chat {
+    flex-direction: column  !important;
+    width:          100%    !important;
+    max-width:      100%    !important;
+    height:         auto    !important;
+    max-height:     none    !important;
+    min-height:     0       !important;
+    align-self:     flex-start !important;
+    margin:         0 auto  !important;
+  }
+  .flag-duel-with-chat > .duel-lobby-card {
+    flex:       0 0 auto    !important;
+    width:      100%        !important;
+    max-width:  460px       !important;
+    overflow-y: visible     !important;
+  }
+}
