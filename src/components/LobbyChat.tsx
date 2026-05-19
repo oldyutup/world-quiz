@@ -26,6 +26,7 @@ interface Props {
   playerName: string;
   mobileSheetOpen?:         boolean;
   onMobileSheetOpenChange?: (open: boolean) => void;
+  hideMobileFab?:           boolean;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@ const InputRow = memo(({ draft, setDraft, onSend, sending, inputRef }: InputRowP
    Ana bileşen
    ──────────────────────────────────────────────────────────── */
 
-export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMobileSheetOpenChange }: Props) {
+export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMobileSheetOpenChange, hideMobileFab }: Props) {
   const myName = playerName.trim();
   const isControlled = onMobileSheetOpenChange !== undefined;
 
@@ -302,6 +303,7 @@ export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMob
         onClick={openSheet}
         type="button"
         aria-label="Sohbeti aç"
+        style={hideMobileFab ? { display: "none" } : undefined}
       >
         <span>💬</span>
         <span>Sohbet</span>

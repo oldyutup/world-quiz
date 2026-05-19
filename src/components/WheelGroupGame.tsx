@@ -1703,22 +1703,25 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 playerName={isLoggedInPlayer ? (profile?.username ?? "").trim() : playerName.trim()}
                 mobileSheetOpen={wggChatOpen}
                 onMobileSheetOpenChange={v => { setWggChatOpen(v); if (v) setWggPlayersOpen(false); }}
+                hideMobileFab={wggChatOpen || wggPlayersOpen}
               />
             </div>
           </div>
         </div>
 
-        {/* ════ MOBİL: Oyuncular FAB ════ */}
-        <button
-          type="button"
-          className="wgg-players-fab"
-          aria-label="Oyuncuları aç"
-          onClick={() => { setWggPlayersOpen(v => !v); setWggChatOpen(false); }}
-        >
-          <span>👥</span>
-          <span>Oyuncular</span>
-          <span className="wgg-players-fab-badge">{players.length}/{room.max_players}</span>
-        </button>
+        {/* ════ MOBİL: Oyuncular FAB — herhangi bir sheet açıkken gizle ════ */}
+        {!wggChatOpen && !wggPlayersOpen && (
+          <button
+            type="button"
+            className="wgg-players-fab"
+            aria-label="Oyuncuları aç"
+            onClick={() => { setWggPlayersOpen(true); setWggChatOpen(false); }}
+          >
+            <span>👥</span>
+            <span>Oyuncular</span>
+            <span className="wgg-players-fab-badge">{players.length}/{room.max_players}</span>
+          </button>
+        )}
 
         {/* ════ MOBİL: Oyuncular bottom-sheet ════ */}
         {wggPlayersOpen && (
