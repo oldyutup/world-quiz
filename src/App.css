@@ -419,10 +419,16 @@ body {
   bottom: -80px;
   transform: translateX(-50%);
   width: min(820px, 92vw);
-  height: auto;
   pointer-events: none;
   user-select: none;
   z-index: 0;
+}
+.home-earth-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
   filter: drop-shadow(0 -14px 40px rgba(88,166,255,.18));
 }
 @media (max-width: 900px) {
@@ -435,11 +441,88 @@ body {
   .home-earth { display: none; }
 }
 
+/* Cartoon eyes overlay (CSS-only — no image asset) */
+.home-earth-eyes {
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 36px;
+  pointer-events: none;
+}
+.ee-eye {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  background: #fff;
+  border: 4px solid #0b1220;
+  border-radius: 50%;
+  box-shadow: 0 4px 10px rgba(2, 8, 23, .35);
+}
+.ee-pupil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  background: #0b1220;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: transform 120ms ease-out;
+}
+.ee-highlight {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+}
+@media (max-width: 900px) {
+  .home-earth-eyes { gap: 28px; }
+  .ee-eye   { width: 52px; height: 52px; border-width: 3.5px; }
+  .ee-pupil { width: 22px; height: 22px; }
+  .ee-highlight { top: 3px; left: 4px; width: 7px; height: 7px; }
+}
+@media (max-width: 600px) {
+  .home-earth-eyes { gap: 22px; }
+  .ee-eye   { width: 44px; height: 44px; border-width: 3px; }
+  .ee-pupil { width: 18px; height: 18px; }
+  .ee-highlight { top: 3px; left: 3px; width: 6px; height: 6px; }
+}
+
 /* Lift the menu content above the earth layer, earth-theme only */
 .home-screen.home-screen--earth .home-hero,
 .home-screen.home-screen--earth .mode-grid {
   position: relative;
   z-index: 1;
+}
+
+/* ─── Blue Earth: mode-card glass treatment (earth theme only) ─── */
+.home-screen.home-screen--earth .mode-card {
+  background: rgba(8, 31, 74, 0.68);
+  border-color: rgba(147, 197, 253, 0.24);
+  box-shadow:
+    0 18px 45px rgba(2, 8, 23, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.home-screen.home-screen--earth .mode-card:not(.mode-card--soon):hover {
+  border-color: rgba(147, 197, 253, 0.42);
+  transform: translateY(-2px);
+  box-shadow:
+    0 22px 50px rgba(2, 8, 23, 0.36),
+    0 0 0 3px rgba(88, 166, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.home-screen.home-screen--earth .mode-card-desc {
+  color: rgba(186, 211, 255, 0.72);
+}
+.home-screen.home-screen--earth .mode-card--soon {
+  opacity: .55;
 }
 
 /* ═══════════════════════════════════════════

@@ -488,15 +488,7 @@ useEffect(() => {
   </div>
 )}
 
-      {homeTheme === "earth" && (
-        <img
-          src="/assets/brand/earth-half.png"
-          alt=""
-          aria-hidden="true"
-          className="home-earth"
-          draggable={false}
-        />
-      )}
+      {homeTheme === "earth" && <BlueEarthDecor />}
 
       <HomeThemePicker active={homeTheme} onChange={setHomeTheme} />
     </div>
@@ -558,6 +550,87 @@ function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t
           <polyline points="2 14 12 20 22 14" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+/* ─── Blue Earth decorative layer: half-earth img + CSS cartoon eyes ─── */
+function BlueEarthDecor() {
+  const leftEyeRef   = useRef<HTMLDivElement>(null);
+  const rightEyeRef  = useRef<HTMLDivElement>(null);
+  const leftPupilRef  = useRef<HTMLDivElement>(null);
+  const rightPupilRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Touch/no-hover devices: keep pupils centered, skip listeners entirely.
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(hover: hover)").matches) return;
+
+    const MAX_OFFSET = 5; // px — pupil never leaves the white eye
+    const target = { x: 0, y: 0, active: false };
+    let rafId: number | null = null;
+
+    const applyOne = (eye: HTMLDivElement | null, pupil: HTMLDivElement | null) => {
+      if (!eye || !pupil) return;
+      if (!target.active) {
+        pupil.style.transform = "translate(-50%, -50%)";
+        return;
+      }
+      const r = eye.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dx = target.x - cx;
+      const dy = target.y - cy;
+      const d = Math.hypot(dx, dy);
+      const k = d > 0 ? Math.min(MAX_OFFSET, d) / d : 0;
+      pupil.style.transform = `translate(calc(-50% + ${dx * k}px), calc(-50% + ${dy * k}px))`;
+    };
+
+    const tick = () => {
+      applyOne(leftEyeRef.current, leftPupilRef.current);
+      applyOne(rightEyeRef.current, rightPupilRef.current);
+      rafId = null;
+    };
+    const schedule = () => { if (rafId == null) rafId = requestAnimationFrame(tick); };
+
+    const onMove = (e: MouseEvent) => {
+      target.x = e.clientX; target.y = e.clientY; target.active = true;
+      schedule();
+    };
+    const onLeave = () => { target.active = false; schedule(); };
+
+    window.addEventListener("mousemove", onMove, { passive: true });
+    document.addEventListener("mouseleave", onLeave);
+    window.addEventListener("blur", onLeave);
+
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseleave", onLeave);
+      window.removeEventListener("blur", onLeave);
+      if (rafId != null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  return (
+    <div className="home-earth" aria-hidden="true">
+      <img
+        src="/assets/brand/earth-half.png"
+        alt=""
+        className="home-earth-img"
+        draggable={false}
+      />
+      <div className="home-earth-eyes">
+        <div ref={leftEyeRef} className="ee-eye">
+          <div ref={leftPupilRef} className="ee-pupil">
+            <span className="ee-highlight" />
+          </div>
+        </div>
+        <div ref={rightEyeRef} className="ee-eye">
+          <div ref={rightPupilRef} className="ee-pupil">
+            <span className="ee-highlight" />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
