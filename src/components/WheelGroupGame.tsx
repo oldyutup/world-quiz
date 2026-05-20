@@ -238,6 +238,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [hostClosedRoom, setHostClosedRoom] = useState(false);
   const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
+  const [newHostModalOpen, setNewHostModalOpen] = useState(false);
 
   /* ── Lobby state (Supabase-bound) ─────────────────────────── */
   const [room, setRoom] = useState<WheelGroupRoom | null>(null);
@@ -452,6 +453,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
             setLastClaimedTopoId(null);
           }
           prevTargetRef.current = curr;
+
+          // Yeni host detection: önceki host ben değilken yeni host ben oldum
+          if (
+            r.host_player_id === myIdRef.current &&
+            roomRef.current?.host_player_id !== myIdRef.current
+          ) {
+            setNewHostModalOpen(true);
+          }
 
           setRoom(r);
 
@@ -2538,6 +2547,32 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 onClick={() => kickPlayer(kickTarget.id)}
               >
                 Odadan At
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ NEW HOST NOTICE ════════ */}
+      {newHostModalOpen && (
+        <div
+          className="dgg-confirm-backdrop"
+          onClick={() => setNewHostModalOpen(false)}
+        >
+          <div
+            className="dgg-confirm-modal"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="dgg-confirm-icon">👑</div>
+            <h3>YENİ ODA SAHİBİ SİZSİNİZ</h3>
+            <p>Oda sahibi ayrıldı. Odayı artık siz yönetiyorsunuz.</p>
+            <div className="dgg-confirm-actions single">
+              <button
+                type="button"
+                className="btn btn-accent"
+                onClick={() => setNewHostModalOpen(false)}
+              >
+                Tamam
               </button>
             </div>
           </div>
