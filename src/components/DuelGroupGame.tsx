@@ -217,6 +217,7 @@ export default function DuelGroupGame({
   const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
   const [, setHostClosedRoom] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [newHostNoticeOpen, setNewHostNoticeOpen] = useState(false);
 
   /* game state */
   const [room,     setRoom]     = useState<GroupRoom | null>(null);
@@ -246,6 +247,8 @@ export default function DuelGroupGame({
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeLeftRef  = useRef<number>(9999);
   const countdownPlayedRef = useRef(false);
+  const leavingRef   = useRef(false);
+  const lastSeenIsHostRef = useRef<boolean | null>(null);
 
   /* derived */
   const gameDuration = room?.duration_seconds ?? hostDuration;
@@ -655,6 +658,7 @@ useEffect(() => {
   if (phase !== "waiting") return;
   if (!myIdRef.current) return;
   if (!players.length) return;
+  if (leavingRef.current) return; // kendi rızasıyla ayrılıyorsak kick modal'ı tetikleme
 
   const stillInRoom = players.some((p) => p.id === myIdRef.current);
 
@@ -671,6 +675,36 @@ useEffect(() => {
     setPhase("lobby");
   }
 }, [room, phase, players]);
+
+  /* — HOST TRANSFER DETECTION: yerel is_host değişimini izle, yeni hosta modal göster — */
+  useEffect(() => {
+    if (!room) {
+      lastSeenIsHostRef.current = null;
+      return;
+    }
+    if (!myIdRef.current || !players.length) return;
+
+    const me = players.find((p) => p.id === myIdRef.current);
+    if (!me) return;
+
+    const nowHost = !!me.is_host;
+    const prev = lastSeenIsHostRef.current;
+
+    if (prev === null) {
+      // İlk gözlem: sadece seed et, modal tetikleme
+      lastSeenIsHostRef.current = nowHost;
+      if (nowHost !== isHostRef.current) setIsHost(nowHost);
+      return;
+    }
+
+    if (nowHost !== prev) {
+      lastSeenIsHostRef.current = nowHost;
+      setIsHost(nowHost);
+      if (nowHost && !prev && phaseRef.current === "waiting") {
+        setNewHostNoticeOpen(true);
+      }
+    }
+  }, [room, players]);
 
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
@@ -997,31 +1031,72 @@ const kickPlayer = useCallback(
   
   /* ── BACK TO LOBBY ── */
   const backToLobby = useCallback(async () => {
-    // Eğer waiting'deyiz ve oyuncuysak → kendimi sil
-    if (room && phaseRef.current === "waiting") {
-      try {
-        if (isHostRef.current) {
-          // Host → odayı sil (cascade ile player ve claim'ler de silinir)
-          await supabase.from("duel_group_rooms").delete().eq("id", room.id);
-        } else {
-          await supabase.from("duel_group_players")
-            .delete()
-            .eq("id", myIdRef.current)
-            .eq("room_id", room.id);
-        }
-      } catch (e) { dbgErr("backToLobby cleanup failed", e); }
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    try {
+      // Eğer waiting'deyiz ve oyuncuysak → kendimi sil
+      if (room && phaseRef.current === "waiting") {
+        try {
+          if (isHostRef.current) {
+            // Host ayrılıyor: kalan en eski oyuncuya host devret, kimse yoksa odayı sil.
+            const { data: candidates } = await supabase
+              .from("duel_group_players")
+              .select("id, joined_at, status")
+              .eq("room_id", room.id)
+              .neq("id", myIdRef.current)
+              .eq("status", "waiting")
+              .order("joined_at", { ascending: true })
+              .limit(1);
+
+            const newHost = (candidates ?? [])[0];
+
+            if (newHost?.id) {
+              // 1) Yeni hostu yükselt
+              const { error: promoteErr } = await supabase
+                .from("duel_group_players")
+                .update({
+                  is_host: true,
+                  last_seen_at: new Date().toISOString(),
+                })
+                .eq("id", newHost.id)
+                .eq("room_id", room.id);
+              if (promoteErr) dbgErr("host promote failed", promoteErr);
+
+              // 2) Eski hostu odadan sil (oda canlı kalır)
+              const { error: leaveErr } = await supabase
+                .from("duel_group_players")
+                .delete()
+                .eq("id", myIdRef.current)
+                .eq("room_id", room.id);
+              if (leaveErr) dbgErr("old host leave failed", leaveErr);
+            } else {
+              // Kalan aktif oyuncu yok → odayı kapat (cascade temizler)
+              await supabase.from("duel_group_rooms").delete().eq("id", room.id);
+            }
+          } else {
+            await supabase.from("duel_group_players")
+              .delete()
+              .eq("id", myIdRef.current)
+              .eq("room_id", room.id);
+          }
+        } catch (e) { dbgErr("backToLobby cleanup failed", e); }
+      }
+      clearGroupSession();
+      setRoom(null);
+      setPlayers([]);
+      setClaims([]);
+      setIsHost(false);
+      setFinalLeaderboard(null);
+      setErrorMsg(null);
+      setStatusMsg(null);
+      setQuitModal(false);
+      setNewHostNoticeOpen(false);
+      gameEndedRef.current = false;
+      lastSeenIsHostRef.current = null;
+      setPhase("lobby");
+    } finally {
+      leavingRef.current = false;
     }
-    clearGroupSession();
-    setRoom(null);
-    setPlayers([]);
-    setClaims([]);
-    setIsHost(false);
-    setFinalLeaderboard(null);
-    setErrorMsg(null);
-    setStatusMsg(null);
-    setQuitModal(false);
-    gameEndedRef.current = false;
-    setPhase("lobby");
   }, [room]);
 
 /* — RETURN TO SAME ROOM (oyun sonu -> aynı odaya dön) — */
@@ -1638,6 +1713,34 @@ setPhase("waiting");
           type="button"
           className="btn btn-accent"
           onClick={() => setKickedNoticeOpen(false)}
+        >
+          Tamam
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{newHostNoticeOpen && (
+  <div
+    className="dgg-confirm-backdrop"
+    onClick={() => setNewHostNoticeOpen(false)}
+  >
+    <div
+      className="dgg-confirm-modal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="dgg-confirm-icon">👑</div>
+
+      <h3>YENİ ODA SAHİBİ SİZSİNİZ</h3>
+
+      <p>Oda sahibi ayrıldı. Odayı artık siz yönetiyorsunuz.</p>
+
+      <div className="dgg-confirm-actions single">
+        <button
+          type="button"
+          className="btn btn-accent"
+          onClick={() => setNewHostNoticeOpen(false)}
         >
           Tamam
         </button>
