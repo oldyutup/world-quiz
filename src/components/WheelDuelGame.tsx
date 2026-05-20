@@ -1920,12 +1920,6 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
               Odanı kur, kodu arkadaşına gönder. Çarkın seçtiği ülkeyi haritada ilk bulan puanı kapar.
             </p>
 
-            {hostClosedRoom && (
-              <p className="duel-error" style={{ marginTop: 4 }}>
-                Ev sahibi odayı kapattı.
-              </p>
-            )}
-
             <div className="duel-field-row">
               <label className="duel-field-label">Oyuncu Adın</label>
               <input
@@ -2730,6 +2724,33 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           </div>
         );
       })()}
+
+      {/* ════════ ROOM CLOSED MODAL — host odayı kapattığında guest'e ════════ */}
+      {hostClosedRoom && (
+        <div
+          className="fd-room-closed-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="wd-room-closed-title"
+        >
+          <div className="fd-room-closed-modal">
+            <div className="fd-room-closed-icon" aria-hidden="true">🚪</div>
+            <h2 id="wd-room-closed-title" className="fd-room-closed-title">
+              ODA KAPATILDI
+            </h2>
+            <p className="fd-room-closed-sub">
+              Oda sahibi odadan ayrıldı ve oturumu sonlandırdı.
+            </p>
+            <button
+              className="btn btn-accent fd-room-closed-action"
+              autoFocus
+              onClick={() => setHostClosedRoom(false)}
+            >
+              ← Lobiye Dön
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ════════ XP KAZANIMI — fixed footer ════════ */}
       {xpResult && xpFooterVisible && !xpResult.dismissed && (
