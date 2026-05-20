@@ -406,6 +406,86 @@ body {
   .home-theme-picker { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: 12px; }
 }
 
+/* ─── Home social dock — bottom-left, mirrors the theme picker ─── */
+.home-social-dock {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: 16px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(7, 25, 54, 0.58);
+  border: 1px solid rgba(147, 197, 253, 0.18);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 30px rgba(2, 8, 23, 0.22);
+  border-radius: 999px;
+}
+.home-social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  transition:
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.home-social-link svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+.home-social-link:hover,
+.home-social-link:focus-visible {
+  color: rgba(219, 234, 254, 1);
+  background: rgba(96, 165, 250, 0.14);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(147, 197, 253, 0.22),
+    0 6px 18px rgba(56, 130, 246, 0.18);
+  outline: none;
+}
+.home-social-link:active { transform: translateY(0); }
+@media (max-width: 480px) {
+  .home-social-dock {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    padding: 5px 6px;
+  }
+  .home-social-link { width: 30px; height: 30px; }
+  .home-social-link svg { width: 16px; height: 16px; }
+}
+
+/* Studio credit — sits one row above .home-social-dock, left-aligned with it.
+   Offset = dock bottom (20px) + dock height (~46px) + gap (12px). */
+.home-studio-credit {
+  position: fixed;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  left: 34px;
+  z-index: 20;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.62);
+  text-shadow: 0 1px 8px rgba(2, 8, 23, 0.35);
+  pointer-events: none;
+  user-select: none;
+}
+@media (max-width: 480px) {
+  .home-studio-credit {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+  }
+}
+
 /* ─── Main-menu "Blue Earth" theme: replace background, tone down decorative layers ─── */
 .home-screen.home-screen--earth {
   background:

@@ -505,8 +505,83 @@ useEffect(() => {
 
       {homeTheme === "earth" && <BlueEarthDecor />}
 
+      <div className="home-studio-credit" aria-label="Yayıncı: Kavak Games">Kavak Games</div>
+      <HomeSocialDock />
       <HomeThemePicker active={homeTheme} onChange={setHomeTheme} />
     </div>
+  );
+}
+
+/* ─── Social dock: anchored bottom-left, mirrors the theme picker ─── */
+const SOCIAL_LINKS: { id: string; label: string; href: string; path: JSX.Element }[] = [
+  {
+    id: "instagram",
+    label: "Instagram",
+    href: "https://instagram.com/playtorble",
+    path: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none" />
+      </>
+    ),
+  },
+  {
+    id: "x",
+    label: "X",
+    href: "https://x.com/playtorble",
+    // Solid wordmark glyph — uses fill, not stroke.
+    path: (
+      <path
+        d="M18.244 2H21.5l-7.5 8.57L23 22h-6.93l-5.42-7.08L4.4 22H1.14l8.03-9.18L1 2h7.08l4.9 6.48L18.244 2zm-1.22 18h1.93L7.06 4H5.04l11.98 16z"
+        fill="currentColor"
+        stroke="none"
+      />
+    ),
+  },
+  {
+    id: "tiktok",
+    label: "TikTok",
+    href: "https://tiktok.com/@playtorble",
+    // Solid glyph — uses fill, not stroke.
+    path: (
+      <path
+        d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.71a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.14z"
+        fill="currentColor"
+        stroke="none"
+      />
+    ),
+  },
+];
+
+function HomeSocialDock() {
+  return (
+    <nav className="home-social-dock" aria-label="Sosyal medya">
+      {SOCIAL_LINKS.map(s => (
+        <a
+          key={s.id}
+          href={s.href}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="home-social-link"
+          aria-label={s.label}
+          title={s.label}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            {s.path}
+          </svg>
+        </a>
+      ))}
+    </nav>
   );
 }
 
