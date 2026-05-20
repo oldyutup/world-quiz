@@ -15,9 +15,9 @@ export function readStoredHomeTheme(): HomeTheme {
     if (saved === "earth")      return "earth";
     if (saved === "adventure")  return "adventure";
     if (saved === "dark-space") return "dark-space";
-    return "earth";
+    return "adventure";
   } catch {
-    return "earth";
+    return "adventure";
   }
 }
 
