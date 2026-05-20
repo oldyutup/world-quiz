@@ -215,7 +215,7 @@ export default function DuelGroupGame({
   const [errorMsg,  setErrorMsg]  = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
-  const [, setHostClosedRoom] = useState(false);
+  const [roomClosedNoticeOpen, setRoomClosedNoticeOpen] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [newHostNoticeOpen, setNewHostNoticeOpen] = useState(false);
 
@@ -435,9 +435,27 @@ useEffect(() => {
       .on("postgres_changes",
         { event: "DELETE", schema: "public", table: "duel_group_rooms", filter: `id=eq.${room.id}` },
         () => {
-          if (phaseRef.current === "waiting" && !isHostRef.current) {
-            setHostClosedRoom(true);
-          }
+          if (leavingRef.current) return;
+          if (phaseRef.current !== "waiting" && phaseRef.current !== "playing") return;
+          if (gameEndedRef.current) return;
+          leavingRef.current = true;
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+          clearGroupSession();
+          setRoom(null);
+          setPlayers([]);
+          setClaims([]);
+          setIsHost(false);
+          setFinalLeaderboard(null);
+          setErrorMsg(null);
+          setStatusMsg(null);
+          setQuitModal(false);
+          setNewHostNoticeOpen(false);
+          gameEndedRef.current = false;
+          lastSeenIsHostRef.current = null;
+          setRoomClosedNoticeOpen(true);
+          setPhase("lobby");
+          leavingRef.current = false;
         })
       .on("postgres_changes",
         { event: "*", schema: "public", table: "duel_group_players", filter: `room_id=eq.${room.id}` },
@@ -1004,6 +1022,48 @@ ${shareLink}`
     });
   };
 
+  /* ── Room reconciliation after a player leaves ──
+   *  - Kalan oyuncu yoksa odayı sil (DB trigger da safety-net olarak aynısını
+   *    yapıyor; client tarafında da yapmak diğer client'lara realtime DELETE
+   *    olayını daha hızlı ulaştırıyor).
+   *  - Host kalmadıysa en eski joined_at oyuncusunu host yap. Race durumunda
+   *    iki client ayrı ayrı promote etmeye çalışırsa, ikisi de aynı en eski
+   *    oyuncuyu seçeceği için tek host kalır.
+   */
+  const reconcileRoomAfterLeave = useCallback(async (roomId: string) => {
+    try {
+      const { data: ps } = await supabase
+        .from("duel_group_players")
+        .select("id, is_host, joined_at, status")
+        .eq("room_id", roomId)
+        .order("joined_at", { ascending: true });
+      const remaining = (ps ?? []) as Array<Pick<GroupPlayer, "id" | "is_host" | "joined_at" | "status">>;
+
+      if (remaining.length === 0) {
+        await supabase.from("duel_group_rooms").delete().eq("id", roomId);
+        return;
+      }
+
+      const hasHost = remaining.some((p) => p.is_host);
+      if (!hasHost) {
+        const candidate = remaining.find((p) => p.status === "waiting") ?? remaining[0];
+        if (candidate) {
+          const { error: promoteErr } = await supabase
+            .from("duel_group_players")
+            .update({
+              is_host: true,
+              last_seen_at: new Date().toISOString(),
+            })
+            .eq("id", candidate.id)
+            .eq("room_id", roomId);
+          if (promoteErr) dbgErr("host promote failed", promoteErr);
+        }
+      }
+    } catch (e) {
+      dbgErr("reconcileRoomAfterLeave failed", e);
+    }
+  }, []);
+
   /* — KICK PLAYER (sadece host, sadece bekleme odası) — */
 const kickPlayer = useCallback(
   async (playerId: string) => {
@@ -1011,10 +1071,11 @@ const kickPlayer = useCallback(
     if (phaseRef.current !== "waiting") return;
     if (playerId === myIdRef.current) return;
 
+    const roomId = room.id;
     const { error } = await supabase
       .from("duel_group_players")
       .delete()
-      .eq("room_id", room.id)
+      .eq("room_id", roomId)
       .eq("id", playerId);
 
     if (error) {
@@ -1025,60 +1086,29 @@ const kickPlayer = useCallback(
 
     setPlayers((prev) => prev.filter((p) => p.id !== playerId));
     setKickTarget(null);
+    // Defensive: ensure host invariant after kicking (host is still here, so
+    // reconcile is essentially a no-op, but it keeps the cleanup path uniform).
+    await reconcileRoomAfterLeave(roomId);
   },
-  [room]
+  [room, reconcileRoomAfterLeave]
 );
-  
+
   /* ── BACK TO LOBBY ── */
   const backToLobby = useCallback(async () => {
     if (leavingRef.current) return;
     leavingRef.current = true;
     try {
-      // Eğer waiting'deyiz ve oyuncuysak → kendimi sil
+      // Eğer waiting'deyiz ve oyuncuysak → kendimi sil, sonra odayı reconcile et
       if (room && phaseRef.current === "waiting") {
         try {
-          if (isHostRef.current) {
-            // Host ayrılıyor: kalan en eski oyuncuya host devret, kimse yoksa odayı sil.
-            const { data: candidates } = await supabase
-              .from("duel_group_players")
-              .select("id, joined_at, status")
-              .eq("room_id", room.id)
-              .neq("id", myIdRef.current)
-              .eq("status", "waiting")
-              .order("joined_at", { ascending: true })
-              .limit(1);
-
-            const newHost = (candidates ?? [])[0];
-
-            if (newHost?.id) {
-              // 1) Yeni hostu yükselt
-              const { error: promoteErr } = await supabase
-                .from("duel_group_players")
-                .update({
-                  is_host: true,
-                  last_seen_at: new Date().toISOString(),
-                })
-                .eq("id", newHost.id)
-                .eq("room_id", room.id);
-              if (promoteErr) dbgErr("host promote failed", promoteErr);
-
-              // 2) Eski hostu odadan sil (oda canlı kalır)
-              const { error: leaveErr } = await supabase
-                .from("duel_group_players")
-                .delete()
-                .eq("id", myIdRef.current)
-                .eq("room_id", room.id);
-              if (leaveErr) dbgErr("old host leave failed", leaveErr);
-            } else {
-              // Kalan aktif oyuncu yok → odayı kapat (cascade temizler)
-              await supabase.from("duel_group_rooms").delete().eq("id", room.id);
-            }
-          } else {
-            await supabase.from("duel_group_players")
-              .delete()
-              .eq("id", myIdRef.current)
-              .eq("room_id", room.id);
-          }
+          const roomId = room.id;
+          const { error: leaveErr } = await supabase
+            .from("duel_group_players")
+            .delete()
+            .eq("id", myIdRef.current)
+            .eq("room_id", roomId);
+          if (leaveErr) dbgErr("self leave failed", leaveErr);
+          await reconcileRoomAfterLeave(roomId);
         } catch (e) { dbgErr("backToLobby cleanup failed", e); }
       }
       clearGroupSession();
@@ -1097,7 +1127,7 @@ const kickPlayer = useCallback(
     } finally {
       leavingRef.current = false;
     }
-  }, [room]);
+  }, [room, reconcileRoomAfterLeave]);
 
 /* — RETURN TO SAME ROOM (oyun sonu -> aynı odaya dön) — */
 const returnToRoom = useCallback(async () => {
@@ -1154,17 +1184,19 @@ setPhase("waiting");
     // sadece odadan ayrıl. Geri kalanlar kendi aralarında yarışmaya devam eder.
     if (room) {
       try {
+        const roomId = room.id;
         await supabase.from("duel_group_players")
           .delete()
           .eq("id", myIdRef.current)
-          .eq("room_id", room.id);
+          .eq("room_id", roomId);
+        await reconcileRoomAfterLeave(roomId);
       } catch (e) { dbgErr("forfeit cleanup failed", e); }
     }
     clearGroupSession();
     setQuitModal(false);
     if (target === "home") onHome();
     else backToLobby();
-  }, [room, backToLobby, onHome]);
+  }, [room, backToLobby, onHome, reconcileRoomAfterLeave]);
 
   /* ─────────── RENDER ─────────── */
 
@@ -1713,6 +1745,34 @@ setPhase("waiting");
           type="button"
           className="btn btn-accent"
           onClick={() => setKickedNoticeOpen(false)}
+        >
+          Tamam
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{roomClosedNoticeOpen && (
+  <div
+    className="dgg-confirm-backdrop"
+    onClick={() => setRoomClosedNoticeOpen(false)}
+  >
+    <div
+      className="dgg-confirm-modal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="dgg-confirm-icon">🚪</div>
+
+      <h3>Oda Kapatıldı</h3>
+
+      <p>Oda artık aktif değil. Yeni bir oda kurabilir veya başka bir odaya katılabilirsin.</p>
+
+      <div className="dgg-confirm-actions single">
+        <button
+          type="button"
+          className="btn btn-accent"
+          onClick={() => setRoomClosedNoticeOpen(false)}
         >
           Tamam
         </button>
