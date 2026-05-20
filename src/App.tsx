@@ -290,8 +290,11 @@ const [showWheelMenu, setShowWheelMenu] = useState(false);
   return (
     <div className="home-screen">
       <div className="home-hero">
-        <div className="home-globe">🌍</div>
-        <h1 className="home-title">Torble</h1>
+        <img
+          src="/assets/brand/torble-logo.png"
+          alt="Torble"
+          className="home-logo"
+        />
         <p className="home-subtitle">Dünya bilginizi test edin.</p>
       </div>
       <div className="mode-grid">

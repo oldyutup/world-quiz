@@ -85,7 +85,7 @@ body {
   flex-direction: column;
   align-items: center;
   padding: 40px 20px env(safe-area-inset-bottom, 80px);
-  gap: 36px;
+  gap: 32px;
 }
 .home-screen::before {
   content: "";
@@ -113,26 +113,23 @@ body {
 }
 
 .home-hero {
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center;
 }
-.home-globe {
-  font-size: 4rem;     /* slightly smaller — saves vertical space */
-  line-height: 1;
+.home-logo {
+  display: block;
+  width: 220px;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
   animation: float 4s ease-in-out infinite;
   filter: drop-shadow(0 0 32px rgba(88,166,255,.35));
 }
+@media (min-width: 640px) { .home-logo { width: 280px; } }
+@media (min-width: 768px) { .home-logo { width: 320px; } }
 @keyframes float {
   0%,100% { transform: translateY(0); }
   50%      { transform: translateY(-10px); }
-}
-.home-title {
-  font-family: var(--font-head);
-  font-size: clamp(2.4rem, 8vw, 5rem);   /* narrower clamp — shrinks faster */
-  letter-spacing: .08em;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--green) 100%);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 .home-subtitle { font-size: 1rem; color: var(--muted); }
 
@@ -485,8 +482,7 @@ body {
    MOBILE
 ═══════════════════════════════════════════ */
 @media (max-width:600px) {
-  .home-screen   { padding:32px 16px 48px; gap:36px; }
-  .home-globe    { font-size:3.5rem; }
+  .home-screen   { padding:32px 16px 48px; gap:28px; }
   .mode-grid     { grid-template-columns:1fr; }
   .mode-card     { padding:22px 18px; }
   .control-bar   { padding:6px 10px 4px; gap:4px; }
@@ -1366,7 +1362,6 @@ body {
     padding: 24px 14px env(safe-area-inset-bottom, 80px);
     gap: 24px;
   }
-  .home-globe    { font-size: 2.8rem; }
   .home-hero     { gap: 6px; }
   .mode-grid     { grid-template-columns: 1fr; gap: 10px; }
   .mode-card     { padding: 16px 14px; gap: 8px; flex-direction: row; align-items: center; text-align: left; border-radius: 12px; }
@@ -1381,7 +1376,6 @@ body {
 /* ── Landscape phones ── */
 @media (max-width: 768px) and (orientation: landscape) {
   .home-screen { padding: 20px 20px env(safe-area-inset-bottom, 40px); gap: 20px; }
-  .home-globe  { font-size: 2.4rem; }
   .mode-grid   { grid-template-columns: 1fr 1fr; gap: 10px; }
   .mode-card   { padding: 14px 16px; gap: 8px; }
 }
