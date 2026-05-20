@@ -382,6 +382,66 @@ body {
   .map-attribution { display:none; }
 }
 
+/* ─── Main-menu background theme picker (reuses .map-theme-* visuals) ─── */
+.home-theme-picker {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.home-theme-check {
+  margin-left: auto;
+  font-size: .85rem;
+  line-height: 1;
+  color: var(--accent);
+}
+@media (max-width: 480px) {
+  .home-theme-picker { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: 12px; }
+}
+
+/* ─── Main-menu "Blue Earth" theme: replace background, tone down decorative layers ─── */
+.home-screen.home-screen--earth {
+  background:
+    linear-gradient(rgba(3,7,18,.42), rgba(3,7,18,.70)),
+    url('/assets/backgrounds/arkaplan.webp') center / cover no-repeat;
+}
+.home-screen.home-screen--earth::before { opacity: .08; }
+.home-screen.home-screen--earth::after  { opacity: .55; }
+
+/* Decorative half-earth horizon — only rendered under the Blue Earth theme */
+.home-earth {
+  position: fixed;
+  left: 50%;
+  bottom: -80px;
+  transform: translateX(-50%);
+  width: min(820px, 92vw);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  filter: drop-shadow(0 -14px 40px rgba(88,166,255,.18));
+}
+@media (max-width: 900px) {
+  .home-earth { width: min(620px, 96vw); bottom: -64px; }
+}
+@media (max-width: 600px) {
+  .home-earth { width: 460px; bottom: -48px; }
+}
+@media (max-width: 380px) {
+  .home-earth { display: none; }
+}
+
+/* Lift the menu content above the earth layer, earth-theme only */
+.home-screen.home-screen--earth .home-hero,
+.home-screen.home-screen--earth .mode-grid {
+  position: relative;
+  z-index: 1;
+}
+
 /* ═══════════════════════════════════════════
    FLAG AREA
 ═══════════════════════════════════════════ */

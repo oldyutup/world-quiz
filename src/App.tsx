@@ -274,11 +274,23 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 /* ═══════════════════════════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
+type HomeTheme = "default" | "earth";
+const HOME_THEME_KEY = "torble-theme";
+function readStoredHomeTheme(): HomeTheme {
+  try {
+    return localStorage.getItem(HOME_THEME_KEY) === "earth" ? "earth" : "default";
+  } catch { return "default"; }
+}
+
 interface HomeProps { onSelect: (screen: AppScreen) => void; }
 function HomeScreen({ onSelect }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
+const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
+useEffect(() => {
+  try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
+}, [homeTheme]);
   const modes = [
   { id: "map-game" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -288,7 +300,7 @@ const [showWheelMenu, setShowWheelMenu] = useState(false);
   { id: "home" as AppScreen, icon: "🌃", title: "Foto Tahmin", desc: "Fotoğraftan şehri veya ülkeyi bul.", available: false },
 ];
   return (
-    <div className="home-screen">
+    <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : "")}>
       <div className="home-hero">
         <img
           src="/assets/brand/torble-logo.png"
@@ -475,6 +487,77 @@ const [showWheelMenu, setShowWheelMenu] = useState(false);
     </div>
   </div>
 )}
+
+      {homeTheme === "earth" && (
+        <img
+          src="/assets/brand/earth-half.png"
+          alt=""
+          aria-hidden="true"
+          className="home-earth"
+          draggable={false}
+        />
+      )}
+
+      <HomeThemePicker active={homeTheme} onChange={setHomeTheme} />
+    </div>
+  );
+}
+
+const HOME_THEMES: { id: HomeTheme; name: string; swatch: string }[] = [
+  { id: "default", name: "Varsayılan", swatch: "linear-gradient(135deg, #0a101d 0%, #1c3358 100%)" },
+  { id: "earth",   name: "Mavi Dünya", swatch: "linear-gradient(135deg, #1e6bd9 0%, #5fb3ff 100%)" },
+];
+
+function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t: HomeTheme) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("touchstart", onDown, { passive: true });
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("touchstart", onDown);
+    };
+  }, [open]);
+  return (
+    <div ref={rootRef} className="home-theme-picker">
+      {open && (
+        <div className="map-theme-panel" role="menu" aria-label="Arka plan teması">
+          {HOME_THEMES.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              className={"map-theme-option" + (t.id === active ? " active" : "")}
+              onClick={() => { playSound("click"); onChange(t.id); setOpen(false); }}
+              role="menuitemradio"
+              aria-checked={t.id === active}
+            >
+              <span className="map-theme-swatch" style={{ background: t.swatch }} />
+              <span className="map-theme-name">{t.name}</span>
+              {t.id === active && <span className="home-theme-check" aria-hidden="true">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className={"map-theme-toggle" + (open ? " open" : "")}
+        onClick={() => { playSound("click"); setOpen(o => !o); }}
+        aria-label="Arka plan teması"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Arka plan teması"
+      >
+        {/* layers icon — matches the in-game map theme picker */}
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 22 8 12 14 2 8 12 2" />
+          <polyline points="2 14 12 20 22 14" />
+        </svg>
+      </button>
     </div>
   );
 }
