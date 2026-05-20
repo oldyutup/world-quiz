@@ -8108,3 +8108,390 @@ body {
     font-size: 1.2rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME-AWARE GLASS PANELS — pre-game/lobby/setup only.
+   Triggered by [data-theme="earth"|"adventure"|"dark-space"] on the screen
+   root. Default theme has no attribute → no overrides → existing look stays.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Primary card: Online setup, waiting room, group lobby ── */
+[data-theme="earth"] .duel-lobby-card {
+  background: rgba(8, 31, 74, 0.70);
+  border-color: rgba(147, 197, 253, 0.22);
+  box-shadow:
+    0 22px 60px rgba(2, 8, 23, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+[data-theme="adventure"] .duel-lobby-card {
+  background: rgba(7, 25, 54, 0.76);
+  border-color: rgba(147, 197, 253, 0.26);
+  box-shadow:
+    0 24px 70px rgba(2, 8, 23, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+[data-theme="dark-space"] .duel-lobby-card {
+  background: rgba(5, 8, 14, 0.78);
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Mode-selection modal (HomeScreen) — themed `.overlay` wraps `.modal` ── */
+.overlay[data-theme="earth"] .modal {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02)),
+    rgba(8, 31, 74, 0.74);
+  border-color: rgba(147, 197, 253, 0.24);
+  box-shadow:
+    0 24px 70px rgba(2, 8, 23, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.overlay[data-theme="adventure"] .modal {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)),
+    rgba(7, 25, 54, 0.78);
+  border-color: rgba(147, 197, 253, 0.28);
+  box-shadow:
+    0 26px 80px rgba(2, 8, 23, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.overlay[data-theme="dark-space"] .modal {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),
+    rgba(5, 8, 14, 0.80);
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Nested panels inside primary card (settings, join, room code) ── */
+[data-theme="earth"] .duel-settings-block,
+[data-theme="adventure"] .duel-settings-block {
+  background: rgba(15, 38, 75, 0.46);
+  border-color: rgba(147, 197, 253, 0.16);
+}
+[data-theme="dark-space"] .duel-settings-block {
+  background: rgba(15, 23, 42, 0.50);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* ── Player chips (waiting room) — non-mine only ── */
+[data-theme="earth"] .duel-player-chip:not(.mine),
+[data-theme="adventure"] .duel-player-chip:not(.mine) {
+  background: rgba(15, 38, 75, 0.42);
+  border-color: rgba(147, 197, 253, 0.18);
+}
+[data-theme="dark-space"] .duel-player-chip:not(.mine) {
+  background: rgba(15, 23, 42, 0.48);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+/* ── Chat panel (desktop) ── */
+[data-theme="earth"] .lc-panel,
+[data-theme="adventure"] .lc-panel {
+  background: rgba(8, 31, 74, 0.66);
+  border-color: rgba(147, 197, 253, 0.20);
+  box-shadow:
+    0 18px 50px rgba(2, 8, 23, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+[data-theme="dark-space"] .lc-panel {
+  background: rgba(5, 8, 14, 0.76);
+  border-color: rgba(148, 163, 184, 0.14);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Chat header: tone down the surface2→surface gradient on themed panels */
+[data-theme="earth"] .lc-header,
+[data-theme="adventure"] .lc-header {
+  background: linear-gradient(180deg, rgba(15, 38, 75, 0.55), rgba(8, 31, 74, 0.40));
+  border-bottom-color: rgba(147, 197, 253, 0.14);
+}
+[data-theme="earth"] .lc-header:hover,
+[data-theme="adventure"] .lc-header:hover {
+  background: linear-gradient(180deg, rgba(20, 48, 90, 0.62), rgba(12, 36, 80, 0.48));
+}
+[data-theme="dark-space"] .lc-header {
+  background: linear-gradient(180deg, rgba(20, 24, 32, 0.55), rgba(12, 16, 22, 0.40));
+  border-bottom-color: rgba(148, 163, 184, 0.12);
+}
+[data-theme="dark-space"] .lc-header:hover {
+  background: linear-gradient(180deg, rgba(28, 32, 42, 0.62), rgba(18, 22, 30, 0.48));
+}
+
+/* Chat mobile bottom sheet */
+[data-theme="earth"] .lc-sheet,
+[data-theme="adventure"] .lc-sheet {
+  background: rgba(8, 31, 74, 0.78);
+  border-color: rgba(147, 197, 253, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+[data-theme="dark-space"] .lc-sheet {
+  background: rgba(5, 8, 14, 0.82);
+  border-color: rgba(148, 163, 184, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* ── Group game wait layout (DuelGroupGame) ── */
+[data-theme="earth"] .dgg-wait-main,
+[data-theme="adventure"] .dgg-wait-main {
+  background:
+    linear-gradient(180deg, rgba(20, 48, 92, 0.78), rgba(8, 28, 64, 0.86));
+  border-color: rgba(147, 197, 253, 0.22);
+  box-shadow:
+    0 22px 60px rgba(2, 8, 23, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+[data-theme="dark-space"] .dgg-wait-main {
+  background:
+    linear-gradient(180deg, rgba(18, 22, 30, 0.86), rgba(8, 11, 16, 0.92));
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="earth"] .dgg-wait-players,
+[data-theme="earth"] .dgg-wait-side,
+[data-theme="adventure"] .dgg-wait-players,
+[data-theme="adventure"] .dgg-wait-side {
+  background: rgba(15, 38, 75, 0.46);
+  border-color: rgba(147, 197, 253, 0.18);
+}
+[data-theme="dark-space"] .dgg-wait-players,
+[data-theme="dark-space"] .dgg-wait-side {
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Nested room-settings panel inside group wait side */
+[data-theme="earth"] .dgg-room-settings,
+[data-theme="adventure"] .dgg-room-settings {
+  background: rgba(8, 28, 64, 0.55);
+  border: 1px solid rgba(147, 197, 253, 0.16);
+}
+[data-theme="dark-space"] .dgg-room-settings {
+  background: rgba(12, 18, 28, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* ── Subtle hover lift on selectable cards in themed pre-game screens ── */
+[data-theme="earth"] .duel-lobby-card.duel-1v1-room-card:hover,
+[data-theme="adventure"] .duel-lobby-card.duel-1v1-room-card:hover {
+  border-color: rgba(147, 197, 253, 0.36);
+  box-shadow:
+    0 26px 70px rgba(2, 8, 23, 0.40),
+    0 0 0 3px rgba(88, 166, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark-space"] .duel-lobby-card.duel-1v1-room-card:hover {
+  border-color: rgba(148, 163, 184, 0.26);
+  box-shadow:
+    0 26px 70px rgba(0, 0, 0, 0.46),
+    0 0 0 3px rgba(148, 163, 184, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEMED CHAT INTERNALS (messages, empty, input, opponent bubble)
+   The chat panel shell (.lc-panel/.lc-sheet/.lc-header) is themed earlier.
+   These rules continue that treatment inside the panel.
+═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="earth"] .lc-messages,
+[data-theme="adventure"] .lc-messages {
+  background:
+    radial-gradient(1200px 400px at 50% -10%, rgba(147, 197, 253, 0.06), transparent 60%),
+    rgba(7, 25, 54, 0.46);
+}
+[data-theme="dark-space"] .lc-messages {
+  background:
+    radial-gradient(1200px 400px at 50% -10%, rgba(148, 163, 184, 0.04), transparent 60%),
+    rgba(5, 8, 14, 0.52);
+}
+
+[data-theme="earth"] .lc-messages::-webkit-scrollbar-thumb,
+[data-theme="adventure"] .lc-messages::-webkit-scrollbar-thumb {
+  background: rgba(147, 197, 253, 0.22);
+}
+[data-theme="dark-space"] .lc-messages::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.20);
+}
+
+[data-theme="earth"] .lc-empty,
+[data-theme="adventure"] .lc-empty {
+  color: rgba(186, 211, 255, 0.78);
+  opacity: 1;
+}
+[data-theme="dark-space"] .lc-empty {
+  color: rgba(186, 197, 217, 0.74);
+  opacity: 1;
+}
+
+[data-theme="earth"] .lc-sender,
+[data-theme="adventure"] .lc-sender {
+  color: rgba(186, 211, 255, 0.78);
+}
+[data-theme="dark-space"] .lc-sender {
+  color: rgba(186, 197, 217, 0.72);
+}
+
+/* Opponent bubble — themed glass; "me" bubble stays accent-blue (button-like) */
+[data-theme="earth"] .lc-msg-opp .lc-bubble,
+[data-theme="adventure"] .lc-msg-opp .lc-bubble {
+  background: rgba(15, 38, 75, 0.55);
+  border-color: rgba(147, 197, 253, 0.18);
+  color: rgba(232, 240, 255, 0.96);
+}
+[data-theme="dark-space"] .lc-msg-opp .lc-bubble {
+  background: rgba(20, 27, 40, 0.62);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(225, 230, 240, 0.96);
+}
+
+/* Input row + input field */
+[data-theme="earth"] .lc-input-row,
+[data-theme="adventure"] .lc-input-row {
+  background: rgba(8, 28, 64, 0.55);
+  border-top-color: rgba(147, 197, 253, 0.16);
+}
+[data-theme="dark-space"] .lc-input-row {
+  background: rgba(10, 14, 22, 0.62);
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="earth"] .lc-input,
+[data-theme="adventure"] .lc-input {
+  background: rgba(5, 18, 44, 0.62);
+  border-color: rgba(147, 197, 253, 0.20);
+  color: rgba(232, 240, 255, 0.98);
+}
+[data-theme="earth"] .lc-input::placeholder,
+[data-theme="adventure"] .lc-input::placeholder {
+  color: rgba(186, 211, 255, 0.55);
+}
+[data-theme="dark-space"] .lc-input {
+  background: rgba(8, 11, 17, 0.68);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: rgba(225, 230, 240, 0.98);
+}
+[data-theme="dark-space"] .lc-input::placeholder {
+  color: rgba(186, 197, 217, 0.50);
+}
+
+/* Mobile chat sheet — extend the same internals */
+[data-theme="earth"] .lc-sheet-header,
+[data-theme="adventure"] .lc-sheet-header {
+  background: linear-gradient(180deg, rgba(15, 38, 75, 0.55), rgba(8, 28, 64, 0.40));
+  border-bottom-color: rgba(147, 197, 253, 0.16);
+}
+[data-theme="dark-space"] .lc-sheet-header {
+  background: linear-gradient(180deg, rgba(20, 24, 32, 0.55), rgba(12, 16, 22, 0.40));
+  border-bottom-color: rgba(148, 163, 184, 0.14);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEMED TOP HEADER BAR (.duel-header) + chips + back button
+   Used by DuelGame / FlagDuelGame / WheelDuelGame / WheelGroupGame.
+   Only applies in pre-game phases (data-theme is removed during play).
+═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="earth"] .duel-header,
+[data-theme="adventure"] .duel-header {
+  background: rgba(10, 22, 46, 0.55);
+  border-bottom: 1px solid rgba(147, 197, 253, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+[data-theme="dark-space"] .duel-header {
+  background: rgba(8, 11, 17, 0.62);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Mode label — slightly brighter on themed backgrounds for legibility */
+[data-theme="earth"] .duel-mode-label,
+[data-theme="adventure"] .duel-mode-label {
+  color: rgba(186, 211, 255, 0.86);
+}
+[data-theme="dark-space"] .duel-mode-label {
+  color: rgba(186, 197, 217, 0.80);
+}
+
+/* Room code chip — prominent (active state) */
+[data-theme="earth"] .duel-code-badge,
+[data-theme="adventure"] .duel-code-badge {
+  color: rgba(219, 234, 254, 0.98);
+  background: rgba(30, 64, 175, 0.32);
+  border-color: rgba(147, 197, 253, 0.45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+[data-theme="dark-space"] .duel-code-badge {
+  color: rgba(225, 230, 240, 0.96);
+  background: rgba(60, 78, 110, 0.28);
+  border-color: rgba(148, 163, 184, 0.32);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+/* Region chip — secondary, quieter glass */
+[data-theme="earth"] .duel-region-badge,
+[data-theme="adventure"] .duel-region-badge {
+  color: rgba(186, 211, 255, 0.86);
+  background: rgba(15, 38, 75, 0.46);
+  border-color: rgba(147, 197, 253, 0.20);
+}
+[data-theme="dark-space"] .duel-region-badge {
+  color: rgba(186, 197, 217, 0.80);
+  background: rgba(20, 27, 40, 0.55);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+/* Back button — sits in the themed header, must match the glass feel */
+[data-theme="earth"] .duel-header .back-btn,
+[data-theme="adventure"] .duel-header .back-btn {
+  background: rgba(15, 38, 75, 0.46);
+  border-color: rgba(147, 197, 253, 0.22);
+  color: rgba(219, 234, 254, 0.90);
+}
+[data-theme="earth"] .duel-header .back-btn:hover,
+[data-theme="adventure"] .duel-header .back-btn:hover {
+  border-color: rgba(147, 197, 253, 0.42);
+  color: rgba(232, 240, 255, 0.98);
+}
+[data-theme="dark-space"] .duel-header .back-btn {
+  background: rgba(20, 27, 40, 0.55);
+  border-color: rgba(148, 163, 184, 0.20);
+  color: rgba(225, 230, 240, 0.90);
+}
+[data-theme="dark-space"] .duel-header .back-btn:hover {
+  border-color: rgba(148, 163, 184, 0.40);
+  color: rgba(240, 244, 252, 0.98);
+}

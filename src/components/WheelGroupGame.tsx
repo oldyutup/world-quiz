@@ -41,6 +41,7 @@ import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
+import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import {
   supabase,
   type WheelGroupRoom,
@@ -1340,8 +1341,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
      RENDER
   ═══════════════════════════════════════════════════════════════ */
 
+  const homeTheme = readStoredHomeTheme();
+  const isPreGamePhase = phase !== "playing" && phase !== "finished";
+  const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
+  const themeDataAttr = isPreGamePhase ? getThemeDataAttr(homeTheme) : undefined;
+
   return (
-    <div className="app duel-screen">
+    <div className="app duel-screen" style={themeBgStyle} data-theme={themeDataAttr}>
       {/* ════════ HEADER ════════ */}
       <div className="duel-header">
         <button

@@ -67,6 +67,7 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 
 /* ─── Lokal type'lar (lib/supabase.ts'i kirletmemek için) ─── */
 interface GroupRoom {
@@ -1200,8 +1201,13 @@ setPhase("waiting");
 
   /* ─────────── RENDER ─────────── */
 
+  const homeTheme = readStoredHomeTheme();
+  const isPreGamePhase = phase !== "playing" && phase !== "finished";
+  const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
+  const themeDataAttr = isPreGamePhase ? getThemeDataAttr(homeTheme) : undefined;
+
   return (
-    <div className="duel-app">
+    <div className="duel-app" style={themeBgStyle} data-theme={themeDataAttr}>
       {/* ════════ LOBBY ════════ */}
       {phase === "lobby" && (
         <div className="duel-lobby">

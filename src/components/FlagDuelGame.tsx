@@ -43,6 +43,7 @@ import {
   type CountryEntry,
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 
 /* ═══════════════════════════════════════════════════════════════
    SEÇENEKLER (offline mod ile aynı isimler)
@@ -1695,8 +1696,17 @@ ${shareLink}`;
     :               "Bu bayrağın ülkesi? (Enter)";
   const inputRowClass = ["bar-row bar-input", feedback ?? ""].filter(Boolean).join(" ");
 
+  const homeTheme = readStoredHomeTheme();
+  const isPreGamePhase = phase !== "playing" && phase !== "finished";
+  const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
+  const themeDataAttr = isPreGamePhase ? getThemeDataAttr(homeTheme) : undefined;
+
   return (
-    <div className={"app duel-screen" + (phase === "playing" ? " duel-game-active" : "")}>
+    <div
+      className={"app duel-screen" + (phase === "playing" ? " duel-game-active" : "")}
+      style={themeBgStyle}
+      data-theme={themeDataAttr}
+    >
 
       {/* ════════ HEADER (lobby/waiting için — finished'da playing UI arka planda) ════════ */}
       {phase !== "playing" && phase !== "finished" && (

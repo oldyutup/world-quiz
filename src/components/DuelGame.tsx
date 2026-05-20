@@ -47,6 +47,7 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 
 /* ─── options ─── */
 const DURATION_OPTS = [
@@ -1871,8 +1872,17 @@ setXpResult(null); xpAwardedRef.current = false;
   };
   const result = resolveResult();
 
+  const homeTheme = readStoredHomeTheme();
+  const isPreGamePhase = phase === "lobby" || phase === "creating" || phase === "waiting";
+  const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
+  const themeDataAttr = isPreGamePhase ? getThemeDataAttr(homeTheme) : undefined;
+
   return (
-    <div className={"app duel-screen" + (phase === "playing" ? " duel-game-active" : "")}>
+    <div
+      className={"app duel-screen" + (phase === "playing" ? " duel-game-active" : "")}
+      style={themeBgStyle}
+      data-theme={themeDataAttr}
+    >
 
       {/* ── HEADER ── */}
       <div className="duel-header">

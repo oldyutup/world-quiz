@@ -8,6 +8,13 @@ import WheelGame from "./components/WheelGame";
 import WheelDuelGame from "./components/WheelDuelGame";
 import WheelGroupGame from "./components/WheelGroupGame";
 import {
+  type HomeTheme,
+  HOME_THEME_KEY,
+  readStoredHomeTheme,
+  getThemeBackgroundStyle,
+  getThemeDataAttr,
+} from "./lib/themeBackgrounds";
+import {
   NAME_TO_TOPOID,
   NAME_TO_ENTRY,
   TOPOID_TO_DISPLAY,
@@ -274,18 +281,6 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 /* ═══════════════════════════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
-type HomeTheme = "default" | "earth" | "adventure" | "dark-space";
-const HOME_THEME_KEY = "torble-theme";
-function readStoredHomeTheme(): HomeTheme {
-  try {
-    const saved = localStorage.getItem(HOME_THEME_KEY);
-    if (saved === "default")    return "default";
-    if (saved === "earth")      return "earth";
-    if (saved === "adventure")  return "adventure";
-    if (saved === "dark-space") return "dark-space";
-    return "earth"; // first-time visitors get Blue Earth by default
-  } catch { return "earth"; }
-}
 
 interface HomeProps { onSelect: (screen: AppScreen) => void; }
 function HomeScreen({ onSelect }: HomeProps) {
@@ -346,7 +341,12 @@ useEffect(() => {
         ))}
       </div>
       {showCountryMenu && (
-  <div className="overlay" onClick={() => setShowCountryMenu(false)}>
+  <div
+    className="overlay"
+    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    data-theme={getThemeDataAttr(homeTheme)}
+    onClick={() => setShowCountryMenu(false)}
+  >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
       <h2>🌍 Ülke Yaz</h2>
@@ -399,7 +399,12 @@ useEffect(() => {
 )}
 
 {showFlagMenu && (
-  <div className="overlay" onClick={() => setShowFlagMenu(false)}>
+  <div
+    className="overlay"
+    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    data-theme={getThemeDataAttr(homeTheme)}
+    onClick={() => setShowFlagMenu(false)}
+  >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
       <h2>🚩 Bayrak Modu</h2>
@@ -441,7 +446,12 @@ useEffect(() => {
 )}
 
 {showWheelMenu && (
-  <div className="overlay" onClick={() => setShowWheelMenu(false)}>
+  <div
+    className="overlay"
+    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    data-theme={getThemeDataAttr(homeTheme)}
+    onClick={() => setShowWheelMenu(false)}
+  >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
       <h2>🎯 Çark Modu</h2>
