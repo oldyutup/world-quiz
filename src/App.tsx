@@ -274,12 +274,17 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 /* ═══════════════════════════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
-type HomeTheme = "default" | "earth";
+type HomeTheme = "default" | "earth" | "adventure" | "dark-space";
 const HOME_THEME_KEY = "torble-theme";
 function readStoredHomeTheme(): HomeTheme {
   try {
-    return localStorage.getItem(HOME_THEME_KEY) === "earth" ? "earth" : "default";
-  } catch { return "default"; }
+    const saved = localStorage.getItem(HOME_THEME_KEY);
+    if (saved === "default")    return "default";
+    if (saved === "earth")      return "earth";
+    if (saved === "adventure")  return "adventure";
+    if (saved === "dark-space") return "dark-space";
+    return "earth"; // first-time visitors get Blue Earth by default
+  } catch { return "earth"; }
 }
 
 interface HomeProps { onSelect: (screen: AppScreen) => void; }
@@ -300,7 +305,7 @@ useEffect(() => {
   { id: "home" as AppScreen, icon: "🌃", title: "Foto Tahmin", desc: "Fotoğraftan şehri veya ülkeyi bul.", available: false },
 ];
   return (
-    <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : "")}>
+    <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : "")}>
       <div className="home-hero">
         <img
           src="/assets/brand/torble-logo.png"
@@ -496,8 +501,10 @@ useEffect(() => {
 }
 
 const HOME_THEMES: { id: HomeTheme; name: string; swatch: string }[] = [
-  { id: "default", name: "Varsayılan", swatch: "linear-gradient(135deg, #0a101d 0%, #1c3358 100%)" },
-  { id: "earth",   name: "Mavi Dünya", swatch: "linear-gradient(135deg, #1e6bd9 0%, #5fb3ff 100%)" },
+  { id: "default",    name: "Varsayılan",   swatch: "linear-gradient(135deg, #0a101d 0%, #1c3358 100%)" },
+  { id: "earth",      name: "Mavi Dünya",   swatch: "linear-gradient(135deg, #1e6bd9 0%, #5fb3ff 100%)" },
+  { id: "adventure",  name: "Adventure",    swatch: "linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%)" },
+  { id: "dark-space", name: "Karanlık Uzay", swatch: "linear-gradient(135deg, #050810 0%, #0d1b3e 100%)" },
 ];
 
 function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t: HomeTheme) => void }) {

@@ -500,6 +500,82 @@ body {
   z-index: 1;
 }
 
+/* ─── Karanlık Uzay theme ─── */
+.home-screen.home-screen--dark-space {
+  background:
+    linear-gradient(rgba(0,0,0,.10), rgba(0,0,0,.28)),
+    url('/assets/backgrounds/dark-space.webp') center / cover no-repeat;
+}
+.home-screen.home-screen--dark-space::before { opacity: .10; }
+.home-screen.home-screen--dark-space::after  { opacity: .45; }
+
+.home-screen.home-screen--dark-space .home-hero,
+.home-screen.home-screen--dark-space .mode-grid {
+  position: relative;
+  z-index: 1;
+}
+.home-screen.home-screen--dark-space .mode-card {
+  background: rgba(5, 10, 24, 0.72);
+  border-color: rgba(88, 130, 200, 0.20);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.home-screen.home-screen--dark-space .mode-card:not(.mode-card--soon):hover {
+  border-color: rgba(88, 130, 200, 0.38);
+  transform: translateY(-2px);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.50),
+    0 0 0 3px rgba(88, 130, 200, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.home-screen.home-screen--dark-space .mode-card-desc {
+  color: rgba(170, 195, 230, 0.70);
+}
+.home-screen.home-screen--dark-space .mode-card--soon {
+  opacity: .50;
+}
+
+/* ─── Adventure theme ─── */
+.home-screen.home-screen--adventure {
+  background:
+    linear-gradient(rgba(3,7,18,.18), rgba(3,7,18,.42)),
+    url('/assets/backgrounds/adventure-globale.webp') center / cover no-repeat;
+}
+.home-screen.home-screen--adventure::before { opacity: .06; }
+.home-screen.home-screen--adventure::after  { opacity: .40; }
+
+.home-screen.home-screen--adventure .home-hero,
+.home-screen.home-screen--adventure .mode-grid {
+  position: relative;
+  z-index: 1;
+}
+.home-screen.home-screen--adventure .mode-card {
+  background: rgba(3, 15, 45, 0.62);
+  border-color: rgba(147, 197, 253, 0.22);
+  box-shadow:
+    0 18px 45px rgba(2, 8, 23, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.home-screen.home-screen--adventure .mode-card:not(.mode-card--soon):hover {
+  border-color: rgba(147, 197, 253, 0.40);
+  transform: translateY(-2px);
+  box-shadow:
+    0 22px 50px rgba(2, 8, 23, 0.32),
+    0 0 0 3px rgba(88, 166, 255, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+.home-screen.home-screen--adventure .mode-card-desc {
+  color: rgba(186, 211, 255, 0.72);
+}
+.home-screen.home-screen--adventure .mode-card--soon {
+  opacity: .55;
+}
+
 /* ─── Blue Earth: mode-card glass treatment (earth theme only) ─── */
 .home-screen.home-screen--earth .mode-card {
   background: rgba(8, 31, 74, 0.68);
