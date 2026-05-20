@@ -113,7 +113,7 @@ export function playSound(name: SoundName, options?: { restart?: boolean }) {
   if (!isSoundEnabled()) return;
 
   try {
-    // Uzun/durdurulabilir sesler tek instance kalsın.
+    // Kontrol edilebilir sesler (durdurulabilir) tek cache instance kullanır.
     if (name === "countdown20") {
       const audio = getAudio(name);
 
