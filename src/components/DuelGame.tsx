@@ -320,20 +320,39 @@ useEffect(() => {
   };
 }, []);
 useEffect(() => {
-  if (phase !== "finished" || !finalScores) {
+  if (phase !== "finished") {
     resultSoundPlayedRef.current = false;
     return;
   }
-
   if (resultSoundPlayedRef.current) return;
-  resultSoundPlayedRef.current = true;
 
-  if (finalScores.my > finalScores.opp) {
-    playSound("win", { restart: true });
-  } else if (finalScores.my < finalScores.opp) {
-    playSound("lose", { restart: true });
+  const myId     = myIdRef.current;
+  const forfeitId = room?.forfeited_player_id ?? null;
+  const winnerId  = room?.winner_player_id  ?? null;
+
+  // Forfeit: forfeited_player_id is the loser
+  if (forfeitId !== null) {
+    resultSoundPlayedRef.current = true;
+    if (forfeitId !== myId) playSound("win",  { restart: true });
+    else                    playSound("lose", { restart: true });
+    return;
   }
-}, [phase, finalScores]);
+
+  // Winner determined by DB (timeout or opponent-left forfeit)
+  if (winnerId !== null) {
+    resultSoundPlayedRef.current = true;
+    if (winnerId === myId) playSound("win",  { restart: true });
+    else                   playSound("lose", { restart: true });
+    return;
+  }
+
+  // Neither determined yet (room state not arrived) — fall back to scores
+  if (!finalScores) return;
+  resultSoundPlayedRef.current = true;
+  if (finalScores.my > finalScores.opp)      playSound("win",  { restart: true });
+  else if (finalScores.my < finalScores.opp) playSound("lose", { restart: true });
+  // Equal scores → draw, no sound (intentional)
+}, [phase, finalScores, room?.winner_player_id, room?.forfeited_player_id]);
 /* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
 useEffect(() => {
   if (phase !== "finished" || !finalScores) return;
