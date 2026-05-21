@@ -422,13 +422,19 @@ useEffect(() => {
 
           if (r.status === "playing" && phaseRef.current !== "playing") {
             dbg("RT room → playing", r.started_at);
+            // Yeni maç başladı — önceki maçtan kalan yerel state'i temizle.
+            // Host duel_group_claims tablosunu siliyor ama realtime sadece INSERT
+            // dinlediği için diğer client'lar stale claims taşıyor; burada düşürüyoruz.
+            setClaims([]);
+            setFinalLeaderboard(null);
+            gameEndedRef.current = false;
             setPhase("playing");
           }
           if (r.status === "finished" && !gameEndedRef.current) {
             gameEndedRef.current = true;
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
             if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
-            await freezeLeaderboard(r.id);
+            await freezeLeaderboard(r.id, r.started_at);
             clearGroupSession();
             setPhase("finished");
           }
@@ -498,6 +504,10 @@ useEffect(() => {
         .from("duel_group_rooms").select("*").eq("id", roomId).single();
       if (r && r.status === "playing" && phaseRef.current === "waiting") {
         setRoom(r as GroupRoom);
+        // Realtime kaçırılmış olabilir; yeni maçta önceki claim state'i hayatta kalmasın.
+        setClaims([]);
+        setFinalLeaderboard(null);
+        gameEndedRef.current = false;
         setPhase("playing");
       }
     }, 2000);
@@ -523,7 +533,7 @@ useEffect(() => {
           gameEndedRef.current = true;
           if (rafRef.current) cancelAnimationFrame(rafRef.current);
           if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-          await freezeLeaderboard(roomId);
+          await freezeLeaderboard(roomId, data.started_at);
           setRoom(prev => prev ? { ...prev, status: "finished" } : prev);
           clearGroupSession();
           setPhase("finished");
@@ -628,9 +638,17 @@ useEffect(() => {
   }, []);
 
   /* ── Final leaderboard'u dondur ── */
-  const freezeLeaderboard = useCallback(async (roomId: string) => {
+  const freezeLeaderboard = useCallback(async (roomId: string, matchStartedAt: string | null | undefined) => {
+    // Önceki maçtan kalmış olabilecek claim satırlarını saymamak için yalnızca
+    // mevcut maçın started_at değerinden sonra oluşturulan claim'leri sayıyoruz.
+    // Live scoreboard zaten yalnızca bu maçta gelen realtime INSERT'leri tutuyor;
+    // burada DB sorgusunu da aynı pencereye sıkıştırıyoruz ki iki kaynak tutarlı olsun.
+    const sinceTs = matchStartedAt ?? "1970-01-01T00:00:00Z";
     const [csRes, psRes] = await Promise.all([
-      supabase.from("duel_group_claims").select("player_id").eq("room_id", roomId),
+      supabase.from("duel_group_claims")
+        .select("player_id")
+        .eq("room_id", roomId)
+        .gte("created_at", sinceTs),
       supabase.from("duel_group_players").select("id, name").eq("room_id", roomId),
     ]);
     const cs: Array<{ player_id: string }> = csRes?.data ?? [];
@@ -658,7 +676,7 @@ useEffect(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
 
-    await freezeLeaderboard(room.id);
+    await freezeLeaderboard(room.id, room.started_at);
 
     // Conditional update — yalnız "playing" iken set'lensin (race-safe)
     await supabase.from("duel_group_rooms")
