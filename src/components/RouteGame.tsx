@@ -11,16 +11,7 @@ import {
   randomRouteTask,
   type RouteDifficulty,
 } from "../data/countries";
-
-/* ─── gold helpers ─── */
-const GOLD_KEY = "geoquiz_gold";
-function loadGold(): number {
-  try { return Math.max(0, parseInt(localStorage.getItem(GOLD_KEY) ?? "0", 10) || 0); }
-  catch { return 0; }
-}
-function saveGold(n: number) {
-  try { localStorage.setItem(GOLD_KEY, String(Math.max(0, n))); } catch {}
-}
+import { useGold, addGold, spendGold as spendGoldStore } from "../lib/gold";
 
 /* ─── route reward dedup helpers ─── */
 function buildRewardKey(start: string, target: string, diff: RouteDifficulty, shortest: number): string {
@@ -94,7 +85,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   const [input,         setInput]        = useState("");
   const [errMsg,        setErrMsg]       = useState<string | null>(null);
   const [okMsg,         setOkMsg]        = useState<string | null>(null);
-  const [gold,          setGold]         = useState<number>(() => loadGold());
+  const gold = useGold();
   const [pendingGold,   setPendingGold]  = useState(0);
   const [joker,         setJoker]        = useState<JokerState>(EMPTY_JOKER);
   const [rewardClaimed, setRewardClaimed] = useState(false);
@@ -152,11 +143,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
     goldFlushedRef.current = true;
     const total = pendingGold + extra;
     if (total > 0) {
-      setGold(prev => {
-        const next = prev + total;
-        saveGold(next);
-        return next;
-      });
+      addGold(total);
     }
   }, [pendingGold]);
 
@@ -184,14 +171,9 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   /* ── neighbor joker ── */
   const handleRevealNeighbors = useCallback(() => {
     if (joker.neighborsRevealed) return;
-    if (gold < HINT_COST_NEIGHBORS) return;
-    setGold(prev => {
-      const next = prev - HINT_COST_NEIGHBORS;
-      saveGold(next);
-      return next;
-    });
+    if (!spendGoldStore(HINT_COST_NEIGHBORS)) return;
     setJoker({ neighborsRevealed: true });
-  }, [joker.neighborsRevealed, gold]);
+  }, [joker.neighborsRevealed]);
 
   /* Reset joker when moving to next country */
   const resetJoker = useCallback(() => {

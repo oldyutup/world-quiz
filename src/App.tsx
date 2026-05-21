@@ -50,6 +50,15 @@ import {
   signOut,
   type Profile,
 } from "./lib/auth";
+import {
+  useGold,
+  addGold,
+  spendGold as spendGoldStore,
+  canClaimDailyBonus,
+  claimDailyBonus,
+  setActiveProfile as setActiveGoldProfile,
+  DAILY_BONUS,
+} from "./lib/gold";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -92,11 +101,6 @@ const DIFFICULTY_OPTIONS: { label: string; value: Difficulty; color: string }[] 
   { label: "👑 Zor",    value: "hard",   color: "var(--red)"    },
   { label: "🗺️ Tümü",   value: "all",    color: "var(--muted)"  },
 ];
-
-/* ─── Gold ─── */
-const GOLD_KEY       = "geoquiz_gold";
-const GOLD_BONUS_KEY = "geoquiz_daily_bonus";
-const DAILY_BONUS    = 50;
 
 /** Per-correct-answer gold, awarded in bulk at game end.
  *  flag-game uses value=1 as a correct-answer counter; real gold is computed at flush via calcFlagGold. */
@@ -149,27 +153,6 @@ const EMPTY_HINTS: HintState = {
   coast:       false,
   neighbors:   false,
 };
-
-/* ─── Gold localStorage helpers ─── */
-function loadGold(): number {
-  try { return Math.max(0, parseInt(localStorage.getItem(GOLD_KEY) ?? "0", 10) || 0); }
-  catch { return 0; }
-}
-function saveGold(n: number): void {
-  try { localStorage.setItem(GOLD_KEY, String(Math.max(0, n))); } catch {}
-}
-function canClaimDailyBonus(): boolean {
-  try {
-    const last = localStorage.getItem(GOLD_BONUS_KEY);
-    return !last || last !== new Date().toDateString();
-  } catch { return true; }
-}
-function claimDailyBonus(): number {
-  try { localStorage.setItem(GOLD_BONUS_KEY, new Date().toDateString()); } catch {}
-  const next = loadGold() + DAILY_BONUS;
-  saveGold(next);
-  return next;
-}
 
 /* ─── BestScore localStorage helpers ─── */
 const LS_KEY = "geoquiz_best_scores_v2";
@@ -1092,8 +1075,8 @@ function useGameCore(
   const [bests,        setBests]       = useState<BestScore[]>(() => loadBests());
   const [missedFilter, setMissedFilter] = useState("");
 
-  // Gold: stored in localStorage, reflected in UI state
-  const [gold,         setGold]        = useState<number>(() => loadGold());
+  // Gold: shared module (Supabase for logged-in users, localStorage for guests)
+  const gold = useGold();
   const [canBonus,     setCanBonus]    = useState<boolean>(() => canClaimDailyBonus());
 
   // Per-session gold tracking (not stored until game ends)
@@ -1178,7 +1161,7 @@ function useGameCore(
     pendingGoldRef.current += reward;
   }, [gameType]);
 
-  /** Flush pending gold to localStorage and state */
+  /** Flush pending gold to persistent store (Supabase for logged-in, localStorage for guests). */
   const flushGold = useCallback(() => {
     if (goldRewardedRef.current) return; // already flushed this session
     goldRewardedRef.current = true;
@@ -1189,11 +1172,7 @@ function useGameCore(
       pendingGoldRef.current = pending; // update so modal shows the real earned amount
     }
     if (pending > 0) {
-      setGold(prev => {
-        const next = prev + pending;
-        saveGold(next);
-        return next;
-      });
+      addGold(pending);
     }
   }, [gameType, selectedDuration]);
 
@@ -1298,19 +1277,17 @@ function useGameCore(
   }, [selectedDuration]);
 
   const handleClaimBonus = useCallback(() => {
-    if (!canClaimDailyBonus()) return;
-    const next = claimDailyBonus();
-    setGold(next);
+    const result = claimDailyBonus();
+    if (result === null) {
+      setCanBonus(false);
+      return;
+    }
     setCanBonus(false);
   }, []);
 
   /** Spend gold for a hint (immediate deduction) */
   const spendGold = useCallback((amount: number) => {
-    setGold(prev => {
-      const next = Math.max(0, prev - amount);
-      saveGold(next);
-      return next;
-    });
+    spendGoldStore(amount);
   }, []);
 
   const handleShare = useCallback(async (difficulty?: Difficulty) => {
@@ -1906,7 +1883,7 @@ export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);
-  const [gold, setGold] = useState<number>(() => loadGold());
+  const gold = useGold();
   const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
   const [authOpen, setAuthOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1916,25 +1893,15 @@ export default function App() {
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
 
   const handleAppClaimBonus = () => {
-  if (!canClaimDailyBonus()) {
+  const result = claimDailyBonus();
+  if (result === null) {
     setCanBonus(false);
     return;
   }
-
-  const next = claimDailyBonus();
-  setGold(next);
   setCanBonus(false);
 };
 const handleSpendGold = (amount: number): boolean => {
-  const current = loadGold();
-
-  if (current < amount) return false;
-
-  const next = Math.max(0, current - amount);
-  saveGold(next);
-  setGold(next);
-
-  return true;
+  return spendGoldStore(amount);
 };
 const handleSetSoundEnabled = (enabled: boolean) => {
   setSoundEnabled(enabled);
@@ -1961,13 +1928,19 @@ useEffect(() => {
   };
 }, []);
 
-// When returning to the home screen, sync the App-level gold state from localStorage.
-// Game sub-components write earned gold via their own useGameCore flushGold(), which
-// saves to localStorage but does not update this state. Refreshing on home entry keeps
-// UserProfileDropdown gold in sync.
+// Refresh daily-bonus availability when returning to home (date may have rolled over
+// during a long session, or user might have claimed via another path).
 useEffect(() => {
-  if (screen === "home") setGold(loadGold());
+  if (screen === "home") setCanBonus(canClaimDailyBonus());
 }, [screen]);
+
+// Tell the gold module who the active user is. Triggered only when profile.id changes
+// (login/logout) so a stale profile.gold cannot overwrite a live cached value mid-session.
+useEffect(() => {
+  if (authLoading) return;
+  setActiveGoldProfile(profile?.id ?? null, profile?.gold);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [profile?.id, authLoading]);
 
 useEffect(() => {
   let alive = true;
