@@ -31,6 +31,7 @@ import {
   resultFromScores,
   awardXpEvent,
   type XpBreakdown,
+  type MatchResult,
 } from "../lib/progression";
 import XpGainBar from "./XpGainBar";
 import LobbyChat from "./LobbyChat";
@@ -516,13 +517,27 @@ useEffect(() => {
   if (resultSoundPlayedRef.current) return;
   resultSoundPlayedRef.current = true;
 
+  // Forfeit takes precedence over raw scores: the forfeiting side is the loser
+  // regardless of who led on the scoreboard when they quit.
+  const forfeit    = room?.finished_reason === "forfeit";
+  const forfeiterId = room?.forfeited_player_id ?? null;
+
+  if (forfeit && forfeiterId !== null) {
+    if (forfeiterId !== myId) {
+      playSound("win", { restart: true });
+    } else {
+      playSound("lose", { restart: true });
+    }
+    return;
+  }
+
   if (myScore > oppScore) {
     playSound("win", { restart: true });
   } else if (myScore < oppScore) {
     playSound("lose", { restart: true });
   }
   // Beraberlikte ses yok (DuelGame ile aynı davranış)
-}, [phase, myScore, oppScore]);
+}, [phase, myScore, oppScore, room?.finished_reason, room?.forfeited_player_id, myId]);
   /* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
 useEffect(() => {
   if (phase !== "finished") return;
@@ -535,11 +550,32 @@ useEffect(() => {
   const myScoreFinal  = myScore;
   const oppScoreFinal = oppScore;
 
-  const matchResult = resultFromScores(myScoreFinal, oppScoreFinal);
+  // Forfeit override: handleLeave only marks finished_reason="forfeit" when
+  // phase === "playing" (i.e. the match actually started — current_round is
+  // already ≥ 1 by then), so a forfeit here is never a pre-start abandon.
+  // The remaining player must get win XP, not the score-derived draw that
+  // resultFromScores(0, 0) would otherwise produce.
+  const forfeit = room?.finished_reason === "forfeit";
+  const forfeiterId = room?.forfeited_player_id ?? null;
+  const opponentForfeited = forfeit && forfeiterId !== null && forfeiterId !== myId;
+  const iForfeited        = forfeit && forfeiterId === myId;
+
+  const matchResult: MatchResult = opponentForfeited
+    ? "win"
+    : iForfeited
+      ? "loss"
+      : resultFromScores(myScoreFinal, oppScoreFinal);
+
   const breakdown = calculateFlagDuelXp({
     correctCount: myScoreFinal,
     result: matchResult,
   });
+
+  if (opponentForfeited) {
+    breakdown.bonusLabelText = `Hükmen Galibiyet +${breakdown.resultBonus}`;
+  } else if (iForfeited) {
+    breakdown.bonusLabelText = `Hükmen Mağlubiyet +${breakdown.resultBonus}`;
+  }
 
   const profileId  = profile.id;
   const matchId    = matchIdRef.current;
