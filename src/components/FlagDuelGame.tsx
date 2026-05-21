@@ -907,6 +907,51 @@ const declineRematch = useCallback(() => {
   const joinQuickMatchRoom = useCallback(
     async (roomId: string, playerId: string, opponentName?: string) => {
       if (quickMatchJoinedRef.current) return;
+
+      // VALIDATE BEFORE COMMITTING. We must check the room is a real, fresh
+      // match before we stop the polling/seconds intervals or flip any
+      // commit flags — otherwise a stale matched_room_id (left over from a
+      // previous finished game, because flag_duel_cancel_quick_match keeps
+      // matched rows by design) would tear down our search state and strand
+      // the user. The previous version erred to lobby on stale; that is too
+      // aggressive — a no-opponent fresh search would surface the same error
+      // path whenever the reset RPC hadn't yet been applied to the DB.
+      const { data: roomData, error: roomErr } = await supabase
+        .from("duel_rooms")
+        .select("*")
+        .eq("id", roomId)
+        .maybeSingle();
+
+      if (roomErr || !roomData) {
+        dbgErr("joinQuickMatchRoom: room fetch failed, will retry on next tick", roomErr);
+        // Don't surface to UI; polling continues and may succeed next tick.
+        return;
+      }
+
+      const r = roomData as FlagDuelRoom;
+
+      // Stale-room guard. A "fresh" quick-match room is created by the RPC
+      // with status='playing' and started_at = now()+3s, so for any real
+      // match Date.now() - startedAtMs is in [-3000, +small] ms. Anything
+      // older than 30s OR with a non-playing status is leftover from a
+      // previous game — silently ignore and keep polling so a real match
+      // can still come through (or the user can cancel from the UI).
+      const startedAtMs = r.started_at ? new Date(r.started_at).getTime() : 0;
+      const isStaleRoom =
+        r.status !== "playing" ||
+        !startedAtMs ||
+        Date.now() - startedAtMs > 30_000;
+      if (isStaleRoom) {
+        dbgErr("joinQuickMatchRoom: stale matched_room_id, skipping silently", {
+          status: r.status,
+          started_at: r.started_at,
+        });
+        // No setErrorMsg, no setPhase. Search state is untouched, polling
+        // continues, the cancel button in the searching UI still works.
+        return;
+      }
+
+      // OK, this is a real fresh match — commit to join.
       quickMatchJoinedRef.current = true;
 
       // Polling/heartbeat'i durdur
@@ -921,22 +966,6 @@ const declineRematch = useCallback(() => {
       quickMatchAbortRef.current = true; // dönmemiş RPC response'larını yut
 
       myIdRef.current = playerId;
-
-      const { data: roomData, error: roomErr } = await supabase
-        .from("duel_rooms")
-        .select("*")
-        .eq("id", roomId)
-        .maybeSingle();
-
-      if (roomErr || !roomData) {
-        dbgErr("joinQuickMatchRoom: room fetch failed", roomErr);
-        quickMatchJoinedRef.current = false;
-        setErrorMsg("Eşleşilen oda bulunamadı, tekrar dene.");
-        setPhase("lobby");
-        return;
-      }
-
-      const r = roomData as FlagDuelRoom;
 
       const { data: ps } = await supabase
         .from("duel_players")
@@ -1018,7 +1047,17 @@ const declineRematch = useCallback(() => {
 
     if (selfRow?.matched_room_id && selfRow.player_id) {
       await joinQuickMatchRoom(selfRow.matched_room_id, selfRow.player_id);
-      return;
+      // Only short-circuit the tick if the join actually committed. If
+      // joinQuickMatchRoom silently skipped because the matched_room_id
+      // points at a stale (no-longer-playing or long-ago-created) room,
+      // we MUST fall through to the RPC below — that RPC is the only path
+      // that clears the stale matched_room_id (self-heal block) AND
+      // refreshes our queue row's expires_at so other players can still
+      // find us as a candidate. Without this fall-through, two stuck
+      // players will never become visible to each other's candidate
+      // searches because every tick's matched_room_id IS NULL filter
+      // excludes them.
+      if (quickMatchJoinedRef.current) return;
     }
     // ────────────────────────────────────────────────────────────
 
@@ -1136,6 +1175,31 @@ const declineRematch = useCallback(() => {
     setSearchSeconds(0);
     setCountdownSeconds(0);
     setPhase("searching");
+
+    // Önceki maçtan kalan flag_duel_queue satırını sil. cancel RPC yalnızca
+    // matched_room_id=NULL satırları siliyor (canlı eşleşmede candidate'ın
+    // realtime UPDATE'ini bozmamak için). Önceki tamamlanmış bir maç ise
+    // matched_room_id'yi dolu bırakıyor → SELECT-first guard ve RPC'nin
+    // erken-dönüş bloğu o stale room_id'yi "match" sanıp eski (bitmiş) odaya
+    // bağlanıyor; flag zaten kayıtlı, current_flag_at çok geçmişte → timer
+    // 0'da başlayıp anında TIMEOUT/draw'a düşüyor. Fresh row için reset şart.
+    //
+    // supabase.rpc returns { error } in-band rather than throwing on RPC
+    // errors (e.g., function-not-found if migration not yet applied), so we
+    // explicitly inspect the error field. If the reset can't run, the silent
+    // stale-room guard inside joinQuickMatchRoom keeps the user safely in
+    // the searching state instead of crashing into a stale match.
+    try {
+      const { error: resetErr } = await supabase.rpc(
+        "flag_duel_reset_quick_match",
+        { p_profile_id: profile.id },
+      );
+      if (resetErr) {
+        console.warn("[FlagDuel] reset_quick_match RPC error:", resetErr);
+      }
+    } catch (e) {
+      console.warn("[FlagDuel] reset_quick_match RPC threw:", e);
+    }
 
     // Saniye sayacı (UI display + bracket)
     quickMatchSecondsRef.current = setInterval(() => {
