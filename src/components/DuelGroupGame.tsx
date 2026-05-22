@@ -227,7 +227,8 @@ export default function DuelGroupGame({
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [kickedNoticeOpen, setKickedNoticeOpen] = useState(false);
   const [roomClosedNoticeOpen, setRoomClosedNoticeOpen] = useState(false);
-  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [dggChatOpen, setDggChatOpen] = useState(false);
+  const [dggPlayersOpen, setDggPlayersOpen] = useState(false);
   const [newHostNoticeOpen, setNewHostNoticeOpen] = useState(false);
 
   /* viewport breakpoint (desktop ≥ 900px) — for end-screen 2-card layout */
@@ -320,6 +321,14 @@ useEffect(() => {
     stopSound("countdown20");
   };
 }, []);
+
+  /* mobile sheet'ler waiting fazından çıkınca otomatik kapansın */
+  useEffect(() => {
+    if (phase !== "waiting") {
+      setDggChatOpen(false);
+      setDggPlayersOpen(false);
+    }
+  }, [phase]);
 
   /* sync refs */
   phaseRef.current  = phase;
@@ -1408,202 +1417,308 @@ setPhase("waiting");
 </div>
 )}
 
-      {/* ════════ WAITING ════════ */}
-      {/* ======== WAITING ======== */}
-{phase === "waiting" && room && (
-  <div className="dgg-wait-page">
-    <div className="dgg-wait-shell">
-      <div className="dgg-wait-main-card">
-        <div className="dgg-wait-head">
-          <h2 className="duel-lobby-title">Oyuncular Bekleniyor...</h2>
-
-          <div className="duel-room-code-block">
-            <span className="duel-room-code">{room.code}</span>
-            <p className="duel-room-code-hint">6 haneli kod — arkadaşlarına ver</p>
-          </div>
-
-          <button
-            className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-            onClick={copyInvite}
-          >
-            {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-          </button>
-
-          <div
-            className="duel-link-preview"
-            onClick={(e) => {
-              const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
-              el?.select();
-            }}
-          >
-            <input
-              className="duel-link-input"
-              readOnly
-              value={shareLink}
-              onFocus={(e) => e.target.select()}
-            />
-          </div>
-
-          <div className="duel-settings-summary">
-            <span>⏱ {durationLabel}</span>
-            <span className="duel-sum-dot">·</span>
-            <span>{regionLabel}</span>
-            <span className="duel-sum-dot">·</span>
-            <span>👥 {waitingPlayers.length}/{room.max_players}</span>
-          </div>
-        </div>
-
-        <div className="dgg-wait-body">
-          <div className="dgg-wait-left dgg-panel">
-            <div className="dgg-panel-head">
-  <div>
-    <h3>Oyuncular</h3>
-    <span className="dgg-panel-sub">
-      En az {MIN_PLAYERS} oyuncu gerekli
-    </span>
-  </div>
-
-  <span className="dgg-panel-count">
-    {waitingPlayers.length}/{room.max_players}
-  </span>
-</div>
-            <div className="duel-players-list">
-              {waitingPlayers.map((p) => (
-                <div
-                  key={p.id}
-                  className={"duel-player-chip" + (p.id === myId ? " mine" : "")}
+      {/* ════════ WAITING — 3-card grid (Çark lobby ile aynı yapı) ════════ */}
+      {phase === "waiting" && room && (() => {
+        const canStart = waitingPlayers.length >= MIN_PLAYERS;
+        const totalSlots = Math.max(MAX_PLAYERS, waitingPlayers.length);
+        const renderPlayerRow = (p: GroupPlayer) => {
+          const isMe = p.id === myId;
+          return (
+            <div
+              key={p.id}
+              className={"duel-player-chip" + (isMe ? " mine" : "")}
+              style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
+                <span className="duel-player-dot" style={{ flexShrink: 0 }} />
+                <span style={{
+                  fontSize: 13, fontWeight: 600, minWidth: 0,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {p.name}
+                </span>
+                {isMe     && <span className="duel-tag"      style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                {p.is_host && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
+              </div>
+              {isHost && !p.is_host && p.id !== myId && (
+                <button
+                  type="button"
+                  className="dgg-kick-btn"
+                  style={{ flexShrink: 0 }}
+                  onClick={() => { setKickTarget(p); setDggPlayersOpen(false); }}
                 >
-                  <span className="duel-player-dot" />
-                  <span className="duel-player-name">{p.name}</span>
-                  <div className="duel-player-tags">
-  {p.id === myId && <span className="duel-tag">Sen</span>}
-  {p.is_host && <span className="duel-tag host">👑</span>}
-</div>
-
-{isHost && phase === "waiting" && p.id !== myId && (
-  <button
-    type="button"
-    className="dgg-kick-btn"
-    onClick={() => setKickTarget(p)}
-  >
-    At
-  </button>
-)}
-</div>
-))}
-
-              {waitingPlayers.length < MIN_PLAYERS && (
-                <div className="duel-player-chip waiting">
-                  <span className="duel-player-dot waiting" />
-                  <span>
-                    En az {MIN_PLAYERS} oyuncu gerekli ({MIN_PLAYERS - waitingPlayers.length} bekleniyor)...
-                  </span>
-                </div>
+                  At
+                </button>
               )}
             </div>
-          </div>
+          );
+        };
 
-          <div className="dgg-wait-right">
-           <button
-  type="button"
-  className="dgg-settings-toggle"
-  onClick={() => setMobileSettingsOpen((v) => !v)}
->
-  <span>⚙️ Oda Ayarları</span>
-  <span className="dgg-settings-chevron">
-    {mobileSettingsOpen ? "⌃" : "⌄"}
-  </span>
-</button>
+        return (
+          <>
+            <div className="dgg-lobby-shell">
+              <div className="duel-lobby">
+                <div className="wgg-grid">
 
-{!isHost && (
-  <span className="dgg-room-settings-note">
-    Sadece oda sahibi değiştirebilir
-  </span>
-)}
+                {/* ══ SOL KART: Oyuncular ══ */}
+                <div className="duel-lobby-card wgg-players-card">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexShrink: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.02em" }}>👥 Oyuncular</span>
+                    <span className="wgg-max-badge" aria-label="Oyuncu sayısı">
+                      {waitingPlayers.length}/{room.max_players}
+                    </span>
+                  </div>
 
-<div className={"dgg-settings-content" + (mobileSettingsOpen ? " open" : "")}>
-              <div className="dgg-room-settings-grid">
-                <label className="dgg-setting-field">
-                  <span>Süre</span>
-                  <select
-                    value={room.duration_seconds}
-                    disabled={!isHost}
-                    onChange={(e) =>
-                      updateRoomSettings({ duration_seconds: Number(e.target.value) })
-                    }
-                  >
-                    <option value={60}>1 dk</option>
-                    <option value={120}>2 dk</option>
-                    <option value={180}>3 dk</option>
-                    <option value={300}>5 dk</option>
-                  </select>
-                </label>
+                  <div className="wgg-player-list">
+                    {Array.from({ length: totalSlots }, (_, i) => {
+                      const p = waitingPlayers[i] ?? null;
+                      const isClosed = i >= room.max_players;
+                      if (!p) {
+                        if (isClosed) {
+                          return (
+                            <div key={`closed-${i}`} className="wgg-slot-closed" aria-disabled="true">
+                              <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                              <span className="wgg-slot-closed-label">Kapalı slot</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={`empty-${i}`} style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "5px 8px", borderRadius: 8,
+                            border: "1px dashed rgba(255,255,255,0.10)", opacity: 0.22,
+                          }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, fontStyle: "italic" }}>Boş slot</span>
+                          </div>
+                        );
+                      }
+                      return renderPlayerRow(p);
+                    })}
+                  </div>
 
-                <label className="dgg-setting-field">
-                  <span>Bölge</span>
-                  <select
-                    value={room.region}
-                    disabled={!isHost}
-                    onChange={(e) =>
-                      updateRoomSettings({ region: e.target.value })
-                    }
-                  >
-                    <option value="world">Dünya</option>
-                    <option value="europe">Avrupa</option>
-                    <option value="asia">Asya</option>
-                    <option value="africa">Afrika</option>
-                    <option value="north_america">Kuzey Amerika</option>
-                    <option value="south_america">Güney Amerika</option>
-                    <option value="oceania">Okyanusya</option>
-                  </select>
-                </label>
+                  {waitingPlayers.length < MIN_PLAYERS && (
+                    <div style={{ marginTop: 10, flexShrink: 0 }}>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
+                        background: "rgba(212,160,44,0.16)", border: "1px solid rgba(212,160,44,0.45)",
+                        color: "var(--amber, #d4a02c)", letterSpacing: "0.02em",
+                      }}>
+                        En az {MIN_PLAYERS} oyuncu gerekli — {MIN_PLAYERS - waitingPlayers.length} bekleniyor
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-                <label className="dgg-setting-field">
-                  <span>Maks. Oyuncu</span>
-                  <select
-                    value={room.max_players}
-                    disabled={!isHost}
-                    onChange={(e) =>
-                      updateRoomSettings({ max_players: Number(e.target.value) })
-                    }
-                  >
-                    {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                      <option key={n} value={n}>
-                        {n} kişi
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {/* ══ ORTA KART: Oda kodu + davet + ayarlar + aksiyon ══ */}
+                <div className="duel-lobby-card wgg-middle-card">
+                  <div style={{ textAlign: "center", flexShrink: 0 }}>
+                    <div style={{
+                      display: "inline-block", fontSize: 10, fontWeight: 800,
+                      letterSpacing: "0.14em", textTransform: "uppercase",
+                      padding: "3px 12px", borderRadius: 999,
+                      background: isHost ? "rgba(79,139,255,0.14)" : "rgba(58,165,93,0.14)",
+                      border: isHost ? "1px solid rgba(79,139,255,0.35)" : "1px solid rgba(58,165,93,0.35)",
+                      color: isHost ? "var(--accent, #4f8bff)" : "var(--green, #3aa55d)",
+                      marginBottom: 8,
+                    }}>
+                      {isHost ? "Oda Hazır" : "Odaya Katıldın"}
+                    </div>
+                    <div style={{ fontSize: 40, fontWeight: 900, letterSpacing: "0.18em", lineHeight: 1.1, fontFamily: "monospace" }}>
+                      {room.code}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.5, marginTop: 5, letterSpacing: "0.02em" }}>
+                      6 haneli kod — arkadaşlarına ver
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                    <button
+                      className={"btn duel-invite-btn" + (copied ? " invited" : "")}
+                      onClick={copyInvite}
+                      style={{ width: "100%" }}
+                    >
+                      {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
+                    </button>
+                    <div onClick={(e) => {
+                      const el = (e.currentTarget as HTMLElement).querySelector("input") as HTMLInputElement | null;
+                      el?.select();
+                    }}>
+                      <input
+                        className="duel-link-input"
+                        readOnly
+                        value={shareLink}
+                        onFocus={(e) => e.target.select()}
+                        style={{ width: "100%", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  </div>
+
+                  <section aria-label="Oda Ayarları" style={{
+                    display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8, padding: "10px 12px",
+                    background: "rgba(10,18,32,0.55)", border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 12, boxSizing: "border-box", flexShrink: 0,
+                  }}>
+                    <div className="duel-select-wrap" style={{ minWidth: 0, gap: 3 }}>
+                      <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>⏱ Süre</label>
+                      <div className="duel-select-box">
+                        <select className="duel-select" value={room.duration_seconds} disabled={!isHost}
+                          onChange={(e) => updateRoomSettings({ duration_seconds: Number(e.target.value) })}
+                          style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+                        >
+                          {DURATION_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <span className="duel-select-caret">▾</span>
+                      </div>
+                    </div>
+                    <div className="duel-select-wrap" style={{ minWidth: 0, gap: 3 }}>
+                      <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>🌍 Bölge</label>
+                      <div className="duel-select-box">
+                        <select className="duel-select" value={denormalizeRegion(room.region)} disabled={!isHost}
+                          onChange={(e) => updateRoomSettings({ region: normalizeRegion(e.target.value) })}
+                          style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+                        >
+                          {REGION_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        <span className="duel-select-caret">▾</span>
+                      </div>
+                    </div>
+                    <div className="duel-select-wrap" style={{ minWidth: 0, gap: 3 }}>
+                      <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>👥 Maks</label>
+                      <div className="duel-select-box">
+                        <select className="duel-select" value={room.max_players} disabled={!isHost}
+                          onChange={(e) => updateRoomSettings({ max_players: Number(e.target.value) })}
+                          style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+                        >
+                          {[3, 4, 5, 6, 7, 8, 9, 10].map(n => <option key={n} value={n}>{n} kişi</option>)}
+                        </select>
+                        <span className="duel-select-caret">▾</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div style={{ flex: 1 }} />
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
+                    {isHost && (
+                      <button
+                        className={canStart ? "btn btn-accent" : "btn btn-ghost"}
+                        onClick={startGame}
+                        disabled={!canStart}
+                        title={canStart ? "Oyunu başlat" : `En az ${MIN_PLAYERS} oyuncu gerekli`}
+                        style={{
+                          width: "100%", minHeight: 44, fontSize: 15, fontWeight: 800,
+                          borderRadius: 12, letterSpacing: "0.02em",
+                          opacity: canStart ? 1 : 0.65, cursor: canStart ? "pointer" : "not-allowed",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        🚀 Oyunu Başlat ({waitingPlayers.length} kişi)
+                      </button>
+                    )}
+                    {!isHost && (
+                      <p className="duel-waiting-msg" style={{ margin: 0, textAlign: "center" }}>
+                        Ev sahibi oyunu başlatacak...
+                      </p>
+                    )}
+                    <button
+                      className="btn btn-ghost"
+                      onClick={backToLobby}
+                      style={{ width: "100%", minHeight: 44, fontSize: 14, fontWeight: 700, borderRadius: 12, opacity: 0.85, boxSizing: "border-box" }}
+                    >
+                      ← Lobiden Çık
+                    </button>
+                  </div>
+
+                  {errorMsg && <p className="duel-error" style={{ flexShrink: 0 }}>{errorMsg}</p>}
+                </div>
+
+                {/* ══ SAĞ KART: Sohbet ══ */}
+                <div className="wgg-chat-card">
+                  <LobbyChat
+                    roomCode={room.code}
+                    playerName={effectivePlayerName}
+                    mobileSheetOpen={dggChatOpen}
+                    onMobileSheetOpenChange={(v) => { setDggChatOpen(v); if (v) setDggPlayersOpen(false); }}
+                    hideMobileFab={dggChatOpen || dggPlayersOpen}
+                  />
+                </div>
+                </div>
               </div>
             </div>
 
-            {isHost ? (
-              waitingPlayers.length >= MIN_PLAYERS ? (
-                <button className="btn btn-accent duel-start-btn" onClick={startGame}>
-                  🚀 Oyunu Başlat ({waitingPlayers.length} kişi)
-                </button>
-              ) : (
-                <p className="duel-waiting-msg">En az {MIN_PLAYERS} kişi gerekli...</p>
-              )
-            ) : (
-              <p className="duel-waiting-msg">Ev sahibi oyunu başlatacak...</p>
+            {/* ════ MOBİL: Oyuncular FAB ════ */}
+            {!dggChatOpen && !dggPlayersOpen && (
+              <button
+                type="button"
+                className="wgg-players-fab"
+                aria-label="Oyuncuları aç"
+                onClick={() => { setDggPlayersOpen(true); setDggChatOpen(false); }}
+              >
+                <span>👥</span>
+                <span>Oyuncular</span>
+                <span className="wgg-players-fab-badge">{waitingPlayers.length}/{room.max_players}</span>
+              </button>
             )}
 
-            {errorMsg && <p className="duel-error">{errorMsg}</p>}
-
-            <button className="btn btn-ghost btn-sm" onClick={backToLobby}>
-              ← Lobiye Dön
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="dgg-wait-chat-card">
-        <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
-      </div>
-    </div>
-  </div>
-)}
+            {/* ════ MOBİL: Oyuncular bottom-sheet ════ */}
+            {dggPlayersOpen && (
+              <div className="wgg-ps-backdrop" onClick={() => setDggPlayersOpen(false)}>
+                <div className="wgg-ps-sheet" onClick={(e) => e.stopPropagation()}>
+                  <div className="wgg-ps-handle" />
+                  <header className="wgg-ps-header">
+                    <span className="wgg-ps-title">
+                      <span>👥</span>
+                      <span>Oyuncular</span>
+                    </span>
+                    <span className="wgg-max-badge wgg-max-badge--sheet" aria-label="Oyuncu sayısı">
+                      {waitingPlayers.length}/{room.max_players}
+                    </span>
+                    <button
+                      type="button"
+                      className="wgg-ps-close"
+                      onClick={() => setDggPlayersOpen(false)}
+                      aria-label="Kapat"
+                    >
+                      ✕
+                    </button>
+                  </header>
+                  <div className="wgg-ps-list">
+                    {Array.from({ length: totalSlots }, (_, i) => {
+                      const p = waitingPlayers[i] ?? null;
+                      const isClosed = i >= room.max_players;
+                      if (!p) {
+                        if (isClosed) {
+                          return (
+                            <div key={`closed-${i}`} className="wgg-slot-closed wgg-slot-closed--sheet" aria-disabled="true">
+                              <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                              <span className="wgg-slot-closed-label">Kapalı slot</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={`empty-${i}`} className="wgg-ps-empty-slot">
+                            <span className="wgg-ps-dot-empty" />
+                            <span>Boş slot</span>
+                          </div>
+                        );
+                      }
+                      return renderPlayerRow(p);
+                    })}
+                  </div>
+                  {waitingPlayers.length < MIN_PLAYERS && (
+                    <div className="wgg-ps-warning">
+                      En az {MIN_PLAYERS} oyuncu gerekli — {MIN_PLAYERS - waitingPlayers.length} bekleniyor
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* ════════ PLAYING (finished'da da arka plan render kalsın) ════════ */}
       {(phase === "playing" || phase === "finished") && room && (

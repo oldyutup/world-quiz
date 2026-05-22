@@ -7499,6 +7499,26 @@ body {
    Sol: Oyuncular · Orta: Oda/Ayarlar · Sağ: Sohbet
 ══════════════════════════════════════════════════════════════ */
 
+/* DuelGroup (Ülke Yaz Çok Oyunculu) waiting fazı, wgg-grid'i barındırır
+   ama parent (.duel-app) Çark'ın .duel-screen'i gibi 100vh sağlamıyor.
+   Bu shell tam ekran yükseklik veriyor → .duel-lobby flex:1 dolduruyor →
+   wgg-grid içindeki chat kartı absolute lc-panel için yükseklik kazanıyor. */
+.dgg-lobby-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+@media (max-width: 899px) {
+  .dgg-lobby-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+}
+
 .duel-lobby:has(.wgg-grid) {
   align-items: center;
 }
