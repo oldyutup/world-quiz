@@ -395,7 +395,13 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const rawRef       = useRef<Feature<Geometry>[]>([]);
 
   const [computed, setComputed] = useState<ComputedFeature[]>([]);
-  const [dims, setDims]         = useState({ w: 960, h: 500 });
+  // Start at 0×0 so the initial-transform effect waits for the ResizeObserver
+  // to deliver the real container size. A non-zero placeholder (especially a
+  // desktop-sized one) would race the measurement: the effect would fire with
+  // the placeholder dims, latch didInitRef, and skip the real mobile dims that
+  // arrive a tick later. The loading branch below renders without an SVG until
+  // dims are real, so 0×0 is safe.
+  const [dims, setDims]         = useState({ w: 0, h: 0 });
   const [loading, setLoading]   = useState(true);
   const [mapTheme, setMapTheme] = useMapTheme();
 
@@ -845,7 +851,9 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const rawRef2      = useRef<Feature<Geometry>[]>([]);
 
   const [computed2, setComputed2] = useState<ComputedFeature[]>([]);
-  const [dims2, setDims2]         = useState({ w: 960, h: 500 });
+  // 0×0 sentinel: see WorldMap's dims state for why a desktop placeholder
+  // would defeat the mobile initial-transform effect.
+  const [dims2, setDims2]         = useState({ w: 0, h: 0 });
   const [loading2, setLoading2]   = useState(true);
   const [mapTheme, setMapTheme]   = useMapTheme();
 
@@ -1121,7 +1129,9 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const rawRef3      = useRef<Feature<Geometry>[]>([]);
 
   const [computed3, setComputed3] = useState<ComputedFeature[]>([]);
-  const [dims3, setDims3]         = useState({ w: 960, h: 500 });
+  // 0×0 sentinel: see WorldMap's dims state for why a desktop placeholder
+  // would defeat the mobile initial-transform effect.
+  const [dims3, setDims3]         = useState({ w: 0, h: 0 });
   const [loading3, setLoading3]   = useState(true);
   const [mapTheme, setMapTheme]   = useMapTheme();
 
