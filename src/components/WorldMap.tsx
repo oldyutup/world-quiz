@@ -290,6 +290,29 @@ function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min
  * drifting at zoom-out while keeping pan rich when zoomed in.
  */
 const MAP_ASPECT = 0.52; // NaturalEarth height-to-width
+
+/**
+ * Pick the initial pan/zoom transform for a freshly-mounted (or reset) map.
+ *
+ * Desktop (w ≥ 768) → k=1, no offset: unchanged behaviour, world fits the
+ * container as before.
+ *
+ * Mobile (w < 768) → the projected world at k=1 is only `0.52 × width` tall,
+ * which leaves a tall dark band above and below the map on portrait phones.
+ * We pick k so the map height ≈ viewport height (with a small margin), and
+ * centre it. The map then extends past the viewport horizontally; pan/pinch
+ * are already wired in so the player can reach the edges.
+ */
+function initialTransform(w: number, h: number) {
+  if (w <= 0 || h <= 0) return { k: 1, tx: 0, ty: 0 };
+  if (w >= 768)         return { k: 1, tx: 0, ty: 0 };
+  const fitVerticalK = (h / (w * MAP_ASPECT)) * 0.95;
+  const k  = clamp(fitVerticalK, 1, ZOOM_MAX);
+  const tx = (1 - k) * w / 2;
+  const ty = (1 - k) * h / 2;
+  return { k, tx, ty };
+}
+
 function clampPan(tx: number, ty: number, k: number, w: number, h: number) {
   const mapW = w;
   const mapH = w * MAP_ASPECT;
@@ -362,6 +385,9 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const [xf, setXf] = useState({ k: 1, tx: 0, ty: 0 });
   const dragRef = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const projectedDimsRef = useRef({ w: 0, h: 0 });
+  const didInitRef = useRef(false);
+  const dimsRef = useRef({ w: 0, h: 0 });
+  dimsRef.current = dims;
   // Track pointer movement so a drag never fires onCountryClick.
   // Stays harmless when onCountryClick is undefined.
   const wasDragRef = useRef(false);
@@ -413,10 +439,22 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
 
   useEffect(() => {
     if (resetKey === 0) return;
-    const reset = { k: 1, tx: 0, ty: 0 };
+    const reset = initialTransform(dimsRef.current.w, dimsRef.current.h);
     xfRef.current = reset;
     setXf(reset);
   }, [resetKey]);
+
+  // Apply the mobile-aware initial transform once dims is known. Skipped when
+  // a region is set (the auto-fit effect below picks the framing instead).
+  useEffect(() => {
+    if (dims.w === 0) return;
+    if (region && region !== "world") return;
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    const init = initialTransform(dims.w, dims.h);
+    xfRef.current = init;
+    setXf(init);
+  }, [dims, region]);
 
   // Auto-zoom to fit the selected region whenever region or layout changes
   useEffect(() => {
@@ -455,9 +493,9 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // 0 and 1 both jump back to the initial world view (k=1, centred).
+      // 0 and 1 both jump back to the initial world view (mobile-aware).
       if (e.key === "0" || e.key === "1") {
-        const reset = { k: 1, tx: 0, ty: 0 };
+        const reset = initialTransform(dimsRef.current.w, dimsRef.current.h);
         xfRef.current = reset; setXf(reset);
         e.preventDefault();
         return;
@@ -797,6 +835,9 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const [xf2, setXf2] = useState({ k: 1, tx: 0, ty: 0 });
   const drag2Ref = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const projDims2Ref = useRef({ w: 0, h: 0 });
+  const didInit2Ref = useRef(false);
+  const dims2Ref = useRef({ w: 0, h: 0 });
+  dims2Ref.current = dims2;
   const pointers2Ref = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinch2Ref = useRef<{ initialDist: number; initialK: number; initialTx: number; initialTy: number } | null>(null);
 
@@ -839,6 +880,16 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     setComputed2(next);
   }, [loading2, dims2]);
 
+  // Apply the mobile-aware initial transform once dims is known.
+  useEffect(() => {
+    if (dims2.w === 0) return;
+    if (didInit2Ref.current) return;
+    didInit2Ref.current = true;
+    const init = initialTransform(dims2.w, dims2.h);
+    xf2Ref.current = init;
+    setXf2(init);
+  }, [dims2]);
+
   /* zoom */
   const applyZoom2 = useCallback((newK: number, focalX?: number, focalY?: number) => {
     const old = xf2Ref.current;
@@ -868,7 +919,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "0" || e.key === "1") {
-        const reset = { k: 1, tx: 0, ty: 0 };
+        const reset = initialTransform(dims2Ref.current.w, dims2Ref.current.h);
         xf2Ref.current = reset; setXf2(reset);
         e.preventDefault();
         return;
@@ -1060,6 +1111,9 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const [xf3, setXf3] = useState({ k: 1, tx: 0, ty: 0 });
   const drag3Ref = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const proj3Ref = useRef({ w: 0, h: 0 });
+  const didInit3Ref = useRef(false);
+  const dims3Ref = useRef({ w: 0, h: 0 });
+  dims3Ref.current = dims3;
   const pointers3Ref = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinch3Ref = useRef<{ initialDist: number; initialK: number; initialTx: number; initialTy: number } | null>(null);
 
@@ -1099,6 +1153,18 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     setComputed3(next);
   }, [loading3, dims3]);
 
+  // Apply the mobile-aware initial transform once dims is known. Skipped when
+  // a region is set (the auto-fit effect below picks the framing instead).
+  useEffect(() => {
+    if (dims3.w === 0) return;
+    if (region && region !== "world") return;
+    if (didInit3Ref.current) return;
+    didInit3Ref.current = true;
+    const init = initialTransform(dims3.w, dims3.h);
+    xf3Ref.current = init;
+    setXf3(init);
+  }, [dims3, region]);
+
   // Auto-zoom to fit the selected region
   useEffect(() => {
     if (!region || region === "world" || !activeIds?.size || computed3.length === 0 || dims3.w === 0) return;
@@ -1134,7 +1200,7 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "0" || e.key === "1") {
-        const reset = { k: 1, tx: 0, ty: 0 };
+        const reset = initialTransform(dims3Ref.current.w, dims3Ref.current.h);
         xf3Ref.current = reset; setXf3(reset);
         e.preventDefault();
         return;
