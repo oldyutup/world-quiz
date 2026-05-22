@@ -880,35 +880,34 @@ body {
   .best-meta     { display:none; }
   .flag-img-wrap { max-width:100%; }
 
-  /* ── Mobile-only compact HUD for active map gameplay ──
+  /* ── Mobile compact HUD for map mode (always, not just during play) ──
      The full dropdown bar is replaced by a small read-only info chip and a
      gear button that opens a touch-friendly settings panel. The panel
      re-uses the existing Dropdown components, so settings retain their
      existing single-source-of-truth behaviour (including being disabled
      during an active timed game, matching desktop). */
-  .control-bar.is-playing.gt-map-game { padding:4px 8px 3px; gap:2px; }
-  .control-bar.is-playing.gt-map-game .gold-bar { display:none; }
-  .control-bar.is-playing.gt-map-game .bar-dropdowns { display:none; }
-  .control-bar.is-playing.gt-map-game .bar-bottom { display:none; }
-  .control-bar.is-playing.gt-map-game .bar-mobile-info {
+  .control-bar.gt-map-game { padding:4px 8px 3px; gap:2px; }
+  .control-bar.gt-map-game .gold-bar { display:none; }
+  .control-bar.gt-map-game .bar-dropdowns { display:none; }
+  .control-bar.gt-map-game .bar-bottom { display:none; }
+  .control-bar.gt-map-game .bar-mobile-info {
     display:flex; align-items:center; justify-content:center;
     min-height:14px; line-height:1;
   }
-  .control-bar.is-playing.gt-map-game .bar-top { gap:6px; }
-  .control-bar.is-playing.gt-map-game .back-btn { height:30px; padding:0 8px; font-size:.74rem; }
-  .control-bar.is-playing.gt-map-game .score-pill { padding:2px 9px; }
-  .control-bar.is-playing.gt-map-game .score-n { font-size:1.15rem; }
-  .control-bar.is-playing.gt-map-game .score-total { font-size:.9rem; }
-  .control-bar.is-playing.gt-map-game .score-lbl { display:none; }
-  .control-bar.is-playing.gt-map-game .timer-ring-wrap { width:34px; height:34px; }
-  .control-bar.is-playing.gt-map-game .timer-num { font-size:.78rem; }
-  .control-bar.is-playing.gt-map-game .guess-input { height:36px; font-size:max(16px,.95rem); }
+  .control-bar.gt-map-game .bar-top { gap:6px; }
+  .control-bar.gt-map-game .back-btn { height:30px; padding:0 8px; font-size:.74rem; }
+  .control-bar.gt-map-game .score-pill { padding:2px 9px; }
+  .control-bar.gt-map-game .score-n { font-size:1.15rem; }
+  .control-bar.gt-map-game .score-total { font-size:.9rem; }
+  .control-bar.gt-map-game .score-lbl { display:none; }
+  .control-bar.gt-map-game .timer-ring-wrap { width:34px; height:34px; }
+  .control-bar.gt-map-game .timer-num { font-size:.78rem; }
+  .control-bar.gt-map-game .guess-input { height:36px; font-size:max(16px,.95rem); }
 
-  /* Show the gear-button wrap only inside the compact map-mode HUD.
-     The panel itself is inline-rendered only when open. Flag / silhouette
+  /* Show the gear-button wrap in compact map-mode HUD. Flag / silhouette
      keep their original bar so they still have direct access to their
      dropdowns; we deliberately do not touch them. */
-  .control-bar.is-playing.gt-map-game .bar-settings-wrap { display:flex; }
+  .control-bar.gt-map-game .bar-settings-wrap { display:flex; }
 }
 @media (max-width:380px) {
   .score-lbl   { display:none; }
@@ -6763,6 +6762,59 @@ body {
   flex-wrap: wrap;
   min-width: 0;
 }
+/* Wrap around the 4 desktop dropdowns so we can hide them as a group on
+   mobile without touching the back button. */
+.wheel-topbar-dropdowns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Mobile-only gear button + panel. Hidden on desktop. */
+.wheel-mobile-settings { position: relative; display: none; }
+.wheel-settings-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text);
+  font-size: 1.05rem; line-height: 1; cursor: pointer;
+  transition: border-color .15s, background .15s;
+  flex-shrink: 0;
+}
+.wheel-settings-btn:hover { border-color: var(--accent); }
+.wheel-settings-btn.open  { border-color: var(--accent); background: var(--surface3); }
+.wheel-settings-panel {
+  position: absolute; top: calc(100% + 8px); left: 0;
+  min-width: 250px; max-width: 92vw;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 32px rgba(0,0,0,.55);
+  z-index: 300; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.wheel-settings-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.wheel-settings-title { font-size: .9rem; font-weight: 700; color: var(--text); }
+.wheel-settings-close {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--muted);
+  font-size: .85rem; cursor: pointer; line-height: 1;
+  transition: color .15s, border-color .15s;
+}
+.wheel-settings-close:hover { color: var(--text); border-color: var(--muted); }
+.wheel-settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 42px;
+}
+.wheel-settings-lbl { font-size: .82rem; color: var(--muted); font-weight: 600; flex-shrink: 0; }
+.wheel-settings-panel .wheel-dd-trigger { height: 38px; font-size: .86rem; min-width: 130px; }
+.wheel-settings-panel .wheel-dd-item { padding: 10px 12px; font-size: .9rem; }
 
 .wheel-topbar-center {
   grid-area: center;
@@ -7241,7 +7293,12 @@ body {
    Below 720px: grid drops center to its own row.
      "left  right"
      "center center"
-   Center collapses (no height) when target is absent. */
+   Center collapses (no height) when target is absent.
+
+   Also: the 4 setting dropdowns are moved into a gear-button panel so they
+   don't permanently consume the top HUD. The .wheel-topbar-dropdowns wrapper
+   is hidden; the gear button (.wheel-mobile-settings) is shown instead and
+   renders the same WheelDropdown components inside an overlay panel. */
 @media (max-width: 720px) {
   .wheel-topbar {
     grid-template-areas:
@@ -7272,6 +7329,10 @@ body {
   .wheel-floating-title { font-size: 1.2rem; }
   .wheel-floating-name  { font-size: 1.5rem; }
   .wheel-result-score-num { font-size: 2.6rem; }
+
+  /* Hide the inline dropdowns; show the gear button instead. */
+  .wheel-topbar-dropdowns { display: none; }
+  .wheel-mobile-settings  { display: inline-flex; }
 }
 
 @media (max-width: 420px) {

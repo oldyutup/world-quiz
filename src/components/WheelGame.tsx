@@ -178,6 +178,116 @@ function WheelDropdown<T extends string | number>(
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   MOBILE SETTINGS — gear button + panel that re-uses WheelDropdown
+   so settings keep their single source of truth (state still lives
+   in <WheelGame />). Hidden on desktop via CSS.
+═══════════════════════════════════════════════════════════════ */
+interface WheelMobileSettingsProps {
+  continent:  ContinentFilter; setContinent:  (v: ContinentFilter) => void;
+  difficulty: Difficulty;       setDifficulty: (v: Difficulty) => void;
+  duration:   number;           setDuration:   (v: number) => void;
+  lifeMode:   LifeMode;         setLifeMode:   (v: LifeMode) => void;
+  disabled:   boolean;
+}
+function WheelMobileSettings(p: WheelMobileSettingsProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown, { passive: true });
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  // Auto-close when crossing into desktop width so resizing the window doesn't
+  // leave a stale panel attached to a now-hidden button.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 721px)");
+    const onChange = () => { if (mq.matches) setOpen(false); };
+    if (mq.matches) setOpen(false);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return (
+    <div className="wheel-mobile-settings" ref={rootRef}>
+      <button
+        type="button"
+        className={"wheel-settings-btn" + (open ? " open" : "")}
+        onClick={() => { playSound("click"); setOpen(o => !o); }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Ayarlar"
+        title="Ayarlar"
+      >
+        <span aria-hidden="true">⚙️</span>
+      </button>
+      {open && (
+        <div className="wheel-settings-panel" role="menu" aria-label="Oyun ayarları">
+          <div className="wheel-settings-header">
+            <span className="wheel-settings-title">⚙️ Ayarlar</span>
+            <button
+              type="button"
+              className="wheel-settings-close"
+              onClick={() => { playSound("click"); setOpen(false); }}
+              aria-label="Kapat"
+            >✕</button>
+          </div>
+          <div className="wheel-settings-row">
+            <span className="wheel-settings-lbl">🌍 Bölge</span>
+            <WheelDropdown
+              options={CONTINENT_OPTIONS}
+              value={p.continent}
+              onChange={p.setContinent}
+              disabled={p.disabled}
+              ariaLabel="Kıta"
+            />
+          </div>
+          <div className="wheel-settings-row">
+            <span className="wheel-settings-lbl">🔶 Zorluk</span>
+            <WheelDropdown
+              options={DIFFICULTY_OPTIONS}
+              value={p.difficulty}
+              onChange={p.setDifficulty}
+              disabled={p.disabled}
+              ariaLabel="Zorluk"
+            />
+          </div>
+          <div className="wheel-settings-row">
+            <span className="wheel-settings-lbl">⏱ Süre</span>
+            <WheelDropdown
+              options={DURATION_OPTIONS}
+              value={p.duration}
+              onChange={p.setDuration}
+              disabled={p.disabled}
+              ariaLabel="Süre"
+            />
+          </div>
+          <div className="wheel-settings-row">
+            <span className="wheel-settings-lbl">❤️ Can Modu</span>
+            <WheelDropdown
+              options={LIFE_MODE_OPTIONS}
+              value={p.lifeMode}
+              onChange={p.setLifeMode}
+              disabled={p.disabled}
+              ariaLabel="Can Modu"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    RESULT SCREEN (kept from previous version — user is happy with it)
 ═══════════════════════════════════════════════════════════════ */
 
@@ -666,33 +776,47 @@ export default function WheelGame({ onHome }: WheelGameProps) {
           >
             ← Menü
           </button>
-          <WheelDropdown
-            options={CONTINENT_OPTIONS}
-            value={continent}
-            onChange={setContinent}
+          {/* Desktop: dropdowns sit inline next to the back button. Hidden on
+              mobile via CSS — see .wheel-topbar-dropdowns { display:none } in
+              the mobile media query; on mobile the same controls are rendered
+              inside <WheelMobileSettings /> below. */}
+          <div className="wheel-topbar-dropdowns">
+            <WheelDropdown
+              options={CONTINENT_OPTIONS}
+              value={continent}
+              onChange={setContinent}
+              disabled={settingsLocked}
+              ariaLabel="Kıta"
+            />
+            <WheelDropdown
+              options={DIFFICULTY_OPTIONS}
+              value={difficulty}
+              onChange={setDifficulty}
+              disabled={settingsLocked}
+              ariaLabel="Zorluk"
+            />
+            <WheelDropdown
+              options={DURATION_OPTIONS}
+              value={duration}
+              onChange={setDuration}
+              disabled={settingsLocked}
+              ariaLabel="Süre"
+            />
+            <WheelDropdown
+              options={LIFE_MODE_OPTIONS}
+              value={lifeMode}
+              onChange={setLifeMode}
+              disabled={settingsLocked}
+              ariaLabel="Can Modu"
+            />
+          </div>
+          {/* Mobile-only gear button — opens the same dropdowns inside a panel. */}
+          <WheelMobileSettings
+            continent={continent} setContinent={setContinent}
+            difficulty={difficulty} setDifficulty={setDifficulty}
+            duration={duration} setDuration={setDuration}
+            lifeMode={lifeMode} setLifeMode={setLifeMode}
             disabled={settingsLocked}
-            ariaLabel="Kıta"
-          />
-          <WheelDropdown
-            options={DIFFICULTY_OPTIONS}
-            value={difficulty}
-            onChange={setDifficulty}
-            disabled={settingsLocked}
-            ariaLabel="Zorluk"
-          />
-          <WheelDropdown
-            options={DURATION_OPTIONS}
-            value={duration}
-            onChange={setDuration}
-            disabled={settingsLocked}
-            ariaLabel="Süre"
-          />
-          <WheelDropdown
-            options={LIFE_MODE_OPTIONS}
-            value={lifeMode}
-            onChange={setLifeMode}
-            disabled={settingsLocked}
-            ariaLabel="Can Modu"
           />
         </div>
 
