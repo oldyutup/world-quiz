@@ -49,6 +49,16 @@
  *   CREATE POLICY "anon_all_group_players" ON duel_group_players FOR ALL TO anon USING (true) WITH CHECK (true);
  *   CREATE POLICY "anon_all_group_claims"  ON duel_group_claims  FOR ALL TO anon USING (true) WITH CHECK (true);
  *
+ *   -- Auth oturumu olan kullanıcılar (Supabase Auth) authenticated rolüyle
+ *   -- istek gönderir. Yukarıdaki politikalar sadece anon'a izin verdiği için
+ *   -- logged-in host'un startGame DELETE'i sessizce 0 satır siliyor ve eski
+ *   -- maç claim'leri rövanşta UNIQUE(room_id, country_code)'i tetikliyor.
+ *   -- Aşağıdaki ek politika 20260522120000_duel_group_claims_auth_policy.sql
+ *   -- migration'ı ile uygulanır:
+ *   CREATE POLICY "duel_group_claims_all_authenticated"
+ *     ON duel_group_claims FOR ALL TO authenticated
+ *     USING (true) WITH CHECK (true);
+ *
  *   -- Realtime'ı her üç tabloda etkinleştir.
  *   ALTER PUBLICATION supabase_realtime ADD TABLE duel_group_rooms;
  *   ALTER PUBLICATION supabase_realtime ADD TABLE duel_group_players;
@@ -1006,15 +1016,49 @@ setClaims([]);
     if (timeLeftRef.current <= 0 || gameEndedRef.current) return;
 
     setInput("");
-    const { error } = await supabase.from("duel_group_claims").insert({
+    const insertClaim = () => supabase.from("duel_group_claims").insert({
       room_id:      room.id,
       player_id:    myIdRef.current,
       country_code: topoId,
     });
 
-    if (!error) { showFeedback("ok"); return; }
-    if (error.code === "23505") { showFeedback("dup"); return; } // başkası daha hızlı yazdı
-    showFeedback("err");
+    const first = await insertClaim();
+    if (!first.error) { showFeedback("ok"); return; }
+    if (first.error.code !== "23505") { showFeedback("err"); return; }
+
+    // 23505: (room_id, country_code) çakıştı. Önceki maçtan kalmış stale bir
+    // satır olabilir (host'un startGame DELETE'i geç gelen bir INSERT ile
+    // yarışı kaybetmiş ya da prod'da temizlik tam çalışmamış olabilir). Mevcut
+    // maçın started_at değerinden önce oluşturulmuş satırı sil ve tekrar dene;
+    // aksi halde gerçekten bu maçta yazılmış demektir.
+    const startedAt = room.started_at;
+    if (startedAt) {
+      const { data: existing } = await supabase
+        .from("duel_group_claims")
+        .select("id, created_at")
+        .eq("room_id", room.id)
+        .eq("country_code", topoId)
+        .maybeSingle();
+
+      if (existing && existing.created_at < startedAt) {
+        const { error: delErr } = await supabase
+          .from("duel_group_claims")
+          .delete()
+          .eq("id", existing.id);
+        if (delErr) {
+          dbgErr("stale claim delete failed", delErr);
+          showFeedback("err");
+          return;
+        }
+        const retry = await insertClaim();
+        if (!retry.error) { showFeedback("ok"); return; }
+        if (retry.error.code === "23505") { showFeedback("dup"); return; }
+        showFeedback("err");
+        return;
+      }
+    }
+
+    showFeedback("dup"); // başkası daha hızlı yazdı (bu maçta)
   };
 
   /* ── COPY INVITE ── */
