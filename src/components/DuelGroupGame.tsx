@@ -230,6 +230,16 @@ export default function DuelGroupGame({
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [newHostNoticeOpen, setNewHostNoticeOpen] = useState(false);
 
+  /* viewport breakpoint (desktop ≥ 900px) — for end-screen 2-card layout */
+  const [isWideViewport, setIsWideViewport] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 900 : true,
+  );
+  useEffect(() => {
+    const onResize = () => setIsWideViewport(window.innerWidth >= 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   /* game state */
   const [room,     setRoom]     = useState<GroupRoom | null>(null);
   const [players,  setPlayers]  = useState<GroupPlayer[]>([]);
@@ -1595,8 +1605,8 @@ setPhase("waiting");
   </div>
 )}
 
-      {/* ════════ PLAYING ════════ */}
-      {phase === "playing" && room && (
+      {/* ════════ PLAYING (finished'da da arka plan render kalsın) ════════ */}
+      {(phase === "playing" || phase === "finished") && room && (
   <div className="dgg-game">
         <>
           {/* Üst bar: skor + timer + leaderboard pill */}
@@ -1706,59 +1716,307 @@ setPhase("waiting");
         </div>
 )}
 
-      {/* ════════ FINISHED ════════ */}
-      {phase === "finished" && (
-        <div className="duel-lobby">
-          <div className="duel-lobby-card">
-            <div className="duel-result-emoji">🏁</div>
-            <h2 className="duel-result-title">Oyun Bitti!</h2>
+      {/* ════════ FINISHED — overlay (Çark Grup ile aynı görsel düzen) ════════ */}
+      {phase === "finished" && room && (() => {
+        const board = finalLeaderboard ?? leaderboard.map(b => ({
+          playerId: b.playerId, name: b.name, score: b.score,
+        }));
+        const myRank = board.findIndex(b => b.playerId === myIdRef.current) + 1;
+        const me = board.find(b => b.playerId === myIdRef.current);
+        const myFinalScore = me?.score ?? 0;
+        const top = board[0]?.score ?? 0;
+        const iWon = myFinalScore > 0 && myFinalScore === top;
+        const titleText = iWon ? "KAZANDIN!" : "OYUN BİTTİ";
+        const emoji = iWon ? "🏆" : "🏁";
+        const reasonText = "Süre doldu.";
+        const podium = board.slice(0, 3);
+        const totalClaims = board.reduce((s, b) => s + b.score, 0);
 
-            {/* Sıralama */}
-            <div className="dgg-final-board">
-              {(finalLeaderboard ?? leaderboard).map((entry, idx) => {
-                const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`;
-                const isMe  = entry.playerId === myId;
-                return (
-                  <div key={entry.playerId}
-                       className={"dgg-final-row" + (isMe ? " mine" : "") + (idx === 0 ? " winner" : "")}>
-                    <span className="dgg-final-rank">{medal}</span>
-                    <span className="dgg-final-name">
-                      {entry.name}{isMe && <span className="dgg-lb-you"> (Sen)</span>}
-                    </span>
-                    <span className="dgg-final-score">{entry.score}</span>
+        const scoreboardCardStyle: React.CSSProperties = {
+          width: isWideViewport ? 320 : "100%",
+          maxWidth: "96vw",
+          maxHeight: isWideViewport ? "min(640px, 88vh)" : 360,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          background: "rgba(15, 18, 28, 0.86)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          borderRadius: 16,
+          padding: 14,
+          boxSizing: "border-box",
+          boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
+          order: isWideViewport ? 0 : 1,
+        };
+
+        const resultCardOverrides: React.CSSProperties = {
+          maxWidth: "min(560px, 96vw)",
+          width: "100%",
+          maxHeight: isWideViewport ? "min(720px, 92vh)" : "none",
+          overflowY: isWideViewport ? "auto" : "visible",
+          padding: "20px 22px",
+          boxSizing: "border-box",
+          order: isWideViewport ? 1 : 0,
+        };
+
+        return (
+          <div
+            className="wheel-result-backdrop"
+            style={{
+              overflowY: "auto",
+              padding: isWideViewport ? "24px" : "16px 12px",
+              boxSizing: "border-box",
+              alignItems: isWideViewport ? "center" : "flex-start",
+            }}
+          >
+            <div
+              className="dgg-result-layout"
+              style={{
+                display: "flex",
+                flexDirection: isWideViewport ? "row" : "column",
+                alignItems: isWideViewport ? "flex-start" : "stretch",
+                justifyContent: "center",
+                gap: isWideViewport ? 22 : 14,
+                width: "100%",
+                maxWidth: isWideViewport ? 940 : 600,
+                margin: "0 auto",
+              }}
+            >
+              {/* ─── Kart 1: Tam Puan Tablosu (sol/desktop · alt/mobil) ─── */}
+              <aside style={scoreboardCardStyle} aria-label="Tam Puan Tablosu">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 10,
+                    paddingBottom: 8,
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 14,
+                      fontWeight: 800,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    📋 Tam Puan Tablosu
+                  </h3>
+                  <span style={{ fontSize: 11, opacity: 0.7, fontWeight: 600 }}>
+                    {board.length} oyuncu
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    paddingRight: 4,
+                    flex: 1,
+                    minHeight: 0,
+                  }}
+                >
+                  {board.map((entry, idx) => {
+                    const isMe = entry.playerId === myIdRef.current;
+                    const medal =
+                      idx === 0 ? "🥇"
+                      : idx === 1 ? "🥈"
+                      : idx === 2 ? "🥉"
+                      : `#${idx + 1}`;
+                    return (
+                      <div
+                        key={entry.playerId}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "36px 1fr auto",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "6px 8px",
+                          borderRadius: 8,
+                          background: isMe
+                            ? "rgba(79,139,255,0.18)"
+                            : idx < 3
+                              ? "rgba(255,255,255,0.04)"
+                              : "transparent",
+                          border: isMe
+                            ? "1px solid rgba(79,139,255,0.55)"
+                            : "1px solid transparent",
+                          fontSize: 13,
+                          lineHeight: 1.25,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontSize: idx < 3 ? 18 : 13,
+                            textAlign: "center",
+                            opacity: idx < 3 ? 1 : 0.7,
+                          }}
+                        >
+                          {medal}
+                        </span>
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            minWidth: 0,
+                            fontWeight: isMe ? 800 : 600,
+                          }}
+                        >
+                          <span
+                            style={{
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              flex: 1,
+                              minWidth: 0,
+                            }}
+                          >
+                            {entry.name}
+                          </span>
+                          {isMe && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: "1px 6px",
+                                borderRadius: 999,
+                                background: "rgba(79,139,255,0.55)",
+                                color: "#fff",
+                                fontWeight: 700,
+                                letterSpacing: "0.03em",
+                                flexShrink: 0,
+                              }}
+                            >
+                              Sen
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            fontVariantNumeric: "tabular-nums",
+                            minWidth: 22,
+                            textAlign: "right",
+                          }}
+                          title="Doğru sayısı"
+                        >
+                          {entry.score}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: "1px solid rgba(255,255,255,0.08)",
+                    fontSize: 11,
+                    opacity: 0.6,
+                    textAlign: "center",
+                  }}
+                >
+                  Toplam {totalClaims} doğru claim
+                </div>
+              </aside>
+
+              {/* ─── Kart 2: Sonuç (orta/desktop · üst/mobil) ─── */}
+              <div
+                className="wheel-result-panel dgg-result-panel"
+                style={resultCardOverrides}
+              >
+                <div className="wheel-result-emoji">{emoji}</div>
+                <h2 className="wheel-result-title">{titleText}</h2>
+                <p
+                  className="duel-lobby-desc"
+                  style={{ margin: "0 0 10px", fontSize: "0.95rem" }}
+                >
+                  {reasonText}
+                </p>
+
+                {/* Top 3 podium */}
+                {podium.length > 0 && (
+                  <div
+                    className="dgg-final-board"
+                    style={{
+                      marginTop: 4,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    {podium.map((entry, idx) => {
+                      const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+                      const isMe = entry.playerId === myIdRef.current;
+                      return (
+                        <div
+                          key={entry.playerId}
+                          className={
+                            "dgg-final-row" +
+                            (isMe ? " mine" : "") +
+                            (idx === 0 ? " winner" : "")
+                          }
+                        >
+                          <span className="dgg-final-rank">{medal}</span>
+                          <span className="dgg-final-name">
+                            {entry.name}
+                            {isMe && <span className="dgg-lb-you"> (Sen)</span>}
+                          </span>
+                          <span className="dgg-final-score">{entry.score}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                )}
+
+                <div className="duel-result-meta" style={{ marginTop: 10 }}>
+                  <span>⏱ {durationLabel}</span>
+                  <span className="duel-sum-dot">·</span>
+                  <span>{regionLabel}</span>
+                  <span className="duel-sum-dot">·</span>
+                  <span>Toplam {totalClaims} ülke</span>
+                  <span className="duel-sum-dot">·</span>
+                  <span>Sıra #{Math.max(1, myRank)}</span>
+                </div>
+
+                {errorMsg && <p className="duel-error" style={{ marginTop: 8 }}>{errorMsg}</p>}
+
+                <div className="wheel-result-actions">
+                  <button
+                    type="button"
+                    className="wheel-primary-btn"
+                    onClick={returnToRoom}
+                  >
+                    ↩ Lobiye Dön
+                  </button>
+                  <button
+                    type="button"
+                    className="wheel-ghost-btn"
+                    onClick={backToLobby}
+                  >
+                    ↻ Yeni Oyun
+                  </button>
+                  <button
+                    type="button"
+                    className="wheel-ghost-btn"
+                    onClick={onHome}
+                  >
+                    ⌂ Ana Menü
+                  </button>
+                </div>
+              </div>
+              {/* /Kart 2 — sonuç */}
             </div>
-
-            <div className="duel-result-meta">
-              <span>⏱ {durationLabel}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>{regionLabel}</span>
-              <span className="duel-sum-dot">·</span>
-              <span>Toplam {claims.length} ülke</span>
-            </div>
-
-            {errorMsg && <p className="duel-error">{errorMsg}</p>}
-
-            <button
-  className="btn btn-accent duel-return-room-btn"
-  onClick={returnToRoom}
->
-  ↩ Odaya Geri Dön
-</button>
-
-<div className="duel-result-actions">
-  <button className="btn btn-ghost" onClick={backToLobby}>
-    ↻ Yeni Oyun
-  </button>
-  <button className="btn btn-ghost" onClick={onHome}>
-    ⌂ Ana Menü
-  </button>
-</div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
           {kickTarget && (
   <div className="dgg-confirm-backdrop" onClick={() => setKickTarget(null)}>
