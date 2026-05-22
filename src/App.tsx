@@ -916,9 +916,60 @@ interface TopBarProps {
 function TopBar(p: TopBarProps) {
   const inputRowClass = ["bar-row bar-input", p.feedback ?? ""].filter(Boolean).join(" ");
   const diffOpt = p.difficulty ? DIFFICULTY_OPTIONS.find(d => d.value === p.difficulty) : null;
+  // State classes drive the mobile-only compact HUD via CSS (see .control-bar.is-playing rules).
+  const barClass = [
+    "control-bar",
+    `gt-${p.gameType}`,
+    p.isPlaying ? "is-playing" : "",
+  ].filter(Boolean).join(" ");
+  const modeShort = p.mode === "timed" ? "Süreli" : "Serbest";
+
+  // Mobile settings panel — the gear button below opens a panel that re-renders
+  // the same Dropdowns from the desktop layout. State (continent, difficulty,
+  // duration, mode) lives in the parent component, so this is purely a UI
+  // surface: every change still goes through the same onChange callbacks and
+  // inherits the same disabled-during-play behaviour as the desktop bar.
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const settingsRootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!mobileSettingsOpen) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (settingsRootRef.current && !settingsRootRef.current.contains(e.target as Node)) {
+        setMobileSettingsOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileSettingsOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown, { passive: true });
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mobileSettingsOpen]);
+  // Auto-close panel when crossing into desktop width, so reopening a small
+  // window won't leave a stale-open panel offscreen.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 601px)");
+    const onChange = () => { if (mq.matches) setMobileSettingsOpen(false); };
+    if (mq.matches) setMobileSettingsOpen(false);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
   return (
-    <div className="control-bar">
+    <div className={barClass}>
       <GoldBar gold={p.gold} canBonus={p.canBonus} onClaimBonus={p.onClaimBonus} />
+      {/* Mobile-only compact info chip — non-interactive, shown during active map play */}
+      <div className="bar-mobile-info" aria-hidden="true">
+        <span className="bar-mobile-info-text">
+          🌍 {p.continentLabel.replace(/^[^\p{L}]+/u, "")}
+          {diffOpt && p.difficulty && p.difficulty !== "all" ? ` • ${diffOpt.label.replace(/^[^\p{L}]+/u, "")}` : ""}
+          {" • "}{p.durationLabel.replace(/^[^\p{L}\d]+/u, "")}
+          {" • "}{modeShort}
+        </span>
+      </div>
       {/* Row 1 */}
       <div className="bar-row bar-top">
         <button
@@ -980,6 +1031,83 @@ function TopBar(p: TopBarProps) {
               <span className="timer-num" style={{ color: p.timerColor }}>{p.timeLeft}</span>
             </div>
           )}
+          {/* Mobile-only gear button — opens the compact settings panel.
+              Hidden on desktop and on non-map game types via CSS. */}
+          <div className="bar-settings-wrap" ref={settingsRootRef}>
+            <button
+              type="button"
+              className={"bar-settings-btn" + (mobileSettingsOpen ? " open" : "")}
+              onClick={() => { playSound("click"); setMobileSettingsOpen(o => !o); }}
+              aria-haspopup="menu"
+              aria-expanded={mobileSettingsOpen}
+              aria-label="Ayarlar"
+              title="Ayarlar"
+            >
+              <span aria-hidden="true">⚙️</span>
+            </button>
+            {mobileSettingsOpen && (
+              <div className="bar-settings-panel" role="menu" aria-label="Oyun ayarları">
+                <div className="bar-settings-header">
+                  <span className="bar-settings-title">⚙️ Ayarlar</span>
+                  <button
+                    type="button"
+                    className="bar-settings-close"
+                    onClick={() => { playSound("click"); setMobileSettingsOpen(false); }}
+                    aria-label="Kapat"
+                  >✕</button>
+                </div>
+                <div className="bar-settings-row">
+                  <span className="bar-settings-lbl">🌍 Bölge</span>
+                  <Dropdown label={p.continentLabel} disabled={p.isPlaying}>
+                    {CONTINENT_OPTIONS.map(opt => (
+                      <DDItem key={opt.value} active={p.continent === opt.value}
+                        onClick={() => p.onContinentChange(opt.value)}>{opt.label}</DDItem>
+                    ))}
+                  </Dropdown>
+                </div>
+                {(p.gameType === "flag-game" || p.gameType === "silhouette-game") && p.onDifficultyChange && (
+                  <div className="bar-settings-row">
+                    <span className="bar-settings-lbl">🔶 Zorluk</span>
+                    <Dropdown label={diffOpt?.label ?? "🟡 Normal"} disabled={p.isPlaying} align="right">
+                      {DIFFICULTY_OPTIONS.map(opt => (
+                        <DDItem key={opt.value} active={p.difficulty === opt.value}
+                          onClick={() => p.onDifficultyChange!(opt.value)}>{opt.label}</DDItem>
+                      ))}
+                    </Dropdown>
+                  </div>
+                )}
+                <div className="bar-settings-row">
+                  <span className="bar-settings-lbl">⏱ Süre</span>
+                  <Dropdown label={p.durationLabel} disabled={p.isPlaying} align="right">
+                    {DURATION_OPTIONS.map(opt => (
+                      <DDItem key={opt.value} active={p.selectedDuration === opt.value}
+                        onClick={() => p.onDurationChange(opt.value)}>{opt.label}</DDItem>
+                    ))}
+                  </Dropdown>
+                </div>
+                <div className="bar-settings-row">
+                  <span className="bar-settings-lbl">🎮 Mod</span>
+                  <Dropdown label={p.mode === "timed" ? "⏱ Süreli" : "∞ Serbest"} disabled={p.isPlaying} align="right">
+                    <DDItem active={!p.isPlaying && p.lastMode === "free"}
+                      onClick={() => { if (!p.isPlaying) p.onStartGame("free"); }}>∞ Serbest</DDItem>
+                    <DDItem active={!p.isPlaying && p.lastMode === "timed"}
+                      onClick={() => { if (!p.isPlaying) p.onStartGame("timed"); }}>⏱ Süreli</DDItem>
+                  </Dropdown>
+                </div>
+                {p.gameType === "map-game" && p.onToggleLabels && (
+                  <div className="bar-settings-row">
+                    <span className="bar-settings-lbl">🏷️ İsimler</span>
+                    <label className="toggle-label">
+                      <input type="checkbox" className="toggle-cb"
+                        checked={p.showLabels ?? false}
+                        onChange={e => p.onToggleLabels!(e.target.checked)} />
+                      <span className="toggle-track"><span className="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {/* Row 2: input */}

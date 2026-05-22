@@ -366,6 +366,11 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   // Stays harmless when onCountryClick is undefined.
   const wasDragRef = useRef(false);
   const downPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Multi-pointer state for two-finger pinch zoom on touch screens.
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{
+    initialDist: number; initialK: number; initialTx: number; initialTy: number;
+  } | null>(null);
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -471,16 +476,60 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
 
   const onPD = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
-    dragRef.current = { sx: e.clientX, sy: e.clientY, tx0: xfRef.current.tx, ty0: xfRef.current.ty };
-    wasDragRef.current = false;
-    downPosRef.current = { x: e.clientX, y: e.clientY };
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 1) {
+      // Single pointer → drag/pan
+      dragRef.current = { sx: e.clientX, sy: e.clientY, tx0: xfRef.current.tx, ty0: xfRef.current.ty };
+      wasDragRef.current = false;
+      downPosRef.current = { x: e.clientX, y: e.clientY };
+    } else if (pointersRef.current.size === 2) {
+      // Second pointer down → start pinch. Stop tracking pan so the gesture is purely zoom.
+      dragRef.current = null;
+      wasDragRef.current = true; // ensure no click fires after pinch
+      const pts = Array.from(pointersRef.current.values());
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      pinchRef.current = {
+        initialDist: Math.hypot(dx, dy) || 1,
+        initialK: xfRef.current.k,
+        initialTx: xfRef.current.tx,
+        initialTy: xfRef.current.ty,
+      };
+    }
   };
   const onPM = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size >= 2 && pinchRef.current) {
+      // Pinch: scale around the current midpoint between the two fingers.
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const pts = Array.from(pointersRef.current.values()).slice(0, 2);
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const ratio = dist / pinchRef.current.initialDist;
+      const newK = clamp(pinchRef.current.initialK * ratio, ZOOM_MIN, ZOOM_MAX);
+      const fx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const fy = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const kRatio = newK / pinchRef.current.initialK;
+      const { tx, ty } = clampPan(
+        fx - kRatio * (fx - pinchRef.current.initialTx),
+        fy - kRatio * (fy - pinchRef.current.initialTy),
+        newK, dims.w, dims.h,
+      );
+      const next = { k: newK, tx, ty };
+      xfRef.current = next; setXf({ ...next });
+      return;
+    }
+
     if (!dragRef.current) return;
     if (!wasDragRef.current) {
-      const dx = Math.abs(e.clientX - downPosRef.current.x);
-      const dy = Math.abs(e.clientY - downPosRef.current.y);
-      if (dx + dy > 5) wasDragRef.current = true;
+      const ddx = Math.abs(e.clientX - downPosRef.current.x);
+      const ddy = Math.abs(e.clientY - downPosRef.current.y);
+      if (ddx + ddy > 5) wasDragRef.current = true;
     }
     const { k } = xfRef.current;
     const { tx, ty } = clampPan(
@@ -492,25 +541,37 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     xfRef.current = next; setXf({ ...next });
   };
   const onPU = (e: ReactPointerEvent<SVGSVGElement>) => {
-    // Click dispatch via pointerup: setPointerCapture on the SVG redirects
-    // pointer events to the SVG, which can prevent the synthesized `click`
-    // from firing on the underlying <path>. We resolve the path the user
-    // released over via elementFromPoint and read data-topo-id.
-    //
-    // No-op when onCountryClick is not provided → legacy behaviour unchanged.
-    if (
-      onCountryClick &&
-      e.type === "pointerup" &&
-      e.button === 0 &&
-      !wasDragRef.current
-    ) {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      if (el instanceof SVGPathElement) {
-        const topoId = el.getAttribute("data-topo-id");
-        if (topoId) onCountryClick(topoId);
+    const wasPinching = pointersRef.current.size >= 2;
+    pointersRef.current.delete(e.pointerId);
+
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (pointersRef.current.size === 1) {
+      // Reseed drag origin from the remaining finger so pan resumes seamlessly.
+      const remaining = Array.from(pointersRef.current.values())[0];
+      dragRef.current = { sx: remaining.x, sy: remaining.y, tx0: xfRef.current.tx, ty0: xfRef.current.ty };
+      wasDragRef.current = true; // post-pinch one-finger lift should not click
+    } else if (pointersRef.current.size === 0) {
+      // Click dispatch via pointerup: setPointerCapture on the SVG redirects
+      // pointer events to the SVG, which can prevent the synthesized `click`
+      // from firing on the underlying <path>. We resolve the path the user
+      // released over via elementFromPoint and read data-topo-id.
+      //
+      // No-op when onCountryClick is not provided → legacy behaviour unchanged.
+      if (
+        onCountryClick &&
+        !wasPinching &&
+        e.type === "pointerup" &&
+        e.button === 0 &&
+        !wasDragRef.current
+      ) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el instanceof SVGPathElement) {
+          const topoId = el.getAttribute("data-topo-id");
+          if (topoId) onCountryClick(topoId);
+        }
       }
+      dragRef.current = null;
     }
-    dragRef.current = null;
   };
 
   if (loading || computed.length === 0) {
@@ -736,6 +797,8 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const [xf2, setXf2] = useState({ k: 1, tx: 0, ty: 0 });
   const drag2Ref = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const projDims2Ref = useRef({ w: 0, h: 0 });
+  const pointers2Ref = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch2Ref = useRef<{ initialDist: number; initialK: number; initialTx: number; initialTy: number } | null>(null);
 
   const measure2 = useCallback(() => {
     const el = containerRef.current;
@@ -822,9 +885,36 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
 
   const onPD2 = (e: ReactPointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
-    drag2Ref.current = { sx: e.clientX, sy: e.clientY, tx0: xf2Ref.current.tx, ty0: xf2Ref.current.ty };
+    pointers2Ref.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers2Ref.current.size === 1) {
+      drag2Ref.current = { sx: e.clientX, sy: e.clientY, tx0: xf2Ref.current.tx, ty0: xf2Ref.current.ty };
+    } else if (pointers2Ref.current.size === 2) {
+      drag2Ref.current = null;
+      const pts = Array.from(pointers2Ref.current.values());
+      pinch2Ref.current = {
+        initialDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+        initialK: xf2Ref.current.k,
+        initialTx: xf2Ref.current.tx,
+        initialTy: xf2Ref.current.ty,
+      };
+    }
   };
   const onPM2 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!pointers2Ref.current.has(e.pointerId)) return;
+    pointers2Ref.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers2Ref.current.size >= 2 && pinch2Ref.current) {
+      const rect = containerRef.current?.getBoundingClientRect(); if (!rect) return;
+      const pts = Array.from(pointers2Ref.current.values()).slice(0, 2);
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+      const newK = clamp(pinch2Ref.current.initialK * (dist / pinch2Ref.current.initialDist), ZOOM_MIN, ZOOM_MAX);
+      const fx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const fy = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const r = newK / pinch2Ref.current.initialK;
+      const { tx, ty } = clampPan(fx - r*(fx - pinch2Ref.current.initialTx), fy - r*(fy - pinch2Ref.current.initialTy), newK, dims2.w, dims2.h);
+      const next = { k: newK, tx, ty };
+      xf2Ref.current = next; setXf2({ ...next });
+      return;
+    }
     if (!drag2Ref.current) return;
     const { k } = xf2Ref.current;
     const { tx, ty } = clampPan(
@@ -835,7 +925,16 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     const next  = { k, tx, ty };
     xf2Ref.current = next; setXf2({ ...next });
   };
-  const onPU2 = () => { drag2Ref.current = null; };
+  const onPU2 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    pointers2Ref.current.delete(e.pointerId);
+    if (pointers2Ref.current.size < 2) pinch2Ref.current = null;
+    if (pointers2Ref.current.size === 1) {
+      const remaining = Array.from(pointers2Ref.current.values())[0];
+      drag2Ref.current = { sx: remaining.x, sy: remaining.y, tx0: xf2Ref.current.tx, ty0: xf2Ref.current.ty };
+    } else if (pointers2Ref.current.size === 0) {
+      drag2Ref.current = null;
+    }
+  };
 
   if (loading2 || computed2.length === 0) {
     return (
@@ -961,6 +1060,8 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   const [xf3, setXf3] = useState({ k: 1, tx: 0, ty: 0 });
   const drag3Ref = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const proj3Ref = useRef({ w: 0, h: 0 });
+  const pointers3Ref = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinch3Ref = useRef<{ initialDist: number; initialK: number; initialTx: number; initialTy: number } | null>(null);
 
   const measure3 = useCallback(() => {
     const el = containerRef.current;
@@ -1053,9 +1154,36 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
   e.stopPropagation();
 
   svgRef.current?.setPointerCapture(e.pointerId);
+  pointers3Ref.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers3Ref.current.size === 1) {
     drag3Ref.current = { sx:e.clientX, sy:e.clientY, tx0:xf3Ref.current.tx, ty0:xf3Ref.current.ty };
+  } else if (pointers3Ref.current.size === 2) {
+    drag3Ref.current = null;
+    const pts = Array.from(pointers3Ref.current.values());
+    pinch3Ref.current = {
+      initialDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+      initialK: xf3Ref.current.k,
+      initialTx: xf3Ref.current.tx,
+      initialTy: xf3Ref.current.ty,
+    };
+  }
   };
   const onPM3 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (!pointers3Ref.current.has(e.pointerId)) return;
+    pointers3Ref.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers3Ref.current.size >= 2 && pinch3Ref.current) {
+      const rect = containerRef.current?.getBoundingClientRect(); if (!rect) return;
+      const pts = Array.from(pointers3Ref.current.values()).slice(0, 2);
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+      const newK = clamp(pinch3Ref.current.initialK * (dist / pinch3Ref.current.initialDist), ZOOM_MIN, ZOOM_MAX);
+      const fx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const fy = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const r = newK / pinch3Ref.current.initialK;
+      const { tx, ty } = clampPan(fx - r*(fx - pinch3Ref.current.initialTx), fy - r*(fy - pinch3Ref.current.initialTy), newK, dims3.w, dims3.h);
+      const next = { k: newK, tx, ty };
+      xf3Ref.current = next; setXf3({ ...next });
+      return;
+    }
     if (!drag3Ref.current) return;
     const { k } = xf3Ref.current;
     const { tx, ty } = clampPan(
@@ -1066,7 +1194,16 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
     const next = { k, tx, ty };
     xf3Ref.current = next; setXf3({...next});
   };
-  const onPU3 = () => { drag3Ref.current = null; };
+  const onPU3 = (e: ReactPointerEvent<SVGSVGElement>) => {
+    pointers3Ref.current.delete(e.pointerId);
+    if (pointers3Ref.current.size < 2) pinch3Ref.current = null;
+    if (pointers3Ref.current.size === 1) {
+      const remaining = Array.from(pointers3Ref.current.values())[0];
+      drag3Ref.current = { sx: remaining.x, sy: remaining.y, tx0: xf3Ref.current.tx, ty0: xf3Ref.current.ty };
+    } else if (pointers3Ref.current.size === 0) {
+      drag3Ref.current = null;
+    }
+  };
 
   if (loading3 || computed3.length === 0) {
     return <div ref={containerRef} className="map-container-inner"><div className="map-loading"><div className="spinner"/><span>Harita yükleniyor…</span></div></div>;
