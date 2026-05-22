@@ -297,19 +297,37 @@ const MAP_ASPECT = 0.52; // NaturalEarth height-to-width
  * Desktop (w ≥ 768) → k=1, no offset: unchanged behaviour, world fits the
  * container as before.
  *
- * Mobile (w < 768) → the projected world at k=1 is only `0.52 × width` tall,
- * which leaves a tall dark band above and below the map on portrait phones.
- * We pick k so the map height ≈ viewport height (with a small margin), and
- * centre it. The map then extends past the viewport horizontally; pan/pinch
- * are already wired in so the player can reach the edges.
+ * Mobile (w < 768) → frame the *useful land band* instead of the projection
+ * bounding box. NaturalEarth's canvas is `w × 0.52w` but ~30% of that height
+ * is empty polar ocean and elliptical corners; fitting the canvas leaves the
+ * viewport feeling like a small map floating in blue. We zoom past that, drop
+ * the equator slightly below viewport centre (more landmass lives north of
+ * it), and let the map overflow the viewport horizontally — pan and pinch are
+ * already wired in so the player can reach Australia or Alaska.
+ *
+ * Tuning:
+ *   USEFUL_BAND_RATIO — fraction of projection height occupied by continents.
+ *     0.70 ≈ 75°N to 55°S, which crops Arctic open ocean and most of
+ *     Antarctica off-screen. Most useful land remains visible.
+ *   VIEWPORT_FILL    — how much of viewport height the band should fill.
+ *     0.92 keeps a small breathing margin top/bottom while the band dominates.
+ *   NORTH_BIAS       — fraction of projection height to shift equator down by.
+ *     0.08 nudges Africa, S. Asia, and the Americas higher in frame without
+ *     pushing Australia or southern Africa off-screen.
  */
 function initialTransform(w: number, h: number) {
   if (w <= 0 || h <= 0) return { k: 1, tx: 0, ty: 0 };
   if (w >= 768)         return { k: 1, tx: 0, ty: 0 };
-  const fitVerticalK = (h / (w * MAP_ASPECT)) * 0.95;
-  const k  = clamp(fitVerticalK, 1, ZOOM_MAX);
-  const tx = (1 - k) * w / 2;
-  const ty = (1 - k) * h / 2;
+
+  const USEFUL_BAND_RATIO = 0.70;
+  const VIEWPORT_FILL     = 0.92;
+  const NORTH_BIAS        = 0.08;
+
+  const mapH      = w * MAP_ASPECT;
+  const targetH   = mapH * USEFUL_BAND_RATIO;
+  const k         = clamp((h * VIEWPORT_FILL) / targetH, 1, ZOOM_MAX);
+  const tx        = (1 - k) * w / 2;
+  const ty        = (1 - k) * h / 2 + k * mapH * NORTH_BIAS;
   return { k, tx, ty };
 }
 
