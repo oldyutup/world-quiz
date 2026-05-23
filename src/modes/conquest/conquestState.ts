@@ -71,8 +71,10 @@ export function createInitialRegionStates(
       shielded:      false,
     }));
   }
-  const distributed =
-    Math.floor(regions.length / players.length) * players.length;
+  // Fixed starting regions per player count; remaining stay neutral.
+  const startingPerPlayer: Record<number, number> = { 2: 4, 3: 3, 4: 3 };
+  const perPlayer = startingPerPlayer[players.length] ?? 3;
+  const distributed = Math.min(perPlayer * players.length, regions.length);
 
   return regions.map((r, i) => ({
     regionId:      r.id,

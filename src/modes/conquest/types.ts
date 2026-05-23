@@ -16,7 +16,7 @@ export type ConquestMapId =
 
 export type ConquestVisibility = "public" | "private";
 
-export type ConquestRoundCount = 4 | 6 | 8;
+export type ConquestRoundCount = 6 | 8 | 10;
 
 export type ConquestMaxPlayers = 2 | 3 | 4;
 
@@ -58,12 +58,12 @@ export const CONQUEST_MAPS: ConquestMapInfo[] = [
 ];
 
 export const CONQUEST_PLAYER_COUNTS: ConquestMaxPlayers[] = [2, 3, 4];
-export const CONQUEST_ROUND_COUNTS:  ConquestRoundCount[]  = [4, 6, 8];
+export const CONQUEST_ROUND_COUNTS:  ConquestRoundCount[]  = [6, 8, 10];
 
 export const CONQUEST_DEFAULT_SETTINGS: ConquestRoomSettings = {
   map: "turkey",
   maxPlayers: 4,
-  rounds: 6,
+  rounds: 8,
   visibility: "public",
 };
 

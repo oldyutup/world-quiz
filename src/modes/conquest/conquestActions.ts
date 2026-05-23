@@ -56,18 +56,29 @@ function playerName(
 
 /**
  * True if `playerId` may capture `regionId` as a neutral take.
- * Rules: region must exist on the map and be owner-less.
+ * Rules:
+ *   - target must exist on the map and be owner-less (neutral)
+ *   - player must own at least one region adjacent to the target
+ *     (same adjacency rule as attack — no "anywhere on board" grabs)
  */
 export function canCaptureNeutral(
   mapConfig:    ConquestMapConfig,
   regionStates: ConquestRegionState[],
-  _playerId:    string,
+  playerId:     string,
   regionId:     ConquestRegionId,
 ): boolean {
   if (!mapConfig.regions.some(r => r.id === regionId)) return false;
-  const rs = regionStateById(regionStates).get(regionId);
+  const byId = regionStateById(regionStates);
+  const rs = byId.get(regionId);
   if (!rs) return false;
-  return rs.ownerPlayerId === null;
+  if (rs.ownerPlayerId !== null) return false;
+
+  const neighbors = regionsAdjacentTo(mapConfig, regionId);
+  for (const nbId of neighbors) {
+    const nb = byId.get(nbId);
+    if (nb && nb.ownerPlayerId === playerId) return true;
+  }
+  return false;
 }
 
 /**

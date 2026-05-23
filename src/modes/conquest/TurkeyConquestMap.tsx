@@ -1,22 +1,16 @@
 /**
- * TurkeyConquestMap — stylised inline-SVG map for Türkiye Kuşatması.
+ * TurkeyConquestMap — stylised grid SVG map for Türkiye Kuşatması.
  *
- * Seven polygons cover the outer Turkey silhouette (viewBox 900×385).
- * Each polygon is independently coloured by the owning player's colour,
- * highlighted when it is a legal action target, and flashes red on an
- * illegal click.  No gameplay logic lives here — all decisions are made
- * by the parent through props.
+ * 24 regions arranged in a 6-column × 4-row grid (viewBox 900×370).
+ * Each cell is an independent rect coloured by the owning player,
+ * highlighted when it is a legal action target, and flashes on an
+ * illegal click.  No gameplay logic lives here.
  *
- * Region-id → SVG polygon mapping:
- *   marmara           → NW trapezoid  (5,10  240,10  240,140  185,185  5,185)
- *   karadeniz         → N rectangle   (240,10  680,10  680,140  240,140)
- *   ege               → W rectangle   (5,185  185,185  185,310  5,310)
- *   ic_anadolu        → centre hex    (185,185  240,140  680,140  640,265  580,310  185,310)
- *   akdeniz           → S trapezoid   (5,310  185,310  580,310  600,375  5,375)
- *   dogu_anadolu      → E quad        (680,10  895,60  895,265  640,265  680,140)
- *   guneydogu_anadolu → SE pentagon   (640,265  895,265  895,375  600,375  580,310)
- *
- * Adjacent shared edges ensure zero gaps between polygons.
+ * Grid layout (col, row):
+ *   Row 0: trakya(0) istanbul_kocaeli(1) bati_karadeniz(2) orta_karadeniz(3) dogu_karadeniz(4) kuzeydogu_anadolu(5)
+ *   Row 1: kuzey_ege(0) guney_marmara(1) ic_bati_anadolu(2) ankara_cevre(3) orta_anadolu(4) erzurum_kars(5)
+ *   Row 2: guney_ege(0) bati_akdeniz(1) konya_karaman(2) kapadokya(3) malatya_elazig(4) van_hakkari(5)
+ *   Row 3: hatay_osmaniye(0) cukurova(1) firat_hatti(2) dicle_hatti(3) antep_kilis(4) mardin_sirnak(5)
  */
 
 import { useCallback } from "react";
@@ -27,59 +21,64 @@ import type {
   ConquestRegionState,
 } from "./types";
 
-// ─── Region geometry ─────────────────────────────────────────────────────────
+// ─── Grid geometry ────────────────────────────────────────────────────────────
+
+const CW = 146;   // cell width  (px in SVG units)
+const CH = 86;    // cell height
+const CX = 150;   // column step (CW + 4 gap)
+const CY = 92;    // row step    (CH + 6 gap)
+const MX = 2;     // left/right margin
+const MY = 2;     // top/bottom margin
 
 interface RegionDef {
-  id:      ConquestRegionId;
-  points:  string;
-  labelX:  number;
-  labelY:  number;
-  label:   string;
+  id:    ConquestRegionId;
+  x:     number;
+  y:     number;
+  cx:    number;  // label centre x
+  cy:    number;  // label centre y
+  label: string;
+}
+
+function cell(
+  col: number,
+  row: number,
+  id: ConquestRegionId,
+  label: string,
+): RegionDef {
+  const x = col * CX + MX;
+  const y = row * CY + MY;
+  return { id, x, y, cx: x + CW / 2, cy: y + CH / 2, label };
 }
 
 const REGION_DEFS: RegionDef[] = [
-  {
-    id:     "marmara",
-    points: "5,10 240,10 240,140 185,185 5,185",
-    labelX: 113, labelY: 97,
-    label:  "Marmara",
-  },
-  {
-    id:     "karadeniz",
-    points: "240,10 680,10 680,140 240,140",
-    labelX: 460, labelY: 75,
-    label:  "Karadeniz",
-  },
-  {
-    id:     "ege",
-    points: "5,185 185,185 185,310 5,310",
-    labelX: 95, labelY: 248,
-    label:  "Ege",
-  },
-  {
-    id:     "ic_anadolu",
-    points: "185,185 240,140 680,140 640,265 580,310 185,310",
-    labelX: 415, labelY: 228,
-    label:  "İç Anadolu",
-  },
-  {
-    id:     "akdeniz",
-    points: "5,310 185,310 580,310 600,375 5,375",
-    labelX: 292, labelY: 344,
-    label:  "Akdeniz",
-  },
-  {
-    id:     "dogu_anadolu",
-    points: "680,10 895,60 895,265 640,265 680,140",
-    labelX: 786, labelY: 160,
-    label:  "Doğu Anadolu",
-  },
-  {
-    id:     "guneydogu_anadolu",
-    points: "640,265 895,265 895,375 600,375 580,310",
-    labelX: 748, labelY: 323,
-    label:  "Güneydoğu",
-  },
+  // Row 0 — Northern band
+  cell(0, 0, "trakya",            "Trakya"),
+  cell(1, 0, "istanbul_kocaeli",  "İstanbul"),
+  cell(2, 0, "bati_karadeniz",    "Batı Kara."),
+  cell(3, 0, "orta_karadeniz",    "Orta Kara."),
+  cell(4, 0, "dogu_karadeniz",    "Doğu Kara."),
+  cell(5, 0, "kuzeydogu_anadolu", "KD Anad."),
+  // Row 1 — West + Central Anatolia
+  cell(0, 1, "kuzey_ege",         "Kuzey Ege"),
+  cell(1, 1, "guney_marmara",     "G. Marmara"),
+  cell(2, 1, "ic_bati_anadolu",   "İç Batı"),
+  cell(3, 1, "ankara_cevre",      "Ankara"),
+  cell(4, 1, "orta_anadolu",      "Orta Anad."),
+  cell(5, 1, "erzurum_kars",      "Erzurum"),
+  // Row 2 — South Ege + South-Central + Far East
+  cell(0, 2, "guney_ege",         "Güney Ege"),
+  cell(1, 2, "bati_akdeniz",      "Batı Akd."),
+  cell(2, 2, "konya_karaman",     "Konya"),
+  cell(3, 2, "kapadokya",         "Kapadokya"),
+  cell(4, 2, "malatya_elazig",    "Malatya"),
+  cell(5, 2, "van_hakkari",       "Van"),
+  // Row 3 — Southern band
+  cell(0, 3, "hatay_osmaniye",    "Hatay"),
+  cell(1, 3, "cukurova",          "Çukurova"),
+  cell(2, 3, "firat_hatti",       "Fırat"),
+  cell(3, 3, "dicle_hatti",       "Dicle"),
+  cell(4, 3, "antep_kilis",       "Antep"),
+  cell(5, 3, "mardin_sirnak",     "Mardin"),
 ];
 
 // ─── Colour palette ───────────────────────────────────────────────────────────
@@ -140,30 +139,37 @@ export default function TurkeyConquestMap({
   return (
     <div className="cq-turkey-map-wrap">
       <svg
-        viewBox="0 0 900 385"
+        viewBox="0 0 900 370"
         preserveAspectRatio="xMidYMid meet"
         className="cq-turkey-map-svg"
         aria-label="Türkiye Kuşatması haritası"
         role="img"
       >
         {REGION_DEFS.map(rdef => {
-          const rs      = stateById[rdef.id];
-          const owner   = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
+          const rs       = stateById[rdef.id];
+          const owner    = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
           const colorKey = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
           const c        = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
           const isLegal  = legalTargetIds.has(rdef.id);
           const isFlash  = flashRegionId === rdef.id;
           const isDimmed = interactive && !isLegal;
 
-          const fill     = isLegal ? c.legalFill   : c.fill;
-          const stroke   = isLegal ? c.legalStroke : c.stroke;
-          const strokeW  = isLegal ? 2.5 : 1.5;
+          const fill    = isLegal ? c.legalFill   : c.fill;
+          const stroke  = isLegal ? c.legalStroke : c.stroke;
+          const strokeW = isLegal ? 2.5 : 1.5;
+
+          // Shift label up slightly when owner name is shown below it.
+          const labelY = owner ? rdef.cy - 9 : rdef.cy;
 
           return (
             <g key={rdef.id}>
-              {/* Main region polygon */}
-              <polygon
-                points={rdef.points}
+              {/* Main region cell */}
+              <rect
+                x={rdef.x}
+                y={rdef.y}
+                width={CW}
+                height={CH}
+                rx={4}
                 className="cq-map-region"
                 data-interactive={interactive ? "" : undefined}
                 data-legal={isLegal ? "" : undefined}
@@ -175,12 +181,14 @@ export default function TurkeyConquestMap({
                 aria-label={`${rdef.label}${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
               />
 
-              {/* Pulsing outline for legal targets.
-                  fill/stroke/strokeWidth as SVG presentation attributes
-                  (not inline style) so @keyframes cqMapPulse can override them. */}
+              {/* Pulsing outline for legal targets */}
               {isLegal && (
-                <polygon
-                  points={rdef.points}
+                <rect
+                  x={rdef.x}
+                  y={rdef.y}
+                  width={CW}
+                  height={CH}
+                  rx={4}
                   className="cq-map-pulse-ring"
                   fill="none"
                   stroke={stroke}
@@ -189,10 +197,14 @@ export default function TurkeyConquestMap({
                 />
               )}
 
-              {/* Flash overlay for illegal click (separate element avoids inline-style conflict) */}
+              {/* Flash overlay for illegal click */}
               {isFlash && (
-                <polygon
-                  points={rdef.points}
+                <rect
+                  x={rdef.x}
+                  y={rdef.y}
+                  width={CW}
+                  height={CH}
+                  rx={4}
                   className="cq-map-flash-overlay"
                   aria-hidden="true"
                 />
@@ -200,8 +212,8 @@ export default function TurkeyConquestMap({
 
               {/* Region name label */}
               <text
-                x={rdef.labelX}
-                y={rdef.labelY}
+                x={rdef.cx}
+                y={labelY}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 className="cq-map-label"
@@ -210,11 +222,11 @@ export default function TurkeyConquestMap({
                 {rdef.label}
               </text>
 
-              {/* Owner name (shown below region name when owned) */}
+              {/* Owner name shown below region label when owned */}
               {owner && (
                 <text
-                  x={rdef.labelX}
-                  y={rdef.labelY + 17}
+                  x={rdef.cx}
+                  y={rdef.cy + 10}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   className="cq-map-owner-label"
@@ -227,37 +239,19 @@ export default function TurkeyConquestMap({
           );
         })}
 
-        {/* Outer Turkey silhouette border */}
-        <polygon
-          points="5,10 680,10 895,60 895,375 5,375"
+        {/* Outer border */}
+        <rect
+          x={MX}
+          y={MY}
+          width={6 * CX - (CX - CW)}
+          height={4 * CY - (CY - CH)}
+          rx={6}
           fill="none"
           stroke="rgba(255,255,255,0.13)"
           strokeWidth={2}
           aria-hidden="true"
           style={{ pointerEvents: "none" }}
         />
-
-        {/* Interior region dividers drawn on top for crispness */}
-        <g
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={1}
-          aria-hidden="true"
-          style={{ pointerEvents: "none" }}
-        >
-          <line x1="240" y1="10"  x2="240" y2="140" />
-          <line x1="240" y1="140" x2="680" y2="140" />
-          <line x1="680" y1="10"  x2="680" y2="140" />
-          <line x1="5"   y1="185" x2="185" y2="185" />
-          <line x1="185" y1="185" x2="240" y2="140" />
-          <line x1="185" y1="185" x2="185" y2="310" />
-          <line x1="185" y1="310" x2="5"   y2="310" />
-          <line x1="185" y1="310" x2="580" y2="310" />
-          <line x1="580" y1="310" x2="640" y2="265" />
-          <line x1="640" y1="265" x2="680" y2="140" />
-          <line x1="640" y1="265" x2="895" y2="265" />
-          <line x1="580" y1="310" x2="600" y2="375" />
-        </g>
       </svg>
     </div>
   );
