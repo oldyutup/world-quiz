@@ -1,16 +1,13 @@
 /**
- * TurkeyConquestMap — stylised grid SVG map for Türkiye Kuşatması.
+ * TurkeyConquestMap — real province SVG map for Türkiye Kuşatması.
  *
- * 24 regions arranged in a 6-column × 4-row grid (viewBox 900×370).
- * Each cell is an independent rect coloured by the owning player,
- * highlighted when it is a legal action target, and flashes on an
- * illegal click.  No gameplay logic lives here.
+ * Renders all 81 Turkey province paths, grouped by conquest region.
+ * Province path data: ali-han/Turkey-SVG-Map (MIT License).
+ * viewBox: 0 0 1005 490.
  *
- * Grid layout (col, row):
- *   Row 0: trakya(0) istanbul_kocaeli(1) bati_karadeniz(2) orta_karadeniz(3) dogu_karadeniz(4) kuzeydogu_anadolu(5)
- *   Row 1: kuzey_ege(0) guney_marmara(1) ic_bati_anadolu(2) ankara_cevre(3) orta_anadolu(4) erzurum_kars(5)
- *   Row 2: guney_ege(0) bati_akdeniz(1) konya_karaman(2) kapadokya(3) malatya_elazig(4) van_hakkari(5)
- *   Row 3: hatay_osmaniye(0) cukurova(1) firat_hatti(2) dicle_hatti(3) antep_kilis(4) mardin_sirnak(5)
+ * Interaction fires at the conquest-region level (24 regions), not at the
+ * individual province level.  All provinces in a region share the same owner
+ * colour, legal-target glow and flash overlay.
  */
 
 import { useCallback } from "react";
@@ -20,66 +17,73 @@ import type {
   ConquestRegionId,
   ConquestRegionState,
 } from "./types";
+import { TURKEY_PROVINCES } from "./maps/turkey-provinces";
 
-// ─── Grid geometry ────────────────────────────────────────────────────────────
+// ─── Province groups (module-level constant, not recomputed per render) ───────
 
-const CW = 146;   // cell width  (px in SVG units)
-const CH = 86;    // cell height
-const CX = 150;   // column step (CW + 4 gap)
-const CY = 92;    // row step    (CH + 6 gap)
-const MX = 2;     // left/right margin
-const MY = 2;     // top/bottom margin
+const PROVINCES_BY_REGION: Record<string, typeof TURKEY_PROVINCES> =
+  TURKEY_PROVINCES.reduce(
+    (acc, p) => { (acc[p.conquestRegionId] ??= []).push(p); return acc; },
+    {} as Record<string, typeof TURKEY_PROVINCES>,
+  );
 
-interface RegionDef {
-  id:    ConquestRegionId;
-  x:     number;
-  y:     number;
-  cx:    number;  // label centre x
-  cy:    number;  // label centre y
-  label: string;
-}
+// ─── Region label text ────────────────────────────────────────────────────────
 
-function cell(
-  col: number,
-  row: number,
-  id: ConquestRegionId,
-  label: string,
-): RegionDef {
-  const x = col * CX + MX;
-  const y = row * CY + MY;
-  return { id, x, y, cx: x + CW / 2, cy: y + CH / 2, label };
-}
+const REGION_LABELS: Record<string, string> = {
+  trakya:             "Trakya",
+  istanbul_kocaeli:   "İstanbul",
+  guney_marmara:      "G. Marmara",
+  bati_karadeniz:     "Batı Kara.",
+  orta_karadeniz:     "Orta Kara.",
+  dogu_karadeniz:     "Doğu Kara.",
+  kuzeydogu_anadolu:  "KD Anad.",
+  kuzey_ege:          "Kuzey Ege",
+  guney_ege:          "Güney Ege",
+  bati_akdeniz:       "Batı Akd.",
+  cukurova:           "Çukurova",
+  ic_bati_anadolu:    "İç Batı",
+  ankara_cevre:       "Ankara",
+  konya_karaman:      "Konya",
+  kapadokya:          "Kapadokya",
+  orta_anadolu:       "Orta Anad.",
+  erzurum_kars:       "Erzurum",
+  van_hakkari:        "Van",
+  malatya_elazig:     "Malatya",
+  firat_hatti:        "Fırat",
+  dicle_hatti:        "Dicle",
+  antep_kilis:        "Antep",
+  hatay_osmaniye:     "Hatay",
+  mardin_sirnak:      "Mardin",
+};
 
-const REGION_DEFS: RegionDef[] = [
-  // Row 0 — Northern band
-  cell(0, 0, "trakya",            "Trakya"),
-  cell(1, 0, "istanbul_kocaeli",  "İstanbul"),
-  cell(2, 0, "bati_karadeniz",    "Batı Kara."),
-  cell(3, 0, "orta_karadeniz",    "Orta Kara."),
-  cell(4, 0, "dogu_karadeniz",    "Doğu Kara."),
-  cell(5, 0, "kuzeydogu_anadolu", "KD Anad."),
-  // Row 1 — West + Central Anatolia
-  cell(0, 1, "kuzey_ege",         "Kuzey Ege"),
-  cell(1, 1, "guney_marmara",     "G. Marmara"),
-  cell(2, 1, "ic_bati_anadolu",   "İç Batı"),
-  cell(3, 1, "ankara_cevre",      "Ankara"),
-  cell(4, 1, "orta_anadolu",      "Orta Anad."),
-  cell(5, 1, "erzurum_kars",      "Erzurum"),
-  // Row 2 — South Ege + South-Central + Far East
-  cell(0, 2, "guney_ege",         "Güney Ege"),
-  cell(1, 2, "bati_akdeniz",      "Batı Akd."),
-  cell(2, 2, "konya_karaman",     "Konya"),
-  cell(3, 2, "kapadokya",         "Kapadokya"),
-  cell(4, 2, "malatya_elazig",    "Malatya"),
-  cell(5, 2, "van_hakkari",       "Van"),
-  // Row 3 — Southern band
-  cell(0, 3, "hatay_osmaniye",    "Hatay"),
-  cell(1, 3, "cukurova",          "Çukurova"),
-  cell(2, 3, "firat_hatti",       "Fırat"),
-  cell(3, 3, "dicle_hatti",       "Dicle"),
-  cell(4, 3, "antep_kilis",       "Antep"),
-  cell(5, 3, "mardin_sirnak",     "Mardin"),
-];
+// ─── Region label positions in the 1005×490 SVG coordinate space ─────────────
+
+const REGION_LABEL_POS: Record<string, { x: number; y: number }> = {
+  trakya:             { x:  68, y: 150 },
+  istanbul_kocaeli:   { x: 200, y: 148 },
+  guney_marmara:      { x: 188, y: 218 },
+  bati_karadeniz:     { x: 312, y:  90 },
+  orta_karadeniz:     { x: 462, y:  84 },
+  dogu_karadeniz:     { x: 638, y:  92 },
+  kuzeydogu_anadolu:  { x: 848, y: 132 },
+  kuzey_ege:          { x: 105, y: 268 },
+  guney_ege:          { x: 128, y: 368 },
+  bati_akdeniz:       { x: 280, y: 390 },
+  cukurova:           { x: 480, y: 402 },
+  ic_bati_anadolu:    { x: 318, y: 262 },
+  ankara_cevre:       { x: 448, y: 198 },
+  konya_karaman:      { x: 436, y: 328 },
+  kapadokya:          { x: 572, y: 298 },
+  orta_anadolu:       { x: 572, y: 222 },
+  erzurum_kars:       { x: 790, y: 195 },
+  van_hakkari:        { x: 878, y: 318 },
+  malatya_elazig:     { x: 678, y: 268 },
+  firat_hatti:        { x: 608, y: 382 },
+  dicle_hatti:        { x: 745, y: 375 },
+  antep_kilis:        { x: 596, y: 432 },
+  hatay_osmaniye:     { x: 530, y: 445 },
+  mardin_sirnak:      { x: 812, y: 425 },
+};
 
 // ─── Colour palette ───────────────────────────────────────────────────────────
 
@@ -128,109 +132,119 @@ export default function TurkeyConquestMap({
 
   const handleKey = useCallback((
     e: React.KeyboardEvent,
-    id: ConquestRegionId,
+    regionId: ConquestRegionId,
   ) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      onRegionClick?.(id);
+      onRegionClick?.(regionId);
     }
   }, [onRegionClick]);
+
+  // Pre-compute per-region display state once per render.
+  const regionEntries = Object.entries(PROVINCES_BY_REGION).map(([regionId, provinces]) => {
+    const rid      = regionId as ConquestRegionId;
+    const rs       = stateById[regionId];
+    const owner    = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
+    const colorKey = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
+    const c        = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
+    const isLegal  = legalTargetIds.has(rid);
+    const isFlash  = flashRegionId === regionId;
+    const isDimmed = interactive && !isLegal;
+    const fill     = isLegal ? c.legalFill   : c.fill;
+    const stroke   = isLegal ? c.legalStroke : c.stroke;
+    const labelPos = REGION_LABEL_POS[regionId] ?? { x: 0, y: 0 };
+    const label    = REGION_LABELS[regionId]   ?? regionId;
+    return { rid, regionId, provinces, owner, c, isLegal, isFlash, isDimmed, fill, stroke, labelPos, label };
+  });
 
   return (
     <div className="cq-turkey-map-wrap">
       <svg
-        viewBox="0 0 900 370"
+        viewBox="0 0 1005 490"
         preserveAspectRatio="xMidYMid meet"
         className="cq-turkey-map-svg"
         aria-label="Türkiye Kuşatması haritası"
         role="img"
       >
-        {REGION_DEFS.map(rdef => {
-          const rs       = stateById[rdef.id];
-          const owner    = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
-          const colorKey = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
-          const c        = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
-          const isLegal  = legalTargetIds.has(rdef.id);
-          const isFlash  = flashRegionId === rdef.id;
-          const isDimmed = interactive && !isLegal;
+        {/* ── Layer 1: base province paths ─────────────────────── */}
+        {regionEntries.map(({ rid, regionId, provinces, owner, isLegal, isDimmed, fill, stroke }) =>
+          provinces.map((province, idx) => (
+            <path
+              key={province.id}
+              d={province.d}
+              className="cq-map-region"
+              data-interactive={interactive ? "" : undefined}
+              data-legal={isLegal ? "" : undefined}
+              style={{
+                fill,
+                stroke,
+                strokeWidth: 0.6,
+                opacity: isDimmed ? 0.45 : 1,
+              }}
+              onClick={interactive ? () => onRegionClick!(rid) : undefined}
+              onKeyDown={interactive ? (e) => handleKey(e, rid) : undefined}
+              role={interactive ? "button" : undefined}
+              // Only the first province in each region is a keyboard tab stop.
+              tabIndex={interactive ? (isLegal && idx === 0 ? 0 : -1) : undefined}
+              aria-label={`${province.name} (${REGION_LABELS[regionId] ?? regionId})${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
+            />
+          ))
+        )}
 
-          const fill    = isLegal ? c.legalFill   : c.fill;
-          const stroke  = isLegal ? c.legalStroke : c.stroke;
-          const strokeW = isLegal ? 2.5 : 1.5;
-
-          // Shift label up slightly when owner name is shown below it.
-          const labelY = owner ? rdef.cy - 9 : rdef.cy;
-
-          return (
-            <g key={rdef.id}>
-              {/* Main region cell */}
-              <rect
-                x={rdef.x}
-                y={rdef.y}
-                width={CW}
-                height={CH}
-                rx={4}
-                className="cq-map-region"
-                data-interactive={interactive ? "" : undefined}
-                data-legal={isLegal ? "" : undefined}
-                style={{ fill, stroke, strokeWidth: strokeW, opacity: isDimmed ? 0.48 : 1 }}
-                onClick={interactive ? () => onRegionClick!(rdef.id) : undefined}
-                onKeyDown={interactive ? (e) => handleKey(e, rdef.id) : undefined}
-                role={interactive ? "button" : undefined}
-                tabIndex={interactive ? (isLegal ? 0 : -1) : undefined}
-                aria-label={`${rdef.label}${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
+        {/* ── Layer 2: legal-target pulse rings ────────────────── */}
+        {regionEntries
+          .filter(r => r.isLegal)
+          .flatMap(({ provinces, c }) =>
+            provinces.map(province => (
+              <path
+                key={`pulse-${province.id}`}
+                d={province.d}
+                className="cq-map-pulse-ring"
+                fill="none"
+                stroke={c.legalStroke}
+                strokeWidth={2}
+                aria-hidden="true"
               />
+            ))
+          )}
 
-              {/* Pulsing outline for legal targets */}
-              {isLegal && (
-                <rect
-                  x={rdef.x}
-                  y={rdef.y}
-                  width={CW}
-                  height={CH}
-                  rx={4}
-                  className="cq-map-pulse-ring"
-                  fill="none"
-                  stroke={stroke}
-                  strokeWidth={3}
-                  aria-hidden="true"
-                />
-              )}
+        {/* ── Layer 3: illegal-click flash overlays ────────────── */}
+        {regionEntries
+          .filter(r => r.isFlash)
+          .flatMap(({ provinces }) =>
+            provinces.map(province => (
+              <path
+                key={`flash-${province.id}`}
+                d={province.d}
+                className="cq-map-flash-overlay"
+                aria-hidden="true"
+              />
+            ))
+          )}
 
-              {/* Flash overlay for illegal click */}
-              {isFlash && (
-                <rect
-                  x={rdef.x}
-                  y={rdef.y}
-                  width={CW}
-                  height={CH}
-                  rx={4}
-                  className="cq-map-flash-overlay"
-                  aria-hidden="true"
-                />
-              )}
-
-              {/* Region name label */}
+        {/* ── Layer 4: conquest-region labels (24, always on top) ─ */}
+        {regionEntries.map(({ regionId, owner, c, labelPos, label }) => {
+          const labelY = owner ? labelPos.y - 7 : labelPos.y;
+          return (
+            <g key={`lbl-${regionId}`} aria-hidden="true" style={{ pointerEvents: "none" }}>
               <text
-                x={rdef.cx}
+                x={labelPos.x}
                 y={labelY}
                 textAnchor="middle"
                 dominantBaseline="middle"
                 className="cq-map-label"
-                style={{ fill: c.text, pointerEvents: "none", userSelect: "none" }}
+                style={{ fill: c.text, userSelect: "none" }}
               >
-                {rdef.label}
+                {label}
               </text>
-
-              {/* Owner name shown below region label when owned */}
               {owner && (
                 <text
-                  x={rdef.cx}
-                  y={rdef.cy + 10}
+                  x={labelPos.x}
+                  y={labelPos.y + 9}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   className="cq-map-owner-label"
-                  style={{ fill: c.text, pointerEvents: "none", userSelect: "none" }}
+                  style={{ fill: c.text, userSelect: "none" }}
                 >
                   {owner.name}
                 </text>
@@ -238,20 +252,6 @@ export default function TurkeyConquestMap({
             </g>
           );
         })}
-
-        {/* Outer border */}
-        <rect
-          x={MX}
-          y={MY}
-          width={6 * CX - (CX - CW)}
-          height={4 * CY - (CY - CH)}
-          rx={6}
-          fill="none"
-          stroke="rgba(255,255,255,0.13)"
-          strokeWidth={2}
-          aria-hidden="true"
-          style={{ pointerEvents: "none" }}
-        />
       </svg>
     </div>
   );
