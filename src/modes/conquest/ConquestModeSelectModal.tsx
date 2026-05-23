@@ -2,11 +2,12 @@
  * ConquestModeSelectModal — centered choice modal opened from the home
  * screen's Kuşatma card. Visually mirrors the existing wheel/flag/country
  * choice modals (`.overlay` + `.modal` + `.modal-btn`), but only offers
- * the two Kuşatma-specific entry points. No "Tek Oyuncu" or "Online 1v1".
+ * Kuşatma-specific entry points. No "Tek Oyuncu" or "Online 1v1".
  *
  * Guest restrictions (Kuşatma-only):
- *   - "Oda Kur"       → blocked for guests; inline warning shown.
+ *   - "Oda Kur"        → blocked for guests; inline warning shown.
  *   - "Odalara Göz At" → blocked for guests; inline warning shown.
+ *   - "Oda Koduyla Katıl" → allowed for guests (invite-link parity).
  */
 
 import { useState, type CSSProperties } from "react";
@@ -18,6 +19,7 @@ interface Props {
   /** True when a registered user is logged in (profile.username exists). */
   isLoggedIn:   boolean;
   onCreate:     () => void;
+  onJoinByCode: () => void;
   onBrowse:     () => void;
   onClose:      () => void;
 }
@@ -27,6 +29,7 @@ export default function ConquestModeSelectModal({
   themeAttr,
   isLoggedIn,
   onCreate,
+  onJoinByCode,
   onBrowse,
   onClose,
 }: Props) {
@@ -50,6 +53,11 @@ export default function ConquestModeSelectModal({
     onBrowse();
   }
 
+  function handleJoinByCode() {
+    playSound("click");
+    onJoinByCode();
+  }
+
   return (
     <div
       className="overlay"
@@ -62,6 +70,10 @@ export default function ConquestModeSelectModal({
 
         <button className="modal-btn" onClick={handleCreate}>
           🏠 Oda Kur
+        </button>
+
+        <button className="modal-btn" onClick={handleJoinByCode}>
+          🔑 Oda Koduyla Katıl
         </button>
 
         <button className="modal-btn" onClick={handleBrowse}>

@@ -65,7 +65,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -120,6 +120,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "wheel-group-game": 0,
   "conquest-game": 0,
   "conquest-rooms": 0,
+  "conquest-join": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -502,6 +503,10 @@ useEffect(() => {
     onCreate={() => {
       setShowConquestMenu(false);
       onSelect("conquest-game");
+    }}
+    onJoinByCode={() => {
+      setShowConquestMenu(false);
+      onSelect("conquest-join");
     }}
     onBrowse={() => {
       setShowConquestMenu(false);
@@ -2164,6 +2169,14 @@ async function handleLogout() {
     const flagDuelCode = params.get("flagDuel");
     const wheelDuelCode = params.get("wheelDuel");
     const wheelGroupCode = params.get("wheelGroup");
+    const conquestCode = params.get("conquest");
+
+    if (conquestCode) {
+      // ConquestMode reads the same param on mount and runs the auto-join
+      // flow itself (and strips the param from the URL afterwards).
+      setScreen("conquest-join");
+      return;
+    }
 
     if (wheelGroupCode) {
       setScreen("wheel-group-game");
@@ -2201,7 +2214,7 @@ useEffect(() => {
 
   // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin
   const params = new URLSearchParams(window.location.search);
-  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup")) {
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("conquest")) {
     return;
   }
 
@@ -2295,6 +2308,13 @@ useEffect(() => {
   if (screen === "conquest-rooms") return (
     <ConquestMode
       initialPhase="rooms"
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "conquest-join") return (
+    <ConquestMode
+      initialPhase="join-code"
       onHome={() => setScreen("home")}
       profile={profile}
     />

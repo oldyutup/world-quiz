@@ -153,3 +153,37 @@ export interface WheelGroupPlayer {
   joined_at:    string;
   last_seen_at: string;
 }
+
+/* ── Conquest (Kuşatma) — Phase 5: Supabase-backed rooms & players ── */
+export interface ConquestRoomRow {
+  id:               string;
+  room_code:        string;
+  host_profile_id:  string | null;
+  host_player_id:   string | null;
+  host_name:        string;
+  status:           "waiting" | "playing" | "finished" | "closed";
+  /** Frontend ConquestMapId — stored as text so new maps don't need migrations. */
+  map_id:           string;
+  max_players:      number;
+  round_count:      number;
+  visibility:       "public" | "private";
+  created_at:       string;
+  updated_at:       string;
+  started_at:       string | null;
+  finished_at:      string | null;
+}
+
+export interface ConquestPlayerRow {
+  id:           string;
+  room_id:      string;
+  /** auth.users.id — null for guests. */
+  profile_id:   string | null;
+  /** Frontend-generated id for guest users — null for logged-in users. */
+  guest_id:     string | null;
+  name:         string;
+  is_host:      boolean;
+  /** ConquestPlayerColor string ("red" | "blue" | ...) — null until assigned. */
+  color:        string | null;
+  joined_at:    string;
+  last_seen_at: string;
+}

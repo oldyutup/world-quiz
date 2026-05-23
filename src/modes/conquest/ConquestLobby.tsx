@@ -38,6 +38,8 @@ import { buildConquestShareLink } from "./utils";
 interface Props {
   roomCode:          string;
   hostName:          string;
+  /** The current viewer's display name — used as the chat sender label. */
+  myName:            string;
   settings:          ConquestRoomSettings;
   players:           ConquestPlayer[];
   isHost:            boolean;
@@ -51,6 +53,7 @@ interface Props {
 export default function ConquestLobby({
   roomCode,
   hostName,
+  myName,
   settings,
   players,
   isHost,
@@ -291,7 +294,7 @@ export default function ConquestLobby({
           {isLoggedIn ? (
             <LobbyChat
               roomCode={roomCode}
-              playerName={hostName}
+              playerName={myName || hostName}
               mobileSheetOpen={chatOpen}
               onMobileSheetOpenChange={v => { setChatOpen(v); if (v) setPlayersOpen(false); }}
               hideMobileFab={chatOpen || playersOpen}

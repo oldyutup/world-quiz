@@ -9493,3 +9493,369 @@ body {
   .cq-settings-grid { grid-template-columns: 1fr; }
   .cq-room-code-big { font-size: 32px; letter-spacing: 0.14em; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   KUŞATMA (Conquest) — Phase 4: game screen & territory board
+   Color theming uses data-color attribute so CSS drives all
+   visual variants cleanly; no inline color styles in components.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Color token definitions (shared by player chips + region cards) ── */
+
+.cq-game-player-chip[data-color="red"],
+.cq-region-card[data-color="red"] {
+  --cq-color:    #ef4444;
+  --cq-color-bg: rgba(239, 68, 68, 0.11);
+  --cq-color-bd: rgba(239, 68, 68, 0.50);
+}
+.cq-game-player-chip[data-color="blue"],
+.cq-region-card[data-color="blue"] {
+  --cq-color:    #3b82f6;
+  --cq-color-bg: rgba(59, 130, 246, 0.11);
+  --cq-color-bd: rgba(59, 130, 246, 0.50);
+}
+.cq-game-player-chip[data-color="green"],
+.cq-region-card[data-color="green"] {
+  --cq-color:    #22c55e;
+  --cq-color-bg: rgba(34, 197, 94, 0.11);
+  --cq-color-bd: rgba(34, 197, 94, 0.50);
+}
+.cq-game-player-chip[data-color="yellow"],
+.cq-region-card[data-color="yellow"] {
+  --cq-color:    #eab308;
+  --cq-color-bg: rgba(234, 179, 8, 0.11);
+  --cq-color-bd: rgba(234, 179, 8, 0.50);
+}
+.cq-game-player-chip[data-color="purple"],
+.cq-region-card[data-color="purple"] {
+  --cq-color:    #a855f7;
+  --cq-color-bg: rgba(168, 85, 247, 0.11);
+  --cq-color-bd: rgba(168, 85, 247, 0.50);
+}
+.cq-game-player-chip[data-color="orange"],
+.cq-region-card[data-color="orange"] {
+  --cq-color:    #f97316;
+  --cq-color-bg: rgba(249, 115, 22, 0.11);
+  --cq-color-bd: rgba(249, 115, 22, 0.50);
+}
+.cq-region-card[data-color="neutral"] {
+  --cq-color:    rgba(255, 255, 255, 0.22);
+  --cq-color-bg: rgba(255, 255, 255, 0.03);
+  --cq-color-bd: rgba(255, 255, 255, 0.10);
+}
+
+/* ── Game screen ──────────────────────────────────────────────── */
+.cq-game-screen {
+  /* flex col + full viewport inherited from .duel-screen */
+}
+
+/* ── Round badge in header ────────────────────────────────────── */
+.cq-game-round-badge {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #f6c074;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Player summary strip ─────────────────────────────────────── */
+.cq-game-players-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cq-game-players-strip::-webkit-scrollbar { display: none; }
+
+.cq-game-player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--cq-color-bg, rgba(255,255,255,0.06));
+  border: 1.5px solid var(--cq-color-bd, rgba(255,255,255,0.12));
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cq-game-player-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cq-color, rgba(255,255,255,0.3));
+  flex-shrink: 0;
+}
+
+.cq-game-player-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cq-game-player-host {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.cq-game-player-regions {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--cq-color, var(--muted));
+  min-width: 14px;
+  text-align: center;
+}
+
+.cq-game-neutral-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.10);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cq-game-neutral-chip .cq-game-player-regions {
+  color: var(--muted);
+}
+
+/* ── Board area ───────────────────────────────────────────────── */
+.cq-game-board-wrap {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cq-game-board-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 18px 16px 12px;
+}
+
+.cq-game-map-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+/* Responsive region grid — auto-fill up to ~4 columns on desktop. */
+.cq-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 10px;
+}
+
+/* ── Region card ──────────────────────────────────────────────── */
+.cq-region-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--cq-color-bg, rgba(255,255,255,0.03));
+  border: 1.5px solid var(--cq-color-bd, rgba(255,255,255,0.08));
+  border-left-width: 3px;
+  min-height: 88px;
+  transition:
+    border-color 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    background   180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cq-region-card-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cq-region-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cq-color, rgba(255,255,255,0.22));
+  flex-shrink: 0;
+}
+
+.cq-region-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  flex: 1;
+  min-width: 0;
+}
+
+.cq-region-emoji {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.cq-region-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cq-region-neighbor-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.cq-region-shield {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.cq-region-owner {
+  margin-top: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cq-color, var(--muted));
+  padding: 3px 0 0;
+  border-top: 1px solid var(--cq-color-bd, rgba(255,255,255,0.06));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cq-region-owner[data-neutral] {
+  color: var(--muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* ── Footer (preview notice + back button) ────────────────────── */
+.cq-game-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.cq-game-preview-notice {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.cq-game-back-btn {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+/* ── Mobile tweaks ────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .cq-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cq-game-board-inner {
+    padding: 12px 10px 8px;
+  }
+  .cq-game-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .cq-game-back-btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+  .cq-game-preview-notice {
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@media (max-width: 360px) {
+  .cq-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KUŞATMA (Conquest) — Phase 5: transient notification banner
+   Used for join failures, host-closed notices, and other inline
+   status messages shown above the setup card.
+═══════════════════════════════════════════════════════════════ */
+
+.cq-banner-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 10px 14px 0;
+  flex: 0 0 auto;
+}
+
+.cq-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  width: 100%;
+  padding: 9px 12px 9px 14px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #f6c074;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cq-banner-msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.cq-banner-close {
+  background: transparent;
+  border: 0;
+  color: #f6c074;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: opacity 120ms;
+}
+.cq-banner-close:hover { opacity: 1; }
+
+/* Code-input field on the join-by-code screen */
+.cq-code-input {
+  width: 100%;
+  box-sizing: border-box;
+}
