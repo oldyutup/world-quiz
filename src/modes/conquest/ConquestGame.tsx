@@ -54,8 +54,9 @@ import {
   advanceToNextRound,
   applyActionToGame,
   buildFinalStandings,
+  expireChallenge,
   getCurrentLegalTargets,
-  resolveChallengeWithWinner,
+  submitChallengeAnswer,
 } from "./conquestGameplay";
 import { inferActionFromRegionClick } from "./conquestActions";
 import ConquestBoard from "./ConquestBoard";
@@ -117,6 +118,29 @@ export default function ConquestGame({
     }
   }, []);
 
+  // ── Challenge-local state (per-challenge, NOT synced) ────────────────
+  // Tracks "have I (this client) already submitted for the current
+  // challenge?" and the last local correct/wrong verdict so the panel can
+  // disable input and show feedback.  Reset on every new challenge id.
+  const challengeId = gameState?.round.challenge.challenge.id ?? null;
+  const [answeredChallengeId, setAnsweredChallengeId] = useState<string | null>(null);
+  const [localFeedback, setLocalFeedback] = useState<"correct" | "wrong" | null>(null);
+  useEffect(() => {
+    setAnsweredChallengeId(null);
+    setLocalFeedback(null);
+  }, [challengeId]);
+
+  // Live countdown — re-renders the panel ~4×/s so the timer bar animates.
+  const phaseForTicker  = gameState?.phase ?? null;
+  const statusForTicker = gameState?.round.challenge.status ?? null;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (phaseForTicker !== "challenge")  return;
+    if (statusForTicker !== "active")    return;
+    const t = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(t);
+  }, [phaseForTicker, statusForTicker, challengeId]);
+
   // ── Derived ──────────────────────────────────────────────────────────
   const regionStates = gameState?.regionStates ?? [];
   const regionCounts = useMemo(
@@ -148,7 +172,6 @@ export default function ConquestGame({
   /* Gating flags — every interactive control consults one of these.  Kept
    * separate from the render so the rules are visible in one place. */
   const isActionHolder    = !!myPlayerId && !!gameState && gameState.round.actionHolderId === myPlayerId;
-  const canPickWinner     = !!gameState && gameState.phase === "challenge" && isHost;
   const canActOnRegion    = !!gameState && gameState.phase === "action"    && isActionHolder;
 
   // ── Handlers ─────────────────────────────────────────────────────────
@@ -157,13 +180,50 @@ export default function ConquestGame({
     onBackToLobby();
   }
 
-  const handleSelectWinner = useCallback((playerId: string) => {
+  const handleSubmitAnswer = useCallback((rawAnswer: string) => {
+    if (!gameState || !myPlayerId) return;
+    if (gameState.phase !== "challenge") return;
+    if (gameState.round.challenge.status !== "active") return;
+    if (answeredChallengeId === gameState.round.challenge.challenge.id) return;
+
+    const { ok, winning, state: next } = submitChallengeAnswer(
+      gameState, myPlayerId, rawAnswer,
+    );
+    if (!ok) return;
+
+    // Lock further submissions for this challenge on this client.
+    setAnsweredChallengeId(gameState.round.challenge.challenge.id);
+    setLocalFeedback(winning ? "correct" : "wrong");
+    playSound(winning ? "correct" : "wrong");
+
+    if (winning && next !== gameState) {
+      void onPushGameState(next);
+    }
+  }, [gameState, myPlayerId, answeredChallengeId, onPushGameState]);
+
+  // ── Host-only: drive challenge expiry from the synced endsAt ─────────
+  // Only the host pushes the expire write so two clients don't race.  The
+  // timeout is computed from `endsAt - Date.now()` so every client agrees
+  // on when it fires (host's clock is authoritative).
+  useEffect(() => {
+    if (!isHost) return;
     if (!gameState) return;
-    if (!canPickWinner) return;
-    const next = resolveChallengeWithWinner(gameState, playerId);
-    if (next === gameState) return;  // no-op (already resolved)
-    void onPushGameState(next);
-  }, [gameState, canPickWinner, onPushGameState]);
+    if (gameState.phase !== "challenge") return;
+    if (gameState.round.challenge.status !== "active") return;
+
+    const endsAt = gameState.round.challenge.endsAt;
+    const delay  = Math.max(0, endsAt - Date.now());
+    const t = window.setTimeout(() => {
+      const expired = expireChallenge(gameState);
+      if (expired !== gameState) void onPushGameState(expired);
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [
+    isHost,
+    gameState,
+    challengeId,
+    onPushGameState,
+  ]);
 
   const flashIllegal = useCallback((regionId: ConquestRegionId) => {
     if (flashTimerRef.current !== null) {
@@ -435,24 +495,23 @@ export default function ConquestGame({
 
       {/* ── Phase-driven bottom panel ──────────────────────────── */}
       <div className="cq-game-phase-panel">
-        {phase === "challenge" && canPickWinner && (
+        {phase === "challenge" && (
           <ConquestChallengePanel
             challengeState={challengeState}
             players={players}
             playerColors={playerColors}
-            onSelectWinner={handleSelectWinner}
+            myPlayerId={myPlayerId}
+            alreadyAnswered={
+              answeredChallengeId === challengeState.challenge.id
+            }
+            lastLocalFeedback={
+              answeredChallengeId === challengeState.challenge.id
+                ? localFeedback
+                : null
+            }
+            msRemaining={Math.max(0, challengeState.endsAt - now)}
+            onSubmitAnswer={handleSubmitAnswer}
           />
-        )}
-
-        {phase === "challenge" && !canPickWinner && (
-          <section className="cq-challenge-panel" data-status="active" aria-label="Mücadele paneli">
-            <p className="cq-challenge-resolved-line" role="status">
-              ⏳ Mücadele sonucu bekleniyor.
-            </p>
-            <p className="cq-action-hint">
-              Ev sahibi kazananı seçtikten sonra hamle başlayacak.
-            </p>
-          </section>
         )}
 
         {phase === "action" && canActOnRegion && (

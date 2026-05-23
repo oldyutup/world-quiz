@@ -292,6 +292,11 @@ export type ConquestChallengeStatus =
 /**
  * Static description of a single challenge instance.  For non-placeholder
  * types this will eventually carry the question/clue payload directly.
+ *
+ * Phase 9A: real challenge types carry their answer payload inline.  This is
+ * acceptable for a prototype — correctness validation lives client-side
+ * (see conquestChallengeValidation.ts).  Server-authoritative validation
+ * is a future hardening step.
  */
 export interface ConquestChallenge {
   /** Stable id for this challenge instance (unique within a match). */
@@ -305,6 +310,27 @@ export interface ConquestChallenge {
   prompt?:            string;
   /** Players who may win this challenge (typically all active players). */
   eligiblePlayerIds:  string[];
+  /** Multiple-choice options for quiz challenges. */
+  choices?:           string[];
+  /** Flag emoji for flag_guess challenges (e.g. "🇯🇵"). */
+  flag?:              string;
+  /** Acceptable normalised answers — anything matching wins the challenge. */
+  acceptedAnswers?:   string[];
+}
+
+/**
+ * One player's submission against the active challenge.  Stored in the
+ * synced state only for the *winning* submission today (wrong attempts are
+ * tracked client-locally to avoid write races); the array shape is kept so
+ * a future fairness pass can record every attempt without re-modelling.
+ */
+export interface ConquestChallengeAnswer {
+  playerId:    string;
+  playerName:  string;
+  answer:      string;
+  correct:     boolean;
+  /** Epoch ms when this submission was recorded. */
+  at:          number;
 }
 
 /** Live state of the current round's challenge. */
@@ -314,6 +340,10 @@ export interface ConquestChallengeState {
   winnerPlayerId:   string | null;
   /** Epoch ms when this challenge started. */
   startedAt:        number;
+  /** Epoch ms when this challenge will time out (status → skipped). */
+  endsAt:           number;
+  /** Submission log — populated on resolve/expire only.  See doc above. */
+  submittedAnswers: ConquestChallengeAnswer[];
   /** Epoch ms when status transitioned to resolved/skipped. */
   resolvedAt?:      number;
 }
@@ -360,6 +390,10 @@ export interface ConquestGameState {
   history:       ConquestRoundHistoryEntry[];
   startedAt:     number;
   finishedAt:    number | null;
+  /** Bank entry ids shown so far; used to prevent repeats within a match. */
+  usedChallengeKeys:  string[];
+  /** Challenge type shown in the previous round; used to avoid consecutive same-type challenges. */
+  lastChallengeType?: ConquestChallengeType;
 }
 
 /** Final result row — one per player — used by the result screen. */

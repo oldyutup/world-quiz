@@ -21,10 +21,18 @@ import {
   getAllLegalTargetsForPlayer,
   getLegalActionsForPlayer,
 } from "./conquestActions";
-import { createPlaceholderChallenge } from "./conquestChallenges";
+import {
+  CONQUEST_CHALLENGE_DURATION_MS,
+  pickRandomConquestChallenge,
+} from "./conquestChallenges";
+import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
 import { createInitialRegionStates } from "./conquestState";
 import type {
   ConquestActionResult,
+  ConquestChallenge,
+  ConquestChallengeAnswer,
+  ConquestChallengeState,
+  ConquestChallengeType,
   ConquestFinalStanding,
   ConquestGameState,
   ConquestMapConfig,
@@ -60,30 +68,46 @@ export function createInitialConquestGameState(
   const now        = Date.now();
   const regionStates = createInitialRegionStates(mapConfig, players);
 
-  const challenge = createPlaceholderChallenge(1, players);
+  const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
 
   const round: ConquestRoundState = {
     roundNumber:    1,
     totalRounds:    safeRounds,
-    challenge: {
-      challenge,
-      status:         "active",
-      winnerPlayerId: null,
-      startedAt:      now,
-    },
+    challenge:      buildActiveChallengeState(challenge, now),
     actionHolderId: null,
     lastResult:     null,
   };
 
   return {
-    mapId:        mapConfig.id,
+    mapId:              mapConfig.id,
     players,
-    phase:        "challenge",
+    phase:              "challenge",
     round,
     regionStates,
-    history:      [],
-    startedAt:    now,
-    finishedAt:   null,
+    history:            [],
+    startedAt:          now,
+    finishedAt:         null,
+    usedChallengeKeys:  [bankId],
+    lastChallengeType:  challenge.type as ConquestChallengeType,
+  };
+}
+
+/**
+ * Build a fresh `active` ConquestChallengeState wrapping the given challenge.
+ * Centralised so every place that mounts a challenge agrees on the duration
+ * and on the initial empty submission log.
+ */
+function buildActiveChallengeState(
+  challenge: ConquestChallenge,
+  now:       number,
+): ConquestChallengeState {
+  return {
+    challenge,
+    status:           "active",
+    winnerPlayerId:   null,
+    startedAt:        now,
+    endsAt:           now + CONQUEST_CHALLENGE_DURATION_MS,
+    submittedAnswers: [],
   };
 }
 
@@ -98,10 +122,15 @@ export function createInitialConquestGameState(
  *
  * `winnerId` must be in the challenge's `eligiblePlayerIds`; otherwise the
  * call is a no-op (defensive — UI buttons should only offer eligible ids).
+ *
+ * Optional `answer` records the winning submission into `submittedAnswers`
+ * so the round panel can show what was typed.  Wrong attempts are tracked
+ * client-locally only (see ConquestChallengePanel) to avoid write contention.
  */
 export function resolveChallengeWithWinner(
   state:    ConquestGameState,
   winnerId: string,
+  answer?:  { text: string; playerName: string },
 ): ConquestGameState {
   if (state.phase !== "challenge") return state;
   if (state.round.challenge.status !== "active") return state;
@@ -110,6 +139,16 @@ export function resolveChallengeWithWinner(
   }
 
   const now = Date.now();
+  const winningEntry: ConquestChallengeAnswer | null = answer
+    ? {
+        playerId:   winnerId,
+        playerName: answer.playerName,
+        answer:     answer.text,
+        correct:    true,
+        at:         now,
+      }
+    : null;
+
   return {
     ...state,
     phase: "action",
@@ -120,8 +159,97 @@ export function resolveChallengeWithWinner(
         status:         "resolved",
         winnerPlayerId: winnerId,
         resolvedAt:     now,
+        submittedAnswers: winningEntry
+          ? [...state.round.challenge.submittedAnswers, winningEntry]
+          : state.round.challenge.submittedAnswers,
       },
       actionHolderId: winnerId,
+    },
+  };
+}
+
+/**
+ * Validate `rawAnswer` against the active challenge for `submitterId`.
+ *
+ * Returns `{ ok: true, state, winning: true }` if the answer is correct and
+ * resolves the challenge; `{ ok: true, winning: false }` if the answer is
+ * wrong (state unchanged — caller surfaces "Yanlış cevap." locally);
+ * `{ ok: false }` if the submission is illegal (phase wrong, challenge not
+ * active, submitter not eligible).
+ *
+ * This is the single funnel ConquestGame uses for player-typed submissions.
+ * It does NOT enforce one-answer-per-player — that's a client-local
+ * convenience to avoid write races on wrong attempts.
+ */
+export interface SubmitAnswerResult {
+  ok:       boolean;
+  winning:  boolean;
+  state:    ConquestGameState;
+}
+
+export function submitChallengeAnswer(
+  state:       ConquestGameState,
+  submitterId: string,
+  rawAnswer:   string,
+): SubmitAnswerResult {
+  if (state.phase !== "challenge") {
+    return { ok: false, winning: false, state };
+  }
+  if (state.round.challenge.status !== "active") {
+    return { ok: false, winning: false, state };
+  }
+  const challenge = state.round.challenge.challenge;
+  if (!challenge.eligiblePlayerIds.includes(submitterId)) {
+    return { ok: false, winning: false, state };
+  }
+
+  const correct = isChallengeAnswerCorrect(challenge, rawAnswer);
+  if (!correct) {
+    return { ok: true, winning: false, state };
+  }
+
+  const submitter = state.players.find(p => p.id === submitterId);
+  const next = resolveChallengeWithWinner(state, submitterId, {
+    text:       rawAnswer,
+    playerName: submitter?.name ?? "Oyuncu",
+  });
+  return { ok: true, winning: true, state: next };
+}
+
+/**
+ * Mark the active challenge as expired (timer hit zero with no winner).
+ * Distinct from `skipChallenge` only in messaging — both routes leave the
+ * round resultless and ready to advance.  Idempotent: returns the state
+ * unchanged if the challenge is already resolved/skipped or the phase has
+ * moved on.
+ *
+ * Host-only writer in the live loop (see ConquestGame.tsx) to keep the
+ * timeout authoritative and avoid two clients racing to expire.
+ */
+export function expireChallenge(state: ConquestGameState): ConquestGameState {
+  if (state.phase !== "challenge") return state;
+  if (state.round.challenge.status !== "active") return state;
+
+  const now = Date.now();
+  const expiredResult: ConquestActionResult = {
+    ok:       true,
+    action:   "skip",
+    playerId: "",
+    regionId: null,
+    message:  "Kimse doğru cevap veremedi. Tur boşa geçti.",
+  };
+  return {
+    ...state,
+    phase: "round_result",
+    round: {
+      ...state.round,
+      challenge: {
+        ...state.round.challenge,
+        status:     "skipped",
+        resolvedAt: now,
+      },
+      actionHolderId: null,
+      lastResult:     expiredResult,
     },
   };
 }
@@ -265,20 +393,25 @@ export function advanceToNextRound(state: ConquestGameState): ConquestGameState 
   }
 
   const nextRoundNumber = state.round.roundNumber + 1;
-  const challenge = createPlaceholderChallenge(nextRoundNumber, state.players);
+  const usedSoFar  = state.usedChallengeKeys ?? [];
+  const lastType   = state.lastChallengeType;
+  const { challenge, bankId } = pickRandomConquestChallenge(
+    nextRoundNumber,
+    state.players,
+    usedSoFar,
+    lastType,
+  );
+  const now = Date.now();
 
   return {
     ...state,
-    phase: "challenge",
+    phase:             "challenge",
+    usedChallengeKeys: [...usedSoFar, bankId],
+    lastChallengeType: challenge.type as ConquestChallengeType,
     round: {
       roundNumber:    nextRoundNumber,
       totalRounds:    state.round.totalRounds,
-      challenge: {
-        challenge,
-        status:         "active",
-        winnerPlayerId: null,
-        startedAt:      Date.now(),
-      },
+      challenge:      buildActiveChallengeState(challenge, now),
       actionHolderId: null,
       lastResult:     null,
     },
