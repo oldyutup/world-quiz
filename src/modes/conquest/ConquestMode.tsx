@@ -46,13 +46,21 @@ import {
   createConquestRoom,
   joinConquestRoomByCode,
   leaveConquestRoom,
-  markConquestRoomStarted,
   markConquestRoomWaiting,
   normalizeConquestRoomCode,
   updateConquestRoomSettings,
   type ConquestJoinResult,
 } from "./conquestService";
 import { subscribeToConquestRoom } from "./conquestRealtime";
+import { getConquestMapConfig } from "./maps";
+import { createInitialConquestGameState } from "./conquestGameplay";
+import {
+  clearConquestGameplayState,
+  deserializeConquestGameState,
+  initializeConquestGameplayState,
+  updateConquestGameplayState,
+} from "./conquestGameSync";
+import type { ConquestGameState } from "./types";
 
 type Phase = "setup" | "rooms" | "join-code" | "joining" | "lobby" | "game";
 
@@ -328,21 +336,54 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       await handleLeaveLobby();
       return;
     }
-    // Host returning → flip room status to waiting so realtime brings
-    // every other client back to the lobby too.
+    // Host returning → flip room status to waiting AND wipe gameplay_state
+    // so the next start begins from scratch.  Realtime UPDATE brings every
+    // other client back to the lobby too.
     const updated = await markConquestRoomWaiting(roomRow.id);
     if (updated) setRoomRow(updated);
+    await clearConquestGameplayState(roomRow.id);
     setPhase("lobby");
   }, [roomRow, isHost, handleLeaveLobby]);
 
   const handleStartGame = useCallback(async () => {
     if (!roomRow || !isHost) return;
-    const updated = await markConquestRoomStarted(roomRow.id);
+    const mapConfig = getConquestMapConfig(settings.map);
+    if (!mapConfig) return;
+    // Seed the initial synced state from the current player roster so every
+    // client sees the same starting board / round-1 challenge.
+    const initialState = createInitialConquestGameState(
+      mapConfig,
+      uiPlayers,
+      settings.rounds,
+    );
+    const updated = await initializeConquestGameplayState(roomRow.id, initialState);
     if (updated) {
       setRoomRow(updated);
       setPhase("game");
     }
-  }, [roomRow, isHost]);
+  }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers]);
+
+  /**
+   * Push a new gameplay snapshot to Supabase.  Centralised here so
+   * ConquestGame can stay pure (controlled component); all DB writes flow
+   * through this single helper.  Realtime echoes the update back to every
+   * client (including the writer) so the UI re-renders from the canonical
+   * row, not from optimistic local state.
+   */
+  const handlePushGameplayState = useCallback(
+    async (next: ConquestGameState) => {
+      if (!roomRow) return;
+      await updateConquestGameplayState(roomRow.id, next);
+    },
+    [roomRow],
+  );
+
+  // Decoded gameplay state from the synced room row.  Null while the room
+  // is still in lobby or while the first state write is in flight.
+  const syncedGameState = useMemo<ConquestGameState | null>(
+    () => deserializeConquestGameState(roomRow?.gameplay_state),
+    [roomRow?.gameplay_state],
+  );
 
   const handleUpdateSettings = useCallback(
     async (patch: Partial<ConquestRoomSettings>) => {
@@ -401,6 +442,10 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         roomCode={roomRow.room_code}
         settings={settings}
         players={uiPlayers}
+        gameState={syncedGameState}
+        isHost={isHost}
+        myPlayerId={myPlayerId}
+        onPushGameState={handlePushGameplayState}
         onBackToLobby={handleBackToLobbyFromGame}
       />
     );

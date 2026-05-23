@@ -1,20 +1,31 @@
 /**
- * ConquestGame — Kuşatma game screen with local gameplay loop.
+ * ConquestGame — Kuşatma game screen (Phase 8: Supabase-synced state).
  *
- * Phase-6 scope:
- *   - Round-based loop: challenge → action → round_result → next/finished
- *   - One implemented challenge: placeholder (manual winner-select)
- *   - Two implemented actions: capture_neutral, attack_region
- *   - defend_region is reserved (no UI exposure yet, helpers exist)
- *   - Skip is always available; auto-offered when no legal map move remains
- *   - Result screen ranks players by region count
+ * As of Phase 8 the gameplay state is no longer local-only.  The single
+ * source of truth is `conquest_rooms.gameplay_state` (JSONB), pushed by
+ * the writer client and broadcast to every other client through the
+ * existing room realtime subscription.
  *
- * GAMEPLAY STATE IS LOCAL-ONLY in this phase.  The room.status field
- * (waiting / playing) is still server-synced via conquest_rooms, so every
- * client enters this screen together — but each client then runs its own
- * independent gameplay simulation in memory.  This is surfaced inline via
- * the "Yerel önizleme" notice in the footer so testers don't confuse the
- * local sim with a synced match.  No new Supabase tables introduced.
+ * Responsibilities split:
+ *   ConquestMode      owns the synced ConquestGameState (decoded from the
+ *                     room row) and the `onPushGameState` writer.
+ *   ConquestGame      is now a *controlled* component — renders the synced
+ *                     state and bubbles transitions back via callbacks.
+ *
+ * Write gating (frontend-enforced; Phase 8 keeps it simple):
+ *   • Challenge winner selection         → host only.
+ *     Non-hosts see a "Mücadele sonucu bekleniyor." note.
+ *   • Region action / skip               → only the player whose id matches
+ *     `gameState.round.actionHolderId`.  Other players see a read-only
+ *     turn indicator.
+ *   • Next round / final result          → anyone may advance once the
+ *     round resolves (last-write-wins; idempotent on the writer side).
+ *
+ * The pure helpers (createInitialConquestGameState, resolveChallengeWithWinner,
+ * applyActionToGame, advanceToNextRound, getCurrentLegalTargets,
+ * actionHolderHasNoMoves, buildFinalStandings) are reused unchanged — they
+ * already operate on an immutable ConquestGameState; we now feed them the
+ * synced copy and push the returned next-state to Supabase.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,7 +54,6 @@ import {
   advanceToNextRound,
   applyActionToGame,
   buildFinalStandings,
-  createInitialConquestGameState,
   getCurrentLegalTargets,
   resolveChallengeWithWinner,
 } from "./conquestGameplay";
@@ -55,10 +65,18 @@ import TurkeyConquestMap from "./TurkeyConquestMap";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
-  roomCode:      string;
-  settings:      ConquestRoomSettings;
-  players:       ConquestPlayer[];
-  onBackToLobby: () => void;
+  roomCode:        string;
+  settings:        ConquestRoomSettings;
+  players:         ConquestPlayer[];
+  /** Synced gameplay state from conquest_rooms.gameplay_state — null while
+   *  the host's initial UPDATE is in flight. */
+  gameState:       ConquestGameState | null;
+  isHost:          boolean;
+  myPlayerId:      string | null;
+  /** Persist a new gameplay snapshot to Supabase.  Called by transition
+   *  handlers; realtime echo brings the row back to every client. */
+  onPushGameState: (next: ConquestGameState) => Promise<void> | void;
+  onBackToLobby:   () => void;
 }
 
 const ILLEGAL_FLASH_MS = 900;
@@ -67,6 +85,10 @@ export default function ConquestGame({
   roomCode: _roomCode,
   settings,
   players,
+  gameState,
+  isHost,
+  myPlayerId,
+  onPushGameState,
   onBackToLobby,
 }: Props) {
   const homeTheme  = readStoredHomeTheme();
@@ -83,37 +105,12 @@ export default function ConquestGame({
     [players],
   );
 
-  // ── Local gameplay state ─────────────────────────────────────────────
-  // Built once per (mapConfig, players, rounds) tuple.  Re-mounting the
-  // screen (e.g. host returns to lobby and restarts) rebuilds it from
-  // scratch via the dependency-array reset below.
-  const [gameState, setGameState] = useState<ConquestGameState | null>(
-    () => mapConfig ? createInitialConquestGameState(mapConfig, players, settings.rounds) : null,
-  );
-
-  // Region id currently flashing red after an illegal click.  Cleared by a
-  // small timer; tracked in state so the board re-renders to drop the flash.
+  // Region id currently flashing red after a *local* illegal click.  Stored
+  // locally only — illegal clicks are not committed to gameplay_state.
   const [flashRegionId, setFlashRegionId] = useState<ConquestRegionId | null>(null);
   const flashTimerRef = useRef<number | null>(null);
 
-  /* Reset gameplay state when the underlying inputs change.  Player joins
-   * during lobby don't reach this screen — but if the host returns to lobby
-   * and starts again, the screen re-mounts with potentially different
-   * player order or map.  This keeps gameState in lockstep. */
-  useEffect(() => {
-    if (!mapConfig) {
-      setGameState(null);
-      return;
-    }
-    setGameState(createInitialConquestGameState(mapConfig, players, settings.rounds));
-    setFlashRegionId(null);
-    if (flashTimerRef.current !== null) {
-      window.clearTimeout(flashTimerRef.current);
-      flashTimerRef.current = null;
-    }
-  }, [mapConfig, players, settings.rounds]);
-
-  // Cleanup the flash timer on unmount.
+  // Cleanup flash timer on unmount.
   useEffect(() => () => {
     if (flashTimerRef.current !== null) {
       window.clearTimeout(flashTimerRef.current);
@@ -148,6 +145,12 @@ export default function ConquestGame({
     [gameState],
   );
 
+  /* Gating flags — every interactive control consults one of these.  Kept
+   * separate from the render so the rules are visible in one place. */
+  const isActionHolder    = !!myPlayerId && !!gameState && gameState.round.actionHolderId === myPlayerId;
+  const canPickWinner     = !!gameState && gameState.phase === "challenge" && isHost;
+  const canActOnRegion    = !!gameState && gameState.phase === "action"    && isActionHolder;
+
   // ── Handlers ─────────────────────────────────────────────────────────
   function handleBack() {
     playSound("click");
@@ -155,8 +158,12 @@ export default function ConquestGame({
   }
 
   const handleSelectWinner = useCallback((playerId: string) => {
-    setGameState(prev => prev ? resolveChallengeWithWinner(prev, playerId) : prev);
-  }, []);
+    if (!gameState) return;
+    if (!canPickWinner) return;
+    const next = resolveChallengeWithWinner(gameState, playerId);
+    if (next === gameState) return;  // no-op (already resolved)
+    void onPushGameState(next);
+  }, [gameState, canPickWinner, onPushGameState]);
 
   const flashIllegal = useCallback((regionId: ConquestRegionId) => {
     if (flashTimerRef.current !== null) {
@@ -175,11 +182,21 @@ export default function ConquestGame({
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
 
+    // Only the action holder can mutate region state.  Non-holders get a
+    // local flash so the click feels acknowledged but never commits.
+    if (!canActOnRegion) {
+      flashIllegal(regionId);
+      return;
+    }
+
     const inferredAction = inferActionFromRegionClick(
       mapConfig, gameState.regionStates, holderId, regionId,
     );
 
     if (!inferredAction) {
+      // Illegal target: surface failure to the holder by writing the failure
+      // result into lastResult.  Pushing the same gameState shape (only
+      // round.lastResult mutated) keeps the wire payload minimal.
       const failResult: ConquestActionResult = {
         ok:       false,
         action:   "capture_neutral",
@@ -187,10 +204,11 @@ export default function ConquestGame({
         regionId,
         message:  "Bu bölgeye hamle yapılamaz.",
       };
-      setGameState(prev => prev ? {
-        ...prev,
-        round: { ...prev.round, lastResult: failResult },
-      } : prev);
+      const next: ConquestGameState = {
+        ...gameState,
+        round: { ...gameState.round, lastResult: failResult },
+      };
+      void onPushGameState(next);
       flashIllegal(regionId);
       return;
     }
@@ -200,36 +218,34 @@ export default function ConquestGame({
         ? { type: "capture_neutral", playerId: holderId, regionId }
         : { type: "attack_region",   playerId: holderId, regionId };
 
-    setGameState(prev => {
-      if (!prev) return prev;
-      const { state } = applyActionToGame(prev, mapConfig, pending);
-      return state;
-    });
+    const { state: nextState } = applyActionToGame(gameState, mapConfig, pending);
+    void onPushGameState(nextState);
     playSound("click");
-  }, [gameState, mapConfig, flashIllegal]);
+  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState]);
 
   const handleSkipAction = useCallback(() => {
     if (!gameState || !mapConfig) return;
     if (gameState.phase !== "action") return;
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
+    if (!canActOnRegion) return;
 
-    setGameState(prev => {
-      if (!prev) return prev;
-      const { state } = applyActionToGame(prev, mapConfig, {
-        type: "skip", playerId: holderId,
-      });
-      return state;
+    const { state: nextState } = applyActionToGame(gameState, mapConfig, {
+      type: "skip", playerId: holderId,
     });
-  }, [gameState, mapConfig]);
+    void onPushGameState(nextState);
+  }, [gameState, mapConfig, canActOnRegion, onPushGameState]);
 
   const handleNextRound = useCallback(() => {
+    if (!gameState) return;
     playSound("click");
-    setGameState(prev => prev ? advanceToNextRound(prev) : prev);
-  }, []);
+    const next = advanceToNextRound(gameState);
+    if (next === gameState) return;
+    void onPushGameState(next);
+  }, [gameState, onPushGameState]);
 
-  // ── Safety fallback ──────────────────────────────────────────────────
-  if (!mapConfig || !gameState) {
+  // ── Safety fallbacks ─────────────────────────────────────────────────
+  if (!mapConfig) {
     return (
       <div className="app duel-screen cq-screen" style={themeStyle} data-theme={themeAttr}>
         <div className="duel-header">
@@ -251,6 +267,30 @@ export default function ConquestGame({
     );
   }
 
+  // Synced state not yet arrived (first paint between status='playing' and
+  // realtime echo of gameplay_state).  Show a thin loading shell.
+  if (!gameState) {
+    return (
+      <div className="app duel-screen cq-screen" style={themeStyle} data-theme={themeAttr}>
+        <div className="duel-header">
+          <button className="back-btn" onClick={handleBack}>
+            <span>←</span>
+            <span className="back-label">Lobi</span>
+          </button>
+          <div className="duel-header-center">
+            <span className="duel-mode-label">🛡️ Kuşatma</span>
+          </div>
+          <div style={{ width: 80 }} />
+        </div>
+        <div className="duel-lobby">
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>
+            Maç senkronize ediliyor…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const phase          = gameState.phase;
   const roundNumber    = gameState.round.roundNumber;
   const totalRounds    = gameState.round.totalRounds;
@@ -259,6 +299,15 @@ export default function ConquestGame({
 
   const boardDisabled = phase !== "action";
   const lastSuccess   = lastResult?.ok ? lastResult : null;
+
+  /* Turn-indicator copy for the read-only side of the action phase.  These
+   * strings are rendered in place of the action panel when the local user
+   * is not the action holder. */
+  const actionTurnLine = (() => {
+    if (phase !== "action" || !actionHolder) return null;
+    if (isActionHolder) return "Hamle sırası sende.";
+    return `Hamle sırası: ${actionHolder.name}`;
+  })();
 
   return (
     <div
@@ -386,7 +435,7 @@ export default function ConquestGame({
 
       {/* ── Phase-driven bottom panel ──────────────────────────── */}
       <div className="cq-game-phase-panel">
-        {phase === "challenge" && (
+        {phase === "challenge" && canPickWinner && (
           <ConquestChallengePanel
             challengeState={challengeState}
             players={players}
@@ -395,7 +444,18 @@ export default function ConquestGame({
           />
         )}
 
-        {phase === "action" && (
+        {phase === "challenge" && !canPickWinner && (
+          <section className="cq-challenge-panel" data-status="active" aria-label="Mücadele paneli">
+            <p className="cq-challenge-resolved-line" role="status">
+              ⏳ Mücadele sonucu bekleniyor.
+            </p>
+            <p className="cq-action-hint">
+              Ev sahibi kazananı seçtikten sonra hamle başlayacak.
+            </p>
+          </section>
+        )}
+
+        {phase === "action" && canActOnRegion && (
           <ConquestActionPanel
             actionHolder={actionHolder}
             holderColor={actionHolder ? (playerColors[actionHolder.id] ?? null) : null}
@@ -403,6 +463,17 @@ export default function ConquestGame({
             lastResult={lastResult}
             onSkip={handleSkipAction}
           />
+        )}
+
+        {phase === "action" && !canActOnRegion && (
+          <section className="cq-action-panel" aria-label="Hamle paneli">
+            <p className="cq-action-line" role="status">
+              {actionTurnLine}
+            </p>
+            <p className="cq-action-hint">
+              Hamle tamamlanana kadar bekle.
+            </p>
+          </section>
         )}
 
         {phase === "round_result" && (
@@ -471,11 +542,8 @@ export default function ConquestGame({
       {/* ── Footer notice ──────────────────────────────────────── */}
       <div className="cq-game-footer">
         <p className="cq-game-preview-notice" role="status">
-          <span aria-hidden="true">🧪</span>
-          <span>
-            Yerel önizleme — gameplay henüz senkronize değil. Her oyuncu kendi
-            simülasyonunu görür.
-          </span>
+          <span aria-hidden="true">📡</span>
+          <span>Online senkron açık.</span>
         </p>
         {phase !== "finished" && (
           <button

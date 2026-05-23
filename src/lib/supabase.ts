@@ -171,6 +171,12 @@ export interface ConquestRoomRow {
   updated_at:       string;
   started_at:       string | null;
   finished_at:      string | null;
+  /**
+   * Phase-8 sync blob.  Carries the full serialized ConquestGameState.
+   * Null while the room is in lobby (status='waiting') or when no match
+   * has been initialized yet.  See conquestGameSync.ts for the shape.
+   */
+  gameplay_state:   unknown | null;
 }
 
 export interface ConquestPlayerRow {
