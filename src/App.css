@@ -9010,3 +9010,486 @@ body {
     0 12px 30px rgba(0, 0, 0, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
+/* ═══════════════════════════════════════════════════════════════
+   KUŞATMA (Conquest) — Phase 2: entry flow + lobby skeleton
+   Reuses .wgg-grid layout primitives for the lobby; adds
+   conquest-specific surface tints, radio pills, and map cards.
+   No gameplay rules live here; this is the waiting room only.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Setup card ───────────────────────────────────────────────── */
+.cq-setup-card {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cq-name-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: default;
+  opacity: 0.95;
+}
+.cq-name-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  color: #f6c074;
+}
+.cq-name-readonly-hint {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.cq-settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 2-column settings grid (player count + map / rounds + visibility) */
+.cq-settings-selects {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 420px) {
+  .cq-settings-selects { grid-template-columns: 1fr; }
+}
+
+.cq-player-count-warn {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--amber);
+  line-height: 1.4;
+}
+
+.cq-back-btn {
+  align-self: center;
+  min-width: 140px;
+  opacity: 0.78;
+}
+
+/* ── Room list ────────────────────────────────────────────────── */
+.cq-rooms-card {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.cq-rooms-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cq-rooms-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.cq-refresh-btn,
+.cq-create-cta {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 13.5px;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+.cq-rooms-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 56px 24px;
+  border: 1px dashed rgba(255,255,255,0.14);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.02);
+  gap: 8px;
+}
+.cq-rooms-empty-icon {
+  font-size: 48px;
+  filter: grayscale(0.15);
+  opacity: 0.9;
+}
+.cq-rooms-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text);
+}
+.cq-rooms-empty-hint {
+  font-size: 13px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.cq-rooms-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cq-room-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(10,18,32,0.55);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cq-room-card:hover { border-color: rgba(255,255,255,0.18); }
+.cq-room-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.cq-room-code {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  color: var(--text);
+}
+.cq-room-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.cq-room-meta > span { white-space: nowrap; }
+.cq-room-card-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.cq-room-count {
+  font-size: 13px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+}
+.cq-room-status {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.cq-room-status--waiting {
+  background: rgba(63, 185, 80, 0.16);
+  color: var(--green);
+  border: 1px solid rgba(63, 185, 80, 0.45);
+}
+.cq-room-status--playing {
+  background: rgba(245, 158, 11, 0.16);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+.cq-room-status--finished {
+  background: rgba(255,255,255,0.06);
+  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.cq-join-btn {
+  min-height: 36px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 10px;
+}
+
+/* ── Lobby grid (reuses .wgg-grid + a couple of conquest tweaks) ── */
+.cq-lobby-grid { /* placeholder hook so future tweaks scope clean */ }
+
+.cq-players-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.cq-players-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.cq-players-count {
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #f6c074;
+  letter-spacing: 0.02em;
+}
+
+.cq-slot-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255,255,255,0.10);
+  opacity: 0.42;
+}
+.cq-slot-empty-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+.cq-slot-empty-label {
+  font-size: 12px;
+  font-style: italic;
+}
+
+.cq-player-chip { /* inherits from .duel-player-chip */ }
+.cq-player-chip-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.cq-player-name {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cq-player-chip--host .cq-player-name {
+  color: #f6c074;
+}
+
+.cq-wait-chip {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(212,160,44,0.16);
+  border: 1px solid rgba(212,160,44,0.45);
+  color: var(--amber);
+  letter-spacing: 0.02em;
+  align-self: flex-start;
+}
+
+.cq-middle-card {
+  /* parity with .wgg-middle-card; padding stays larger so the room code
+     has breathing room. */
+}
+
+.cq-status-wrap {
+  text-align: center;
+  flex-shrink: 0;
+}
+.cq-status-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(58,165,93,0.14);
+  border: 1px solid rgba(58,165,93,0.35);
+  color: var(--green);
+  margin-bottom: 8px;
+}
+.cq-status-chip--host {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #f6c074;
+}
+.cq-room-code-big {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  line-height: 1.1;
+  font-family: monospace;
+}
+.cq-room-code-hint {
+  font-size: 12px;
+  opacity: 0.5;
+  margin-top: 5px;
+  letter-spacing: 0.02em;
+}
+
+.cq-invite-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.cq-invite-btn {
+  width: 100%;
+  min-height: 40px;
+  font-weight: 700;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #f6c074;
+  transition:
+    background 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cq-invite-btn:hover { background: rgba(245, 158, 11, 0.22); border-color: rgba(245, 158, 11, 0.65); }
+.cq-invite-btn--copied {
+  background: rgba(58,165,93,0.18);
+  border-color: rgba(58,165,93,0.55);
+  color: var(--green);
+}
+.cq-link-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.cq-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(10,18,32,0.55);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.cq-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.06);
+  min-width: 0;
+}
+.cq-setting-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cq-setting-value {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-spacer { flex: 1; }
+
+.cq-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.cq-start-btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 800;
+  border-radius: 12px;
+  letter-spacing: 0.02em;
+}
+.cq-start-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.cq-leave-btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 12px;
+  opacity: 0.85;
+}
+
+.cq-host-note {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--muted);
+}
+.cq-host-note strong { color: #f6c074; }
+
+/* Guest chat placeholder (right panel when user is not logged in) */
+.cq-chat-guest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 160px;
+  padding: 24px 16px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius, 12px);
+  box-sizing: border-box;
+}
+.cq-chat-guest-icon { font-size: 28px; opacity: 0.45; }
+.cq-chat-guest-msg {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Mobile: collapse room list horizontal density */
+@media (max-width: 720px) {
+  .cq-room-card { flex-direction: column; align-items: stretch; }
+  .cq-room-card-side { justify-content: space-between; }
+  .cq-rooms-head { flex-direction: column; align-items: stretch; }
+  .cq-rooms-head-actions { justify-content: flex-end; }
+}
+@media (max-width: 899px) {
+  .cq-settings-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .cq-settings-grid { grid-template-columns: 1fr; }
+  .cq-room-code-big { font-size: 32px; letter-spacing: 0.14em; }
+}

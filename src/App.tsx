@@ -7,6 +7,8 @@ import DuelGroupGame from "./components/DuelGroupGame";
 import WheelGame from "./components/WheelGame";
 import WheelDuelGame from "./components/WheelDuelGame";
 import WheelGroupGame from "./components/WheelGroupGame";
+import ConquestMode from "./modes/conquest/ConquestMode";
+import ConquestModeSelectModal from "./modes/conquest/ConquestModeSelectModal";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -63,7 +65,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -116,6 +118,8 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "wheel-game": 0,
   "wheel-duel-game": 0,
   "wheel-group-game": 0,
+  "conquest-game": 0,
+  "conquest-rooms": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -265,11 +269,12 @@ function DDItem({ active, onClick, children }: DDItemProps) {
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
 
-interface HomeProps { onSelect: (screen: AppScreen) => void; }
-function HomeScreen({ onSelect }: HomeProps) {
+interface HomeProps { onSelect: (screen: AppScreen) => void; profile: Profile | null; }
+function HomeScreen({ onSelect, profile }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
+const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
 useEffect(() => {
   try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
@@ -280,6 +285,7 @@ useEffect(() => {
   { id: "silhouette-game" as AppScreen, icon: "🗺️", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
   { id: "route-game" as AppScreen, icon: "🧭", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
   { id: "wheel-game" as AppScreen, icon: "🎯", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
+  { id: "conquest-game" as AppScreen, icon: "🛡️", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
   { id: "home" as AppScreen, icon: "🌃", title: "Foto Tahmin", desc: "Fotoğraftan şehri veya ülkeyi bul.", available: false },
 ];
   return (
@@ -315,6 +321,8 @@ useEffect(() => {
     setShowFlagMenu(true);
   } else if (m.id === "wheel-game") {
     setShowWheelMenu(true);
+  } else if (m.id === "conquest-game") {
+    setShowConquestMenu(true);
   } else {
     onSelect(m.id);
   }
@@ -484,6 +492,26 @@ useEffect(() => {
 
     </div>
   </div>
+)}
+
+{showConquestMenu && (
+  <ConquestModeSelectModal
+    overlayStyle={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    themeAttr={getThemeDataAttr(homeTheme)}
+    isLoggedIn={!!profile?.username}
+    onCreate={() => {
+      setShowConquestMenu(false);
+      onSelect("conquest-game");
+    }}
+    onBrowse={() => {
+      setShowConquestMenu(false);
+      onSelect("conquest-rooms");
+    }}
+    onClose={() => {
+      playSound("click");
+      setShowConquestMenu(false);
+    }}
+  />
 )}
 
       {homeTheme === "earth" && <BlueEarthDecor />}
@@ -2197,7 +2225,7 @@ useEffect(() => {
         onLogin={() => setAuthOpen(true)}
       />
 
-      <HomeScreen onSelect={setScreen} />
+      <HomeScreen onSelect={setScreen} profile={profile} />
 
       {authOpen && (
   <AuthModal
@@ -2253,6 +2281,20 @@ useEffect(() => {
   );
   if (screen === "wheel-group-game") return (
     <WheelGroupGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "conquest-game") return (
+    <ConquestMode
+      initialPhase="setup"
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "conquest-rooms") return (
+    <ConquestMode
+      initialPhase="rooms"
       onHome={() => setScreen("home")}
       profile={profile}
     />
