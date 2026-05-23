@@ -206,12 +206,41 @@ export type ConquestMatchPhase =
   | "finished";    // match complete
 
 /**
+ * Kinds of action a player can take once they've earned a hamle hakkı.
+ *  - capture_neutral → take an unowned region
+ *  - attack_region   → flip an enemy region adjacent to one of yours
+ *  - defend_region   → reserved for future shield mechanic (not wired yet)
+ *  - skip            → relinquish action (legal when no other action exists)
+ */
+export type ConquestActionType =
+  | "capture_neutral"
+  | "attack_region"
+  | "defend_region"
+  | "skip";
+
+/**
  * An atomic action that has been decided for the current resolution step but
- * not yet committed to region states.
+ * not yet committed to region states.  `regionId` is omitted only for skip.
  */
 export type ConquestPendingAction =
-  | { type: "capture"; attackerId: string; regionId: ConquestRegionId }
-  | { type: "shield";  defenderId: string; regionId: ConquestRegionId };
+  | { type: "capture_neutral"; playerId: string; regionId: ConquestRegionId }
+  | { type: "attack_region";   playerId: string; regionId: ConquestRegionId }
+  | { type: "defend_region";   playerId: string; regionId: ConquestRegionId }
+  | { type: "skip";            playerId: string };
+
+/**
+ * Result of applying a ConquestPendingAction.  `ok=false` means the action
+ * was rejected as illegal and the source state is unchanged; the caller
+ * should surface `message` to the user.
+ */
+export interface ConquestActionResult {
+  ok:        boolean;
+  action:    ConquestActionType;
+  playerId:  string;
+  regionId:  ConquestRegionId | null;
+  /** Localised (TR) message describing the outcome. */
+  message:   string;
+}
 
 /** Complete snapshot of an active or recently-finished Kuşatma match. */
 export interface ConquestMatchState {
@@ -230,6 +259,116 @@ export interface ConquestMatchState {
   /** ISO-8601 timestamp when the match transitioned out of "waiting". */
   startedAt?:            string;
   finishedAt?:           string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 6 — Gameplay foundation (challenge → action → round loop)
+//
+// NOTE: This data lives entirely on the client in this phase.  No Supabase
+// tables back it.  See `conquestGameplay.ts` for the state factory and
+// `ConquestGame.tsx` for the local driver.  When server-authoritative state
+// is introduced later, these shapes are the contract a row should map onto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Catalogue of challenge formats Kuşatma will support.  Only `placeholder`
+ * is implemented in this phase; the rest exist so future minigames can be
+ * dropped in without re-modelling the round flow.
+ */
+export type ConquestChallengeType =
+  | "quiz"
+  | "map_click"
+  | "type_race"
+  | "flag_guess"
+  | "neighbor_question"
+  | "placeholder";
+
+/** Lifecycle of a single challenge instance within a round. */
+export type ConquestChallengeStatus =
+  | "active"     // challenge live, no winner yet
+  | "resolved"   // a winner has been determined
+  | "skipped";   // no eligible players / forfeit
+
+/**
+ * Static description of a single challenge instance.  For non-placeholder
+ * types this will eventually carry the question/clue payload directly.
+ */
+export interface ConquestChallenge {
+  /** Stable id for this challenge instance (unique within a match). */
+  id:                 string;
+  type:               ConquestChallengeType;
+  /** Round number this challenge belongs to (1-based). */
+  roundNumber:        number;
+  /** Short TR title shown at the top of the challenge panel. */
+  title:              string;
+  /** Optional one-line TR subtitle / instruction. */
+  prompt?:            string;
+  /** Players who may win this challenge (typically all active players). */
+  eligiblePlayerIds:  string[];
+}
+
+/** Live state of the current round's challenge. */
+export interface ConquestChallengeState {
+  challenge:        ConquestChallenge;
+  status:           ConquestChallengeStatus;
+  winnerPlayerId:   string | null;
+  /** Epoch ms when this challenge started. */
+  startedAt:        number;
+  /** Epoch ms when status transitioned to resolved/skipped. */
+  resolvedAt?:      number;
+}
+
+/**
+ * Phase the gameplay loop is currently in.  `setup` is the very brief
+ * moment between entering the game screen and the first challenge mounting.
+ */
+export type ConquestGamePhase =
+  | "setup"
+  | "challenge"
+  | "action"
+  | "round_result"
+  | "finished";
+
+/** Snapshot of an in-progress round. */
+export interface ConquestRoundState {
+  roundNumber:     number;
+  totalRounds:     number;
+  challenge:       ConquestChallengeState;
+  /** Set once the challenge resolves — the player owed a hamle. */
+  actionHolderId:  string | null;
+  /** Set after the player resolves their action (or skips). */
+  lastResult:      ConquestActionResult | null;
+}
+
+/** Compact per-round log entry kept across the whole match. */
+export interface ConquestRoundHistoryEntry {
+  roundNumber:        number;
+  challengeWinnerId:  string | null;
+  result:             ConquestActionResult | null;
+}
+
+/**
+ * The full client-side gameplay state.  Pure data — no React, no Supabase.
+ * Mutated only via helpers in `conquestGameplay.ts` and `conquestActions.ts`.
+ */
+export interface ConquestGameState {
+  mapId:         ConquestMapId;
+  players:       ConquestPlayer[];
+  phase:         ConquestGamePhase;
+  round:         ConquestRoundState;
+  regionStates:  ConquestRegionState[];
+  history:       ConquestRoundHistoryEntry[];
+  startedAt:     number;
+  finishedAt:    number | null;
+}
+
+/** Final result row — one per player — used by the result screen. */
+export interface ConquestFinalStanding {
+  playerId:    string;
+  playerName:  string;
+  /** 1-based rank.  Tied players share the same rank. */
+  rank:        number;
+  regionsHeld: number;
 }
 
 // ── Result / leaderboard ─────────────────────────────────────────────────────

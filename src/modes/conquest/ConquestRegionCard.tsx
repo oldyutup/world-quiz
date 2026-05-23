@@ -5,19 +5,33 @@
  * correct color theming without inline styles.  This keeps the component
  * small and the colors centrally controlled from App.css.
  *
- * Phase-4 scope: display-only.  No click actions yet.  Shield icon is
- * rendered when `shielded=true` but does nothing — gameplay hooks come later.
+ * Click handling:
+ *   - When `onClick` is provided the card renders as a <button> with the
+ *     correct cursor/focus affordance.
+ *   - `legal` adds a highlight ring (target is a valid action target).
+ *   - `illegalFlash` momentarily flashes the card (parent toggles the prop
+ *     after an invalid click).  Reverting the flash is the parent's job.
+ *   - When no onClick is given the card renders as a div, preserving the
+ *     original display-only behaviour for the lobby/preview screens.
  */
 
 import type { ConquestPlayerColor, ConquestRegion } from "./types";
 
 interface Props {
-  region:        ConquestRegion;
+  region:         ConquestRegion;
   /** Null / undefined → region is neutral. */
-  ownerColor?:   ConquestPlayerColor | null;
-  ownerName?:    string;
-  shielded?:     boolean;
-  neighborCount: number;
+  ownerColor?:    ConquestPlayerColor | null;
+  ownerName?:     string;
+  shielded?:      boolean;
+  neighborCount:  number;
+  /** When provided the card becomes interactive. */
+  onClick?:       () => void;
+  /** Highlight this card as a valid action target. */
+  legal?:         boolean;
+  /** Flash this card with a brief warning state (illegal click feedback). */
+  illegalFlash?:  boolean;
+  /** Disable interaction entirely (e.g. during round_result/finished). */
+  disabled?:      boolean;
 }
 
 export default function ConquestRegionCard({
@@ -26,17 +40,26 @@ export default function ConquestRegionCard({
   ownerName,
   shielded = false,
   neighborCount,
+  onClick,
+  legal = false,
+  illegalFlash = false,
+  disabled = false,
 }: Props) {
   const isOwned   = ownerColor != null && ownerName != null;
   const colorAttr = isOwned ? ownerColor : "neutral";
+  const isInteractive = !!onClick && !disabled;
 
-  return (
-    <div
-      className="cq-region-card"
-      data-color={colorAttr}
-      role="gridcell"
-      aria-label={`${region.name} — ${isOwned ? ownerName : "Tarafsız"}`}
-    >
+  const baseProps = {
+    className: "cq-region-card",
+    "data-color": colorAttr,
+    "data-legal": legal ? "" : undefined,
+    "data-illegal-flash": illegalFlash ? "" : undefined,
+    "data-interactive": isInteractive ? "" : undefined,
+    "aria-label": `${region.name} — ${isOwned ? ownerName : "Tarafsız"}${legal ? " (geçerli hedef)" : ""}`,
+  } as const;
+
+  const content = (
+    <>
       <div className="cq-region-card-top">
         <span className="cq-region-dot" aria-hidden="true" />
         <span className="cq-region-name">
@@ -58,6 +81,11 @@ export default function ConquestRegionCard({
             🛡
           </span>
         )}
+        {legal && (
+          <span className="cq-region-legal-tag" aria-hidden="true">
+            Hedef
+          </span>
+        )}
       </div>
 
       <div
@@ -67,6 +95,27 @@ export default function ConquestRegionCard({
       >
         {isOwned ? ownerName : "Tarafsız"}
       </div>
+    </>
+  );
+
+  if (isInteractive) {
+    return (
+      <button
+        type="button"
+        {...baseProps}
+        onClick={onClick}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      {...baseProps}
+      role="gridcell"
+    >
+      {content}
     </div>
   );
 }
