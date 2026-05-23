@@ -360,6 +360,37 @@ export function applyActionToGame(
     result:             applied.result,
   };
 
+  // Early finish: one player now owns every region on the map.
+  // Only possible after a capture/attack (skip never changes ownership).
+  const dominatorId = action.type !== "skip"
+    ? getPlayerOwningAllRegions(applied.regionStates, mapConfig)
+    : null;
+
+  if (dominatorId !== null) {
+    const dominator   = state.players.find(p => p.id === dominatorId);
+    const domResult: ConquestActionResult = {
+      ok:       true,
+      action:   applied.result.action,
+      playerId: applied.result.playerId,
+      regionId: applied.result.regionId,
+      message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+    };
+    return {
+      state: {
+        ...state,
+        phase:        "finished",
+        finishedAt:   Date.now(),
+        regionStates: applied.regionStates,
+        round: {
+          ...state.round,
+          lastResult: domResult,
+        },
+        history: [...state.history, { ...historyEntry, result: domResult }],
+      },
+      result: domResult,
+    };
+  }
+
   return {
     state: {
       ...state,
@@ -421,6 +452,27 @@ export function advanceToNextRound(state: ConquestGameState): ConquestGameState 
 // ─────────────────────────────────────────────────────────────────────────────
 // Read helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the id of the player who owns every region on the map, or null
+ * when no single player has full control.  Works for any map/region count.
+ *
+ * Used to detect early-finish: if this returns non-null after any action,
+ * the match is over immediately regardless of how many rounds remain.
+ */
+export function getPlayerOwningAllRegions(
+  regionStates: ConquestRegionState[],
+  mapConfig:    ConquestMapConfig,
+): string | null {
+  if (regionStates.length === 0) return null;
+  if (regionStates.length !== mapConfig.regions.length) return null;
+  const firstOwner = regionStates[0].ownerPlayerId;
+  if (firstOwner === null) return null;
+  for (const rs of regionStates) {
+    if (rs.ownerPlayerId !== firstOwner) return null;
+  }
+  return firstOwner;
+}
 
 /**
  * Count regions owned by each player.  Players with zero regions are still

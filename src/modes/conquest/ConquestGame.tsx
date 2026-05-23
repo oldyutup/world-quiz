@@ -56,6 +56,7 @@ import {
   buildFinalStandings,
   expireChallenge,
   getCurrentLegalTargets,
+  getPlayerOwningAllRegions,
   submitChallengeAnswer,
 } from "./conquestGameplay";
 import { inferActionFromRegionClick } from "./conquestActions";
@@ -80,7 +81,8 @@ interface Props {
   onBackToLobby:   () => void;
 }
 
-const ILLEGAL_FLASH_MS = 900;
+const ILLEGAL_FLASH_MS  = 900;
+const AUTO_ADVANCE_MS   = 2_500;
 
 export default function ConquestGame({
   roomCode: _roomCode,
@@ -110,6 +112,14 @@ export default function ConquestGame({
   // locally only — illegal clicks are not committed to gameplay_state.
   const [flashRegionId, setFlashRegionId] = useState<ConquestRegionId | null>(null);
   const flashTimerRef = useRef<number | null>(null);
+
+  // Stable refs so timeout callbacks always see the latest values without
+  // needing to be in the dependency arrays (avoids restarting timers on every
+  // gameState reference change).
+  const gameStateRef    = useRef<ConquestGameState | null>(null);
+  const onPushStateRef  = useRef(onPushGameState);
+  useEffect(() => { gameStateRef.current   = gameState;       }, [gameState]);
+  useEffect(() => { onPushStateRef.current = onPushGameState; }, [onPushGameState]);
 
   // Cleanup flash timer on unmount.
   useEffect(() => () => {
@@ -225,6 +235,57 @@ export default function ConquestGame({
     onPushGameState,
   ]);
 
+  // ── Host-only: auto-advance after round_result ─────────────────────────
+  // Keyed on phase + roundNumber so the 2.5 s timer resets cleanly at each
+  // round boundary.  Non-hosts just render the waiting indicator; only the
+  // host pushes the state transition, preventing duplicate writes.
+  const phaseForAdvance       = gameState?.phase;
+  const roundNumberForAdvance = gameState?.round.roundNumber;
+  useEffect(() => {
+    if (!isHost || phaseForAdvance !== "round_result") return;
+    const t = window.setTimeout(() => {
+      const gs   = gameStateRef.current;
+      const push = onPushStateRef.current;
+      if (!gs || gs.phase !== "round_result") return;
+      const next = advanceToNextRound(gs);
+      if (next !== gs) void push(next);
+    }, AUTO_ADVANCE_MS);
+    return () => window.clearTimeout(t);
+  // roundNumberForAdvance re-keys the timer when advancing between rounds.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, phaseForAdvance, roundNumberForAdvance]);
+
+  // ── Host-only: action-phase early finish (belt-and-suspenders) ─────────
+  // applyActionToGame already catches domination at the capture step, but if
+  // stale Supabase state arrives with phase="action" and all regions already
+  // owned by one player (e.g. the winner won a new challenge), finish cleanly
+  // rather than showing "pas geç" forever.
+  useEffect(() => {
+    if (!isHost || phaseForAdvance !== "action") return;
+    const gs = gameStateRef.current;
+    if (!gs || !mapConfig) return;
+    const dominatorId = getPlayerOwningAllRegions(gs.regionStates, mapConfig);
+    if (!dominatorId) return;
+    const dominator = gs.players.find(p => p.id === dominatorId);
+    const next: ConquestGameState = {
+      ...gs,
+      phase:      "finished",
+      finishedAt: Date.now(),
+      round: {
+        ...gs.round,
+        lastResult: {
+          ok:       true,
+          action:   "skip",
+          playerId: dominatorId,
+          regionId: null,
+          message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+        },
+      },
+    };
+    void onPushStateRef.current(next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost, phaseForAdvance, roundNumberForAdvance, mapConfig]);
+
   const flashIllegal = useCallback((regionId: ConquestRegionId) => {
     if (flashTimerRef.current !== null) {
       window.clearTimeout(flashTimerRef.current);
@@ -297,12 +358,13 @@ export default function ConquestGame({
   }, [gameState, mapConfig, canActOnRegion, onPushGameState]);
 
   const handleNextRound = useCallback(() => {
+    if (!isHost) return;
     if (!gameState) return;
     playSound("click");
     const next = advanceToNextRound(gameState);
     if (next === gameState) return;
     void onPushGameState(next);
-  }, [gameState, onPushGameState]);
+  }, [isHost, gameState, onPushGameState]);
 
   // ── Safety fallbacks ─────────────────────────────────────────────────
   if (!mapConfig) {
@@ -545,13 +607,20 @@ export default function ConquestGame({
                 {lastResult?.message ?? "Tur tamamlandı."}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn btn-accent cq-round-next-btn"
-              onClick={handleNextRound}
-            >
-              {roundNumber >= totalRounds ? "Sonuçları Gör" : "Sonraki Tur →"}
-            </button>
+            <p className="cq-round-auto-hint" role="status">
+              {roundNumber >= totalRounds
+                ? "Sonuçlar hazırlanıyor…"
+                : "Sonraki tur hazırlanıyor…"}
+            </p>
+            {isHost && (
+              <button
+                type="button"
+                className="btn btn-ghost cq-round-skip-btn"
+                onClick={handleNextRound}
+              >
+                {roundNumber >= totalRounds ? "Hemen Bitir" : "Hemen Geç →"}
+              </button>
+            )}
           </section>
         )}
 
