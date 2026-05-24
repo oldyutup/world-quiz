@@ -9568,77 +9568,143 @@ body {
   white-space: nowrap;
 }
 
-/* ── Player summary strip ─────────────────────────────────────── */
-.cq-game-players-strip {
-  flex: 0 0 auto;
+/* ── Compact player panel (fixed overlay, top-left) ──────────── */
+.cq-players-panel {
+  position: fixed;
+  top: 58px;
+  left: 12px;
+  z-index: 10;
+  width: 210px;
+  background: rgba(7, 10, 18, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  padding: 0 0 4px;
+  pointer-events: none;
+}
+
+.cq-players-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: oklch(0.54 0.008 220);
+  margin: 0;
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cq-players-panel-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.cq-game-players-strip::-webkit-scrollbar { display: none; }
-
-.cq-game-player-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: var(--cq-color-bg, rgba(255,255,255,0.06));
-  border: 1.5px solid var(--cq-color-bd, rgba(255,255,255,0.12));
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 7px;
+  padding: 4px 8px;
+  margin: 2px 4px 0;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  min-width: 0;
 }
 
-.cq-game-player-dot {
-  width: 9px;
-  height: 9px;
+.cq-players-panel-row--active {
+  background: var(--cq-color-bg, rgba(255, 255, 255, 0.06));
+  border-color: var(--cq-color-bd, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 0 10px -4px var(--cq-color, rgba(255, 255, 255, 0.3));
+}
+
+.cq-players-panel-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--cq-color, rgba(255,255,255,0.3));
+  background: var(--cq-color, oklch(0.60 0.006 220));
   flex-shrink: 0;
 }
 
-.cq-game-player-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
+.cq-players-panel-neutral .cq-players-panel-dot {
+  background: oklch(0.52 0.006 220);
 }
 
-.cq-game-player-host {
-  font-size: 11px;
+.cq-players-panel-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: oklch(0.80 0.006 220);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-players-panel-neutral .cq-players-panel-name {
+  color: oklch(0.52 0.006 220);
+}
+
+.cq-players-panel-count {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cq-color, oklch(0.62 0.006 220));
+  min-width: 18px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.cq-players-panel-neutral .cq-players-panel-count {
+  color: oklch(0.52 0.006 220);
+}
+
+/* Score column: big points, small region count beneath. */
+.cq-players-panel-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   line-height: 1;
+  gap: 1px;
+  flex-shrink: 0;
 }
-
-.cq-game-player-regions {
+.cq-players-panel-points {
   font-size: 13px;
   font-weight: 800;
-  color: var(--cq-color, var(--muted));
-  min-width: 14px;
-  text-align: center;
+  color: var(--cq-color, oklch(0.62 0.006 220));
+}
+.cq-players-panel-regions {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: oklch(0.62 0.006 220);
+  opacity: 0.78;
+}
+.cq-players-panel-neutral .cq-players-panel-points,
+.cq-players-panel-neutral .cq-players-panel-regions {
+  color: oklch(0.52 0.006 220);
 }
 
-.cq-game-neutral-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(255,255,255,0.10);
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.cq-game-neutral-chip .cq-game-player-regions {
-  color: var(--muted);
+/* Color tokens for the panel rows */
+.cq-players-panel-row[data-color="red"]    { --cq-color: #ef4444; --cq-color-bg: rgba(239,68,68,0.10); --cq-color-bd: rgba(239,68,68,0.38); }
+.cq-players-panel-row[data-color="blue"]   { --cq-color: #3b82f6; --cq-color-bg: rgba(59,130,246,0.10); --cq-color-bd: rgba(59,130,246,0.38); }
+.cq-players-panel-row[data-color="green"]  { --cq-color: #22c55e; --cq-color-bg: rgba(34,197,94,0.10); --cq-color-bd: rgba(34,197,94,0.38); }
+.cq-players-panel-row[data-color="yellow"] { --cq-color: #eab308; --cq-color-bg: rgba(234,179,8,0.10); --cq-color-bd: rgba(234,179,8,0.38); }
+.cq-players-panel-row[data-color="purple"] { --cq-color: #a855f7; --cq-color-bg: rgba(168,85,247,0.10); --cq-color-bd: rgba(168,85,247,0.38); }
+.cq-players-panel-row[data-color="orange"] { --cq-color: #f97316; --cq-color-bg: rgba(249,115,22,0.10); --cq-color-bd: rgba(249,115,22,0.38); }
+
+@media (max-width: 600px) {
+  .cq-players-panel {
+    top: 50px;
+    left: 6px;
+    width: 165px;
+  }
+  .cq-players-panel-title,
+  .cq-players-panel-name,
+  .cq-players-panel-count,
+  .cq-players-panel-points {
+    font-size: 11px;
+  }
+  .cq-players-panel-regions {
+    font-size: 8.5px;
+  }
+  .cq-players-panel-row {
+    padding: 3px 7px;
+    gap: 6px;
+  }
 }
 
 /* ── Board area ───────────────────────────────────────────────── */
@@ -9923,35 +9989,50 @@ body {
   border: 1px solid var(--cq-color-bd, rgba(255,255,255,0.12));
 }
 
-/* ── Player chip: "your turn" pulse ────────────────────────────── */
-.cq-game-player-chip--turn {
-  box-shadow: 0 0 0 2px var(--cq-color, rgba(255,255,255,0.5)),
-              0 0 14px -4px var(--cq-color, rgba(255,255,255,0.4));
-}
-.cq-game-player-turn-tag {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--cq-color, #f6c074);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--cq-color-bg, rgba(255,255,255,0.06));
-  border: 1px solid var(--cq-color-bd, rgba(255,255,255,0.30));
+/* ── Floating phase card container ─────────────────────────────── */
+.cq-game-phase-panel {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(520px, 92vw);
+  pointer-events: auto;
 }
 
-/* ── Phase panel container ─────────────────────────────────────── */
-.cq-game-phase-panel {
-  flex: 0 0 auto;
-  padding: 12px 16px 4px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+.cq-game-phase-panel[data-phase="finished"] {
+  bottom: auto;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+/* ── Shared floating card base ─────────────────────────────────── */
+.cq-challenge-panel,
+.cq-action-panel,
+.cq-round-result-panel,
+.cq-finished-panel {
+  background: rgba(7, 9, 20, 0.91);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  box-shadow: 0 4px 36px -4px rgba(0, 0, 0, 0.70),
+              0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  padding: 16px;
+  max-width: none;
+  margin: 0;
+  animation: cq-float-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cq-float-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Challenge panel ───────────────────────────────────────────── */
 .cq-challenge-panel {
-  max-width: 720px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -10078,6 +10159,25 @@ body {
   user-select: none;
 }
 
+/* Flag-guess variant: tighter layout so the card doesn't bury the south map */
+.cq-challenge-panel--flag {
+  gap: 5px;
+  padding: 12px 14px;
+}
+.cq-challenge-panel--flag .cq-challenge-flag {
+  font-size: 58px;
+  margin: 0;
+}
+.cq-challenge-panel--flag .cq-challenge-title {
+  font-size: 14px;
+}
+.cq-challenge-panel--flag .cq-challenge-timer {
+  margin-top: 2px;
+}
+.cq-challenge-panel--flag .cq-challenge-answer-form {
+  margin-top: 2px;
+}
+
 .cq-challenge-timer {
   position: relative;
   width: 100%;
@@ -10202,8 +10302,6 @@ body {
 
 /* ── Action panel ──────────────────────────────────────────────── */
 .cq-action-panel {
-  max-width: 720px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -10271,22 +10369,16 @@ body {
 
 /* ── Round result panel ────────────────────────────────────────── */
 .cq-round-result-panel {
-  max-width: 720px;
-  margin: 0 auto;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
 }
 .cq-round-result-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
-  flex: 1;
-  min-width: 200px;
 }
 .cq-round-result-icon { font-size: 16px; }
 .cq-round-result-text { font-weight: 600; }
@@ -10300,8 +10392,6 @@ body {
 
 /* ── Final result / standings ──────────────────────────────────── */
 .cq-finished-panel {
-  max-width: 720px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -10366,6 +10456,24 @@ body {
   font-weight: 800;
   color: var(--cq-color, var(--muted));
 }
+.cq-standings-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  gap: 2px;
+}
+.cq-standings-points {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--cq-color, var(--muted));
+}
+.cq-standings-regions {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0.85;
+}
 
 .cq-finished-note {
   margin: 4px 0 0;
@@ -10389,16 +10497,14 @@ body {
 /* ── Mobile tweaks ─────────────────────────────────────────────── */
 @media (max-width: 600px) {
   .cq-game-phase-panel {
-    padding: 10px 12px 4px;
+    bottom: 54px;
+  }
+  .cq-game-phase-panel[data-phase="finished"] {
+    bottom: auto;
   }
   .cq-challenge-winner-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .cq-round-result-panel {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .cq-round-next-btn,
   .cq-action-skip-btn,
   .cq-finished-back-btn {
     width: 100%;
@@ -10449,6 +10555,39 @@ body {
   overflow: visible;
 }
 
+/* ── Terrain image underlay (PNG pattern clipped by each region path) ──
+   The PNG lives at /public/assets/backgrounds/turkey-terrain-texture.png.
+   Tune this single opacity to dial the terrain intensity up or down.   */
+/* Turkey terrain image underlay — maksimum belirginlik */
+.cq-terrain-image-underlay {
+  opacity: 0.82 !important;
+  pointer-events: none;
+  filter: contrast(1.14) saturate(1.10) brightness(0.97);
+}
+
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+
+ .cq-region-terrain-image {
+  opacity: 1 !important;
+}
+
 /* ── Region fill + border (single merged path per region) ───── */
 .cq-map-region {
   stroke-width: 2;
@@ -10496,6 +10635,22 @@ body {
   paint-order: stroke fill;
 }
 
+/* ── Region point badge (gold, sits near label) ──────────────── */
+.cq-map-point-badge-ring {
+  fill: rgba(20, 14, 4, 0.78);
+  stroke: rgba(250, 204, 21, 0.92);
+  stroke-width: 1.1;
+  filter: drop-shadow(0 0 1.5px rgba(250, 204, 21, 0.35));
+}
+.cq-map-point-badge-text {
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 800;
+  fill: rgba(253, 224, 71, 0.98);
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
 /* ── Legal target pulse ring ─────────────────────────────────── */
 @keyframes cqMapPulse {
   0%, 100% { stroke-opacity: 0.90; stroke-width: 2.5; }
@@ -10525,7 +10680,8 @@ body {
 
 @media (max-width: 600px) {
   .cq-map-label,
-  .cq-map-owner-label {
+  .cq-map-owner-label,
+  .cq-map-points-layer {
     display: none;
   }
 
@@ -10540,4 +10696,163 @@ body {
 [data-theme="earth"] .cq-map-region[data-legal=""],
 [data-theme="adventure"] .cq-map-region[data-legal=""] {
   filter: brightness(1.12);
+}
+
+/* Turkey Conquest background - clean final */
+.app.duel-screen.cq-screen.conquest-war-bg {
+  position: relative;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(8, 12, 24, 0.24), rgba(8, 12, 24, 0.42)),
+    url("/assets/backgrounds/conquest-war-map.png") center / cover no-repeat !important;
+}
+
+/* Board/map area must stay transparent. Do not render a second background inside the map. */
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-svg {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap::before,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap::after,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner::before,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner::after,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap::before,
+.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap::after {
+  display: none !important;
+  content: none !important;
+  background: transparent !important;
+}
+
+/* Turkey Conquest background - force active on cq-screen */
+.app.duel-screen.cq-screen {
+  position: relative;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(8, 12, 24, 0.18), rgba(8, 12, 24, 0.36)),
+    url("/assets/backgrounds/conquest-war-map.png") center / cover no-repeat !important;
+}
+
+/* Do not render a second background inside the map/card area */
+.app.duel-screen.cq-screen .cq-game-board-wrap,
+.app.duel-screen.cq-screen .cq-game-board-inner,
+.app.duel-screen.cq-screen .cq-turkey-map-wrap,
+.app.duel-screen.cq-screen .cq-turkey-map-svg {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.app.duel-screen.cq-screen .cq-game-board-wrap::before,
+.app.duel-screen.cq-screen .cq-game-board-wrap::after,
+.app.duel-screen.cq-screen .cq-game-board-inner::before,
+.app.duel-screen.cq-screen .cq-game-board-inner::after,
+.app.duel-screen.cq-screen .cq-turkey-map-wrap::before,
+.app.duel-screen.cq-screen .cq-turkey-map-wrap::after {
+  display: none !important;
+  content: none !important;
+  background: transparent !important;
+}
+
+
+
+/* Kuşatma: Türkiye haritasını biraz aşağı al */
+.app.duel-screen.cq-screen .cq-game-board-inner {
+  padding-top: 44px !important;
+}
+
+.app.duel-screen.cq-screen .cq-turkey-map-wrap {
+  transform: translateY(28px);
+}
+
+
+/* Kuşatma: Türkiye mapini büyüt ve konumlandır */
+.app.duel-screen.cq-screen .cq-game-board-inner {
+  max-width: 1050px !important;
+  transform: translateX(0px) !important;
+}
+
+.app.duel-screen.cq-screen .cq-turkey-map-svg {
+  width: 100% !important;
+  height: auto !important;
+}
+
+
+/* Kuşatma: Türkiye mapini yukarı hizala */
+.app.duel-screen.cq-screen .cq-turkey-map-wrap {
+  transform: translateY(-25px) !important;
+}
+
+
+/* FINAL: Kuşatma background exact-fit, zoom/crop yok */
+.app.duel-screen.cq-screen {
+  background: #07101c !important;
+}
+
+/* Arkaplan sadece board alanına birebir otursun */
+.app.duel-screen.cq-screen .cq-game-board-wrap {
+  background-image:
+    linear-gradient(rgba(5, 10, 18, 0.08), rgba(5, 10, 18, 0.16)),
+    url("/assets/backgrounds/conquest-war-map.png") !important;
+  background-size: 100% 100% !important;
+  background-position: top left !important;
+  background-repeat: no-repeat !important;
+  background-color: transparent !important;
+}
+
+/* İç katmanlar ikinci kez background basmasın */
+.app.duel-screen.cq-screen .cq-game-board-inner,
+.app.duel-screen.cq-screen .cq-turkey-map-wrap,
+.app.duel-screen.cq-screen .cq-turkey-map-svg {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+
+/* Kuşatma: Türkiye map sınırlarını arka plandan ayır */
+.app.duel-screen.cq-screen .cq-turkey-map-svg path {
+  filter:
+    drop-shadow(0 0 2px rgba(190, 235, 255, 0.45))
+    drop-shadow(0 0 5px rgba(80, 190, 255, 0.22)) !important;
+}
+
+.app.duel-screen.cq-screen .cq-turkey-map-svg text {
+  filter:
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)) !important;
+}
+
+
+/* Kuşatma: bölge puan rozetlerini daha sade yap */
+.cq-map-point-badge-ring {
+  fill: rgba(170, 125, 35, 0.82) !important;
+  stroke: rgba(255, 226, 140, 0.72) !important;
+  stroke-width: 1.2px !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)) !important;
+}
+
+.cq-map-point-badge-text {
+  fill: rgba(255, 242, 180, 0.96) !important;
+  font-size: 8px !important;
+  font-weight: 900 !important;
+  paint-order: stroke !important;
+  stroke: rgba(0, 0, 0, 0.55) !important;
+  stroke-width: 1.4px !important;
 }

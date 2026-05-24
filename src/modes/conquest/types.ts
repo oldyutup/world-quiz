@@ -403,6 +403,8 @@ export interface ConquestFinalStanding {
   /** 1-based rank.  Tied players share the same rank. */
   rank:        number;
   regionsHeld: number;
+  /** Sum of region point values held by this player. */
+  points:      number;
 }
 
 // ── Result / leaderboard ─────────────────────────────────────────────────────

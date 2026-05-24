@@ -49,6 +49,7 @@ import {
   assignConquestPlayerColors,
   getRegionOwnerCounts,
 } from "./conquestState";
+import { getPlayerRegionPoints, getNeutralRegionPoints } from "./regionPoints";
 import {
   actionHolderHasNoMoves,
   advanceToNextRound,
@@ -157,7 +158,15 @@ export default function ConquestGame({
     () => getRegionOwnerCounts(regionStates),
     [regionStates],
   );
-  const neutralCount = regionStates.filter(rs => rs.ownerPlayerId === null).length;
+  const playerPoints = useMemo(
+    () => getPlayerRegionPoints(players, regionStates),
+    [players, regionStates],
+  );
+  const neutralCount  = regionStates.filter(rs => rs.ownerPlayerId === null).length;
+  const neutralPoints = useMemo(
+    () => getNeutralRegionPoints(regionStates),
+    [regionStates],
+  );
 
   const legalTargets = useMemo(
     () => (gameState && mapConfig) ? getCurrentLegalTargets(gameState, mapConfig) : new Set<ConquestRegionId>(),
@@ -369,7 +378,7 @@ export default function ConquestGame({
   // ── Safety fallbacks ─────────────────────────────────────────────────
   if (!mapConfig) {
     return (
-      <div className="app duel-screen cq-screen" style={themeStyle} data-theme={themeAttr}>
+      <div className="app duel-screen cq-screen conquest-war-bg" style={themeStyle} data-theme={themeAttr}>
         <div className="duel-header">
           <button className="back-btn" onClick={handleBack}>
             <span>←</span>
@@ -393,7 +402,7 @@ export default function ConquestGame({
   // realtime echo of gameplay_state).  Show a thin loading shell.
   if (!gameState) {
     return (
-      <div className="app duel-screen cq-screen" style={themeStyle} data-theme={themeAttr}>
+      <div className="app duel-screen cq-screen conquest-war-bg" style={themeStyle} data-theme={themeAttr}>
         <div className="duel-header">
           <button className="back-btn" onClick={handleBack}>
             <span>←</span>
@@ -461,47 +470,40 @@ export default function ConquestGame({
         <div style={{ width: 80 }} />
       </div>
 
-      {/* ── Player summary strip ────────────────────────────────── */}
-      <div className="cq-game-players-strip" role="list" aria-label="Oyuncular">
+      {/* ── Compact player panel (top-left overlay) ─────────────── */}
+      <div className="cq-players-panel" role="list" aria-label="Oyuncular">
+        <h4 className="cq-players-panel-title" aria-hidden="true">Oyuncular</h4>
         {players.map(player => {
+          const color    = playerColors[player.id];
           const isHolder = phase === "action" && gameState.round.actionHolderId === player.id;
           return (
             <div
               key={player.id}
-              className={"cq-game-player-chip" + (isHolder ? " cq-game-player-chip--turn" : "")}
-              data-color={playerColors[player.id]}
+              className={"cq-players-panel-row" + (isHolder ? " cq-players-panel-row--active" : "")}
+              data-color={color}
               role="listitem"
-              aria-label={`${player.name} — ${regionCounts[player.id] ?? 0} bölge${isHolder ? " (sırada)" : ""}`}
+              aria-label={`${player.name} — ${playerPoints[player.id] ?? 0} puan, ${regionCounts[player.id] ?? 0} bölge${isHolder ? " (sırada)" : ""}`}
             >
-              <span className="cq-game-player-dot" aria-hidden="true" />
-              <span className="cq-game-player-name">{player.name}</span>
-              {player.isHost && (
-                <span className="cq-game-player-host" aria-label="Ev sahibi">
-                  👑
-                </span>
-              )}
-              {isHolder && (
-                <span className="cq-game-player-turn-tag" aria-hidden="true">
-                  Hamle
-                </span>
-              )}
-              <span className="cq-game-player-regions" aria-hidden="true">
-                {regionCounts[player.id] ?? 0}
+              <span className="cq-players-panel-dot" aria-hidden="true" />
+              <span className="cq-players-panel-name">{player.name}</span>
+              <span className="cq-players-panel-score" aria-hidden="true">
+                <span className="cq-players-panel-points">{playerPoints[player.id] ?? 0}</span>
+                <span className="cq-players-panel-regions">{regionCounts[player.id] ?? 0} bölge</span>
               </span>
             </div>
           );
         })}
-
         {neutralCount > 0 && (
           <div
-            className="cq-game-neutral-chip"
+            className="cq-players-panel-row cq-players-panel-neutral"
             role="listitem"
-            aria-label={`${neutralCount} tarafsız bölge`}
+            aria-label={`${neutralPoints} puanlık ${neutralCount} tarafsız bölge`}
           >
-            <span aria-hidden="true">⬜</span>
-            <span>Tarafsız</span>
-            <span className="cq-game-player-regions" aria-hidden="true">
-              {neutralCount}
+            <span className="cq-players-panel-dot" aria-hidden="true" />
+            <span className="cq-players-panel-name">Tarafsız</span>
+            <span className="cq-players-panel-score" aria-hidden="true">
+              <span className="cq-players-panel-points">{neutralPoints}</span>
+              <span className="cq-players-panel-regions">{neutralCount} bölge</span>
             </span>
           </div>
         )}
@@ -555,8 +557,8 @@ export default function ConquestGame({
         </div>
       </div>
 
-      {/* ── Phase-driven bottom panel ──────────────────────────── */}
-      <div className="cq-game-phase-panel">
+      {/* ── Floating phase card ────────────────────────────────── */}
+      <div className="cq-game-phase-panel" data-phase={phase}>
         {phase === "challenge" && (
           <ConquestChallengePanel
             challengeState={challengeState}
@@ -642,8 +644,9 @@ export default function ConquestGame({
                   <span className="cq-standings-rank">#{row.rank}</span>
                   <span className="cq-standings-dot" aria-hidden="true" />
                   <span className="cq-standings-name">{row.playerName}</span>
-                  <span className="cq-standings-count">
-                    {row.regionsHeld} bölge
+                  <span className="cq-standings-score">
+                    <span className="cq-standings-points">{row.points} puan</span>
+                    <span className="cq-standings-regions">{row.regionsHeld} bölge</span>
                   </span>
                 </li>
               ))}

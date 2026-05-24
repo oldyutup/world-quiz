@@ -23,6 +23,34 @@ import type {
   ConquestRegionState,
 } from "./types";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
+import { getRegionPoints } from "./regionPoints";
+
+// Per-region offset (in SVG units) for the point badge, relative to label
+// position. Default = badge sits just above the region label. Override only
+// where the default would collide with another label or the map edge.
+const REGION_BADGE_OFFSET: Record<string, { dx: number; dy: number }> = {
+  trakya:           { dx: -2, dy: -26 },
+  istanbul_kocaeli: { dx: 34,  dy: -1 },
+  kuzeydogu_anadolu:{ dx: 0,   dy: -14 },
+  guney_marmara: { dx: 0, dy: -24 },
+  kuzey_ege: { dx: 0, dy: -24 },
+  dogu_karadeniz: { dx: 0, dy: -24 },
+  orta_karadeniz: { dx: 0, dy: -24 },
+  bati_karadeniz: { dx: 0, dy: -24 },
+  ic_bati_anadolu: { dx: 0, dy: -18 },
+  ankara_cevre: { dx: 0, dy: -18 },
+};
+const DEFAULT_BADGE_OFFSET = { dx: 0, dy: -14 };
+
+// ─── Terrain texture underlay ─────────────────────────────────────────────────
+// One bitmap stamped through every region path via an SVG <pattern>. The
+// shape of "Türkiye" is therefore always the union of the region SVG paths —
+// guaranteed pixel-perfect with the foreground map. Swap the PNG to retune
+// the look; no code change needed.
+const TERRAIN_IMAGE_HREF    = "/assets/backgrounds/turkey-terrain-texture.png?v=1779635172";
+const TERRAIN_PATTERN_ID    = "cqTurkeyTerrainImage";
+const MAP_VIEWBOX_W         = 1005;
+const MAP_VIEWBOX_H         = 490;
 
 // ─── Region label text ────────────────────────────────────────────────────────
 
@@ -165,6 +193,43 @@ export default function TurkeyConquestMap({
         aria-label="Türkiye Kuşatması haritası"
         role="img"
       >
+        {/* ── Defs: terrain bitmap pattern, sized to the SVG viewBox so it
+             stamps once across the whole map and gets clipped by each region
+             path. Drop a new PNG at TERRAIN_IMAGE_HREF to retune the look. */}
+        <defs>
+          <pattern
+            id={TERRAIN_PATTERN_ID}
+            patternUnits="userSpaceOnUse"
+            x="0"
+            y="0"
+            width={MAP_VIEWBOX_W}
+            height={MAP_VIEWBOX_H}
+          >
+            <image
+              href={TERRAIN_IMAGE_HREF}
+              x="0"
+              y="0"
+              width={MAP_VIEWBOX_W}
+              height={MAP_VIEWBOX_H}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          </pattern>
+        </defs>
+
+        {/* ── Layer 0: terrain image underlay (purely visual; never intercepts clicks) ── */}
+        <g className="cq-terrain-image-underlay" pointerEvents="none" aria-hidden="true">
+          {regionEntries.map(({ id, d }) => (
+            <path
+              key={`terrain-img-${id}`}
+              d={d}
+              className="cq-region-terrain-image"
+              fill={`url(#${TERRAIN_PATTERN_ID})`}
+              fillRule="evenodd"
+            />
+          ))}
+        </g>
+
+
         {/* ── Layer 1: region fills + borders (single path per region) ── */}
         {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, label }) => (
           <path
@@ -253,6 +318,31 @@ export default function TurkeyConquestMap({
             </g>
           );
         })}
+
+        {/* ── Layer 5: region point badges (decorative; never intercepts clicks) ── */}
+        <g className="cq-map-points-layer" pointerEvents="none" aria-hidden="true">
+          {regionEntries.map(({ id, labelPos }) => {
+            const points = getRegionPoints(id);
+            if (!points) return null;
+            const off  = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
+            const cx   = labelPos.x + off.dx;
+            const cy   = labelPos.y + off.dy;
+            return (
+              <g key={`pts-${id}`} className="cq-map-point-badge">
+                <circle cx={cx} cy={cy} r={7.5} className="cq-map-point-badge-ring" />
+                <text
+                  x={cx}
+                  y={cy + 0.5}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="cq-map-point-badge-text"
+                >
+                  {points}
+                </text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
     </div>
   );

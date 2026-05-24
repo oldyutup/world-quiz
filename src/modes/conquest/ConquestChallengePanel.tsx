@@ -107,7 +107,7 @@ export default function ConquestChallengePanel({
 
   return (
     <section
-      className="cq-challenge-panel"
+      className={`cq-challenge-panel${challenge.type === "flag_guess" ? " cq-challenge-panel--flag" : ""}`}
       data-status={status}
       aria-label="Mücadele paneli"
     >

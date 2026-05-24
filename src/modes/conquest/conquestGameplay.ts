@@ -27,6 +27,7 @@ import {
 } from "./conquestChallenges";
 import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
 import { createInitialRegionStates } from "./conquestState";
+import { getPlayerRegionPoints } from "./regionPoints";
 import type {
   ConquestActionResult,
   ConquestChallenge,
@@ -526,24 +527,28 @@ export function buildFinalStandings(
   state: ConquestGameState,
 ): ConquestFinalStanding[] {
   const counts = getPlayerRegionCounts(state.players, state.regionStates);
+  const points = getPlayerRegionPoints(state.players, state.regionStates);
   const rows = state.players.map(p => ({
     playerId:    p.id,
     playerName:  p.name,
     regionsHeld: counts[p.id] ?? 0,
+    points:      points[p.id] ?? 0,
   }));
-  rows.sort((a, b) => b.regionsHeld - a.regionsHeld);
+  // Primary sort: points (desc). Tiebreak: region count (desc).
+  rows.sort((a, b) => (b.points - a.points) || (b.regionsHeld - a.regionsHeld));
 
   const out: ConquestFinalStanding[] = [];
-  let lastCount: number | null = null;
-  let lastRank                  = 0;
+  let lastKey: string | null = null;
+  let lastRank               = 0;
   rows.forEach((r, i) => {
+    const key = `${r.points}|${r.regionsHeld}`;
     let rank: number;
-    if (lastCount !== null && r.regionsHeld === lastCount) {
+    if (lastKey !== null && key === lastKey) {
       rank = lastRank;
     } else {
       rank = i + 1;
-      lastRank  = rank;
-      lastCount = r.regionsHeld;
+      lastRank = rank;
+      lastKey  = key;
     }
     out.push({ ...r, rank });
   });
