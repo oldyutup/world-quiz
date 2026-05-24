@@ -5,13 +5,26 @@
  * Reads:  src/modes/conquest/maps/turkey-provinces.ts (81 province paths)
  * Writes: src/modes/conquest/maps/turkey-regions.ts   (24 merged paths)
  *
- * Pipeline per region:
- *   1. Parse each province path → flatten Bezier curves to polyline rings.
- *   2. Snap vertex coordinates to a 0.01-unit grid (closes micro-gaps
- *      between adjacent province borders introduced by Bezier sampling).
- *   3. Boolean-union all province polygons in the region (polygon-clipping).
- *   4. Simplify each resulting ring with Ramer–Douglas–Peucker, then emit
- *      a compact `d` string with `M` + `L`s + `Z`.
+ * Why this pipeline is non-trivial
+ * --------------------------------
+ * The source SVG traces every province's border independently — adjacent
+ * provinces' "shared" edges are actually represented by separate Bezier
+ * curves whose sample points end up ~1 unit apart in viewBox space.  A
+ * plain polygon union therefore sees the 81 provinces as 81 disjoint
+ * polygons and just compounds them, leaving every internal province seam
+ * visible when stroked.
+ *
+ * Fix: use Clipper (integer-coordinate, Vatti-based polygon ops) to:
+ *   1. Inflate every province polygon outward by INFLATE_EPSILON via
+ *      Minkowski-disk offset (jtRound).  Same-region neighbours now
+ *      overlap by 2 × INFLATE_EPSILON along their shared boundary.
+ *   2. Boolean-union the inflated polygons.  Internal seams collapse
+ *      because the inputs genuinely overlap.
+ *   3. Deflate the result by INFLATE_EPSILON to restore approximately
+ *      the original outline.
+ *
+ * Final per-ring steps: flatten Bezier curves (24 samples/curve), pipe
+ * through Clipper, RDP-simplify the rings, emit a compact `d` string.
  *
  * Not part of the build pipeline. Run manually after province path edits:
  *   npx tsx scripts/build-turkey-regions.ts
@@ -24,7 +37,7 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import svgpath from "svgpath";
-import polygonClipping from "polygon-clipping";
+import ClipperLib from "clipper-lib";
 import simplify from "simplify-js";
 
 import { TURKEY_PROVINCES } from "../src/modes/conquest/maps/turkey-provinces";
@@ -32,20 +45,22 @@ import { TURKEY_PROVINCES } from "../src/modes/conquest/maps/turkey-provinces";
 // ─── Tuning constants ────────────────────────────────────────────────────────
 
 const BEZIER_STEPS       = 24;    // samples per cubic / quadratic curve
-const SNAP_PRECISION     = 100;   // 1 / grid-step (0.01 unit grid)
-const SIMPLIFY_TOLERANCE = 0.15;  // RDP tolerance in viewBox units
+const INFLATE_EPSILON    = 1.25;  // Minkowski-disk offset in viewBox units
+                                  //   (max measured shared-edge gap ≈ 1.0u,
+                                  //    so 1.25u guarantees full overlap and
+                                  //    eliminates sliver holes inside merges)
+const CLIPPER_SCALE      = 1000;  // viewBox units → Clipper integer units
+const SIMPLIFY_TOLERANCE = 0.15;  // RDP tolerance, viewBox units
 const COORD_DECIMALS     = 2;     // decimals in emitted `d` strings
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Pt = [number, number];
+type Pt   = [number, number];
 type Ring = Pt[];
 
-// polygon-clipping geometry shapes (loosely typed — we don't need the
-// library's full generic surface here).
-type PCRing        = [number, number][];
-type PCPolygon     = PCRing[];
-type PCMultiPoly   = PCPolygon[];
+// Clipper integer-coordinate path: array of { X, Y } in 64-bit-safe ints.
+type ClipperPath  = Array<{ X: number; Y: number }>;
+type ClipperPaths = ClipperPath[];
 
 // ─── Bezier-flattening parser ────────────────────────────────────────────────
 //
@@ -125,50 +140,102 @@ function flattenPath(d: string): Ring[] {
   return rings;
 }
 
-// ─── Coordinate snap (closes sub-pixel gaps at shared province borders) ─────
+// ─── Clipper conversion helpers ──────────────────────────────────────────────
+//
+// Clipper requires integer coordinates.  Drop the trailing closing duplicate
+// before handing rings to Clipper (Clipper treats every path as closed by
+// definition and will introduce a spurious zero-length edge otherwise).
 
-function snapRing(ring: Ring): Ring {
-  return ring.map(([px, py]): Pt => [
-    Math.round(px * SNAP_PRECISION) / SNAP_PRECISION,
-    Math.round(py * SNAP_PRECISION) / SNAP_PRECISION,
-  ]);
+function ringToClipperPath(ring: Ring): ClipperPath {
+  let end = ring.length;
+  if (end >= 2) {
+    const a = ring[0];
+    const b = ring[end - 1];
+    if (a[0] === b[0] && a[1] === b[1]) end -= 1;
+  }
+  const out: ClipperPath = new Array(end);
+  for (let i = 0; i < end; i++) {
+    out[i] = {
+      X: Math.round(ring[i][0] * CLIPPER_SCALE),
+      Y: Math.round(ring[i][1] * CLIPPER_SCALE),
+    };
+  }
+  // Normalize winding to a single convention before any Clipper boolean op.
+  // The source SVG winds most province paths one way but a handful (e.g.
+  // Çanakkale, Balıkesir, Isparta) the opposite way.  ClipperOffset uses
+  // orientation to decide which side of an edge is "outward": pass mixed
+  // orientations into one Execute call and the odd-orientation rings get
+  // offset inward and fragment into slivers that vanish after deflate.
+  if (ClipperLib.Clipper.Orientation(out)) {
+    out.reverse();
+  }
+  return out;
 }
 
-// ─── polygon-clipping input adapter ──────────────────────────────────────────
-//
-// polygon-clipping expects a multipolygon = [[outerRing, ...holes], ...].
-// Province paths in the source data don't have holes — every ring is treated
-// as its own outer polygon.  The union resolves overlaps correctly regardless.
+function clipperPathToRing(path: ClipperPath): Ring {
+  const ring: Ring = path.map((p) => [p.X / CLIPPER_SCALE, p.Y / CLIPPER_SCALE]);
+  if (ring.length >= 3) ring.push([ring[0][0], ring[0][1]]);
+  return ring;
+}
 
-function ringsToMultiPoly(rings: Ring[]): PCMultiPoly {
-  return rings
-    .filter((r) => r.length >= 4)
-    .map((r) => [r.map(([px, py]): [number, number] => [px, py])]);
+function offsetPaths(paths: ClipperPaths, delta: number): ClipperPaths {
+  const co = new ClipperLib.ClipperOffset(2.0, 0.25);
+  co.AddPaths(paths, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+  const solution: ClipperPaths = [];
+  co.Execute(solution, delta * CLIPPER_SCALE);
+  return solution;
+}
+
+function unionPaths(paths: ClipperPaths): ClipperPaths {
+  if (paths.length === 0) return [];
+  const clipper = new ClipperLib.Clipper();
+  clipper.AddPaths(paths, ClipperLib.PolyType.ptSubject, true);
+  const solution: ClipperPaths = [];
+  clipper.Execute(
+    ClipperLib.ClipType.ctUnion,
+    solution,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
+  return solution;
+}
+
+// Signed area (shoelace).  In our y-down SVG space, Clipper emits outer
+// rings with positive signed area and holes with negative signed area.
+function signedArea(ring: Ring): number {
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return a / 2;
 }
 
 // ─── d-string serializer with RDP simplification ─────────────────────────────
+//
+// Drops holes (negative signed area) — they're sliver artifacts of the
+// offset/union/deflate cycle, not real geography (lakes are part of the
+// province's land area in the source SVG).  Keeping them would cause the
+// renderer to draw spurious internal strokes around each hole.
 
-function multiPolyToD(multi: PCMultiPoly): string {
+function ringsToD(rings: Ring[]): string {
   const parts: string[] = [];
+  for (const ring of rings) {
+    if (ring.length < 4) continue;
+    if (signedArea(ring) <= 0) continue;
 
-  for (const polygon of multi) {
-    for (const ring of polygon) {
-      if (ring.length < 4) continue;
+    const simplified = simplify(
+      ring.map(([px, py]) => ({ x: px, y: py })),
+      SIMPLIFY_TOLERANCE,
+      true,
+    );
+    if (simplified.length < 3) continue;
 
-      const simplified = simplify(
-        ring.map(([px, py]) => ({ x: px, y: py })),
-        SIMPLIFY_TOLERANCE,
-        true,
-      );
-      if (simplified.length < 3) continue;
-
-      let s = `M${fmt(simplified[0].x)},${fmt(simplified[0].y)}`;
-      for (let i = 1; i < simplified.length; i++) {
-        s += `L${fmt(simplified[i].x)},${fmt(simplified[i].y)}`;
-      }
-      s += "Z";
-      parts.push(s);
+    let s = `M${fmt(simplified[0].x)},${fmt(simplified[0].y)}`;
+    for (let i = 1; i < simplified.length; i++) {
+      s += `L${fmt(simplified[i].x)},${fmt(simplified[i].y)}`;
     }
+    s += "Z";
+    parts.push(s);
   }
   return parts.join("");
 }
@@ -190,7 +257,7 @@ interface MergedRegion {
 
 function buildRegions(): MergedRegion[] {
   // Group provinces by conquestRegionId, preserving first-seen order.
-  const order:   string[]                  = [];
+  const order:    string[]                            = [];
   const byRegion: Map<string, typeof TURKEY_PROVINCES> = new Map();
 
   for (const p of TURKEY_PROVINCES) {
@@ -206,20 +273,24 @@ function buildRegions(): MergedRegion[] {
   for (const regionId of order) {
     const provinces = byRegion.get(regionId)!;
 
-    const provinceMultis: PCMultiPoly[] = provinces.map((p) => {
-      const rings        = flattenPath(p.d);
-      const snappedRings = rings.map(snapRing);
-      return ringsToMultiPoly(snappedRings);
-    });
+    // 1. Flatten every province path → array of integer rings (no closing dup).
+    const allClipperPaths: ClipperPaths = [];
+    for (const p of provinces) {
+      const rings = flattenPath(p.d);
+      for (const r of rings) {
+        if (r.length < 4) continue;
+        allClipperPaths.push(ringToClipperPath(r));
+      }
+    }
 
-    // Union all provinces in this region.  polygonClipping.union accepts
-    // (geom1, ...moreGeoms); pass each province multipoly as one argument.
-    const unioned = polygonClipping.union(
-      provinceMultis[0],
-      ...provinceMultis.slice(1),
-    ) as PCMultiPoly;
+    // 2. Inflate by +epsilon, union, deflate by -epsilon.
+    const inflated = offsetPaths(allClipperPaths, +INFLATE_EPSILON);
+    const merged1  = unionPaths(inflated);
+    const deflated = offsetPaths(merged1,        -INFLATE_EPSILON);
 
-    const d = multiPolyToD(unioned);
+    // 3. Back to floats, then simplify + serialize.
+    const rings = deflated.map(clipperPathToRing);
+    const d = ringsToD(rings);
 
     merged.push({ id: regionId, d });
   }
@@ -254,8 +325,9 @@ function emit(merged: MergedRegion[]): string {
   return `/**
  * AUTO-GENERATED — do not edit by hand.
  *
- * 24 merged Türkiye conquest-region SVG paths, produced by unioning the
- * 81 province paths in turkey-provinces.ts grouped by conquestRegionId.
+ * 24 merged Türkiye conquest-region SVG paths, produced by inflating each
+ * province polygon, boolean-unioning the inflated shapes, and deflating
+ * the result (see scripts/build-turkey-regions.ts for details).
  *
  * Generator:  scripts/build-turkey-regions.ts
  * viewBox:    0 0 1005 490 (matches province source)
@@ -287,8 +359,10 @@ function main(): void {
   writeFileSync(outPath, emit(merged), "utf8");
 
   const totalBytes = merged.reduce((acc, m) => acc + m.d.length, 0);
+  const subpaths   = merged.map((m) => (m.d.match(/M/g) || []).length);
   console.log(`✓ Wrote ${merged.length} merged region paths → ${outPath}`);
   console.log(`  total d-string bytes: ${totalBytes.toLocaleString()}`);
+  console.log(`  subpaths min/max: ${Math.min(...subpaths)} / ${Math.max(...subpaths)}`);
 }
 
 main();

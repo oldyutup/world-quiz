@@ -1,22 +1,18 @@
 /**
- * TurkeyConquestMap — real province SVG map for Türkiye Kuşatması.
+ * TurkeyConquestMap — merged-region SVG map for Türkiye Kuşatması.
  *
- * Renders all 81 Turkey province paths, grouped by conquest region.
- * Province path data: ali-han/Turkey-SVG-Map (MIT License).
- * viewBox: 0 0 1005 490.
+ * Renders 24 conquest-region paths produced by unioning the underlying 81
+ * province shapes (see scripts/build-turkey-regions.ts).  No province
+ * subdivisions are visible — each region is one clean shape.
  *
- * Interaction fires at the conquest-region level (24 regions), not at the
- * individual province level.  All provinces in a region share the same owner
- * colour, legal-target glow and flash overlay.
+ * viewBox: 0 0 1005 490 (matches the source province data).
  *
  * Visual layers (back → front):
- *  0  defs  – per-region exterior clipPaths (evenodd: bg-rect minus provinces)
- *  1  fills – province fill colours, no stroke
- *  2  pbord – thin uniform province border lines (secondary, over fills)
- *  3  rbord – thick conquest-region borders, clipped to exterior only
- *  4  pulse – legal-target animated pulse rings
- *  5  flash – illegal-click flash overlays
- *  6  label – conquest-region labels with dark text-outline for readability
+ *  1  fills – one path per region (fill + region-coloured border stroke,
+ *             evenodd handles non-contiguous regions like Istanbul or KD-Anadolu)
+ *  2  pulse – legal-target animated pulse rings (one per legal region)
+ *  3  flash – illegal-click flash overlay (one path, the flashing region)
+ *  4  label – region labels with dark text-outline for readability
  */
 
 import { useCallback } from "react";
@@ -26,15 +22,7 @@ import type {
   ConquestRegionId,
   ConquestRegionState,
 } from "./types";
-import { TURKEY_PROVINCES } from "./maps/turkey-provinces";
-
-// ─── Province groups (module-level constant, not recomputed per render) ───────
-
-const PROVINCES_BY_REGION: Record<string, typeof TURKEY_PROVINCES> =
-  TURKEY_PROVINCES.reduce(
-    (acc, p) => { (acc[p.conquestRegionId] ??= []).push(p); return acc; },
-    {} as Record<string, typeof TURKEY_PROVINCES>,
-  );
+import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 
 // ─── Region label text ────────────────────────────────────────────────────────
 
@@ -63,61 +51,58 @@ const REGION_LABELS: Record<string, string> = {
   antep_kilis:        "Antep",
   hatay_osmaniye:     "Hatay",
   mardin_sirnak:      "Mardin",
+  kars: "Kars",
 };
 
 // ─── Region label positions in the 1005×490 SVG coordinate space ─────────────
 
 const REGION_LABEL_POS: Record<string, { x: number; y: number }> = {
-  trakya:             { x:  68, y: 150 },
-  istanbul_kocaeli:   { x: 200, y: 148 },
-  guney_marmara:      { x: 188, y: 222 },
-  bati_karadeniz:     { x: 312, y:  90 },
-  orta_karadeniz:     { x: 462, y:  84 },
-  dogu_karadeniz:     { x: 638, y:  92 },
-  kuzeydogu_anadolu:  { x: 848, y: 132 },
-  kuzey_ege:          { x: 105, y: 272 },
-  guney_ege:          { x: 130, y: 374 },
-  bati_akdeniz:       { x: 280, y: 392 },
-  cukurova:           { x: 478, y: 408 },
-  ic_bati_anadolu:    { x: 318, y: 262 },
-  ankara_cevre:       { x: 448, y: 198 },
-  konya_karaman:      { x: 436, y: 330 },
-  kapadokya:          { x: 572, y: 300 },
-  orta_anadolu:       { x: 572, y: 222 },
-  erzurum_kars:       { x: 790, y: 195 },
-  van_hakkari:        { x: 878, y: 320 },
+  trakya:             { x:  90, y:  56 },
+  istanbul_kocaeli:   { x: 190, y: 85 },
+  guney_marmara:      { x: 130, y: 155 },
+  bati_karadeniz:     { x: 378, y:  68 },
+  orta_karadeniz:     { x: 508, y: 110 },
+  dogu_karadeniz:     { x: 720, y: 132 },
+  kuzeydogu_anadolu:  { x: 710, y: 186 },
+  kars:               { x: 915, y: 176 },
+  kuzey_ege:          { x: 112, y: 243 },
+  guney_ege:          { x: 132, y: 320 },
+  bati_akdeniz:       { x: 235, y: 345 },
+  cukurova:           { x: 462, y: 362 },
+  ic_bati_anadolu:    { x: 255, y: 205 },
+  ankara_cevre:       { x: 380, y: 165 },
+  konya_karaman:      { x: 352, y: 298 },
+  kapadokya:          { x: 490, y: 270 },
+  orta_anadolu:       { x: 555, y: 195 },
+  erzurum_kars:       { x: 820, y: 172 },
+  van_hakkari:        { x: 906, y: 258 },
   malatya_elazig:     { x: 678, y: 268 },
-  firat_hatti:        { x: 606, y: 378 },
-  dicle_hatti:        { x: 748, y: 376 },
-  antep_kilis:        { x: 618, y: 440 },
-  hatay_osmaniye:     { x: 524, y: 452 },
-  mardin_sirnak:      { x: 812, y: 428 },
+  firat_hatti:        { x: 648, y: 320 },
+  dicle_hatti:        { x: 785, y: 285 },
+  antep_kilis:        { x: 610, y: 362 },
+  hatay_osmaniye:     { x: 552, y: 386 },
+  mardin_sirnak:      { x: 840, y: 330 },
 };
 
 // ─── Colour palette ───────────────────────────────────────────────────────────
 
 interface ColorTokens {
-  fill:         string;   // province interior fill
-  regionBorder: string;   // conquest-region boundary stroke (thick, ext-clipped)
-  text:         string;   // label fill colour
-  legalFill:    string;   // fill when this region is a legal attack target
-  legalStroke:  string;   // stroke for pulse ring + region border when legal
+  fill:         string;
+  regionBorder: string;
+  text:         string;
+  legalFill:    string;
+  legalStroke:  string;
 }
 
 const COLOR_MAP: Record<string, ColorTokens> = {
-  red:     { fill: "rgba(239,68,68,0.28)",   regionBorder: "rgba(239,68,68,0.85)",   text: "#fca5a5", legalFill: "rgba(239,68,68,0.50)",   legalStroke: "#ef4444" },
-  blue:    { fill: "rgba(59,130,246,0.28)",   regionBorder: "rgba(59,130,246,0.85)",  text: "#93c5fd", legalFill: "rgba(59,130,246,0.50)",   legalStroke: "#3b82f6" },
-  green:   { fill: "rgba(34,197,94,0.28)",    regionBorder: "rgba(34,197,94,0.85)",   text: "#86efac", legalFill: "rgba(34,197,94,0.50)",    legalStroke: "#22c55e" },
-  yellow:  { fill: "rgba(234,179,8,0.28)",    regionBorder: "rgba(234,179,8,0.85)",   text: "#fde047", legalFill: "rgba(234,179,8,0.50)",    legalStroke: "#eab308" },
-  purple:  { fill: "rgba(168,85,247,0.28)",   regionBorder: "rgba(168,85,247,0.85)",  text: "#d8b4fe", legalFill: "rgba(168,85,247,0.50)",   legalStroke: "#a855f7" },
-  orange:  { fill: "rgba(249,115,22,0.28)",   regionBorder: "rgba(249,115,22,0.85)",  text: "#fdba74", legalFill: "rgba(249,115,22,0.50)",   legalStroke: "#f97316" },
-  neutral: { fill: "rgba(148,163,184,0.15)",  regionBorder: "rgba(148,163,184,0.55)", text: "rgba(203,213,225,0.82)", legalFill: "rgba(148,163,184,0.34)", legalStroke: "rgba(148,163,184,0.92)" },
+  red:     { fill: "rgba(239,68,68,0.28)",   regionBorder: "rgba(239,68,68,0.88)",   text: "#fca5a5", legalFill: "rgba(239,68,68,0.52)",   legalStroke: "#ef4444" },
+  blue:    { fill: "rgba(59,130,246,0.28)",   regionBorder: "rgba(59,130,246,0.88)",  text: "#93c5fd", legalFill: "rgba(59,130,246,0.52)",   legalStroke: "#3b82f6" },
+  green:   { fill: "rgba(34,197,94,0.28)",    regionBorder: "rgba(34,197,94,0.88)",   text: "#86efac", legalFill: "rgba(34,197,94,0.52)",    legalStroke: "#22c55e" },
+  yellow:  { fill: "rgba(234,179,8,0.28)",    regionBorder: "rgba(234,179,8,0.88)",   text: "#fde047", legalFill: "rgba(234,179,8,0.52)",    legalStroke: "#eab308" },
+  purple:  { fill: "rgba(168,85,247,0.28)",   regionBorder: "rgba(168,85,247,0.88)",  text: "#d8b4fe", legalFill: "rgba(168,85,247,0.52)",   legalStroke: "#a855f7" },
+  orange:  { fill: "rgba(249,115,22,0.28)",   regionBorder: "rgba(249,115,22,0.88)",  text: "#fdba74", legalFill: "rgba(249,115,22,0.52)",   legalStroke: "#f97316" },
+  neutral: { fill: "rgba(148,163,184,0.15)",  regionBorder: "rgba(148,196,228,0.72)", text: "rgba(203,213,225,0.82)", legalFill: "rgba(148,163,184,0.34)", legalStroke: "rgba(165,215,245,0.96)" },
 };
-
-// Exterior clip path: large background rect as first sub-path, then province
-// paths as holes (even-odd rule punches them out). Applied to the region-border
-// layer so only the outer boundary of each conquest region is stroked.
-const CLIP_BG_RECT = "M-200,-200L1210,-200L1210,700L-200,700Z ";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -140,8 +125,8 @@ export default function TurkeyConquestMap({
   onRegionClick,
   flashRegionId,
 }: Props) {
-  const stateById  = Object.fromEntries(regionStates.map(rs => [rs.regionId, rs]));
-  const playerById = Object.fromEntries(players.map(p  => [p.id, p]));
+  const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
+  const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
   const interactive = !!onRegionClick && !disabled;
 
   const handleKey = useCallback((
@@ -155,22 +140,20 @@ export default function TurkeyConquestMap({
   }, [onRegionClick]);
 
   // Pre-compute per-region display state once per render.
-  const regionEntries = Object.entries(PROVINCES_BY_REGION).map(([regionId, provinces]) => {
-    const rid        = regionId as ConquestRegionId;
-    const rs         = stateById[regionId];
-    const owner      = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
-    const colorKey   = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
-    const c          = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
-    const isLegal    = legalTargetIds.has(rid);
-    const isFlash    = flashRegionId === regionId;
-    const isDimmed   = interactive && !isLegal;
-    const fill       = isLegal ? c.legalFill   : c.fill;
-    const rbStroke   = isLegal ? c.legalStroke : c.regionBorder;
-    const labelPos   = REGION_LABEL_POS[regionId] ?? { x: 0, y: 0 };
-    const label      = REGION_LABELS[regionId]    ?? regionId;
-    // Clip path data: bg rect + all province d-strings as even-odd holes.
-    const clipD      = CLIP_BG_RECT + provinces.map(p => p.d).join(" ");
-    return { rid, regionId, provinces, owner, c, isLegal, isFlash, isDimmed, fill, rbStroke, labelPos, label, clipD };
+  const regionEntries = TURKEY_CONQUEST_REGION_PATHS.map(({ id, d }) => {
+    const rid       = id as ConquestRegionId;
+    const rs        = stateById[id];
+    const owner     = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
+    const colorKey  = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
+    const c         = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
+    const isLegal   = legalTargetIds.has(rid);
+    const isFlash   = flashRegionId === id;
+    const isDimmed  = interactive && !isLegal;
+    const fill      = isLegal ? c.legalFill   : c.fill;
+    const stroke    = isLegal ? c.legalStroke : c.regionBorder;
+    const labelPos  = REGION_LABEL_POS[id] ?? { x: 0, y: 0 };
+    const label     = REGION_LABELS[id]    ?? id;
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, fill, stroke, labelPos, label };
   });
 
   return (
@@ -182,106 +165,69 @@ export default function TurkeyConquestMap({
         aria-label="Türkiye Kuşatması haritası"
         role="img"
       >
-        {/* ── Layer 0: defs – per-region exterior clip paths ──────── */}
-        <defs>
-          {regionEntries.map(({ regionId, clipD }) => (
-            <clipPath key={`def-${regionId}`} id={`cq-rclip-${regionId}`}>
-              {/* evenodd punches province shapes as holes in the bg rect,
-                  leaving only the exterior of the region visible.         */}
-              <path clipRule="evenodd" fillRule="evenodd" d={clipD} />
-            </clipPath>
+        {/* ── Layer 1: region fills + borders (single path per region) ── */}
+        {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, label }) => (
+          <path
+            key={`region-${id}`}
+            d={d}
+            className="cq-map-region"
+            fillRule="evenodd"
+            data-interactive={interactive ? "" : undefined}
+            data-legal={isLegal ? "" : undefined}
+            style={{
+              fill,
+              stroke,
+              opacity: isDimmed ? 0.45 : 1,
+            }}
+            onClick={
+  interactive
+    ? () => {
+        console.log("Tıklanan bölge:", id, "rid:", rid, "label:", label);
+        onRegionClick!(rid);
+      }
+    : undefined
+}
+            onKeyDown={interactive ? (e) => handleKey(e, rid) : undefined}
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? (isLegal ? 0 : -1) : undefined}
+            aria-label={`${REGION_LABELS[id] ?? id}${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
+          />
+        ))}
+
+        {/* ── Layer 2: legal-target pulse rings ──────────────────────── */}
+        {regionEntries
+          .filter((r) => r.isLegal)
+          .map(({ id, d, c }) => (
+            <path
+              key={`pulse-${id}`}
+              d={d}
+              className="cq-map-pulse-ring"
+              fillRule="evenodd"
+              fill="none"
+              stroke={c.legalStroke}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
           ))}
-        </defs>
 
-        {/* ── Layer 1: province fills (no stroke) ─────────────────── */}
-        {regionEntries.map(({ rid, regionId, provinces, owner, isLegal, isDimmed, fill }) =>
-          provinces.map((province, idx) => (
+        {/* ── Layer 3: illegal-click flash overlay ───────────────────── */}
+        {regionEntries
+          .filter((r) => r.isFlash)
+          .map(({ id, d }) => (
             <path
-              key={province.id}
-              d={province.d}
-              className="cq-map-region"
-              data-interactive={interactive ? "" : undefined}
-              data-legal={isLegal ? "" : undefined}
-              style={{
-                fill,
-                stroke: "none",
-                opacity: isDimmed ? 0.45 : 1,
-              }}
-              onClick={interactive ? () => onRegionClick!(rid) : undefined}
-              onKeyDown={interactive ? (e) => handleKey(e, rid) : undefined}
-              role={interactive ? "button" : undefined}
-              tabIndex={interactive ? (isLegal && idx === 0 ? 0 : -1) : undefined}
-              aria-label={`${province.name} (${REGION_LABELS[regionId] ?? regionId})${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
-            />
-          ))
-        )}
-
-        {/* ── Layer 2: province borders (thin, uniform, secondary) ── */}
-        {regionEntries.map(({ provinces, isDimmed }) =>
-          provinces.map(province => (
-            <path
-              key={`pb-${province.id}`}
-              d={province.d}
-              className="cq-map-province-border"
-              style={{ opacity: isDimmed ? 0.35 : 1 }}
+              key={`flash-${id}`}
+              d={d}
+              className="cq-map-flash-overlay"
+              fillRule="evenodd"
               aria-hidden="true"
             />
-          ))
-        )}
+          ))}
 
-        {/* ── Layer 3: conquest-region borders (thick, ext-clipped) ─ */}
-        {regionEntries.map(({ regionId, provinces, isDimmed, rbStroke }) =>
-          provinces.map(province => (
-            <path
-              key={`rb-${province.id}`}
-              d={province.d}
-              className="cq-map-region-border"
-              style={{
-                stroke: rbStroke,
-                opacity: isDimmed ? 0.30 : 1,
-              }}
-              clipPath={`url(#cq-rclip-${regionId})`}
-              aria-hidden="true"
-            />
-          ))
-        )}
-
-        {/* ── Layer 4: legal-target pulse rings ────────────────────── */}
-        {regionEntries
-          .filter(r => r.isLegal)
-          .flatMap(({ provinces, c }) =>
-            provinces.map(province => (
-              <path
-                key={`pulse-${province.id}`}
-                d={province.d}
-                className="cq-map-pulse-ring"
-                fill="none"
-                stroke={c.legalStroke}
-                strokeWidth={2}
-                aria-hidden="true"
-              />
-            ))
-          )}
-
-        {/* ── Layer 5: illegal-click flash overlays ────────────────── */}
-        {regionEntries
-          .filter(r => r.isFlash)
-          .flatMap(({ provinces }) =>
-            provinces.map(province => (
-              <path
-                key={`flash-${province.id}`}
-                d={province.d}
-                className="cq-map-flash-overlay"
-                aria-hidden="true"
-              />
-            ))
-          )}
-
-        {/* ── Layer 6: conquest-region labels (always on top) ─────── */}
-        {regionEntries.map(({ regionId, owner, c, labelPos, label }) => {
+        {/* ── Layer 4: region labels (always on top) ─────────────────── */}
+        {regionEntries.map(({ id, owner, c, labelPos, label }) => {
           const labelY = owner ? labelPos.y - 7 : labelPos.y;
           return (
-            <g key={`lbl-${regionId}`} aria-hidden="true" style={{ pointerEvents: "none" }}>
+            <g key={`lbl-${id}`} aria-hidden="true" style={{ pointerEvents: "none" }}>
               <text
                 x={labelPos.x}
                 y={labelY}

@@ -10432,9 +10432,9 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KUŞATMA (Conquest) — Phase 7: Türkiye SVG map visual layer
-   Inline-SVG polygon map with ownership colours, legal-target
-   pulse rings, and illegal-click flash overlays.
+   KUŞATMA (Conquest) — Türkiye merged-region SVG map.
+   One <path> per conquest region (24 total).  Ownership colours,
+   legal-target pulse rings, and illegal-click flash overlays.
 ═══════════════════════════════════════════════════════════════ */
 
 .cq-turkey-map-wrap {
@@ -10449,8 +10449,11 @@ body {
   overflow: visible;
 }
 
-/* ── Province fill layer ─────────────────────────────────────── */
+/* ── Region fill + border (single merged path per region) ───── */
 .cq-map-region {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
   transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1),
               filter  180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -10466,25 +10469,6 @@ body {
 .cq-map-region[data-interactive]:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.55);
   outline-offset: 3px;
-}
-
-/* ── Province borders (thin, secondary visual) ───────────────── */
-.cq-map-province-border {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 1.2;
-  pointer-events: none;
-  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* ── Conquest-region borders (thick, exterior-clipped) ──────── */
-/* strokeWidth 6 → ≈3 SVG units of visible exterior border      */
-.cq-map-region-border {
-  fill: none;
-  stroke-width: 6;
-  stroke-linejoin: round;
-  pointer-events: none;
-  transition: opacity 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Labels ──────────────────────────────────────────────────── */
@@ -10552,12 +10536,6 @@ body {
 }
 
 /* ── Earth / adventure (lighter backgrounds) ─────────────────── */
-/* Province borders are slightly more visible on translucent themes */
-[data-theme="earth"] .cq-map-province-border,
-[data-theme="adventure"] .cq-map-province-border {
-  stroke: rgba(255, 255, 255, 0.20);
-}
-
 /* neutral fills stand out better when bg image is visible */
 [data-theme="earth"] .cq-map-region[data-legal=""],
 [data-theme="adventure"] .cq-map-region[data-legal=""] {
