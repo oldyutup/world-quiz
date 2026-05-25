@@ -98,3 +98,63 @@ export function getRegionOwnerCounts(
   }
   return counts;
 }
+
+/**
+ * Hide Ankara "Gizli Operasyon" placements from non-owner viewers.  Three flavours:
+ *
+ *   - kind === "shield"       → region is already openly owned by the placing
+ *     player; only the shield itself is secret.  Keep ownership visible to
+ *     opponents and just strip the `hiddenShieldOwnerId`/`hiddenShieldKind`
+ *     so the shield's presence doesn't leak.
+ *
+ *   - kind === "conquest"     → region was secretly captured from neutral
+ *     (gizli fetih).  Real owner is the placer; mask ownership so opponents
+ *     see a plain neutral tile.  Also the legacy fallback for very old saves
+ *     without a stored kind.
+ *
+ *   - kind === "neutral_trap" → LEGACY only: pre-spec-rev3 trap where the
+ *     region stayed genuinely neutral.  Strip the hidden-shield fields for
+ *     opponents so the tile renders as a plain neutral region.
+ *
+ * Owner-side projection is identity in all cases.
+ *
+ * NOTE: `shielded` (İstanbul open shield) is intentionally NOT cleared here.
+ * It is a public/open field — opponents must always see it on the map.
+ *
+ * Used for all opponent-facing renders and any helper that derives "what the
+ * viewer sees on the board" (legal targets, region counts in side panels).
+ * Gameplay logic must still operate on the real `regionStates` so blocks and
+ * reveals trigger correctly when an opponent acts on a hidden region.
+ */
+export function projectRegionStatesForViewer(
+  regionStates: ConquestRegionState[],
+  viewerId:     string | null,
+): ConquestRegionState[] {
+  let mutated = false;
+  const out = regionStates.map(rs => {
+    const hiddenOwner = rs.hiddenShieldOwnerId;
+    if (!hiddenOwner) return rs;
+    if (hiddenOwner === viewerId) return rs;
+    mutated = true;
+    const kind = rs.hiddenShieldKind ?? "conquest";
+    if (kind === "shield" || kind === "neutral_trap") {
+      // Region is either openly owned (shield) or genuinely neutral (trap);
+      // either way the tile's owner is shown correctly, only the hidden
+      // marker is stripped for opponents.
+      return {
+        ...rs,
+        hiddenShieldOwnerId: undefined,
+        hiddenShieldKind:    undefined,
+      };
+    }
+    // Legacy ("conquest"): mask the whole capture as a neutral tile.
+    return {
+      ...rs,
+      ownerPlayerId:       null,
+      hiddenShieldOwnerId: undefined,
+      hiddenShieldKind:    undefined,
+      lastCapturedBy:      undefined,
+    };
+  });
+  return mutated ? out : regionStates;
+}

@@ -24,6 +24,7 @@ import type {
 } from "./types";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
+import { REGION_BONUSES } from "./regionBonuses";
 
 // Per-region offset (in SVG units) for the point badge, relative to label
 // position. Default = badge sits just above the region label. Override only
@@ -177,11 +178,12 @@ export default function TurkeyConquestMap({
     const isLegal   = legalTargetIds.has(rid);
     const isFlash   = flashRegionId === id;
     const isDimmed  = interactive && !isLegal;
+    const isShielded = !!rs?.shielded;          // open shield (İstanbul)
     const fill      = isLegal ? c.legalFill   : c.fill;
     const stroke    = isLegal ? c.legalStroke : c.regionBorder;
     const labelPos  = REGION_LABEL_POS[id] ?? { x: 0, y: 0 };
     const label     = REGION_LABELS[id]    ?? id;
-    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, fill, stroke, labelPos, label };
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label };
   });
 
   return (
@@ -318,6 +320,48 @@ export default function TurkeyConquestMap({
             </g>
           );
         })}
+
+        {/* ── Layer 4a: open-shield overlay (İstanbul bonus) ──────── */}
+        <g className="cq-map-shield-layer" pointerEvents="none" aria-hidden="true">
+          {regionEntries
+            .filter(r => r.isShielded)
+            .map(({ id, d }) => (
+              <path
+                key={`shield-${id}`}
+                d={d}
+                className="cq-map-shield-overlay"
+                fillRule="evenodd"
+                fill="none"
+                strokeWidth={3}
+              />
+            ))}
+        </g>
+
+        {/* ── Layer 4b: bonus region icons (decorative; never intercepts clicks) ── */}
+        <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
+          {regionEntries.map(({ id, labelPos }) => {
+            const bonus = REGION_BONUSES[id];
+            if (!bonus) return null;
+            // Anchor the bonus glyph to the right of the point badge so they
+            // never overlap; identical offset behaviour as the points badge.
+            const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
+            const cx  = labelPos.x + off.dx + 18;
+            const cy  = labelPos.y + off.dy;
+            return (
+              <text
+                key={`bonus-${id}`}
+                x={cx}
+                y={cy + 0.5}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="cq-map-bonus-icon"
+                style={{ fontSize: 11, userSelect: "none" }}
+              >
+                {bonus.icon}
+              </text>
+            );
+          })}
+        </g>
 
         {/* ── Layer 5: region point badges (decorative; never intercepts clicks) ── */}
         <g className="cq-map-points-layer" pointerEvents="none" aria-hidden="true">

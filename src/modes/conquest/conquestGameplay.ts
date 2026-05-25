@@ -27,22 +27,104 @@ import {
 } from "./conquestChallenges";
 import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
 import { createInitialRegionStates } from "./conquestState";
-import { getPlayerRegionPoints } from "./regionPoints";
+import { getPlayerTotalPoints } from "./regionPoints";
+import {
+  buildBonusToast,
+  buildHiddenOpPlacedMessage,
+  createEmptyPlayerBonusState,
+  getRegionBonus,
+  HIDDEN_CONQUEST_REVEAL_MESSAGE,
+  HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE,
+  HIDDEN_SHIELD_REVEAL_MESSAGE,
+  KARADENIZ_BONUS_MS,
+} from "./regionBonuses";
 import type {
   ConquestActionResult,
+  ConquestBonusToast,
   ConquestChallenge,
   ConquestChallengeAnswer,
   ConquestChallengeState,
   ConquestChallengeType,
+  ConquestDefenseDuelState,
   ConquestFinalStanding,
   ConquestGameState,
   ConquestMapConfig,
   ConquestPendingAction,
   ConquestPlayer,
+  ConquestPlayerBonusState,
   ConquestRegionId,
   ConquestRegionState,
   ConquestRoundState,
 } from "./types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tuning — move (action) phase
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How long the hamle (move) phase stays open after a player wins the
+ * challenge.  Kept deliberately tight so a 6–10 round match still feels
+ * snappy on mobile.  When region bonuses ship, do NOT change this — extend
+ * the per-player window inside `getMovePhaseDurationMs` instead.
+ */
+export const MOVE_PHASE_SECONDS = 15;
+export const MOVE_PHASE_MS      = MOVE_PHASE_SECONDS * 1000;
+
+/**
+ * Savunma Düellosu süresi — bonuslu bölgeye saldırı sırasında açılan
+ * 1-vs-1 sorunun toplam süresi.  Kasten kısa: tempo bozulmasın.  Süre
+ * biterse savunan kazanır (bölge korunur).
+ */
+export const DEFENSE_DUEL_SECONDS   = 8;
+export const DEFENSE_DUEL_MS        = DEFENSE_DUEL_SECONDS * 1000;
+/**
+ * Intro overlay duration before the question becomes visible (ms).
+ * = 4000ms info card + 3000ms 3-2-1 countdown.
+ */
+export const DEFENSE_DUEL_INTRO_MS  = 7000;
+export const DEFENSE_DUEL_INFO_MS   = 4000; // info card portion
+export const DEFENSE_DUEL_COUNTDOWN_MS = 3000; // 3-2-1 portion
+
+/**
+ * Compute the move-phase duration for `holderId` in the given state.  Pure
+ * read of the current bonus state — does NOT consume the bonus.  Use
+ * `consumeMoveTimeBonus` when actually starting the move phase so the bonus
+ * is spent exactly once.
+ */
+export function getMovePhaseDurationMs(
+  state:    ConquestGameState,
+  holderId: string,
+): number {
+  const extra = state.playerBonuses?.[holderId]?.extraNextMoveMs ?? 0;
+  return MOVE_PHASE_MS + extra;
+}
+
+/**
+ * Consume the holder's one-shot move-time bonus (Doğu Karadeniz: +5s) and
+ * return both the resulting move-phase duration and the next playerBonuses
+ * snapshot with `extraNextMoveMs` zeroed for that holder.
+ *
+ * Caller must persist `playerBonuses` in the next ConquestGameState — see
+ * resolveChallengeWithWinner for the single call site.
+ */
+export function consumeMoveTimeBonus(
+  state:    ConquestGameState,
+  holderId: string,
+): {
+  durationMs:    number;
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+} {
+  const current = state.playerBonuses ?? {};
+  const pb      = current[holderId] ?? createEmptyPlayerBonusState();
+  const extra   = pb.extraNextMoveMs;
+  if (extra <= 0) {
+    return { durationMs: MOVE_PHASE_MS, playerBonuses: current };
+  }
+  return {
+    durationMs:    MOVE_PHASE_MS + extra,
+    playerBonuses: { ...current, [holderId]: { ...pb, extraNextMoveMs: 0 } },
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Factories
@@ -69,6 +151,11 @@ export function createInitialConquestGameState(
   const now        = Date.now();
   const regionStates = createInitialRegionStates(mapConfig, players);
 
+  // Seed empty bonus state for every player.  Bonuses only trigger via
+  // capture events, so starting ownership never grants them.
+  const playerBonuses: Record<string, ConquestPlayerBonusState> = {};
+  for (const p of players) playerBonuses[p.id] = createEmptyPlayerBonusState();
+
   const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
 
   const round: ConquestRoundState = {
@@ -90,6 +177,7 @@ export function createInitialConquestGameState(
     finishedAt:         null,
     usedChallengeKeys:  [bankId],
     lastChallengeType:  challenge.type as ConquestChallengeType,
+    playerBonuses,
   };
 }
 
@@ -150,9 +238,12 @@ export function resolveChallengeWithWinner(
       }
     : null;
 
+  const { durationMs, playerBonuses } = consumeMoveTimeBonus(state, winnerId);
+
   return {
     ...state,
     phase: "action",
+    playerBonuses,
     round: {
       ...state.round,
       challenge: {
@@ -164,7 +255,9 @@ export function resolveChallengeWithWinner(
           ? [...state.round.challenge.submittedAnswers, winningEntry]
           : state.round.challenge.submittedAnswers,
       },
-      actionHolderId: winnerId,
+      actionHolderId:  winnerId,
+      actionStartedAt: now,
+      actionEndsAt:    now + durationMs,
     },
   };
 }
@@ -292,6 +385,123 @@ interface ApplyActionResult {
 }
 
 /**
+ * Apply Ankara/Çukurova/Karadeniz capture-side bonuses *after* a successful
+ * ownership flip onto `capturedRegionId`.  Returns the updated regionStates
+ * and playerBonuses; never mutates inputs.
+ *
+ * Per the revised spec, the pending Ankara Gizli Operasyon is NEVER consumed
+ * by a capture — it is only spent by manual placement (own-region shield via
+ * `placeHiddenShieldOnOwnRegion`, or neutral-region gizli fetih via
+ * `placeHiddenConquestOnNeutralRegion`).  This function only applies the
+ * captured region's own bonus (stacking forbidden — each branch overwrites).
+ */
+function triggerCaptureBonus(
+  regionStates:      ConquestRegionState[],
+  playerBonusesIn:   Record<string, ConquestPlayerBonusState> | undefined,
+  ownerId:           string,
+  ownerName:         string,
+  capturedRegionId:  ConquestRegionId,
+  now:               number,
+  _wasNeutralCapture: boolean,
+): {
+  regionStates:  ConquestRegionState[];
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+  toast?:        ConquestBonusToast;
+} {
+  const current = playerBonusesIn ?? {};
+  const pb = { ...(current[ownerId] ?? createEmptyPlayerBonusState()) };
+  let nextRegionStates = regionStates;
+  let toast: ConquestBonusToast | undefined;
+
+  // Step 2 — apply the captured region's own bonus, if any.  Each branch
+  // also emits a public toast announcing the bonus earned (NOT the hidden
+  // placement above).
+  const bonus = getRegionBonus(capturedRegionId);
+  if (bonus) {
+    switch (bonus.type) {
+      case "ankara_hidden_shield":
+        // Overwrite-not-stack: already-true stays true.
+        pb.pendingHiddenShield = true;
+        toast = buildBonusToast("ankara_hidden_shield", ownerId, ownerName, now);
+        break;
+      case "karadeniz_extra_time":
+        // Overwrite-not-stack.
+        pb.extraNextMoveMs = KARADENIZ_BONUS_MS;
+        toast = buildBonusToast("karadeniz_extra_time", ownerId, ownerName, now);
+        break;
+      case "cukurova_score":
+        if (!pb.cukurovaClaimed) {
+          pb.bonusPoints     = pb.bonusPoints + 1;
+          pb.cukurovaClaimed = true;
+          toast = buildBonusToast("cukurova_score", ownerId, ownerName, now);
+        }
+        break;
+      case "istanbul_defense":
+        // Auto-stamp the open shield onto İstanbul itself.  Stacking is
+        // implicit: capturing flipOwnership() clears `shielded`, so a player
+        // can never accumulate more than one open shield via İstanbul.
+        nextRegionStates = nextRegionStates.map(rs =>
+          rs.regionId === capturedRegionId
+            ? { ...rs, shielded: true }
+            : rs,
+        );
+        toast = buildBonusToast("istanbul_defense", ownerId, ownerName, now);
+        break;
+    }
+  }
+
+  return {
+    regionStates:  nextRegionStates,
+    playerBonuses: { ...current, [ownerId]: pb },
+    toast,
+  };
+}
+
+/**
+ * Gizli Fetih no longer expires from time / opposing actions per spec — it
+ * only reveals when its specific region is attacked.  The previous sweep
+ * helper is removed; `tryConsumeHiddenShield` remains the sole reveal path.
+ */
+
+/**
+ * If `targetRegionId` carries a hidden shield owned by someone other than
+ * `attackerId`, returns the cleared region-state array (with the
+ * hidden-shield fields stripped) plus the shield owner and kind.
+ *
+ * Kind drives the reveal message:
+ *   "shield"       — own-region cloak (gizli kalkan); region keeps owner
+ *   "conquest"     — neutral region secretly captured for the placer (gizli
+ *                    fetih); first opposing attack reveals the real owner
+ *                    and is wasted.  Old saves without a stored kind are
+ *                    treated as "conquest".
+ *   "neutral_trap" — LEGACY: pre-spec-rev3 trap that kept the region neutral.
+ *                    No new code emits this; kept so older in-flight saves
+ *                    still reveal cleanly.
+ *
+ * Pure: shield is consumed by returning a new array; inputs unchanged.
+ */
+function tryConsumeHiddenShield(
+  regionStates:    ConquestRegionState[],
+  attackerId:      string,
+  targetRegionId:  ConquestRegionId,
+): {
+  regionStates:    ConquestRegionState[];
+  shieldOwnerId:   string;
+  kind:            "conquest" | "shield" | "neutral_trap";
+} | null {
+  const target = regionStates.find(r => r.regionId === targetRegionId);
+  const ownerId = target?.hiddenShieldOwnerId;
+  if (!ownerId || ownerId === attackerId) return null;
+  const kind = target?.hiddenShieldKind ?? "conquest";
+  const cleared = regionStates.map(rs =>
+    rs.regionId === targetRegionId
+      ? { ...rs, hiddenShieldOwnerId: undefined, hiddenShieldKind: undefined }
+      : rs,
+  );
+  return { regionStates: cleared, shieldOwnerId: ownerId, kind };
+}
+
+/**
  * Apply a pending action against the current state and return the new state
  * plus the structured result.
  *
@@ -334,6 +544,125 @@ export function applyActionToGame(
     };
   }
 
+  // ── Ankara hidden-shield interception ──────────────────────────────────
+  // Triggered BEFORE applyConquestAction so a shielded attack/capture never
+  // flips ownership.  Shield is consumed on trigger and the round resolves
+  // with a public "shield broken" message (hidden until this moment).
+  if (action.type === "attack_region" || action.type === "capture_neutral") {
+    const shieldTrigger = tryConsumeHiddenShield(
+      state.regionStates, action.playerId, action.regionId,
+    );
+    if (shieldTrigger) {
+      const blockMessage =
+        shieldTrigger.kind === "shield"       ? HIDDEN_SHIELD_REVEAL_MESSAGE :
+        shieldTrigger.kind === "neutral_trap" ? HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE :
+        /* conquest (legacy) */                 HIDDEN_CONQUEST_REVEAL_MESSAGE;
+      const blockResult: ConquestActionResult = {
+        ok:       true,
+        action:   action.type,
+        playerId: action.playerId,
+        regionId: action.regionId,
+        message:  blockMessage,
+      };
+      return {
+        state: {
+          ...state,
+          phase:        "round_result",
+          regionStates: shieldTrigger.regionStates,
+          round: {
+            ...state.round,
+            lastResult: blockResult,
+          },
+          history: [...state.history, {
+            roundNumber:       state.round.roundNumber,
+            challengeWinnerId: state.round.challenge.winnerPlayerId,
+            result:            blockResult,
+          }],
+        },
+        result: blockResult,
+      };
+    }
+  }
+
+  // ── Savunma Düellosu interception ─────────────────────────────────────
+  // If the action is an attack against an opponent-owned BONUS region, pause
+  // the normal flip and start a defense duel between attacker and defender.
+  // Capture_neutral is exempt by spec ("tarafsız bölge: direkt fetih") so
+  // only attack_region routes here.  Hidden shield was already consumed
+  // above so a duel can never start on a hidden-conquest region.
+  if (action.type === "attack_region") {
+    const target = state.regionStates.find(r => r.regionId === action.regionId);
+    if (
+      target
+      && target.ownerPlayerId
+      && target.ownerPlayerId !== action.playerId
+      && getRegionBonus(action.regionId)
+    ) {
+      const duelState = startDefenseDuel(
+        state,
+        action.playerId,
+        target.ownerPlayerId,
+        action.regionId,
+        target.shielded === true,
+      );
+      const startResult: ConquestActionResult = {
+        ok:       true,
+        action:   "attack_region",
+        playerId: action.playerId,
+        regionId: action.regionId,
+        message:  "Savunma Düellosu başladı!",
+      };
+      return {
+        state: duelState,
+        result: startResult,
+      };
+    }
+  }
+
+  // ── İstanbul open-shield interception ──────────────────────────────────
+  // Public, attacker-visible shield (region.shielded === true).  Same block
+  // semantics as hidden shield but no secrecy.  Runs AFTER hidden so a
+  // region carrying both consumes hidden first.
+  if (action.type === "attack_region" || action.type === "capture_neutral") {
+    const target = state.regionStates.find(r => r.regionId === action.regionId);
+    if (
+      target?.shielded
+      && target.ownerPlayerId !== null
+      && target.ownerPlayerId !== action.playerId
+    ) {
+      const defenderId   = target.ownerPlayerId;
+      const attackerName = state.players.find(p => p.id === action.playerId)?.name ?? "Saldıran";
+      const defenderName = state.players.find(p => p.id === defenderId)?.name ?? "Savunan";
+      const cleared = state.regionStates.map(rs =>
+        rs.regionId === action.regionId ? { ...rs, shielded: false } : rs,
+      );
+      const blockResult: ConquestActionResult = {
+        ok:       true,
+        action:   action.type,
+        playerId: action.playerId,
+        regionId: action.regionId,
+        message:  `🛡️ Açık kalkan tetiklendi! ${defenderName}, ${attackerName} saldırısını savuşturdu.`,
+      };
+      return {
+        state: {
+          ...state,
+          phase:        "round_result",
+          regionStates: cleared,
+          round: {
+            ...state.round,
+            lastResult: blockResult,
+          },
+          history: [...state.history, {
+            roundNumber:       state.round.roundNumber,
+            challengeWinnerId: state.round.challenge.winnerPlayerId,
+            result:            blockResult,
+          }],
+        },
+        result: blockResult,
+      };
+    }
+  }
+
   const applied = applyConquestAction(
     mapConfig,
     state.regionStates,
@@ -355,6 +684,28 @@ export function applyActionToGame(
     };
   }
 
+  // Trigger capture-side region bonuses (Ankara/Çukurova/Karadeniz/İstanbul).
+  // Runs ONLY for capture-style actions whose ownership flip succeeded; skip
+  // and defend leave bonuses untouched.
+  let postRegionStates  = applied.regionStates;
+  let postPlayerBonuses = state.playerBonuses;
+  let postToast: ConquestBonusToast | undefined;
+  if (action.type === "capture_neutral" || action.type === "attack_region") {
+    const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
+    const bonusOut = triggerCaptureBonus(
+      postRegionStates,
+      postPlayerBonuses,
+      action.playerId,
+      actorName,
+      action.regionId,
+      Date.now(),
+      action.type === "capture_neutral",
+    );
+    postRegionStates  = bonusOut.regionStates;
+    postPlayerBonuses = bonusOut.playerBonuses;
+    postToast         = bonusOut.toast;
+  }
+
   const historyEntry = {
     roundNumber:        state.round.roundNumber,
     challengeWinnerId:  state.round.challenge.winnerPlayerId,
@@ -364,7 +715,7 @@ export function applyActionToGame(
   // Early finish: one player now owns every region on the map.
   // Only possible after a capture/attack (skip never changes ownership).
   const dominatorId = action.type !== "skip"
-    ? getPlayerOwningAllRegions(applied.regionStates, mapConfig)
+    ? getPlayerOwningAllRegions(postRegionStates, mapConfig)
     : null;
 
   if (dominatorId !== null) {
@@ -379,9 +730,11 @@ export function applyActionToGame(
     return {
       state: {
         ...state,
-        phase:        "finished",
-        finishedAt:   Date.now(),
-        regionStates: applied.regionStates,
+        phase:          "finished",
+        finishedAt:     Date.now(),
+        regionStates:   postRegionStates,
+        playerBonuses:  postPlayerBonuses,
+        lastBonusToast: postToast ?? state.lastBonusToast,
         round: {
           ...state.round,
           lastResult: domResult,
@@ -395,8 +748,10 @@ export function applyActionToGame(
   return {
     state: {
       ...state,
-      phase:        "round_result",
-      regionStates: applied.regionStates,
+      phase:          "round_result",
+      regionStates:   postRegionStates,
+      playerBonuses:  postPlayerBonuses,
+      lastBonusToast: postToast ?? state.lastBonusToast,
       round: {
         ...state.round,
         lastResult: applied.result,
@@ -404,6 +759,637 @@ export function applyActionToGame(
       history: [...state.history, historyEntry],
     },
     result: applied.result,
+  };
+}
+
+/**
+ * Place the holder's pending Ankara hidden shield onto one of their own
+ * regions.  Counts as the round's hamle: transitions phase → round_result,
+ * clears the pending flag, and writes a history entry.  Per spec, no opponent
+ * is notified (the shield's existence stays secret until it triggers).
+ *
+ * Validates: phase is "action", player is the action holder, region is owned
+ * by the player, and the player has `pendingHiddenShield = true`.  On failure,
+ * returns the state unchanged with `result.ok = false` so the UI can surface
+ * a message via lastResult.
+ *
+ * Per-player cap of 1 is enforced by clearing any prior hidden shield owned
+ * by this player before stamping the new one (mirrors the auto-stamp path).
+ */
+export function placeHiddenShieldOnOwnRegion(
+  state:      ConquestGameState,
+  _mapConfig: ConquestMapConfig,
+  playerId:   string,
+  regionId:   ConquestRegionId,
+): ApplyActionResult {
+  if (state.phase !== "action") {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Şu an hamle yapılamaz.",
+      },
+    };
+  }
+  if (state.round.actionHolderId !== playerId) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Bu oyuncunun şu an hamle hakkı yok.",
+      },
+    };
+  }
+
+  const target = state.regionStates.find(r => r.regionId === regionId);
+  if (!target || target.ownerPlayerId !== playerId) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Yalnızca kendi bölgene gizli koruma yerleştirebilirsin.",
+      },
+    };
+  }
+
+  const pb = state.playerBonuses?.[playerId] ?? createEmptyPlayerBonusState();
+  if (!pb.pendingHiddenShield) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Gizli koruma hakkın yok.",
+      },
+    };
+  }
+
+  // Stamp shield on chosen region; clear any prior hidden shield for this
+  // player so the per-player cap of 1 is preserved.
+  const nextRegionStates = state.regionStates.map(rs => {
+    if (rs.regionId === regionId) {
+      return {
+        ...rs,
+        hiddenShieldOwnerId: playerId,
+        hiddenShieldKind:    "shield" as const,
+      };
+    }
+    if (rs.hiddenShieldOwnerId === playerId) {
+      return { ...rs, hiddenShieldOwnerId: undefined, hiddenShieldKind: undefined };
+    }
+    return rs;
+  });
+
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...(state.playerBonuses ?? {}),
+    [playerId]: { ...pb, pendingHiddenShield: false },
+  };
+
+  const playerName  = state.players.find(p => p.id === playerId)?.name ?? "Oyuncu";
+  const result: ConquestActionResult = {
+    ok:       true,
+    action:   "defend_region",
+    playerId,
+    regionId,
+    /* Public message MUST NOT leak the chosen region or distinguish shield
+     * vs. fetih — paranoia is the feature.  UI detects the sentinel prefix
+     * (HIDDEN_OP_PLACED_MESSAGE_PREFIX) and surfaces a center banner. */
+    message:  buildHiddenOpPlacedMessage(playerName),
+  };
+
+  return {
+    state: {
+      ...state,
+      phase:         "round_result",
+      regionStates:  nextRegionStates,
+      playerBonuses: nextPlayerBonuses,
+      round: {
+        ...state.round,
+        lastResult: result,
+      },
+      history: [
+        ...state.history,
+        {
+          roundNumber:       state.round.roundNumber,
+          challengeWinnerId: state.round.challenge.winnerPlayerId,
+          result,
+        },
+      ],
+    },
+    result,
+  };
+}
+
+/**
+ * Place the holder's pending Gizli Operasyon onto a NEUTRAL region as a
+ * "gizli fetih" (any neutral on the map — adjacency is intentionally not
+ * required).  Counts as the round's hamle.
+ *
+ * Per the revised spec this is no longer a trap that leaves the region
+ * neutral.  Instead the region is genuinely captured for the player:
+ *   - real `ownerPlayerId` becomes the placer
+ *   - `hiddenShieldKind = "conquest"` cloaks the capture in opponent
+ *     projections (they continue to see the region as neutral)
+ *   - first opposing attack reveals the real owner and consumes the shield;
+ *     the attack is wasted and the region stays with the original conqueror
+ *
+ * Validates: phase is "action", player is the action holder, region is
+ * truly neutral (ownerPlayerId === null), and the player has
+ * `pendingHiddenShield = true`.  Per-player cap of 1 is enforced by
+ * clearing any prior hidden shield owned by this player (mirrors the
+ * own-region placement path).
+ */
+export function placeHiddenConquestOnNeutralRegion(
+  state:     ConquestGameState,
+  mapConfig: ConquestMapConfig,
+  playerId:  string,
+  regionId:  ConquestRegionId,
+): ApplyActionResult {
+  if (state.phase !== "action") {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Şu an hamle yapılamaz.",
+      },
+    };
+  }
+  if (state.round.actionHolderId !== playerId) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Bu oyuncunun şu an hamle hakkı yok.",
+      },
+    };
+  }
+
+  const target = state.regionStates.find(r => r.regionId === regionId);
+  if (!target || target.ownerPlayerId !== null) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Yalnızca tarafsız bir bölgeye gizli tuzak kurabilirsin.",
+      },
+    };
+  }
+
+  const pb = state.playerBonuses?.[playerId] ?? createEmptyPlayerBonusState();
+  if (!pb.pendingHiddenShield) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Gizli koruma hakkın yok.",
+      },
+    };
+  }
+
+  // Flip ownership for real AND cloak the capture with kind="conquest".
+  // Clear any prior hidden shield owned by this player so the per-player cap
+  // of 1 is preserved (mirrors the own-region placement path).
+  const nextRegionStates = state.regionStates.map(rs => {
+    if (rs.regionId === regionId) {
+      return {
+        ...rs,
+        ownerPlayerId:       playerId,
+        lastCapturedBy:      playerId,
+        turnCaptured:        state.round.roundNumber,
+        captureCount:        (rs.captureCount ?? 0) + 1,
+        /* Capture clears any open shield — matches flipOwnership semantics. */
+        shielded:            false,
+        hiddenShieldOwnerId: playerId,
+        hiddenShieldKind:    "conquest" as const,
+      };
+    }
+    if (rs.hiddenShieldOwnerId === playerId) {
+      return { ...rs, hiddenShieldOwnerId: undefined, hiddenShieldKind: undefined };
+    }
+    return rs;
+  });
+
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...(state.playerBonuses ?? {}),
+    [playerId]: { ...pb, pendingHiddenShield: false },
+  };
+
+  const playerName  = state.players.find(p => p.id === playerId)?.name ?? "Oyuncu";
+  const baseResult: ConquestActionResult = {
+    ok:       true,
+    action:   "defend_region",
+    playerId,
+    regionId,
+    /* Public message MUST NOT leak region or op kind — same sentinel used by
+     * placeHiddenShieldOnOwnRegion so the UI banner fires identically. */
+    message:  buildHiddenOpPlacedMessage(playerName),
+  };
+
+  const historyEntry = {
+    roundNumber:       state.round.roundNumber,
+    challengeWinnerId: state.round.challenge.winnerPlayerId,
+    result:            baseResult,
+  };
+
+  // Early finish: a gizli fetih on the last neutral region while the player
+  // owns every other tile would complete domination.  Mirrors the post-capture
+  // check in applyActionToGame so the secret path can't accidentally bypass
+  // the natural finish trigger.
+  const dominatorId = getPlayerOwningAllRegions(nextRegionStates, mapConfig);
+  if (dominatorId !== null) {
+    const dominator = state.players.find(p => p.id === dominatorId);
+    const domResult: ConquestActionResult = {
+      ...baseResult,
+      message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+    };
+    return {
+      state: {
+        ...state,
+        phase:         "finished",
+        finishedAt:    Date.now(),
+        regionStates:  nextRegionStates,
+        playerBonuses: nextPlayerBonuses,
+        round: {
+          ...state.round,
+          lastResult: domResult,
+        },
+        history: [...state.history, { ...historyEntry, result: domResult }],
+      },
+      result: domResult,
+    };
+  }
+
+  return {
+    state: {
+      ...state,
+      phase:         "round_result",
+      regionStates:  nextRegionStates,
+      playerBonuses: nextPlayerBonuses,
+      round: {
+        ...state.round,
+        lastResult: baseResult,
+      },
+      history: [...state.history, historyEntry],
+    },
+    result: baseResult,
+  };
+}
+
+/**
+ * Auto-skip the action phase when its timer expires.  Host-only writer in the
+ * live loop (mirrors expireChallenge) so two clients don't race the same
+ * write.  Idempotent: returns the state unchanged if the phase has already
+ * moved on, no holder is set, or the timer field is missing.
+ *
+ * Implementation just routes through `applyActionToGame` with a `skip` action
+ * on behalf of the holder — keeps the round-result + history bookkeeping in
+ * one place and matches what the manual "Pas Geç" button does.
+ */
+export function expireActionPhase(
+  state:     ConquestGameState,
+  mapConfig: ConquestMapConfig,
+): ConquestGameState {
+  if (state.phase !== "action") return state;
+  const holderId = state.round.actionHolderId;
+  if (!holderId) return state;
+  const { state: next } = applyActionToGame(state, mapConfig, {
+    type:     "skip",
+    playerId: holderId,
+  });
+  // Mark the skip message as time-out specific so the round panel can
+  // distinguish manual vs. auto skips later. Only overwrite if applyAction
+  // actually moved into round_result (the skip succeeded).
+  if (next.phase === "round_result" && next.round.lastResult?.ok) {
+    return {
+      ...next,
+      round: {
+        ...next.round,
+        lastResult: {
+          ...next.round.lastResult,
+          message: "Süre doldu — hamle yapılamadı.",
+        },
+      },
+    };
+  }
+  return next;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Savunma Düellosu — defense duel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a defense-duel state and switch the game phase to "defense_duel".
+ * Picks a fresh challenge from the existing bank, narrows eligibility to the
+ * two duellists, and tags the duel with whether the target region currently
+ * carries an open shield (İstanbul) so resolution can break vs flip.
+ *
+ * Pure: returns a new ConquestGameState; never mutates inputs.
+ */
+function startDefenseDuel(
+  state:        ConquestGameState,
+  attackerId:   string,
+  defenderId:   string,
+  regionId:     ConquestRegionId,
+  shieldActive: boolean,
+): ConquestGameState {
+  const now = Date.now();
+  const usedSoFar = state.usedChallengeKeys ?? [];
+  const lastType  = state.lastChallengeType;
+  const picked    = pickRandomConquestChallenge(
+    state.round.roundNumber,
+    state.players,
+    usedSoFar,
+    lastType,
+  );
+  // Narrow eligibility to attacker + defender; everyone else watches.
+  const challenge: ConquestChallenge = {
+    ...picked.challenge,
+    eligiblePlayerIds: [attackerId, defenderId],
+  };
+
+  const questionVisibleAt = now + DEFENSE_DUEL_INTRO_MS;
+  const duel: ConquestDefenseDuelState = {
+    id:               `duel-${state.round.roundNumber}-${now}`,
+    attackerId,
+    defenderId,
+    regionId,
+    shieldActive,
+    challenge,
+    startedAt:        now,
+    questionVisibleAt,
+    endsAt:           questionVisibleAt + DEFENSE_DUEL_MS,
+    status:           "active",
+    winnerId:         null,
+    submittedAnswers: [],
+  };
+
+  return {
+    ...state,
+    phase:              "defense_duel",
+    defenseDuel:        duel,
+    usedChallengeKeys:  [...usedSoFar, picked.bankId],
+    lastChallengeType:  challenge.type as ConquestChallengeType,
+  };
+}
+
+/**
+ * Validate `rawAnswer` against the active duel for `submitterId`.
+ *
+ * Returns `{ ok: true, winning: true, state }` if the answer is correct and
+ * resolves the duel; `{ ok: true, winning: false, state }` for a wrong (but
+ * legal) submission; `{ ok: false }` for an illegal submission (phase wrong,
+ * duel not active, submitter not one of the two duellists).
+ *
+ * Wrong attempts are NOT recorded in the synced state — they're tracked
+ * client-side to avoid write contention (mirrors challenge-phase behaviour).
+ */
+export interface SubmitDuelAnswerResult {
+  ok:      boolean;
+  winning: boolean;
+  state:   ConquestGameState;
+}
+
+export function submitDuelAnswer(
+  state:       ConquestGameState,
+  mapConfig:   ConquestMapConfig,
+  submitterId: string,
+  rawAnswer:   string,
+): SubmitDuelAnswerResult {
+  if (state.phase !== "defense_duel" || !state.defenseDuel) {
+    return { ok: false, winning: false, state };
+  }
+  const duel = state.defenseDuel;
+  if (duel.status !== "active") {
+    return { ok: false, winning: false, state };
+  }
+  if (submitterId !== duel.attackerId && submitterId !== duel.defenderId) {
+    return { ok: false, winning: false, state };
+  }
+
+  const correct = isChallengeAnswerCorrect(duel.challenge, rawAnswer);
+  if (!correct) {
+    return { ok: true, winning: false, state };
+  }
+
+  const next = resolveDuelWithWinner(state, mapConfig, submitterId);
+  return { ok: true, winning: true, state: next };
+}
+
+/**
+ * Resolve the active duel with the given winner.  Branches on who won:
+ *   - Attacker wins, shield active → break shield, region preserved.
+ *   - Attacker wins, no shield     → flip ownership (+ capture-side bonuses).
+ *   - Defender wins                → region preserved.
+ *
+ * Transitions phase to `round_result` and clears `defenseDuel`.
+ */
+function resolveDuelWithWinner(
+  state:     ConquestGameState,
+  mapConfig: ConquestMapConfig,
+  winnerId:  string,
+): ConquestGameState {
+  const duel = state.defenseDuel;
+  if (!duel || duel.status !== "active") return state;
+  const now = Date.now();
+
+  const attackerName = state.players.find(p => p.id === duel.attackerId)?.name ?? "Saldıran";
+  const defenderName = state.players.find(p => p.id === duel.defenderId)?.name ?? "Savunan";
+  const regionLabel  = mapConfig.regions.find(r => r.id === duel.regionId)?.displayLabel
+                   ?? mapConfig.regions.find(r => r.id === duel.regionId)?.name
+                   ?? duel.regionId;
+
+  // ── Defender wins → region preserved, shield untouched. ──
+  if (winnerId === duel.defenderId) {
+    const result: ConquestActionResult = {
+      ok:       true,
+      action:   "defend_region",
+      playerId: duel.defenderId,
+      regionId: duel.regionId,
+      message:  `🛡️ ${defenderName}, ${regionLabel} bölgesini düelloda savundu.`,
+    };
+    return finishDuelIntoRoundResult(state, result);
+  }
+
+  // ── Attacker wins ──
+  // Shield active → break shield only, do not flip.
+  if (duel.shieldActive) {
+    const cleared = state.regionStates.map(rs =>
+      rs.regionId === duel.regionId ? { ...rs, shielded: false } : rs,
+    );
+    const result: ConquestActionResult = {
+      ok:       true,
+      action:   "attack_region",
+      playerId: duel.attackerId,
+      regionId: duel.regionId,
+      message:  `🛡️ Kalkan kırıldı! ${regionLabel} bu saldırıda korundu.`,
+    };
+    return {
+      ...finishDuelIntoRoundResult(state, result),
+      regionStates: cleared,
+    };
+  }
+
+  // Attacker wins, no shield → flip ownership and trigger capture bonuses.
+  const applied = applyConquestAction(
+    mapConfig,
+    state.regionStates,
+    state.players,
+    state.round.roundNumber,
+    { type: "attack_region", playerId: duel.attackerId, regionId: duel.regionId },
+  );
+  if (!applied.result.ok) {
+    // Shouldn't happen — adjacency was valid when the duel started — but stay
+    // defensive: treat as defender-wins so the region survives.
+    const result: ConquestActionResult = {
+      ok:       true,
+      action:   "defend_region",
+      playerId: duel.defenderId,
+      regionId: duel.regionId,
+      message:  `🛡️ ${regionLabel} korundu.`,
+    };
+    return finishDuelIntoRoundResult(state, result);
+  }
+
+  // Capture-side bonus chain (Ankara/Çukurova/Karadeniz/İstanbul).
+  // Duel flips always come from attacking a bonus region the defender owned,
+  // so this is never a neutral capture — pendingHiddenShield isn't consumed
+  // here per the spec.
+  const bonusOut = triggerCaptureBonus(
+    applied.regionStates,
+    state.playerBonuses,
+    duel.attackerId,
+    attackerName,
+    duel.regionId,
+    now,
+    false,
+  );
+
+  const flipResult: ConquestActionResult = {
+    ok:       true,
+    action:   "attack_region",
+    playerId: duel.attackerId,
+    regionId: duel.regionId,
+    message:  `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
+  };
+
+  const base = finishDuelIntoRoundResult(state, flipResult);
+
+  // Domination check — attacker may have just captured the last enemy region.
+  const dominatorId = getPlayerOwningAllRegions(bonusOut.regionStates, mapConfig);
+  if (dominatorId !== null) {
+    const dominator = state.players.find(p => p.id === dominatorId);
+    const domResult: ConquestActionResult = {
+      ok:       true,
+      action:   "attack_region",
+      playerId: duel.attackerId,
+      regionId: duel.regionId,
+      message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+    };
+    return {
+      ...base,
+      phase:          "finished",
+      finishedAt:     now,
+      regionStates:   bonusOut.regionStates,
+      playerBonuses:  bonusOut.playerBonuses,
+      lastBonusToast: bonusOut.toast ?? state.lastBonusToast,
+      round: {
+        ...base.round,
+        lastResult: domResult,
+      },
+      history: [
+        ...state.history,
+        {
+          roundNumber:       state.round.roundNumber,
+          challengeWinnerId: state.round.challenge.winnerPlayerId,
+          result:            domResult,
+        },
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    regionStates:   bonusOut.regionStates,
+    playerBonuses:  bonusOut.playerBonuses,
+    lastBonusToast: bonusOut.toast ?? state.lastBonusToast,
+  };
+}
+
+/**
+ * Auto-expire the active duel: timer elapsed with no correct answer.  By
+ * spec the defender keeps the region.  Host-only writer in the live loop.
+ */
+export function expireDuel(
+  state:     ConquestGameState,
+  mapConfig: ConquestMapConfig,
+): ConquestGameState {
+  if (state.phase !== "defense_duel" || !state.defenseDuel) return state;
+  if (state.defenseDuel.status !== "active") return state;
+
+  const duel = state.defenseDuel;
+  const regionLabel  = mapConfig.regions.find(r => r.id === duel.regionId)?.displayLabel
+                   ?? mapConfig.regions.find(r => r.id === duel.regionId)?.name
+                   ?? duel.regionId;
+  const defenderName = state.players.find(p => p.id === duel.defenderId)?.name ?? "Savunan";
+
+  const result: ConquestActionResult = {
+    ok:       true,
+    action:   "defend_region",
+    playerId: duel.defenderId,
+    regionId: duel.regionId,
+    message:  `⏰ Süre doldu — ${defenderName}, ${regionLabel} bölgesini savundu.`,
+  };
+  return finishDuelIntoRoundResult(state, result);
+}
+
+/**
+ * Shared tail for all duel-resolution paths: transition to round_result,
+ * clear the active duel, write the history entry.
+ */
+function finishDuelIntoRoundResult(
+  state:  ConquestGameState,
+  result: ConquestActionResult,
+): ConquestGameState {
+  return {
+    ...state,
+    phase:       "round_result",
+    defenseDuel: undefined,
+    round: {
+      ...state.round,
+      lastResult: result,
+    },
+    history: [
+      ...state.history,
+      {
+        roundNumber:       state.round.roundNumber,
+        challengeWinnerId: state.round.challenge.winnerPlayerId,
+        result,
+      },
+    ],
   };
 }
 
@@ -440,6 +1426,9 @@ export function advanceToNextRound(state: ConquestGameState): ConquestGameState 
     phase:             "challenge",
     usedChallengeKeys: [...usedSoFar, bankId],
     lastChallengeType: challenge.type as ConquestChallengeType,
+    /* Clear the bonus toast so a fresh round doesn't echo the previous
+     * round's banner on late-joining clients. */
+    lastBonusToast:    undefined,
     round: {
       roundNumber:    nextRoundNumber,
       totalRounds:    state.round.totalRounds,
@@ -527,7 +1516,9 @@ export function buildFinalStandings(
   state: ConquestGameState,
 ): ConquestFinalStanding[] {
   const counts = getPlayerRegionCounts(state.players, state.regionStates);
-  const points = getPlayerRegionPoints(state.players, state.regionStates);
+  const points = getPlayerTotalPoints(
+    state.players, state.regionStates, state.playerBonuses,
+  );
   const rows = state.players.map(p => ({
     playerId:    p.id,
     playerName:  p.name,
@@ -559,6 +1550,14 @@ export function buildFinalStandings(
  * Set of region ids the action holder can legally click this turn.  Returns
  * an empty set when no one currently holds a hamle.  Cheap to call from
  * render — the underlying scan is O(regions).
+ *
+ * When the holder has a `pendingHiddenShield` (Ankara Gizli Operasyon),
+ * every region they own AND every neutral region on the map (no adjacency
+ * required) is also a legal click target — clicking own places a gizli kalkan,
+ * clicking neutral places a gizli fetih.  Both count as the round's move (see
+ * `placeHiddenShieldOnOwnRegion` / `placeHiddenConquestOnNeutralRegion`).
+ * Enemy-owned regions are never added by the bonus path (no shielding
+ * opponents' regions per spec).
  */
 export function getCurrentLegalTargets(
   state:     ConquestGameState,
@@ -567,27 +1566,48 @@ export function getCurrentLegalTargets(
   if (state.phase !== "action" || !state.round.actionHolderId) {
     return new Set();
   }
-  return getAllLegalTargetsForPlayer(
+  const holderId = state.round.actionHolderId;
+  const targets = getAllLegalTargetsForPlayer(
     mapConfig,
     state.regionStates,
-    state.round.actionHolderId,
+    holderId,
   );
+  const pb = state.playerBonuses?.[holderId];
+  if (pb?.pendingHiddenShield) {
+    for (const rs of state.regionStates) {
+      if (rs.ownerPlayerId === holderId || rs.ownerPlayerId === null) {
+        targets.add(rs.regionId);
+      }
+    }
+  }
+  return targets;
 }
 
 /**
  * True if the action holder has *no* legal map move (capture or attack).
  * UI uses this to auto-offer / auto-trigger the skip path so the loop
  * doesn't dead-end.
+ *
+ * A holder with `pendingHiddenShield` is never stuck so long as the map
+ * still has either at least one region they own OR at least one neutral
+ * region — both are valid trap/shield placement targets.
  */
 export function actionHolderHasNoMoves(
   state:     ConquestGameState,
   mapConfig: ConquestMapConfig,
 ): boolean {
   if (state.phase !== "action" || !state.round.actionHolderId) return false;
+  const holderId = state.round.actionHolderId;
+  const pb = state.playerBonuses?.[holderId];
+  if (pb?.pendingHiddenShield) {
+    const ownsAny = state.regionStates.some(rs => rs.ownerPlayerId === holderId);
+    const anyNeutral = state.regionStates.some(rs => rs.ownerPlayerId === null);
+    if (ownsAny || anyNeutral) return false;
+  }
   const legal = getLegalActionsForPlayer(
     mapConfig,
     state.regionStates,
-    state.round.actionHolderId,
+    holderId,
   );
   // skip is always present; "no moves" means skip is the only legal action.
   return legal.length === 1 && legal[0] === "skip";

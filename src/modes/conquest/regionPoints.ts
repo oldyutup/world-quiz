@@ -11,6 +11,7 @@
 
 import type {
   ConquestPlayer,
+  ConquestPlayerBonusState,
   ConquestRegionId,
   ConquestRegionState,
 } from "./types";
@@ -73,6 +74,34 @@ export function getPlayerRegionPoints(
       out[rs.ownerPlayerId] += getRegionPoints(rs.regionId);
     }
   }
+  return out;
+}
+
+/**
+ * Bonus points contributed by region bonuses (Çukurova +1 etc.).  Read from
+ * the per-player bonus state; missing entries default to 0.
+ */
+export function getPlayerBonusPoints(
+  players:       ConquestPlayer[],
+  playerBonuses: Record<string, ConquestPlayerBonusState> | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of players) {
+    out[p.id] = playerBonuses?.[p.id]?.bonusPoints ?? 0;
+  }
+  return out;
+}
+
+/** Region points + bonus points, summed per player. */
+export function getPlayerTotalPoints(
+  players:       ConquestPlayer[],
+  regionStates:  ConquestRegionState[],
+  playerBonuses: Record<string, ConquestPlayerBonusState> | undefined,
+): Record<string, number> {
+  const region = getPlayerRegionPoints(players, regionStates);
+  const bonus  = getPlayerBonusPoints(players, playerBonuses);
+  const out: Record<string, number> = {};
+  for (const p of players) out[p.id] = (region[p.id] ?? 0) + (bonus[p.id] ?? 0);
   return out;
 }
 

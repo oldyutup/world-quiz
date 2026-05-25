@@ -162,6 +162,31 @@ export interface ConquestRegionState {
   turnCaptured?:    number;
   /** How many times this region has changed hands. */
   captureCount?:    number;
+  /**
+   * Ankara bonus payload: the player id whose hidden shield is currently
+   * stamped on this region.  Invisible to opponents; cleared when the shield
+   * is triggered by an attack or when the region changes hands.
+   */
+  hiddenShieldOwnerId?: string;
+  /**
+   * Distinguishes how the hidden shield got here:
+   *   "shield"       — placed by the owner onto a region they already own
+   *                    (opponents continue to see it as theirs; reveal:
+   *                    "Gizli kalkan ortaya çıktı").
+   *   "conquest"     — placed by the holder onto a NEUTRAL region as a
+   *                    "gizli fetih": real `ownerPlayerId` flips to the
+   *                    placer, but opponents see the tile as neutral via
+   *                    projectRegionStatesForViewer.  First enemy attack
+   *                    reveals the real owner and is wasted (reveal:
+   *                    "Gizli fetih ortaya çıktı").  Adjacency NOT required.
+   *                    Also the fallback for very old saves without this
+   *                    field (matches the earliest auto-stamp behaviour).
+   *   "neutral_trap" — LEGACY: pre-spec-rev3 trap that kept the region
+   *                    genuinely neutral.  No new code emits this; kept so
+   *                    older in-flight saves still resolve correctly.
+   * Absent when no hidden shield is stamped.
+   */
+  hiddenShieldKind?: "conquest" | "shield" | "neutral_trap";
 }
 
 /**
@@ -194,6 +219,63 @@ export interface ConquestMapConfig {
   geometrySource?:    string;
   /** Cosmetic theme override for this map's board visuals. */
   themeId?:           string;
+}
+
+// ── Region bonuses ───────────────────────────────────────────────────────────
+
+/**
+ * Catalog of region-bonus families.  Definitions live in regionBonuses.ts;
+ * gameplay wiring lives in conquestGameplay.ts.  Order is documentation only.
+ */
+export type ConquestRegionBonusType =
+  | "istanbul_defense"        // passive marker while owned (UI/altyapı only)
+  | "ankara_hidden_shield"    // grant pending shield, placed on next capture
+  | "cukurova_score"          // one-shot +1 bonus point on capture
+  | "karadeniz_extra_time";   // one-shot +5s to bonused player's next move
+
+/**
+ * Per-player bonus state.  Persisted in ConquestGameState.playerBonuses.
+ *
+ * Stacking rules (enforced in gameplay):
+ *   - pendingHiddenShield  — re-capturing Ankara keeps the flag at true; never
+ *                            grants more than one slot.
+ *   - extraNextMoveMs      — re-capturing Karadeniz overwrites; never sums.
+ *   - cukurovaClaimed      — flips to true on the first Çukurova capture in
+ *                            the match and never resets.
+ *   - bonusPoints          — only Çukurova writes here today; counted in
+ *                            scoring once.
+ *
+ * istanbul_defense is intentionally NOT mirrored here — it is a passive
+ * "while owning" marker derived from current region ownership.
+ */
+export interface ConquestPlayerBonusState {
+  pendingHiddenShield: boolean;
+  extraNextMoveMs:     number;
+  cukurovaClaimed:     boolean;
+  bonusPoints:         number;
+}
+
+/**
+ * Transient, sync-friendly toast payload announced when a bonus region is
+ * captured.  Carried on ConquestGameState so every client renders the same
+ * toast at the same moment; UI auto-dismisses after a fixed delay using
+ * `at` as the anchor.  The `id` re-keys the React component on every toast
+ * even if the message text matches a previous one.
+ */
+export interface ConquestBonusToast {
+  id:         string;
+  bonusType:  ConquestRegionBonusType;
+  /** Display icon (emoji). */
+  icon:       string;
+  /** Short TR title — e.g. "Ankara Bonusu". */
+  title:      string;
+  /** One-line TR detail — e.g. "Sıradaki fetih gizli kalkan kazanacak". */
+  detail:     string;
+  /** Player who earned the bonus — used to colour the toast border. */
+  playerId:   string;
+  playerName: string;
+  /** Epoch ms the toast was raised. UI uses this to time the auto-dismiss. */
+  at:         number;
 }
 
 // ── Match state ──────────────────────────────────────────────────────────────
@@ -356,8 +438,50 @@ export type ConquestGamePhase =
   | "setup"
   | "challenge"
   | "action"
+  | "defense_duel"
   | "round_result"
   | "finished";
+
+/**
+ * Lifecycle of a single Savunma Düellosu.
+ *   active  — duel live, no winner yet
+ *   resolved — attacker or defender answered correctly first
+ *   expired — timer ran out without a correct answer (defender wins by spec)
+ */
+export type ConquestDuelStatus = "active" | "resolved" | "expired";
+
+/**
+ * Savunma Düellosu — defense duel triggered when a player attacks an
+ * opponent's bonus region (REGION_BONUSES entry).  Only the attacker and the
+ * defender may answer; the first correct response wins.  On expiry or if
+ * nobody answers, the defender keeps the region by spec ("savunan avantajlı").
+ *
+ * Optional on ConquestGameState for backward-compat with pre-duel rooms.
+ */
+export interface ConquestDefenseDuelState {
+  /** Stable id used as a React key and to dedupe expiry writes. */
+  id:               string;
+  attackerId:       string;
+  defenderId:       string;
+  regionId:         ConquestRegionId;
+  /**
+   * Whether the region carried an open shield (İstanbul) when the duel
+   * started.  Snapshotted here so resolution can break the shield instead of
+   * flipping ownership when the attacker wins.
+   */
+  shieldActive:     boolean;
+  /** Reuse of the existing challenge schema — narrowed via eligiblePlayerIds. */
+  challenge:        ConquestChallenge;
+  startedAt:        number;
+  /** Epoch ms when the question panel becomes visible (after the intro overlay).
+   *  The 8-second duel timer starts from this point.  Optional for back-compat
+   *  with pre-intro rooms; absent → question visible immediately from startedAt. */
+  questionVisibleAt?: number;
+  endsAt:           number;
+  status:           ConquestDuelStatus;
+  winnerId:         string | null;
+  submittedAnswers: ConquestChallengeAnswer[];
+}
 
 /** Snapshot of an in-progress round. */
 export interface ConquestRoundState {
@@ -368,6 +492,15 @@ export interface ConquestRoundState {
   actionHolderId:  string | null;
   /** Set after the player resolves their action (or skips). */
   lastResult:      ConquestActionResult | null;
+  /** Epoch ms when the action (move) phase started for this round. Set on
+   *  challenge → action transition; absent in pre-timer rooms or non-action
+   *  phases. */
+  actionStartedAt?: number;
+  /** Epoch ms when the action phase will auto-skip if the holder does not
+   *  commit a move. Host watches this and writes the skip; clients render a
+   *  countdown from it. Future bonuses (e.g. Doğu Karadeniz +5s) extend the
+   *  window by mutating `getMovePhaseDurationMs` only. */
+  actionEndsAt?:    number;
 }
 
 /** Compact per-round log entry kept across the whole match. */
@@ -394,6 +527,23 @@ export interface ConquestGameState {
   usedChallengeKeys:  string[];
   /** Challenge type shown in the previous round; used to avoid consecutive same-type challenges. */
   lastChallengeType?: ConquestChallengeType;
+  /**
+   * Per-player bonus state (Phase: bonus layer v1).  Optional so pre-bonus
+   * in-flight rooms keep deserializing cleanly; readers must default missing
+   * entries through `createEmptyPlayerBonusState`.
+   */
+  playerBonuses?:     Record<string, ConquestPlayerBonusState>;
+  /**
+   * Most recent bonus toast.  Persisted so realtime echo shows the same
+   * notification on every client; UI auto-dismisses by comparing
+   * `Date.now() - at`.  Cleared on round advance to keep state tidy.
+   */
+  lastBonusToast?:    ConquestBonusToast;
+  /**
+   * Active Savunma Düellosu, if any.  Present only while `phase === "defense_duel"`;
+   * cleared on resolution.  Optional so pre-duel rooms deserialize cleanly.
+   */
+  defenseDuel?:       ConquestDefenseDuelState;
 }
 
 /** Final result row — one per player — used by the result screen. */

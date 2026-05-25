@@ -201,7 +201,8 @@ export const CONQUEST_TYPE_RACE_BANK: TypeRaceBankEntry[] = [
     acceptedAnswers: [
       "Kanada", "Katar", "Kazakistan", "Kenya", "Kıbrıs", "Kolombiya",
       "Kosova", "Küba", "Kuveyt", "Kırgızistan", "Kuzey Kore", "Kamerun",
-      "Kamboçya", "Komorlar",
+      "Kamboçya", "Komorlar", "Karadağ", "Kongo", "Kuzey Makedonya",
+      "Kore", "Kap Verde", "Kiribati",
     ],
   },
   {
@@ -233,6 +234,10 @@ export const CONQUEST_TYPE_RACE_BANK: TypeRaceBankEntry[] = [
       "Kenya", "Nijerya", "Gana", "Senegal", "Mali", "Güney Afrika",
       "Angola", "Kongo", "Kamerun", "Uganda", "Tanzanya", "Zimbabve",
       "Mozambik", "Botsvana", "Namibya", "Madagaskar", "Ruanda", "Fildişi Sahili",
+      "Çad", "Nijer", "Niger", "Somali", "Eritre", "Cibuti", "Gambiya",
+      "Togo", "Benin", "Liberya", "Sierra Leone", "Malavi", "Zambia",
+      "Lesotho", "Eswatini", "Svaziland", "Burundi", "Komoro", "Gabon",
+      "Ekvator Ginesi", "Gine", "Gine-Bissau", "Güney Sudan",
     ],
   },
   {
@@ -289,7 +294,9 @@ export const CONQUEST_TYPE_RACE_BANK: TypeRaceBankEntry[] = [
       "İsviçre", "Avusturya", "Macaristan", "Çekya", "Slovakya", "Sırbistan",
       "Kosova", "Kuzey Makedonya", "Kazakistan", "Afganistan", "Moğolistan",
       "Nepal", "Bolivya", "Paraguay", "Ruanda", "Uganda", "Etiyopya",
-      "Mali", "Niger", "Nijer", "Lüksemburg", "Andorra",
+      "Mali", "Niger", "Nijer", "Lüksemburg", "Andorra", "Çad", "Malavi",
+      "Zimbabve", "Botsvana", "Lesotho", "Eswatini", "Svaziland", "Zambia",
+      "Burundi", "Kırgızistan", "Tacikistan", "Türkmenistan", "Özbekistan",
     ],
   },
   {

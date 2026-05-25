@@ -1,2 +1,4 @@
 node_modules
 scripts/.cache-*
+dist/
+.DS_Store

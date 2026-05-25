@@ -9652,6 +9652,191 @@ body {
   color: oklch(0.52 0.006 220);
 }
 
+/* Bonus toast — center-screen transient banner. Auto-dismissed in TSX
+ * after BONUS_TOAST_MS; animation duration matches that window so the
+ * fade-out lines up with React un-mounting the node. */
+.cq-bonus-toast {
+  position: fixed;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: rgba(12, 18, 28, 0.92);
+  border: 1.5px solid var(--cq-toast-color, rgba(255,255,255,0.4));
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.4);
+  color: #f1f5f9;
+  z-index: 2000;
+  max-width: min(420px, 92vw);
+  pointer-events: none;
+  animation:
+    cq-bonus-toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
+    cq-bonus-toast-out 320ms ease-in 4180ms forwards;
+}
+.cq-bonus-toast[data-color="red"]    { --cq-toast-color: #ef4444; }
+.cq-bonus-toast[data-color="blue"]   { --cq-toast-color: #3b82f6; }
+.cq-bonus-toast[data-color="green"]  { --cq-toast-color: #22c55e; }
+.cq-bonus-toast[data-color="yellow"] { --cq-toast-color: #eab308; }
+.cq-bonus-toast[data-color="purple"] { --cq-toast-color: #a855f7; }
+.cq-bonus-toast[data-color="orange"] { --cq-toast-color: #f97316; }
+.cq-bonus-toast-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.4));
+}
+.cq-bonus-toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cq-bonus-toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--cq-toast-color, #f1f5f9);
+}
+.cq-bonus-toast-detail {
+  font-size: 12px;
+  color: rgba(241,245,249,0.88);
+  line-height: 1.3;
+}
+@keyframes cq-bonus-toast-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes cq-bonus-toast-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -55%) scale(0.96); }
+}
+@media (max-width: 480px) {
+  .cq-bonus-toast {
+    top: 32%;
+    padding: 10px 14px;
+    gap: 10px;
+    max-width: 92vw;
+  }
+  .cq-bonus-toast-icon { font-size: 22px; }
+  .cq-bonus-toast-title { font-size: 12px; }
+  .cq-bonus-toast-detail { font-size: 11px; }
+}
+
+/* Duel overlay toast base — shared by intro overlay and result toast.
+ * Intro stays until React unmounts it (no auto-fade).
+ * Result toast fades out after 2880ms (3200ms total hold). */
+.cq-duel-overlay-toast {
+  position: fixed;
+  top: 22%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 20px;
+  background: rgba(12, 18, 28, 0.94);
+  border: 1.5px solid rgba(255,255,255,0.35);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.4);
+  color: #f1f5f9;
+  z-index: 2001;
+  max-width: min(480px, 92vw);
+  pointer-events: none;
+  animation: cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+}
+/* Intro info card: React unmounts when 4000ms elapses; no auto-fade needed */
+.cq-duel-intro-overlay {
+  animation: cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+}
+
+/* 3-2-1 countdown overlay */
+.cq-duel-countdown-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 40px;
+  animation: cq-bonus-toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+}
+.cq-duel-countdown-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.cq-duel-countdown-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cq-duel-countdown-number {
+  font-size: 4.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #f1f5f9;
+  text-shadow: 0 0 24px rgba(251,191,36,0.6);
+  animation: cq-countdown-pop 1s ease-out;
+}
+@keyframes cq-countdown-pop {
+  0%   { transform: scale(1.4); opacity: 0.6; }
+  30%  { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(1.0); opacity: 1; }
+}
+
+/* Result toast: fade out after ~3740ms (4000ms total − 260ms out) */
+.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay) {
+  animation:
+    cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
+    cq-bonus-toast-out 320ms ease-in 3740ms forwards;
+}
+/* Gizli Operasyon center banner: held for ~4800ms total (spec: 4500–5000).
+ * Slightly wider so the two-line detail copy doesn't wrap awkwardly. */
+.cq-hidden-op-overlay {
+  max-width: min(540px, 92vw);
+  animation:
+    cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
+    cq-bonus-toast-out 320ms ease-in 4480ms forwards;
+}
+@media (max-width: 480px) {
+  .cq-duel-overlay-toast {
+    top: 14%;
+    padding: 10px 14px;
+    gap: 10px;
+    max-width: 92vw;
+  }
+  .cq-hidden-op-overlay { max-width: 92vw; }
+}
+
+/* Open-shield map overlay — public marker for İstanbul-style bonus.
+ * Pure stroke outline so the region fill / labels stay readable. */
+.cq-map-shield-overlay {
+  stroke: #fef08a;
+  stroke-dasharray: 4 3;
+  filter: drop-shadow(0 0 4px rgba(254,240,138,0.55));
+  opacity: 0.85;
+}
+
+/* Tiny chips between name and score that show a player's active bonuses.
+ * One emoji per active bonus; hidden bonuses (Ankara's pending shield) are
+ * only rendered for the local viewer. Kept compact for mobile. */
+.cq-player-bonus-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.cq-player-bonus-chip {
+  font-size: 11px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35));
+  opacity: 0.92;
+}
+
 /* Score column: big points, small region count beneath. */
 .cq-players-panel-score {
   display: flex;
@@ -10000,11 +10185,12 @@ body {
   pointer-events: auto;
 }
 
-.cq-game-phase-panel[data-phase="finished"] {
+.cq-game-phase-panel[data-phase="finished"],
+.cq-game-phase-panel[data-phase="defense_duel"] {
   bottom: auto;
   top: 50%;
   transform: translate(-50%, -50%);
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
 }
 
@@ -10157,6 +10343,94 @@ body {
   margin: 4px 0 2px;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.45));
   user-select: none;
+}
+
+/* ─── Savunma Düellosu ───────────────────────────────────────────────── */
+/* Reuses .cq-challenge-panel base; .cq-duel-panel adds the duel chrome.   */
+.cq-duel-panel {
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18) inset,
+              0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.cq-duel-versus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.cq-duel-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 0;
+  font-size: 12px;
+  color: var(--muted, #94a3b8);
+}
+.cq-duel-side--defender {
+  justify-content: flex-end;
+  text-align: right;
+}
+.cq-duel-side-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--cq-player-color, #94a3b8);
+  flex: 0 0 auto;
+}
+.cq-duel-side[data-color="red"]    { --cq-player-color: #ef4444; }
+.cq-duel-side[data-color="blue"]   { --cq-player-color: #3b82f6; }
+.cq-duel-side[data-color="green"]  { --cq-player-color: #22c55e; }
+.cq-duel-side[data-color="yellow"] { --cq-player-color: #facc15; }
+.cq-duel-side[data-color="purple"] { --cq-player-color: #a855f7; }
+.cq-duel-side[data-color="orange"] { --cq-player-color: #fb923c; }
+.cq-duel-side-label {
+  opacity: 0.7;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cq-duel-side-name {
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cq-duel-vs {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #f87171;
+  flex: 0 0 auto;
+}
+.cq-duel-target {
+  font-size: 12px;
+  color: var(--muted, #94a3b8);
+  margin: 4px 0 0 0;
+}
+.cq-duel-target strong {
+  color: #fff;
+}
+.cq-duel-shield-note {
+  display: block;
+  margin-top: 2px;
+  color: #fbbf24;
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .cq-duel-versus {
+    padding: 6px 8px;
+  }
+  .cq-duel-side-name {
+    font-size: 12px;
+  }
 }
 
 /* Flag-guess variant: tighter layout so the card doesn't bury the south map */
@@ -10499,7 +10773,8 @@ body {
   .cq-game-phase-panel {
     bottom: 54px;
   }
-  .cq-game-phase-panel[data-phase="finished"] {
+  .cq-game-phase-panel[data-phase="finished"],
+  .cq-game-phase-panel[data-phase="defense_duel"] {
     bottom: auto;
   }
   .cq-challenge-winner-grid {
