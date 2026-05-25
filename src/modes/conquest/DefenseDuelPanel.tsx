@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from "react";
 import { playSound } from "../../lib/sound";
 import { CONQUEST_CHALLENGE_META } from "./conquestChallenges";
+import { flagEmojiToCountryCode } from "./utils";
 import type {
   ConquestDefenseDuelState,
   ConquestPlayer,
@@ -138,7 +139,7 @@ export default function DefenseDuelPanel({
 
       {challenge.type === "flag_guess" && challenge.flag && (
         <div className="cq-challenge-flag" aria-label="Bayrak">
-          {challenge.flag}
+          <FlagGlyph emoji={challenge.flag} />
         </div>
       )}
 
@@ -235,5 +236,23 @@ export default function DefenseDuelPanel({
         </p>
       )}
     </section>
+  );
+}
+
+/* Render a flag as an SVG asset when the emoji decodes to a 2-letter ISO
+ * code, falling back to the raw emoji text otherwise.  Mirrors the helper
+ * in ConquestChallengePanel; both panels share .cq-challenge-flag CSS so
+ * the inline `height: 1em` keeps the asset sized by parent font-size. */
+function FlagGlyph({ emoji }: { emoji: string }) {
+  const [failed, setFailed] = useState(false);
+  const code = flagEmojiToCountryCode(emoji);
+  if (!code || failed) return <>{emoji}</>;
+  return (
+    <img
+      src={`/assets/flags/${code}.svg`}
+      alt={emoji}
+      onError={() => setFailed(true)}
+      style={{ height: "1em", width: "auto", verticalAlign: "middle", maxWidth: "100%" }}
+    />
   );
 }

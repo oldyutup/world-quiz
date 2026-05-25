@@ -39,3 +39,32 @@ export function buildConquestShareLink(code: string): string {
   const { origin, pathname } = window.location;
   return `${origin}${pathname}?conquest=${code}`;
 }
+
+/**
+ * Convert a flag emoji built from Regional Indicator Symbol pairs (e.g.
+ * "🇯🇵") to its ISO 3166-1 alpha-2 code (e.g. "jp").  Returns null when the
+ * input is not a valid two-letter regional indicator pair.
+ *
+ * Why: Chromium-family browsers on Windows do not render flag glyphs from
+ * regional indicator pairs (Segoe UI Emoji intentionally omits them), so a
+ * bare emoji string renders as letter tofu or nothing.  Callers should use
+ * this to swap the emoji for a guaranteed-cross-browser SVG from
+ * /assets/flags/{code}.svg, falling back to the emoji when conversion fails.
+ */
+export function flagEmojiToCountryCode(flag: string): string | null {
+  const REGIONAL_A = 0x1F1E6; // 🇦
+  const REGIONAL_Z = 0x1F1FF; // 🇿
+  const codePoints: number[] = [];
+  for (const ch of flag) {
+    const cp = ch.codePointAt(0);
+    if (cp === undefined) return null;
+    codePoints.push(cp);
+  }
+  if (codePoints.length !== 2) return null;
+  const [a, b] = codePoints;
+  if (a < REGIONAL_A || a > REGIONAL_Z) return null;
+  if (b < REGIONAL_A || b > REGIONAL_Z) return null;
+  const first  = String.fromCharCode(0x41 + (a - REGIONAL_A));
+  const second = String.fromCharCode(0x41 + (b - REGIONAL_A));
+  return (first + second).toLowerCase();
+}

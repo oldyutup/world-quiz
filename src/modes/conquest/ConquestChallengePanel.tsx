@@ -23,6 +23,7 @@
 import { useEffect, useRef, useState } from "react";
 import { playSound } from "../../lib/sound";
 import { CONQUEST_CHALLENGE_META } from "./conquestChallenges";
+import { flagEmojiToCountryCode } from "./utils";
 import type {
   ConquestChallengeState,
   ConquestPlayer,
@@ -126,7 +127,7 @@ export default function ConquestChallengePanel({
 
       {challenge.type === "flag_guess" && challenge.flag && (
         <div className="cq-challenge-flag" aria-label="Bayrak">
-          {challenge.flag}
+          <FlagGlyph emoji={challenge.flag} />
         </div>
       )}
 
@@ -252,5 +253,24 @@ export default function ConquestChallengePanel({
         </p>
       )}
     </section>
+  );
+}
+
+/* Render a flag as an SVG asset when the emoji decodes to a 2-letter ISO
+ * code, falling back to the raw emoji text otherwise.  Why an img: Windows
+ * Chromium-family browsers don't render flag emoji glyphs, so the bare
+ * emoji renders as nothing.  height:1em keeps the asset sized by the
+ * parent's font-size (existing .cq-challenge-flag CSS unchanged). */
+function FlagGlyph({ emoji }: { emoji: string }) {
+  const [failed, setFailed] = useState(false);
+  const code = flagEmojiToCountryCode(emoji);
+  if (!code || failed) return <>{emoji}</>;
+  return (
+    <img
+      src={`/assets/flags/${code}.svg`}
+      alt={emoji}
+      onError={() => setFailed(true)}
+      style={{ height: "1em", width: "auto", verticalAlign: "middle", maxWidth: "100%" }}
+    />
   );
 }

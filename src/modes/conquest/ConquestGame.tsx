@@ -162,6 +162,19 @@ export default function ConquestGame({
   useEffect(() => { gameStateRef.current   = gameState;       }, [gameState]);
   useEffect(() => { onPushStateRef.current = onPushGameState; }, [onPushGameState]);
 
+  // Clock-skew anchors for host-only expire timers.  actionEndsAt and
+  // duel.endsAt are wall-clock timestamps set on the WRITER's machine
+  // (whoever answered correctly / who initiated the duel).  When the writer's
+  // Date.now() runs behind the host's, naive `endsAt - Date.now()` is small
+  // or negative and fires the expire immediately — exactly the cross-browser
+  // "Süre doldu — hamle yapılamadı" symptom.  These refs capture the first
+  // moment the HOST observed each endsAt so we can floor the delay at
+  // (observedAt + duration) and refuse to fire earlier than the writer
+  // intended in host-local time.  Floor only — never short-circuits long
+  // naive delays, so a writer clock that runs ahead still works correctly.
+  const actionExpireAnchorRef = useRef<{ endsAt: number; observedAt: number } | null>(null);
+  const duelExpireAnchorRef   = useRef<{ endsAt: number; observedAt: number } | null>(null);
+
   // Cleanup flash timer on unmount.
   useEffect(() => () => {
     if (flashTimerRef.current !== null) {
@@ -478,14 +491,35 @@ export default function ConquestGame({
   // every client renders the same countdown locally.  Idempotent — if the
   // holder commits a move before the timer fires, the next gameState will
   // be in a different phase and expireActionPhase becomes a no-op.
+  //
+  // Cross-browser clock-skew guard: actionEndsAt is stamped by whoever won
+  // the challenge.  If their Date.now() runs behind the host's, the naive
+  // delay can be ~0 and the host would fire expireActionPhase immediately,
+  // robbing the holder of their move.  We anchor a host-local floor at
+  // observation: the timer never fires before host_observedAt + duration,
+  // so writer-side clock skew can only ever GRANT extra time, never steal it.
   useEffect(() => {
     if (!isHost) return;
     if (!gameState || !mapConfig) return;
     if (gameState.phase !== "action") return;
     const endsAt = gameState.round.actionEndsAt;
     if (typeof endsAt !== "number") return;
+    const startedAt = gameState.round.actionStartedAt;
 
-    const delay = Math.max(0, endsAt - Date.now());
+    let observedAt: number;
+    if (actionExpireAnchorRef.current?.endsAt === endsAt) {
+      observedAt = actionExpireAnchorRef.current.observedAt;
+    } else {
+      observedAt = Date.now();
+      actionExpireAnchorRef.current = { endsAt, observedAt };
+    }
+
+    const naiveDelay = endsAt - Date.now();
+    const anchorDelay = (typeof startedAt === "number" && endsAt > startedAt)
+      ? (observedAt + (endsAt - startedAt)) - Date.now()
+      : naiveDelay;
+    const delay = Math.max(0, naiveDelay, anchorDelay);
+
     const t = window.setTimeout(() => {
       const gs = gameStateRef.current;
       if (!gs || gs.phase !== "action") return;
@@ -504,6 +538,11 @@ export default function ConquestGame({
   // ── Host-only: drive defense-duel expiry from synced duel.endsAt ─────
   // Mirrors expireChallenge / expireActionPhase: host alone fires the write,
   // every client renders the same countdown locally.  Defender wins by spec.
+  //
+  // Same clock-skew guard as the action-phase expire above: duel.endsAt is
+  // stamped on the action holder's machine when they triggered the duel.
+  // We anchor a host-local floor so writer-side clock skew can't fire the
+  // duel expire early.
   useEffect(() => {
     if (!isHost) return;
     if (!gameState || !mapConfig) return;
@@ -511,8 +550,23 @@ export default function ConquestGame({
     const duel = gameState.defenseDuel;
     if (!duel || duel.status !== "active") return;
 
-    const endsAt = duel.endsAt;
-    const delay  = Math.max(0, endsAt - Date.now());
+    const endsAt    = duel.endsAt;
+    const startedAt = duel.startedAt;
+
+    let observedAt: number;
+    if (duelExpireAnchorRef.current?.endsAt === endsAt) {
+      observedAt = duelExpireAnchorRef.current.observedAt;
+    } else {
+      observedAt = Date.now();
+      duelExpireAnchorRef.current = { endsAt, observedAt };
+    }
+
+    const naiveDelay  = endsAt - Date.now();
+    const anchorDelay = endsAt > startedAt
+      ? (observedAt + (endsAt - startedAt)) - Date.now()
+      : naiveDelay;
+    const delay = Math.max(0, naiveDelay, anchorDelay);
+
     const t = window.setTimeout(() => {
       const gs = gameStateRef.current;
       if (!gs || gs.phase !== "defense_duel") return;

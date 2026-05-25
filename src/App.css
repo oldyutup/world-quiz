@@ -10769,35 +10769,12 @@ body {
 }
 
 /* ── Mobile tweaks ─────────────────────────────────────────────── */
-@media (max-width: 600px) {
-  .cq-game-phase-panel {
-    bottom: 54px;
-  }
-  .cq-game-phase-panel[data-phase="finished"],
-  .cq-game-phase-panel[data-phase="defense_duel"] {
-    bottom: auto;
-  }
-  .cq-challenge-winner-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .cq-action-skip-btn,
-  .cq-finished-back-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  .cq-standings-row {
-    grid-template-columns: 28px auto 1fr auto;
-    gap: 8px;
-    padding: 7px 10px;
-  }
-}
-
-@media (max-width: 360px) {
-  .cq-challenge-winner-grid,
-  .cq-challenge-choice-grid {
-    grid-template-columns: 1fr;
-  }
-}
+/* Legacy mobile patches (cq-game-phase-panel positioning, cq-challenge-
+   winner-grid dead class, cq-standings-row sizing, cq-action-skip-btn /
+   cq-finished-back-btn width-stretch) lived here.  All migrated to
+   `.mcq-sheet-body` scope in the Step 9 block at the end of the file,
+   or rendered no-op by Step 4-8 (`.cq-game-phase-panel` and
+   `.cq-challenge-winner-grid` are no longer in the mobile DOM). */
 
 @media (max-width: 600px) {
   /* Keep input + submit on the same row so the panel stays compact;
@@ -11181,329 +11158,54 @@ body {
    outer container layout / scaling change here.
 ══════════════════════════════════════════════════════════════ */
 
-/* ── Shared mobile foundation ──────────────────────────────── */
-@media (max-width: 600px),
-       (max-height: 500px) and (orientation: landscape) {
-  .cq-game-screen {
-    height: 100dvh;
-    min-height: 100dvh;
-    overflow: hidden;
-  }
-  /* Footer is redundant on mobile — Back lives in the header. */
-  .cq-game-screen .cq-game-footer {
-    display: none;
-  }
-  /* Map title is purely decorative — hide it to free vertical room. */
-  .cq-game-screen .cq-game-map-title {
-    display: none;
-  }
-  /* Drop the desktop top-padding that pushed the map below a footer
-     reservation — there is no footer on mobile. */
-  .app.duel-screen.cq-screen .cq-game-board-inner {
-    padding: 4px 4px 0 !important;
-    max-width: 100% !important;
-    transform: none !important;
-  }
-  /* Cancel the desktop translateY(-25px / 28px) — the map should hug
-     the top of the board area so the bottom sheet doesn't bury it. */
-  .app.duel-screen.cq-screen .cq-turkey-map-wrap {
-    transform: none !important;
-    padding: 0 !important;
-  }
-  /* Board wrap: no scroll, fit-layout. The map svg uses
-     preserveAspectRatio so it scales without breaking hit-tests. */
-  .cq-game-screen .cq-game-board-wrap {
-    overflow: hidden;
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-  }
-  .cq-game-screen .cq-game-board-inner {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    /* Vertically center the map within the remaining board area so
-       neither sea margin (top dead space + south Mediterranean) eats
-       the visible map. Combined with the per-orientation scale below. */
-    justify-content: center;
-  }
-  /* Larger labels on mobile already exist; keep point badge ring +
-     readable text so the map remains informative when zoomed out. */
-}
+/* ── Legacy shared-mobile foundation (removed in Step 9) ────
+   This block hid `.cq-game-footer` / `.cq-game-map-title`, padded
+   `.cq-game-board-inner`, reset the `.cq-turkey-map-wrap` transform,
+   and laid out `.cq-game-board-wrap` as a flex column.  Every target
+   is desktop-only DOM that the mobile shell no longer renders, OR
+   redundant with Step 4's `.mcq-map-slot .cq-turkey-map-wrap` reset
+   (which beats this on specificity).  `.app { height: 100dvh;
+   overflow: hidden }` already provides the wrapper sizing.        */
 
-/* ── PORTRAIT (vertical phones) ────────────────────────────── */
-@media (max-width: 600px) and (orientation: portrait),
-       (max-width: 600px) and (min-height: 501px) {
-  /* The two predicates ensure portrait styles apply even on devices
-     reporting no orientation match (older WebViews). */
+/* ── Legacy portrait-mobile patches (removed in Step 9) ────
+   The original block here styled the floating `.cq-game-phase-panel`
+   as a bottom-anchored modal, scaled `.cq-turkey-map-wrap`, sized
+   the `.cq-players-panel` top-left overlay, and downsized every
+   `.cq-challenge-*` / `.cq-action-*` / `.cq-duel-*` / `.cq-finished-*`
+   / `.cq-standings-*` element for the cramped sheet.
 
-  /* Players panel: smaller compact overlay, top-left. */
-  .cq-game-screen .cq-players-panel {
-    width: 124px;
-    top: calc(46px + env(safe-area-inset-top, 0px));
-    left: 4px;
-    padding: 0 0 2px;
-    border-radius: 7px;
-  }
-  .cq-game-screen .cq-players-panel-title {
-    font-size: 8px;
-    padding: 4px 7px 3px;
-    letter-spacing: 0.07em;
-  }
-  .cq-game-screen .cq-players-panel-dot { width: 6px; height: 6px; }
-  .cq-game-screen .cq-players-panel-row {
-    padding: 2px 5px;
-    gap: 5px;
-    margin: 1px 3px 0;
-  }
-  .cq-game-screen .cq-players-panel-name    { font-size: 10px; }
-  .cq-game-screen .cq-players-panel-points  { font-size: 10.5px; }
-  .cq-game-screen .cq-players-panel-regions { font-size: 7.5px; }
-  .cq-game-screen .cq-players-panel-score   { gap: 0; }
-  .cq-game-screen .cq-player-bonus-chip     { font-size: 10px; }
+   With the mobile shell now in charge, every selector here is either
+   no-op (`.cq-players-panel`, `.cq-game-phase-panel`, `.cq-game-board-
+   *` aren't in the mobile DOM after Step 7) or superseded by Steps
+   4-6 (`.mcq-sheet-body .cq-challenge-*` reset + typography rules at
+   the end of the file).  The handful of rules still doing visible
+   work (duel-side typography, finished header, standings, flag-guess
+   padding, action-skip width) were migrated to `.mcq-sheet-body`
+   scope — see the Step 9 migration block at end of file.
 
-  /* Map: scale up + drop slightly so the country fills the visible
-     board area without leaving a wide sea band at the bottom. The
-     SVG's preserveAspectRatio="xMidYMid meet" and authored viewBox
-     are untouched, so click coordinates still map back to the same
-     region paths — CSS transform only changes the visual frame. */
-  .app.duel-screen.cq-screen .cq-turkey-map-wrap {
-    transform: scale(1.18) translateY(3%) !important;
-    transform-origin: center center;
-  }
-
-  /* Bottom sheet: snap to bottom, ~30dvh — tighter than the prior
-     35dvh so the map keeps the dominant share of the viewport. */
-  .cq-game-screen .cq-game-phase-panel {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    transform: none;
-    width: 100%;
-    max-height: 30dvh;
-    pointer-events: auto;
-  }
-  .cq-game-screen .cq-challenge-panel,
-  .cq-game-screen .cq-action-panel,
-  .cq-game-screen .cq-round-result-panel {
-    border-radius: 12px 12px 0 0;
-    padding: 7px 11px calc(7px + env(safe-area-inset-bottom, 0px));
-    max-height: 30dvh;
-    overflow-y: auto;
-    gap: 4px;
-  }
-  /* Trim heavy typography inside the sheet — every line saves height. */
-  .cq-game-screen .cq-challenge-title  { font-size: 13px; line-height: 1.2; }
-  .cq-game-screen .cq-challenge-prompt { font-size: 11.5px; line-height: 1.3; }
-  .cq-game-screen .cq-challenge-flag   { font-size: 30px; margin: 0; }
-  .cq-game-screen .cq-challenge-timer  { height: 4px; margin-top: 2px; }
-  .cq-game-screen .cq-challenge-head   { gap: 6px; }
-  .cq-game-screen .cq-challenge-answer-form { margin-top: 2px; gap: 5px; }
-  .cq-game-screen .cq-challenge-answer-input {
-    min-height: 32px;
-    padding: 5px 9px;
-    font-size: 12.5px;
-  }
-  .cq-game-screen .cq-challenge-submit-btn {
-    min-height: 32px;
-    padding: 0 11px;
-    font-size: 11.5px;
-  }
-  .cq-game-screen .cq-challenge-choice-grid { gap: 5px; margin-top: 2px; }
-  .cq-game-screen .cq-challenge-choice-btn {
-    padding: 6px 9px;
-    font-size: 12.5px;
-  }
-  .cq-game-screen .cq-challenge-feedback { font-size: 11.5px; margin-top: 2px; }
-  .cq-game-screen .cq-challenge-type-chip   { font-size: 10px; padding: 2px 7px; }
-  .cq-game-screen .cq-challenge-status-chip { font-size: 9.5px; padding: 2px 7px; }
-
-  /* Flag-guess: panel base already trims paddings; flatten further so
-     the flag + input + Gönder all sit within the 30dvh ceiling. */
-  .cq-game-screen .cq-challenge-panel--flag { gap: 3px; padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px)); }
-  .cq-game-screen .cq-challenge-panel--flag .cq-challenge-flag { font-size: 28px; }
-
-  /* Action panel: compact controls. */
-  .cq-game-screen .cq-action-line { font-size: 12px; }
-  .cq-game-screen .cq-action-hint { font-size: 11px; }
-  .cq-game-screen .cq-action-skip-btn,
-  .cq-game-screen .cq-round-skip-btn {
-    min-height: 32px;
-    padding: 0 11px;
-    font-size: 11.5px;
-    width: auto;
-  }
-
-  /* Defense-duel + finished phases: bottom-sheet style too (was a
-     centered modal that ate the screen). Slightly taller because they
-     carry more content (versus row, target line, choices / standings). */
-  .cq-game-screen .cq-game-phase-panel[data-phase="defense_duel"],
-  .cq-game-screen .cq-game-phase-panel[data-phase="finished"] {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    transform: none;
-    width: 100%;
-    max-height: 58dvh;
-  }
-  .cq-game-screen .cq-game-phase-panel[data-phase="defense_duel"]
-    .cq-challenge-panel,
-  .cq-game-screen .cq-finished-panel {
-    border-radius: 14px 14px 0 0;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    max-height: 58dvh;
-    overflow-y: auto;
-    gap: 6px;
-  }
-  /* Duel versus row: tighter on the sheet. */
-  .cq-game-screen .cq-duel-versus  { padding: 6px 8px; }
-  .cq-game-screen .cq-duel-side-name { font-size: 11.5px; }
-  .cq-game-screen .cq-duel-side-label { font-size: 9px; }
-  .cq-game-screen .cq-duel-target { font-size: 11px; }
-  .cq-game-screen .cq-finished-title { font-size: 15px; }
-  .cq-game-screen .cq-finished-icon  { font-size: 18px; }
-  .cq-game-screen .cq-standings-row  {
-    grid-template-columns: 26px auto 1fr auto;
-    gap: 8px;
-    padding: 6px 8px;
-  }
-  .cq-game-screen .cq-standings-name   { font-size: 12.5px; }
-  .cq-game-screen .cq-standings-points { font-size: 12.5px; }
-  .cq-game-screen .cq-standings-regions{ font-size: 10px; }
-}
+   The `.cq-turkey-map-wrap` transform scale was redundant with the
+   Step 4 `.mcq-map-slot .cq-turkey-map-wrap { transform: none }`
+   reset (4 classes vs 3 classes — Step 4 wins on specificity).    */
 
 /* ── LANDSCAPE (phones held horizontally) ──────────────────── */
 @media (max-height: 500px) and (orientation: landscape) {
-  /* Players panel: shrink hard; keeps the map readable. */
-  .cq-game-screen .cq-players-panel {
-    width: 110px;
-    top: calc(38px + env(safe-area-inset-top, 0px));
-    left: calc(4px + env(safe-area-inset-left, 0px));
-    padding: 0 0 2px;
-    border-radius: 6px;
-  }
-  .cq-game-screen .cq-players-panel-title {
-    font-size: 7.5px;
-    padding: 3px 6px 2px;
-  }
-  .cq-game-screen .cq-players-panel-dot   { width: 6px; height: 6px; }
-  .cq-game-screen .cq-players-panel-row   {
-    padding: 1px 5px;
-    margin: 1px 2px 0;
-    gap: 4px;
-  }
-  .cq-game-screen .cq-players-panel-name    { font-size: 9.5px; }
-  .cq-game-screen .cq-players-panel-points  { font-size: 10px; }
-  .cq-game-screen .cq-players-panel-regions { font-size: 7px; }
-  .cq-game-screen .cq-players-panel-score   { gap: 0; }
+  /* The original landscape block sized `.cq-players-panel`, styled
+     the floating `.cq-game-phase-panel` as a right-side dock, scaled
+     `.cq-turkey-map-wrap`, and downsized every panel-internal class
+     for the dock width.  After Step 7 the landscape phase panel
+     lives inside `.mcq-dock-panel` in the grid (no more floating
+     overlay), and Step 7's `.mcq-dock-panel .cq-*` rules at the end
+     of the file fully cover what the legacy block sized.  Players
+     panel is no longer rendered on mobile at all.  Map wrap
+     transform was redundant with the Step 4 `.mcq-map-slot` reset
+     that wins on specificity.
 
-  /* Map: full board area. The wrapper translate is reset by the
-     shared block above; this just makes sure landscape stays put. */
-  .app.duel-screen.cq-screen .cq-turkey-map-wrap {
-    transform: none !important;
-  }
-
-  /* Phase panel: tight strategy-HUD side-dock — NOT a centered modal. */
-  .cq-game-screen .cq-game-phase-panel {
-    position: fixed;
-    bottom: auto;
-    left: auto;
-    right: calc(6px + env(safe-area-inset-right, 0px));
-    top: 50%;
-    transform: translateY(-50%);
-    width: min(270px, 32vw);
-    max-width: 32vw;
-    max-height: calc(100dvh - 56px);
-  }
-  .cq-game-screen .cq-challenge-panel,
-  .cq-game-screen .cq-action-panel,
-  .cq-game-screen .cq-round-result-panel,
-  .cq-game-screen .cq-finished-panel {
-    border-radius: 10px;
-    padding: 6px 8px;
-    max-height: calc(100dvh - 56px);
-    overflow-y: auto;
-    gap: 4px;
-  }
-  /* Same dock geometry for defense_duel + finished — no center modal.
-     Slightly wider since these carry the versus row / standings list. */
-  .cq-game-screen .cq-game-phase-panel[data-phase="defense_duel"],
-  .cq-game-screen .cq-game-phase-panel[data-phase="finished"] {
-    position: fixed;
-    bottom: auto;
-    left: auto;
-    right: calc(6px + env(safe-area-inset-right, 0px));
-    top: 50%;
-    transform: translateY(-50%);
-    width: min(300px, 36vw);
-    max-width: 36vw;
-    max-height: calc(100dvh - 48px);
-  }
-
-  /* Squeeze the panel internals so the dock stays narrow. */
-  .cq-game-screen .cq-challenge-title  { font-size: 12.5px; line-height: 1.2; }
-  .cq-game-screen .cq-challenge-prompt { font-size: 11px; line-height: 1.3; }
-  .cq-game-screen .cq-challenge-flag   { font-size: 26px; margin: 0; }
-  .cq-game-screen .cq-challenge-timer  { height: 4px; margin-top: 2px; }
-  .cq-game-screen .cq-challenge-head   { gap: 5px; }
-  .cq-game-screen .cq-challenge-answer-form { margin-top: 2px; gap: 4px; }
-  .cq-game-screen .cq-challenge-answer-input {
-    min-height: 28px;
-    padding: 3px 7px;
-    font-size: 11.5px;
-  }
-  .cq-game-screen .cq-challenge-submit-btn {
-    min-height: 28px;
-    padding: 0 9px;
-    font-size: 11px;
-  }
-  .cq-game-screen .cq-challenge-choice-grid { gap: 4px; margin-top: 2px; }
-  .cq-game-screen .cq-challenge-choice-btn  {
-    padding: 5px 7px;
-    font-size: 11.5px;
-  }
-  .cq-game-screen .cq-challenge-type-chip   { font-size: 9.5px; padding: 1px 6px; }
-  .cq-game-screen .cq-challenge-status-chip { font-size: 9px;   padding: 1px 6px; }
-  .cq-game-screen .cq-challenge-feedback    { font-size: 11px; }
-  .cq-game-screen .cq-action-line { font-size: 11.5px; }
-  .cq-game-screen .cq-action-hint { font-size: 10.5px; }
-  .cq-game-screen .cq-action-skip-btn,
-  .cq-game-screen .cq-round-skip-btn,
-  .cq-game-screen .cq-finished-back-btn {
-    min-height: 28px;
-    padding: 0 9px;
-    font-size: 11px;
-    width: auto;
-  }
-  .cq-game-screen .cq-duel-versus    { padding: 4px 6px; }
-  .cq-game-screen .cq-duel-side-name { font-size: 10.5px; }
-  .cq-game-screen .cq-duel-side-label{ font-size: 8px; }
-  .cq-game-screen .cq-duel-target    { font-size: 10px; }
-  .cq-game-screen .cq-finished-title { font-size: 13px; }
-  .cq-game-screen .cq-finished-icon  { font-size: 16px; }
-  .cq-game-screen .cq-standings-row  {
-    grid-template-columns: 22px auto 1fr auto;
-    gap: 6px;
-    padding: 5px 7px;
-  }
-  .cq-game-screen .cq-standings-name   { font-size: 11.5px; }
-  .cq-game-screen .cq-standings-points { font-size: 11.5px; }
-  .cq-game-screen .cq-standings-regions{ font-size: 9.5px; }
-
-  /* Map labels: a touch smaller in landscape so they don't fight
-     the dock for visual space. */
+     The map-label rules below stay — `.cq-map-label` and
+     `.cq-map-owner-label` are SVG text elements rendered inside the
+     map (no `.mcq-dock-panel` counterpart), so the landscape font
+     sizing here is still doing work. */
   .cq-game-screen .cq-map-label       { font-size: 20px; }
   .cq-game-screen .cq-map-owner-label { font-size: 14px; }
-
-  /* Map: scale up so it dominates the area left of the dock.
-     transform-origin: left center keeps the country anchored to the
-     left edge so the dock doesn't overlap labels. */
-  .app.duel-screen.cq-screen .cq-turkey-map-wrap {
-    transform: scale(1.1) translateX(-3%) !important;
-    transform-origin: left center;
-  }
 }
 
 /* The desktop rule stretches the board background to 100% 100% which
@@ -12720,5 +12422,66 @@ body {
 @keyframes mcq-toast-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Step 9: Legacy mobile patch cleanup — migrations
+   ────────────────────────────────────────────────────────────────
+   Steps 4-8 replaced the legacy `.cq-game-phase-panel` / `.cq-players-
+   panel` / `.cq-game-board-wrap` DOM with the `mcq-shell` / `mcq-
+   sheet-body` / `mcq-dock-panel` hierarchy on mobile.  Most legacy
+   `@media (max-width: 600px)` rules targeting that old DOM became
+   no-op (selector match nothing) or were superseded by Step 4-7
+   `.mcq-sheet-body` / `.mcq-dock-panel` overrides declared later.
+
+   The handful of legacy rules that were STILL doing work on portrait
+   sheet content (duel-side typography, finished header, standings
+   sizing, flag-guess panel padding, action-skip width) are migrated
+   here to the `.mcq-sheet-body` scope so the old blocks can be
+   deleted cleanly.  Same property values; only the ancestor selector
+   changes (from `.cq-game-screen` to `.mcq-sheet-body`).
+═══════════════════════════════════════════════════════════════════ */
+
+/* Action-skip / round-skip stretch full-width inside the sheet
+   (was `.cq-action-skip-btn { width: 100%; justify-content: center }`
+   under `@media (max-width: 600px)`).  cq-finished-back-btn already
+   handled by Step 5. */
+.mcq-sheet-body .cq-action-skip-btn,
+.mcq-sheet-body .cq-round-skip-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Duel-versus inner typography inside the portrait sheet
+   (Step 5 set padding/gap on `.mcq-sheet-body .cq-duel-versus`, but
+   the inner label / name / target text sizes still came from the
+   legacy `.cq-game-screen` portrait block). */
+.mcq-sheet-body .cq-duel-side-name  { font-size: 11.5px; }
+.mcq-sheet-body .cq-duel-side-label { font-size: 9px; }
+.mcq-sheet-body .cq-duel-target     { font-size: 11px; }
+
+/* Finished-phase header typography inside the portrait sheet. */
+.mcq-sheet-body .cq-finished-title { font-size: 15px; }
+.mcq-sheet-body .cq-finished-icon  { font-size: 18px; }
+
+/* Standings rows inside the portrait sheet — Step 7 only added
+   `.mcq-dock-panel` standings rules for landscape. */
+.mcq-sheet-body .cq-standings-row {
+  grid-template-columns: 26px auto 1fr auto;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.mcq-sheet-body .cq-standings-name    { font-size: 12.5px; }
+.mcq-sheet-body .cq-standings-points  { font-size: 12.5px; }
+.mcq-sheet-body .cq-standings-regions { font-size: 10px; }
+
+/* Flag-guess panel inside the portrait sheet — flatter padding so
+   the flag + input + Gönder all sit comfortably in the sheet body. */
+.mcq-sheet-body .cq-challenge-panel--flag {
+  gap: 3px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+.mcq-sheet-body .cq-challenge-panel--flag .cq-challenge-flag {
+  font-size: 28px;
 }
 
