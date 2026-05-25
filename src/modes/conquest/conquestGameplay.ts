@@ -585,18 +585,25 @@ export function applyActionToGame(
   }
 
   // ── Savunma Düellosu interception ─────────────────────────────────────
-  // If the action is an attack against an opponent-owned BONUS region, pause
-  // the normal flip and start a defense duel between attacker and defender.
-  // Capture_neutral is exempt by spec ("tarafsız bölge: direkt fetih") so
-  // only attack_region routes here.  Hidden shield was already consumed
-  // above so a duel can never start on a hidden-conquest region.
+  // Any attack on an opponent-owned region triggers a defense duel —
+  // bonus status no longer matters.  "Boş yer kolay alınır, rakip
+  // toprağı savaş ister."
+  //
+  // capture_neutral is still exempt ("tarafsız bölge: direkt fetih").
+  // Hidden-shield intercepts above already consumed any secret trap so
+  // a duel can never start on a hidden-conquest region.
+  //
+  // The `shieldActive` flag is snapshotted at duel start so resolution
+  // can break the shield (attacker wins) vs flip ownership (no shield):
+  //   - Attacker wins + shield active → shield breaks, region stays.
+  //   - Attacker wins + no shield     → ownership flips to attacker.
+  //   - Defender wins / timer expired → region stays, shield untouched.
   if (action.type === "attack_region") {
     const target = state.regionStates.find(r => r.regionId === action.regionId);
     if (
       target
       && target.ownerPlayerId
       && target.ownerPlayerId !== action.playerId
-      && getRegionBonus(action.regionId)
     ) {
       const duelState = startDefenseDuel(
         state,
@@ -615,50 +622,6 @@ export function applyActionToGame(
       return {
         state: duelState,
         result: startResult,
-      };
-    }
-  }
-
-  // ── İstanbul open-shield interception ──────────────────────────────────
-  // Public, attacker-visible shield (region.shielded === true).  Same block
-  // semantics as hidden shield but no secrecy.  Runs AFTER hidden so a
-  // region carrying both consumes hidden first.
-  if (action.type === "attack_region" || action.type === "capture_neutral") {
-    const target = state.regionStates.find(r => r.regionId === action.regionId);
-    if (
-      target?.shielded
-      && target.ownerPlayerId !== null
-      && target.ownerPlayerId !== action.playerId
-    ) {
-      const defenderId   = target.ownerPlayerId;
-      const attackerName = state.players.find(p => p.id === action.playerId)?.name ?? "Saldıran";
-      const defenderName = state.players.find(p => p.id === defenderId)?.name ?? "Savunan";
-      const cleared = state.regionStates.map(rs =>
-        rs.regionId === action.regionId ? { ...rs, shielded: false } : rs,
-      );
-      const blockResult: ConquestActionResult = {
-        ok:       true,
-        action:   action.type,
-        playerId: action.playerId,
-        regionId: action.regionId,
-        message:  `🛡️ Açık kalkan tetiklendi! ${defenderName}, ${attackerName} saldırısını savuşturdu.`,
-      };
-      return {
-        state: {
-          ...state,
-          phase:        "round_result",
-          regionStates: cleared,
-          round: {
-            ...state.round,
-            lastResult: blockResult,
-          },
-          history: [...state.history, {
-            roundNumber:       state.round.roundNumber,
-            challengeWinnerId: state.round.challenge.winnerPlayerId,
-            result:            blockResult,
-          }],
-        },
-        result: blockResult,
       };
     }
   }
@@ -1275,9 +1238,8 @@ function resolveDuelWithWinner(
   }
 
   // Capture-side bonus chain (Ankara/Çukurova/Karadeniz/İstanbul).
-  // Duel flips always come from attacking a bonus region the defender owned,
-  // so this is never a neutral capture — pendingHiddenShield isn't consumed
-  // here per the spec.
+  // A duel flip is never a neutral capture, so pendingHiddenShield is not
+  // consumed here.  triggerCaptureBonus is a no-op for non-bonus regions.
   const bonusOut = triggerCaptureBonus(
     applied.regionStates,
     state.playerBonuses,

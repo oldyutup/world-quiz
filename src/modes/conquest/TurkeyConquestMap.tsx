@@ -15,7 +15,7 @@
  *  4  label – region labels with dark text-outline for readability
  */
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConquestPlayer,
   ConquestPlayerColor,
@@ -143,7 +143,24 @@ interface Props {
   disabled?:      boolean;
   onRegionClick?: (id: ConquestRegionId) => void;
   flashRegionId?: ConquestRegionId | null;
+  /**
+   * Region to dramatize as the "Attack Focus" target — pulses a red ring
+   * + ⚔️ glyph until the prop is cleared.  Pure presentation; this never
+   * intercepts pointer events or alters legal-target highlights.
+   */
+  attackTargetRegionId?: ConquestRegionId | null;
 }
+
+interface OwnershipFxEntry {
+  id:        string;
+  regionId:  ConquestRegionId;
+  colorKey:  string;
+}
+
+/** Lifetime of impact ring + capture glow.  React unmounts the SVG nodes
+ *  after this delay so the CSS keyframes (which use `forwards`) don't leave
+ *  permanently-styled stale paths in the tree. */
+const OWNERSHIP_FX_MS = 900;
 
 export default function TurkeyConquestMap({
   regionStates,
@@ -153,10 +170,59 @@ export default function TurkeyConquestMap({
   disabled = false,
   onRegionClick,
   flashRegionId,
+  attackTargetRegionId = null,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
   const interactive = !!onRegionClick && !disabled;
+
+  // ── Ownership-change FX (impact ring + capture glow) ───────────────
+  // Pure local presentation: diff regionStates against the previous render
+  // and mount one-shot SVG overlays for each new owner.  No new sync field.
+  // First mount is treated as the baseline (no events emitted).
+  const prevOwnersRef = useRef<Record<string, string | null> | null>(null);
+  const [ownershipFx, setOwnershipFx] = useState<OwnershipFxEntry[]>([]);
+  const fxTimeoutsRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => () => {
+    fxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
+    fxTimeoutsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    const current: Record<string, string | null> = {};
+    for (const rs of regionStates) current[rs.regionId] = rs.ownerPlayerId;
+
+    const prev = prevOwnersRef.current;
+    if (!prev) {
+      prevOwnersRef.current = current;
+      return;
+    }
+
+    const fresh: OwnershipFxEntry[] = [];
+    const now = Date.now();
+    for (const rid of Object.keys(current)) {
+      const before = prev[rid] ?? null;
+      const after  = current[rid];
+      if (before === after) continue;
+      if (after === null)   continue; // no neutralisation in gameplay today
+      const colorKey = playerColors[after] ?? "neutral";
+      const id = `fx:${rid}:${now}`;
+      fresh.push({ id, regionId: rid as ConquestRegionId, colorKey });
+    }
+
+    if (fresh.length > 0) {
+      setOwnershipFx(prev => [...prev, ...fresh]);
+      for (const fx of fresh) {
+        const handle = window.setTimeout(() => {
+          setOwnershipFx(cur => cur.filter(e => e.id !== fx.id));
+          fxTimeoutsRef.current.delete(fx.id);
+        }, OWNERSHIP_FX_MS);
+        fxTimeoutsRef.current.set(fx.id, handle);
+      }
+    }
+    prevOwnersRef.current = current;
+  }, [regionStates, playerColors]);
 
   const handleKey = useCallback((
     e: React.KeyboardEvent,
@@ -290,6 +356,25 @@ export default function TurkeyConquestMap({
             />
           ))}
 
+        {/* ── Layer 3.5: capture glow (fill flash under labels) ─────── */}
+        <g className="cq-map-capture-glow-layer" pointerEvents="none" aria-hidden="true">
+          {ownershipFx.map((fx) => {
+            const entry = regionEntries.find(e => e.id === fx.regionId);
+            if (!entry) return null;
+            const c = COLOR_MAP[fx.colorKey] ?? COLOR_MAP.neutral;
+            return (
+              <path
+                key={`glow-${fx.id}`}
+                d={entry.d}
+                className="cq-map-capture-glow"
+                fillRule="evenodd"
+                fill={c.legalFill}
+                stroke="none"
+              />
+            );
+          })}
+        </g>
+
         {/* ── Layer 4: region labels (always on top) ─────────────────── */}
         {regionEntries.map(({ id, owner, c, labelPos, label }) => {
           const labelY = owner ? labelPos.y - 7 : labelPos.y;
@@ -384,6 +469,65 @@ export default function TurkeyConquestMap({
                   {points}
                 </text>
               </g>
+            );
+          })}
+        </g>
+
+        {/* ── Layer 5.5: Attack Focus target marker ─────────────────────
+             Pulsing red ring + ⚔️ glyph at the region's label anchor.
+             Active while `attackTargetRegionId` is non-null; cleared as
+             soon as the parent unmounts the prop value, so the parent
+             owns lifetime.  Never intercepts pointer events. */}
+        {attackTargetRegionId && (() => {
+          const entry = regionEntries.find(e => e.id === attackTargetRegionId);
+          if (!entry) return null;
+          const lbl = REGION_LABEL_POS[entry.id] ?? { x: 0, y: 0 };
+          return (
+            <g
+              className="cq-map-attack-target-layer"
+              pointerEvents="none"
+              aria-hidden="true"
+            >
+              <path
+                d={entry.d}
+                className="cq-map-attack-target-ring"
+                fillRule="evenodd"
+                fill="none"
+              />
+              <g
+  className="cq-map-attack-target-glyph-anchor"
+  transform={`translate(${lbl.x} ${lbl.y - 4})`}
+>
+  <g className="cq-map-attack-target-glyph">
+    <text
+      x={0}
+      y={0}
+      textAnchor="middle"
+      dominantBaseline="central"
+    >
+      ⚔️
+    </text>
+  </g>
+</g>
+            </g>
+          );
+        })()}
+
+        {/* ── Layer 6: ownership-change impact ring (top-most, one-shot) ── */}
+        <g className="cq-map-impact-layer" pointerEvents="none" aria-hidden="true">
+          {ownershipFx.map((fx) => {
+            const entry = regionEntries.find(e => e.id === fx.regionId);
+            if (!entry) return null;
+            const c = COLOR_MAP[fx.colorKey] ?? COLOR_MAP.neutral;
+            return (
+              <path
+                key={`impact-${fx.id}`}
+                d={entry.d}
+                className="cq-map-impact-ring"
+                fillRule="evenodd"
+                fill="none"
+                stroke={c.legalStroke}
+              />
             );
           })}
         </g>

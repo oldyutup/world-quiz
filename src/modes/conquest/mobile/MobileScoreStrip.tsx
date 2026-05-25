@@ -39,6 +39,10 @@ interface Props {
   myPlayerId:         string | null;
   neutralCount:       number;
   neutralPoints:      number;
+  /** Transient point deltas per player — non-zero entries render a brief
+   *  +N/-N badge floating above the score number.  Lifetime is owned by
+   *  the parent (ConquestGame); the strip only renders what it's given. */
+  pointDeltas?:       Record<string, { value: number; epoch: number }>;
 }
 
 interface BonusChip {
@@ -98,6 +102,7 @@ export default function MobileScoreStrip({
   myPlayerId,
   neutralCount,
   neutralPoints,
+  pointDeltas,
 }: Props) {
   return (
     <div className="mcq-strip" role="list" aria-label="Oyuncu skorları">
@@ -113,6 +118,7 @@ export default function MobileScoreStrip({
         const overflowCount = chips.length - visibleChips.length;
         const points        = playerPoints[player.id] ?? 0;
         const regions       = regionCounts[player.id] ?? 0;
+        const delta         = pointDeltas?.[player.id];
         return (
           <div
             key={player.id}
@@ -130,8 +136,22 @@ export default function MobileScoreStrip({
               <span className="mcq-strip__pill-name">{player.name}</span>
             </div>
             <div className="mcq-strip__pill-stats" aria-hidden="true">
-              <span className="mcq-strip__pill-points">{points}</span>
+              <span
+                className="mcq-strip__pill-points"
+                data-bouncing={delta ? "true" : undefined}
+              >
+                {points}
+              </span>
               <span className="mcq-strip__pill-regions">{regions}b</span>
+              {delta && (
+                <span
+                  key={delta.epoch}
+                  className="mcq-strip__pill-delta"
+                  data-sign={delta.value > 0 ? "pos" : "neg"}
+                >
+                  {delta.value > 0 ? `+${delta.value}` : delta.value}
+                </span>
+              )}
             </div>
             {visibleChips.length > 0 && (
               <span className="mcq-strip__pill-chips" aria-hidden="true">

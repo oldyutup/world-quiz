@@ -90,6 +90,8 @@ import MobileBottomSheet, {
 import MobileToastSlot, {
   type MobileToastSpec,
 } from "./mobile/MobileToastSlot";
+import ConquestEventFeed from "./ConquestEventFeed";
+import { useConquestEventFeed } from "./useConquestEventFeed";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
@@ -108,17 +110,49 @@ interface Props {
 }
 
 const ILLEGAL_FLASH_MS  = 900;
-const AUTO_ADVANCE_MS   = 2_500;
-const DUEL_RESULT_TOAST_MS = 4000;
+const AUTO_ADVANCE_MS   = 3_500;
+const DUEL_RESULT_TOAST_MS = 5500;
+/** How long the Attack Focus intro lingers for non-duel attacks on enemy
+ *  regions.  Fits inside the AUTO_ADVANCE_MS round_result window so the
+ *  next challenge never collides with the banner.  Duel attacks reuse the
+ *  existing intro window (DUEL_INFO_MS) instead of this constant. */
+const ATTACK_FOCUS_TOAST_MS = 2_300;
 /** Center banner shown to ALL clients when a player consumes Ankara's
  *  Gizli Operasyon hakkı.  Must be fully read before the next challenge
  *  panel appears — keep in sync with HIDDEN_OP_AUTO_ADVANCE_MS. */
-const HIDDEN_OP_TOAST_MS = 7000;
+const HIDDEN_OP_TOAST_MS = 8500;
 /** Host auto-advance delay used instead of AUTO_ADVANCE_MS when the
  *  round_result was caused by a Gizli Operasyon placement.  Slightly
  *  longer than HIDDEN_OP_TOAST_MS so the toast clears before the next
  *  challenge (and its timer) starts. */
-const HIDDEN_OP_AUTO_ADVANCE_MS = 7500;
+const HIDDEN_OP_AUTO_ADVANCE_MS = 9000;
+
+/** Map a round lastResult to a short icon + Turkish title for the transition card. */
+function getRoundResultCardData(
+  lastResult: ConquestActionResult | null,
+): { icon: string; title: string } {
+  if (!lastResult || !lastResult.ok) return { icon: "⏭️", title: "Tur tamamlandı" };
+  const msg = lastResult.message ?? "";
+  switch (lastResult.action) {
+    case "capture_neutral":
+      return { icon: "🏰", title: "Bölge Fethedildi" };
+    case "attack_region":
+      if (msg.includes("Kalkan kırıldı")) return { icon: "🛡️", title: "Kalkan Kırıldı" };
+      if (msg.startsWith("🕶️"))           return { icon: "🕶️", title: "Gizli Fetih Ortaya Çıktı" };
+      return { icon: "⚔️", title: "Bölge Ele Geçirildi" };
+    case "defend_region":
+      if (msg.startsWith(HIDDEN_OP_PLACED_MESSAGE_PREFIX)) return { icon: "🎭", title: "Gizli Operasyon" };
+      if (msg.startsWith("🕶️"))           return { icon: "🕶️", title: "Gizli Operasyon Ortaya Çıktı" };
+      if (msg.includes("Gizli kalkan"))   return { icon: "🛡️", title: "Gizli Kalkan Ortaya Çıktı" };
+      if (msg.includes("savundu"))        return { icon: "🛡️", title: "Bölge Savunuldu" };
+      return { icon: "🛡️", title: "Savunuldu" };
+    case "skip":
+      if (msg.includes("Süre doldu"))     return { icon: "⏱️", title: "Süre Doldu" };
+      return { icon: "⏭️", title: "Tur Atlandı" };
+    default:
+      return { icon: "⏭️", title: "Tur tamamlandı" };
+  }
+}
 
 export default function ConquestGame({
   roomCode: _roomCode,
@@ -238,6 +272,91 @@ export default function ConquestGame({
     }
   }, [duelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Attack Focus intro (non-duel enemy-region attacks) ─────────────
+  // Fires for ALL clients when a player commits an attack_region against
+  // an opponent (non-bonus region → no defense duel).  Bonus-region
+  // attacks reuse the existing duel intro card; shield-break and
+  // hidden-shield reveals stay on their own toasts.  Locally derived
+  // from synced state so no new sync surface is needed.
+  //
+  // The previous owner of the attacked region is captured from the
+  // region-state snapshot kept across renders — by the time
+  // round_result is observed, the synced regionStates already reflect
+  // the flip, so we read the prior owner here, not from lastResult.
+  const prevRegionOwnersRef = useRef<Record<string, string | null>>({});
+  const prevPhaseForAttackRef = useRef<string | null>(null);
+  const [attackFocus, setAttackFocus] = useState<{
+    regionId:     string;
+    regionLabel:  string;
+    attackerName: string;
+    defenderName: string;
+    at:           number;
+  } | null>(null);
+  useEffect(() => {
+    const prevOwners = prevRegionOwnersRef.current;
+    const nextOwners: Record<string, string | null> = {};
+    if (gameState) {
+      for (const rs of gameState.regionStates) {
+        nextOwners[rs.regionId] = rs.ownerPlayerId;
+      }
+    }
+
+    const prevPhase = prevPhaseForAttackRef.current;
+    const phase     = gameState?.phase ?? null;
+    prevPhaseForAttackRef.current = phase;
+
+    if (
+      gameState
+      && prevPhase === "action"
+      && phase === "round_result"
+    ) {
+      const lr = gameState.round.lastResult;
+      const msg = lr?.message ?? "";
+      // Non-duel attack: ok action, attack_region, no shield-break sentinel,
+      // no Gizli reveal — those flows already own their toasts.
+      if (
+        lr?.ok
+        && lr.action === "attack_region"
+        && lr.regionId
+        && !msg.includes("Kalkan kırıldı")
+        && !msg.startsWith("🛡️")
+        && !msg.startsWith("🕶️")
+        && !msg.startsWith(HIDDEN_OP_PLACED_MESSAGE_PREFIX)
+      ) {
+        const attackerId = lr.playerId;
+        const defenderId = prevOwners[lr.regionId] ?? null;
+        // Only show for attacks on enemy regions (not neutral captures —
+        // those route through capture_neutral and never reach this branch
+        // anyway, but defensively guard).
+        if (defenderId && defenderId !== attackerId) {
+          const attacker = gameState.players.find(p => p.id === attackerId);
+          const defender = gameState.players.find(p => p.id === defenderId);
+          const region   = mapConfig?.regions.find(r => r.id === lr.regionId);
+          setAttackFocus({
+            regionId:     lr.regionId,
+            regionLabel:  region?.displayLabel ?? region?.name ?? lr.regionId,
+            attackerName: attacker?.name ?? "Saldıran",
+            defenderName: defender?.name ?? "Savunan",
+            at:           Date.now(),
+          });
+        }
+      }
+    }
+
+    prevRegionOwnersRef.current = nextOwners;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState?.phase, gameState?.round.lastResult, gameState?.regionStates]);
+
+  // Auto-dismiss the attack-focus toast after its window.
+  useEffect(() => {
+    if (!attackFocus) return;
+    const t = window.setTimeout(
+      () => setAttackFocus(cur => (cur && cur.at === attackFocus.at ? null : cur)),
+      ATTACK_FOCUS_TOAST_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [attackFocus]);
+
   // Center banner — fires for ALL clients when a player consumes Ankara's
   // Gizli Operasyon hakkı.  Detected via the sentinel prefix on
   // round.lastResult.message (no region or op-kind leak by design).  Re-keyed
@@ -331,6 +450,47 @@ export default function ConquestGame({
     [players, visibleRegionStates, playerBonuses],
   );
 
+  // ── Transient +N / -N score deltas ─────────────────────────────────
+  // Each render diffs the current playerPoints against the previous values
+  // and surfaces deltas through `pointDeltas` for ~1.5s.  Pure local; the
+  // authoritative numbers continue to flow from gameState.regionStates and
+  // playerBonuses.  Re-keyed by epoch so the CSS keyframe re-fires when a
+  // player accrues multiple deltas in quick succession.
+  const POINT_DELTA_MS = 1500;
+  const prevPointsRef = useRef<Record<string, number> | null>(null);
+  const [pointDeltas, setPointDeltas] = useState<
+    Record<string, { value: number; epoch: number }>
+  >({});
+  useEffect(() => {
+    const prev = prevPointsRef.current;
+    if (!prev) {
+      prevPointsRef.current = { ...playerPoints };
+      return;
+    }
+    const fresh: Record<string, { value: number; epoch: number }> = {};
+    const epoch = Date.now();
+    for (const pid of Object.keys(playerPoints)) {
+      const before = prev[pid] ?? 0;
+      const after  = playerPoints[pid] ?? 0;
+      if (before !== after) fresh[pid] = { value: after - before, epoch };
+    }
+    prevPointsRef.current = { ...playerPoints };
+    if (Object.keys(fresh).length === 0) return;
+    setPointDeltas(cur => ({ ...cur, ...fresh }));
+    const timers = Object.keys(fresh).map(pid =>
+      window.setTimeout(() => {
+        setPointDeltas(cur => {
+          const entry = cur[pid];
+          if (!entry || entry.epoch !== fresh[pid].epoch) return cur;
+          const next = { ...cur };
+          delete next[pid];
+          return next;
+        });
+      }, POINT_DELTA_MS),
+    );
+    return () => timers.forEach(t => window.clearTimeout(t));
+  }, [playerPoints]);
+
   // Derived shield ownership maps — drive the per-player panel chips without
   // adding new fields to playerBonuses (single source of truth = regionStates).
   // `hiddenShieldOwners` lists ids that currently have an active hidden
@@ -408,6 +568,17 @@ export default function ConquestGame({
   const standings = useMemo(
     () => gameState ? buildFinalStandings(gameState) : [],
     [gameState],
+  );
+
+  // ── Local event feed ───────────────────────────────────────────────
+  // Derived from ownership diffs + lastBonusToast id + duel start/end.
+  // No new sync surface; each client builds its own list (max 6 rows).
+  const eventFeedEntries = useConquestEventFeed(
+    gameState,
+    players,
+    playerColors,
+    myPlayerId,
+    mapConfig,
   );
 
   /* Gating flags — every interactive control consults one of these.  Kept
@@ -799,9 +970,9 @@ export default function ConquestGame({
   const totalRounds    = gameState.round.totalRounds;
   const challengeState = gameState.round.challenge;
   const lastResult     = gameState.round.lastResult;
+  const rrcData        = getRoundResultCardData(lastResult);
 
   const boardDisabled = phase !== "action";
-  const lastSuccess   = lastResult?.ok ? lastResult : null;
 
   // Duel countdown (mirrors challenge countdown).  Null when not in duel.
   const duel = gameState.defenseDuel ?? null;
@@ -817,7 +988,7 @@ export default function ConquestGame({
   const duelDefenderName = duel ? (players.find(p => p.id === duel.defenderId)?.name ?? "Savunan") : "";
 
   // Intro overlay: info card (4s) → 3-2-1 countdown (3s) → question panel.
-  const DUEL_INFO_MS = 4000;
+  const DUEL_INFO_MS = 5000;
   const duelStartedAt = duel?.startedAt ?? 0;
   const duelQuestionVisibleAt = duel?.questionVisibleAt ?? duelStartedAt;
   const showDuelInfo      = phase === "defense_duel" && !!duel && now < duelStartedAt + DUEL_INFO_MS;
@@ -829,7 +1000,7 @@ export default function ConquestGame({
   // The toast is part of synced state; we mount it for ~2s after `at` and
   // then dismiss locally.  Re-keying by `id` resets the dismiss timer when
   // a fresh bonus fires before the previous one finished.
-  const BONUS_TOAST_MS = 4500;
+  const BONUS_TOAST_MS = 6000;
   const lastBonusToast = gameState.lastBonusToast ?? null;
   const [dismissedToastId, setDismissedToastId] = useState<string | null>(null);
   useEffect(() => {
@@ -874,6 +1045,21 @@ export default function ConquestGame({
     return `Hamle sırası: ${actionHolder.name}`;
   })();
 
+  // ── Attack Focus target marker (map + overlay copy) ────────────
+  // The map's red ring + ⚔️ glyph is driven by `attackTargetRegionId`:
+  //   - During the duel intro / 3-2-1 countdown window, point it at the
+  //     duel target so the attack reads cinematically before the question.
+  //   - For non-duel enemy attacks the local `attackFocus` toast owns it
+  //     for ATTACK_FOCUS_TOAST_MS.
+  // Otherwise null — no marker is drawn.
+  const attackTargetRegionId = (() => {
+    if (phase === "defense_duel" && duel && (showDuelInfo || showDuelCountdown)) {
+      return duel.regionId;
+    }
+    if (attackFocus) return attackFocus.regionId;
+    return null;
+  })();
+
   // ── Slot nodes shared between desktop and mobile shells ────────────
   // The same React elements are reused in both branches so realtime
   // state, refs, and effect ownership stay identical — only the
@@ -887,6 +1073,7 @@ export default function ConquestGame({
         playerColors={playerColors}
         legalTargetIds={legalTargets}
         flashRegionId={flashRegionId}
+        attackTargetRegionId={attackTargetRegionId}
         disabled={boardDisabled}
         onRegionClick={phase === "action" ? handleRegionClick : undefined}
       />
@@ -948,19 +1135,48 @@ export default function ConquestGame({
         );
       })()}
 
-      {/* Duel intro overlay (before question becomes visible) */}
+      {/* Duel attack focus card (replaces the old "Savunma Düellosu
+       *  Başladı" header — same window, sharper "Hedef: X" framing).
+       *  Question timer doesn't start until questionVisibleAt, so the
+       *  player reads the attack before the 8s clock begins. */}
       {showDuelInfo && (
         <div
-          className="cq-duel-overlay-toast cq-duel-intro-overlay"
+          className="cq-duel-overlay-toast cq-duel-intro-overlay cq-attack-focus-overlay"
           role="status"
           aria-live="polite"
         >
           <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
           <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">Savunma Düellosu Başladı</div>
+            <div className="cq-bonus-toast-title">⚔️ Hedef: {duelRegionLabel}</div>
             <div className="cq-bonus-toast-detail">
               {duelAttackerName}, {duelDefenderName} oyuncusunun {duelRegionLabel} bölgesine
-              saldırdı. İlk doğru cevaplayan bölgenin kaderini belirleyecek.
+              saldırıyor. Bölgenin kaderi savunma düellosunda belirlenecek —
+              ilk doğru cevaplayan kazanır.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attack Focus overlay for non-duel enemy attacks.
+       *  Renders briefly during round_result so every client sees who
+       *  attacked which region before the next challenge begins.
+       *  Suppressed during defense duels, hidden-op banner, and shield
+       *  reveals — those flows own their own toasts. */}
+      {attackFocus && phase !== "defense_duel" && phase !== "round_result" && !hiddenOpToast && !duelResultToast && (
+        <div
+          key={`af:${attackFocus.at}`}
+          className="cq-duel-overlay-toast cq-attack-focus-overlay cq-attack-focus-overlay--solo"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              ⚔️ Hedef: {attackFocus.regionLabel}
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {attackFocus.attackerName}, {attackFocus.defenderName} oyuncusunun{" "}
+              {attackFocus.regionLabel} bölgesine saldırdı.
             </div>
           </div>
         </div>
@@ -1051,15 +1267,41 @@ export default function ConquestGame({
       id:        `duel-intro:${duel.id}`,
       kind:      "duel-intro",
       priority:  90,
-      className: "cq-duel-overlay-toast cq-duel-intro-overlay",
+      className: "cq-duel-overlay-toast cq-duel-intro-overlay cq-attack-focus-overlay",
       content: (
         <>
           <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
           <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">Savunma Düellosu Başladı</div>
+            <div className="cq-bonus-toast-title">⚔️ Hedef: {duelRegionLabel}</div>
             <div className="cq-bonus-toast-detail">
               {duelAttackerName}, {duelDefenderName} oyuncusunun {duelRegionLabel} bölgesine
-              saldırdı. İlk doğru cevaplayan bölgenin kaderini belirleyecek.
+              saldırıyor. Bölgenin kaderi savunma düellosunda belirlenecek —
+              ilk doğru cevaplayan kazanır.
+            </div>
+          </div>
+        </>
+      ),
+    });
+  }
+  // Non-duel enemy attack: same Attack Focus card; priority between
+  // duel-intro (90) and hidden-op (80) so it doesn't get queued behind a
+  // bonus toast and miss its short window.
+  if (attackFocus && phase !== "defense_duel" && phase !== "round_result") {
+    mobileToastSpecs.push({
+      id:        `attack-focus:${attackFocus.regionId}:${attackFocus.at}`,
+      kind:      "attack-focus",
+      priority:  85,
+      className: "cq-duel-overlay-toast cq-attack-focus-overlay cq-attack-focus-overlay--solo",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              ⚔️ Hedef: {attackFocus.regionLabel}
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {attackFocus.attackerName}, {attackFocus.defenderName} oyuncusunun{" "}
+              {attackFocus.regionLabel} bölgesine saldırdı.
             </div>
           </div>
         </>
@@ -1216,18 +1458,13 @@ export default function ConquestGame({
 
       {phase === "round_result" && (
         <section className="cq-round-result-panel" aria-label="Tur sonucu">
-          <div className="cq-round-result-line">
-            <span className="cq-round-result-icon" aria-hidden="true">
-              {lastSuccess?.action === "skip" ? "⏭" : "🛡️"}
-            </span>
-            <span className="cq-round-result-text">
-              {lastResult?.message ?? "Tur tamamlandı."}
-            </span>
-          </div>
-          <p className="cq-round-auto-hint" role="status">
+          <div className="cq-rrc-icon" aria-hidden="true">{rrcData.icon}</div>
+          <div className="cq-rrc-title">{rrcData.title}</div>
+          <p className="cq-rrc-subtitle">{lastResult?.message ?? "Tur tamamlandı."}</p>
+          <p className="cq-rrc-hint" role="status">
             {roundNumber >= totalRounds
               ? "Sonuçlar hazırlanıyor…"
-              : "Sonraki tur hazırlanıyor…"}
+              : "Yeni soru hazırlanıyor…"}
           </p>
           {isHost && (
             <button
@@ -1286,13 +1523,14 @@ export default function ConquestGame({
     </>
   );
 
-  // ── Desktop overlays: toasts + the legacy floating phase card.
+  // ── Desktop overlays: toasts + the legacy floating phase card + feed.
   const overlaysNode = (
     <>
       {toastsNode}
       <div className="cq-game-phase-panel" data-phase={phase}>
         {phasePanelContent}
       </div>
+      <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
     </>
   );
 
@@ -1305,6 +1543,7 @@ export default function ConquestGame({
   const landscapeDockNode = (
     <div className="mcq-dock-panel" data-phase={phase}>
       {phasePanelContent}
+      <ConquestEventFeed events={eventFeedEntries} variant="landscape-dock" />
     </div>
   );
 
@@ -1417,7 +1656,7 @@ export default function ConquestGame({
     mobileSheetDismissible = true;
     mobileSheetHandle = (
       <span className="mcq-sheet-handle-title">
-        {lastResult?.message ?? "Tur tamamlandı"}
+        {rrcData.icon} {rrcData.title}
       </span>
     );
   } else if (phase === "finished") {
@@ -1428,9 +1667,21 @@ export default function ConquestGame({
     );
   }
 
+  // Portrait peek: tiny single-row chip just below the score strip area.
+  // Hidden whenever a major toast is on screen (hidden-op center banner,
+  // duel intro/countdown) so the cinematic flow doesn't compete with the
+  // log row.  Same `eventFeedEntries` source as desktop and landscape.
+  const mobilePeekSuppressed =
+    !!hiddenOpToast || showDuelInfo || showDuelCountdown || !!attackFocus;
   const mobileOverlaysNode = (
     <>
       {mobileToastsNode}
+      {!mobilePeekSuppressed && (
+        <ConquestEventFeed
+          events={eventFeedEntries}
+          variant="portrait-peek"
+        />
+      )}
       <MobileBottomSheet
         phaseKey={mobileSheetPhaseKey}
         state={mobileSheetState}
@@ -1480,6 +1731,7 @@ export default function ConquestGame({
               myPlayerId={myPlayerId}
               neutralCount={neutralCount}
               neutralPoints={neutralPoints}
+              pointDeltas={pointDeltas}
             />
           }
           map={mapNode}
@@ -1573,8 +1825,24 @@ export default function ConquestGame({
                 </span>
               )}
               <span className="cq-players-panel-score" aria-hidden="true">
-                <span className="cq-players-panel-points">{playerPoints[player.id] ?? 0}</span>
+                <span
+                  className="cq-players-panel-points"
+                  data-bouncing={pointDeltas[player.id] ? "true" : undefined}
+                >
+                  {playerPoints[player.id] ?? 0}
+                </span>
                 <span className="cq-players-panel-regions">{regionCounts[player.id] ?? 0} bölge</span>
+                {pointDeltas[player.id] && (
+                  <span
+                    key={pointDeltas[player.id].epoch}
+                    className="cq-players-panel-delta"
+                    data-sign={pointDeltas[player.id].value > 0 ? "pos" : "neg"}
+                  >
+                    {pointDeltas[player.id].value > 0
+                      ? `+${pointDeltas[player.id].value}`
+                      : pointDeltas[player.id].value}
+                  </span>
+                )}
               </span>
             </div>
           );

@@ -9752,6 +9752,34 @@ body {
   animation: cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
 }
 
+/* Attack Focus framing — applied to both the duel-intro card (during
+ * the 4s pre-question window) and the standalone non-duel banner.  Red
+ * accent border + slightly larger title keeps "⚔️ Hedef: X" readable on
+ * mobile and dramatic on desktop. */
+.cq-attack-focus-overlay {
+  border-color: rgba(239, 68, 68, 0.78);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(0,0,0,0.4),
+    0 0 22px rgba(239,68,68,0.32);
+  max-width: min(520px, 92vw);
+}
+.cq-attack-focus-overlay .cq-bonus-toast-title {
+  color: #fecaca;
+  letter-spacing: 0.01em;
+}
+
+/* Non-duel attack: standalone card.  React unmounts after
+ * ATTACK_FOCUS_TOAST_MS (~2.3s); we animate the fade-out 260ms before
+ * unmount so it doesn't snap off-screen.  Kept separate from the
+ * duel-intro selector so the duel card stays full-opacity for its
+ * whole 4s window. */
+.cq-attack-focus-overlay--solo {
+  animation:
+    cq-bonus-toast-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
+    cq-bonus-toast-out 280ms ease-in 2040ms forwards;
+}
+
 /* 3-2-1 countdown overlay */
 .cq-duel-countdown-overlay {
   display: flex;
@@ -9787,8 +9815,9 @@ body {
   100% { transform: scale(1.0); opacity: 1; }
 }
 
-/* Result toast: fade out after ~3740ms (4000ms total − 260ms out) */
-.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay) {
+/* Result toast: fade out after ~3740ms (4000ms total − 260ms out).
+ * Attack Focus solo card opts out — it owns its own shorter timing. */
+.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay):not(.cq-attack-focus-overlay--solo) {
   animation:
     cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
     cq-bonus-toast-out 320ms ease-in 3740ms forwards;
@@ -10186,7 +10215,8 @@ body {
 }
 
 .cq-game-phase-panel[data-phase="finished"],
-.cq-game-phase-panel[data-phase="defense_duel"] {
+.cq-game-phase-panel[data-phase="defense_duel"],
+.cq-game-phase-panel[data-phase="round_result"] {
   bottom: auto;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -10641,28 +10671,46 @@ body {
   border-radius: 10px;
 }
 
-/* ── Round result panel ────────────────────────────────────────── */
+/* ── Round result transition card ──────────────────────────────── */
 .cq-round-result-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.cq-round-result-line {
-  display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--text);
+  text-align: center;
+  gap: 10px;
+  padding: 28px 24px 18px;
+  min-width: min(300px, 78vw);
 }
-.cq-round-result-icon { font-size: 16px; }
-.cq-round-result-text { font-weight: 600; }
-.cq-round-next-btn {
-  min-height: 36px;
-  padding: 6px 16px;
-  font-size: 13px;
+.cq-rrc-icon {
+  font-size: 42px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 10px rgba(0,0,0,0.45));
+  margin-bottom: 4px;
+}
+.cq-rrc-title {
+  font-size: 21px;
   font-weight: 800;
-  border-radius: 10px;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  line-height: 1.2;
 }
+.cq-rrc-subtitle {
+  font-size: 13px;
+  color: rgba(230, 237, 243, 0.78);
+  line-height: 1.45;
+  max-width: 300px;
+}
+.cq-rrc-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  letter-spacing: 0.01em;
+}
+/* Legacy selectors kept as no-ops so old CSS refs don't break */
+.cq-round-result-line { display: contents; }
+.cq-round-result-icon,
+.cq-round-result-text,
+.cq-round-next-btn { display: none; }
 
 /* ── Final result / standings ──────────────────────────────────── */
 .cq-finished-panel {
@@ -10921,6 +10969,48 @@ body {
 .cq-map-pulse-ring {
   animation: cqMapPulse 1.55s ease-in-out infinite;
   pointer-events: none;
+}
+
+/* ── Attack Focus target marker (map) ────────────────────────
+ * Pulsing red ring + ⚔️ glyph centered on the region under siege.
+ * Used by the Attack Focus intro for both defense-duel attacks
+ * (during the intro window before the question becomes visible)
+ * and non-duel enemy attacks (briefly during round_result).
+ * Mounted only while the target is active, so React unmount owns
+ * the lifetime — the keyframes loop indefinitely until then. */
+@keyframes cqMapAttackTargetRing {
+  0%   { stroke-opacity: 0.95; stroke-width: 3.0; filter: drop-shadow(0 0 4px rgba(239,68,68,0.7)); }
+  50%  { stroke-opacity: 0.35; stroke-width: 7.5; filter: drop-shadow(0 0 14px rgba(239,68,68,0.85)); }
+  100% { stroke-opacity: 0.95; stroke-width: 3.0; filter: drop-shadow(0 0 4px rgba(239,68,68,0.7)); }
+}
+@keyframes cqMapAttackTargetGlyph {
+  0%   { transform: scale(0.92); opacity: 0.85; }
+  50%  { transform: scale(1.14); opacity: 1.00; }
+  100% { transform: scale(0.92); opacity: 0.85; }
+}
+
+.cq-map-attack-target-ring {
+  stroke: rgba(239, 68, 68, 0.95);
+  animation: cqMapAttackTargetRing 1.1s ease-in-out infinite;
+  pointer-events: none;
+}
+.cq-map-attack-target-glyph-anchor {
+  pointer-events: none;
+}
+.cq-map-attack-target-glyph {
+  font-size: 22px;
+  user-select: none;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cqMapAttackTargetGlyph 1.1s ease-in-out infinite;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+.cq-map-attack-target-glyph text {
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .cq-map-attack-target-glyph { font-size: 18px; }
 }
 
 /* ── Illegal click flash overlay ─────────────────────────────── */
@@ -11727,6 +11817,17 @@ body {
   max-height: none;
 }
 
+/* Round result card inside the portrait sheet — left-aligned, compact. */
+.mcq-sheet-body .cq-round-result-panel {
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+}
+.mcq-sheet-body .cq-rrc-icon  { font-size: 28px; margin-bottom: 0; }
+.mcq-sheet-body .cq-rrc-title { font-size: 17px; }
+.mcq-sheet-body .cq-rrc-subtitle { font-size: 12.5px; max-width: none; }
+.mcq-sheet-body .cq-rrc-hint  { font-size: 11px; }
+
 /* ════════════════════════════════════════════════════════════════
    Step 5: Defense-duel + finished phase mobile sheet polish
    ════════════════════════════════════════════════════════════════ */
@@ -12207,6 +12308,17 @@ body {
   gap: 6px;
 }
 
+/* Round result card inside the landscape dock — left-aligned, compact. */
+.mcq-dock-panel .cq-round-result-panel {
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+}
+.mcq-dock-panel .cq-rrc-icon  { font-size: 22px; margin-bottom: 0; }
+.mcq-dock-panel .cq-rrc-title { font-size: 14px; }
+.mcq-dock-panel .cq-rrc-subtitle { font-size: 11.5px; max-width: none; }
+.mcq-dock-panel .cq-rrc-hint  { font-size: 11px; }
+
 /* ── Phase-panel internals tuned to the 240–260px dock ───────
    The body width is fixed and narrow, so choices stack 1-column,
    typography drops half a step, and the answer form uses an inline
@@ -12485,3 +12597,255 @@ body {
   font-size: 28px;
 }
 
+/* ════════════════════════════════════════════════════════════════
+   MVP Phase 1: gameplay feedback layer
+   ────────────────────────────────────────────────────────────────
+   Pure presentation additions for the Kuşatma "what just happened"
+   problem.  No new DOM scaffolding — these rules style:
+     - new SVG overlay layers in TurkeyConquestMap (impact + glow)
+     - new transient elements inside MobileScoreStrip / players panel
+       (+N / -N delta badge, points bounce)
+     - the ConquestEventFeed component (3 variants)
+   Everything is opacity / stroke-width / transform based so GPU
+   compositing handles it with no layout thrash.  Reduced-motion
+   media query at the bottom strips animation to opacity-only.
+═══════════════════════════════════════════════════════════════════ */
+
+/* ── Map: impact ring (ownership change top-most one-shot) ──── */
+@keyframes cqMapImpactRing {
+  0%   { opacity: 0.00; stroke-width: 1.0; stroke-opacity: 0.85; }
+  18%  { opacity: 1.00; stroke-width: 4.5; stroke-opacity: 0.95; }
+  100% { opacity: 0.00; stroke-width: 0.5; stroke-opacity: 0.0; }
+}
+.cq-map-impact-ring {
+  pointer-events: none;
+  fill: none;
+  animation: cqMapImpactRing 550ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+/* ── Map: capture glow (under labels, soft fill flash) ──────── */
+@keyframes cqMapCaptureGlow {
+  0%   { opacity: 0.0; }
+  20%  { opacity: 0.55; }
+  100% { opacity: 0.0; }
+}
+.cq-map-capture-glow {
+  pointer-events: none;
+  mix-blend-mode: screen;
+  animation: cqMapCaptureGlow 800ms ease-out forwards;
+}
+
+/* ── Score: +N / -N transient delta badge ───────────────────── */
+/* Renders inside .cq-players-panel-score (desktop) and inside
+ * .mcq-strip__pill-stats (mobile).  Positioned absolutely so it
+ * floats above the points without resizing the row.  Re-keyed by
+ * epoch on the JSX side so a fresh delta re-runs the keyframe. */
+@keyframes cqPointsDelta {
+  0%   { opacity: 0; transform: translate(0, 6px)  scale(0.85); }
+  18%  { opacity: 1; transform: translate(0, 0)    scale(1.10); }
+  60%  { opacity: 1; transform: translate(0, -2px) scale(1);    }
+  100% { opacity: 0; transform: translate(0, -14px) scale(1);   }
+}
+
+.cq-players-panel-score {
+  position: relative;
+}
+.cq-players-panel-delta,
+.mcq-strip__pill-delta {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.55);
+  animation: cqPointsDelta 1400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  z-index: 2;
+}
+.cq-players-panel-delta {
+  top: -18px;
+  right: 0;
+}
+.mcq-strip__pill-delta {
+  top: -10px;
+  right: 4px;
+  font-size: 11px;
+}
+.cq-players-panel-delta[data-sign="pos"],
+.mcq-strip__pill-delta[data-sign="pos"] { color: #4ade80; }
+.cq-players-panel-delta[data-sign="neg"],
+.mcq-strip__pill-delta[data-sign="neg"] { color: #f87171; }
+
+/* ── Score: points-number bounce while a delta is live ─────── */
+@keyframes cqPointsBounce {
+  0%, 100% { transform: scale(1);    }
+  35%      { transform: scale(1.18); }
+}
+.cq-players-panel-points[data-bouncing="true"],
+.mcq-strip__pill-points[data-bouncing="true"] {
+  display: inline-block; /* transform requires non-inline */
+  animation: cqPointsBounce 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mcq-strip__pill-stats {
+  position: relative; /* anchor for .mcq-strip__pill-delta absolute */
+}
+
+/* ── Event feed (3 variants share one tree) ─────────────────── */
+.cq-event-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: oklch(0.86 0.005 220);
+  pointer-events: none;
+}
+
+.cq-event-feed__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: rgba(8, 12, 22, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 3px solid var(--cq-feed-color, rgba(255, 255, 255, 0.16));
+  animation: cqEventFeedIn 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 0;
+}
+.cq-event-feed__row[data-color="red"]    { --cq-feed-color: #ef4444; }
+.cq-event-feed__row[data-color="blue"]   { --cq-feed-color: #3b82f6; }
+.cq-event-feed__row[data-color="green"]  { --cq-feed-color: #22c55e; }
+.cq-event-feed__row[data-color="yellow"] { --cq-feed-color: #eab308; }
+.cq-event-feed__row[data-color="purple"] { --cq-feed-color: #a855f7; }
+.cq-event-feed__row[data-color="orange"] { --cq-feed-color: #f97316; }
+.cq-event-feed__row--mine {
+  background: rgba(18, 26, 44, 0.82);
+  color: oklch(0.94 0.005 220);
+  font-weight: 600;
+}
+.cq-event-feed__icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.88;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45));
+}
+.cq-event-feed__text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes cqEventFeedIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Desktop: floating column anchored to bottom-right, above footer. */
+.cq-event-feed--desktop {
+  position: fixed;
+  right: 14px;
+  bottom: 76px;
+  width: 280px;
+  max-width: 32vw;
+  z-index: 30;
+}
+
+/* Landscape dock: lives below the phase panel inside the in-grid
+ * .mcq-dock-panel.  Slightly smaller text; tight padding so we
+ * don't steal too many vertical pixels from the panel above. */
+.cq-event-feed--landscape-dock {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 3px;
+  font-size: 10.5px;
+}
+.cq-event-feed--landscape-dock .cq-event-feed__row {
+  padding: 3px 7px;
+}
+
+/* Portrait peek: single-row floating chip below the score strip,
+ * above the bottom sheet handle.  Aria-live polite is on the
+ * parent so screen readers announce updates without focus theft. */
+.cq-event-feed--portrait-peek {
+  position: fixed;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  max-width: 92vw;
+  width: min(420px, 92vw);
+  gap: 0;
+}
+.cq-event-feed--portrait-peek .cq-event-feed__row {
+  background: rgba(8, 12, 22, 0.86);
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* On very narrow screens the desktop feed would compete with the
+ * floating phase panel — hide it; the mobile variants take over. */
+@media (max-width: 720px) {
+  .cq-event-feed--desktop {
+    display: none;
+  }
+}
+
+/* Reduced-motion: keep the new layers visible but drop the
+ * keyframes to plain fades.  Impact ring becomes a single-frame
+ * tint (no stroke-width sweep) and the points bounce/delta drift
+ * collapse to opacity. */
+@media (prefers-reduced-motion: reduce) {
+  .cq-map-impact-ring,
+  .cq-map-capture-glow {
+    animation-duration: 200ms;
+    animation-timing-function: ease;
+  }
+  .cq-players-panel-delta,
+  .mcq-strip__pill-delta {
+    animation: cqEventFeedIn 200ms ease forwards;
+  }
+  .cq-players-panel-points[data-bouncing="true"],
+  .mcq-strip__pill-points[data-bouncing="true"] {
+    animation: none;
+  }
+  .cq-event-feed__row {
+    animation: none;
+  }
+}
+
+/* Kuşatma: soru metnini daha okunur ve baskın yap */
+.cq-game-screen .cq-challenge-prompt,
+.mcq-sheet-body .cq-challenge-prompt,
+.mcq-dock-panel .cq-challenge-prompt {
+  color: rgba(245, 248, 255, 0.95) !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.01em;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+.cq-game-screen .cq-challenge-title,
+.mcq-sheet-body .cq-challenge-title,
+.mcq-dock-panel .cq-challenge-title {
+  color: rgba(255, 255, 255, 0.96) !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+}
+
+@media (max-width: 600px) {
+  .cq-game-screen .cq-challenge-prompt,
+  .mcq-sheet-body .cq-challenge-prompt,
+  .mcq-dock-panel .cq-challenge-prompt {
+    font-size: 15px !important;
+  }
+}
