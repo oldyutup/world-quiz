@@ -1,0 +1,47 @@
+/**
+ * MobileHeader — compact top bar for the Conquest mobile shell.
+ *
+ * Two-column layout (back / round-badge / spacer) so the badge stays
+ * optically centred even with a 38px back button on the left.  Mode label
+ * and map name are intentionally omitted on mobile: the lobby and the map
+ * itself already supply that context, and every saved row is height we can
+ * give back to the board.
+ */
+
+import { playSound } from "../../../lib/sound";
+
+interface Props {
+  roundNumber: number;
+  totalRounds: number;
+  onBack:      () => void;
+}
+
+export default function MobileHeader({ roundNumber, totalRounds, onBack }: Props) {
+  function handleBack() {
+    playSound("click");
+    onBack();
+  }
+
+  return (
+    <header className="mcq-header" role="banner">
+      <button
+        type="button"
+        className="mcq-header-back"
+        onClick={handleBack}
+        aria-label="Lobiye Dön"
+        title="Lobiye Dön"
+      >
+        ←
+      </button>
+      <div className="mcq-header-center">
+        <span
+          className="mcq-header-round"
+          aria-label={`Tur ${roundNumber} bölü ${totalRounds}`}
+        >
+          Tur {roundNumber} / {totalRounds}
+        </span>
+      </div>
+      <div className="mcq-header-spacer" aria-hidden="true" />
+    </header>
+  );
+}

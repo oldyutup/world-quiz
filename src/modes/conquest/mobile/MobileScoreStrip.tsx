@@ -1,0 +1,178 @@
+/**
+ * MobileScoreStrip — horizontal score row, replaces the desktop
+ * `.cq-players-panel` overlay on mobile.
+ *
+ * Each player becomes a compact pill: colour dot, truncated name, big
+ * score, region count, and up to two bonus-state chips floating on the
+ * top-right corner.  Neutral territory gets its own grey pill on the
+ * right end.  Active-turn player gets a coloured ring + slight lift.
+ *
+ * The bonus-chip logic mirrors ConquestGame's inline rules verbatim so
+ * the strip stays in sync with the legacy overlay until that code path
+ * is removed:
+ *   • open shield (İstanbul) — public, shown to everyone
+ *   • extraNextMoveMs (Karadeniz) — public, shown with seconds suffix
+ *   • pendingHiddenShield (Ankara, owner-only)
+ *   • active hidden shield (Ankara, owner-only)
+ *
+ * Render order = `players` order (not sorted by score).  This keeps the
+ * pill positions stable across rounds.
+ */
+
+import type {
+  ConquestPlayer,
+  ConquestPlayerBonusState,
+  ConquestPlayerColor,
+} from "../types";
+import { REGION_BONUSES, getPlayerBonusState } from "../regionBonuses";
+
+interface Props {
+  players:            ConquestPlayer[];
+  playerColors:       Record<string, ConquestPlayerColor>;
+  playerPoints:       Record<string, number>;
+  regionCounts:       Record<string, number>;
+  playerBonuses:      Record<string, ConquestPlayerBonusState> | undefined;
+  openShieldOwners:   Set<string>;
+  hiddenShieldOwners: Set<string>;
+  /** id of the player currently holding the move (action phase only). */
+  actionHolderId:     string | null;
+  myPlayerId:         string | null;
+  neutralCount:       number;
+  neutralPoints:      number;
+}
+
+interface BonusChip {
+  key:   string;
+  icon:  string;
+  title: string;
+}
+
+function buildBonusChips(
+  player:             ConquestPlayer,
+  bonus:              ConquestPlayerBonusState,
+  openShieldOwners:   Set<string>,
+  hiddenShieldOwners: Set<string>,
+  isMe:               boolean,
+): BonusChip[] {
+  const chips: BonusChip[] = [];
+  if (openShieldOwners.has(player.id)) {
+    chips.push({
+      key:   "ist",
+      icon:  REGION_BONUSES.istanbul_kocaeli.icon,
+      title: "Açık kalkan aktif",
+    });
+  }
+  if (bonus.extraNextMoveMs > 0) {
+    chips.push({
+      key:   "kdz",
+      icon:  REGION_BONUSES.dogu_karadeniz.icon,
+      title: `${REGION_BONUSES.dogu_karadeniz.label} (+${Math.round(bonus.extraNextMoveMs / 1000)}sn)`,
+    });
+  }
+  if (isMe && bonus.pendingHiddenShield) {
+    chips.push({
+      key:   "ank-pending",
+      icon:  REGION_BONUSES.ankara_cevre.icon,
+      title: "Gizli Operasyon hazır",
+    });
+  }
+  if (isMe && hiddenShieldOwners.has(player.id)) {
+    chips.push({
+      key:   "ank-active",
+      icon:  "🕶️",
+      title: "Gizli Operasyon aktif",
+    });
+  }
+  return chips;
+}
+
+export default function MobileScoreStrip({
+  players,
+  playerColors,
+  playerPoints,
+  regionCounts,
+  playerBonuses,
+  openShieldOwners,
+  hiddenShieldOwners,
+  actionHolderId,
+  myPlayerId,
+  neutralCount,
+  neutralPoints,
+}: Props) {
+  return (
+    <div className="mcq-strip" role="list" aria-label="Oyuncu skorları">
+      {players.map(player => {
+        const color    = playerColors[player.id];
+        const isHolder = actionHolderId === player.id;
+        const isMe     = myPlayerId === player.id;
+        const bonus    = getPlayerBonusState(playerBonuses, player.id);
+        const chips    = buildBonusChips(
+          player, bonus, openShieldOwners, hiddenShieldOwners, isMe,
+        );
+        const visibleChips  = chips.slice(0, 2);
+        const overflowCount = chips.length - visibleChips.length;
+        const points        = playerPoints[player.id] ?? 0;
+        const regions       = regionCounts[player.id] ?? 0;
+        return (
+          <div
+            key={player.id}
+            className={
+              "mcq-strip__pill"
+              + (isHolder ? " mcq-strip__pill--active" : "")
+              + (isMe ? " mcq-strip__pill--me" : "")
+            }
+            data-color={color}
+            role="listitem"
+            aria-label={`${player.name} — ${points} puan, ${regions} bölge${isHolder ? " (sırada)" : ""}`}
+          >
+            <div className="mcq-strip__pill-top">
+              <span className="mcq-strip__pill-dot" aria-hidden="true" />
+              <span className="mcq-strip__pill-name">{player.name}</span>
+            </div>
+            <div className="mcq-strip__pill-stats" aria-hidden="true">
+              <span className="mcq-strip__pill-points">{points}</span>
+              <span className="mcq-strip__pill-regions">{regions}b</span>
+            </div>
+            {visibleChips.length > 0 && (
+              <span className="mcq-strip__pill-chips" aria-hidden="true">
+                {visibleChips.map(c => (
+                  <span
+                    key={c.key}
+                    className="mcq-strip__pill-chip"
+                    title={c.title}
+                  >
+                    {c.icon}
+                  </span>
+                ))}
+                {overflowCount > 0 && (
+                  <span
+                    className="mcq-strip__pill-chip mcq-strip__pill-chip--overflow"
+                    title={`+${overflowCount} bonus`}
+                  >
+                    +{overflowCount}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {neutralCount > 0 && (
+        <div
+          className="mcq-strip__pill mcq-strip__pill--neutral"
+          role="listitem"
+          aria-label={`${neutralPoints} puanlık ${neutralCount} tarafsız bölge`}
+        >
+          <div className="mcq-strip__pill-top">
+            <span className="mcq-strip__pill-dot" aria-hidden="true" />
+            <span className="mcq-strip__pill-name">Tarafsız</span>
+          </div>
+          <div className="mcq-strip__pill-stats" aria-hidden="true">
+            <span className="mcq-strip__pill-points">{neutralPoints}</span>
+            <span className="mcq-strip__pill-regions">{neutralCount}b</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

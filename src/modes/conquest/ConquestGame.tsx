@@ -28,8 +28,9 @@
  * synced copy and push the returned next-state to Supabase.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { playSound } from "../../lib/sound";
+import { useIsMobile } from "../../lib/useIsMobile";
 import {
   getThemeBackgroundStyle,
   getThemeDataAttr,
@@ -80,6 +81,15 @@ import ConquestChallengePanel from "./ConquestChallengePanel";
 import ConquestActionPanel from "./ConquestActionPanel";
 import DefenseDuelPanel from "./DefenseDuelPanel";
 import TurkeyConquestMap from "./TurkeyConquestMap";
+import MobileConquestLayout from "./mobile/MobileConquestLayout";
+import MobileHeader from "./mobile/MobileHeader";
+import MobileScoreStrip from "./mobile/MobileScoreStrip";
+import MobileBottomSheet, {
+  type MobileBottomSheetState,
+} from "./mobile/MobileBottomSheet";
+import MobileToastSlot, {
+  type MobileToastSpec,
+} from "./mobile/MobileToastSlot";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
@@ -123,6 +133,11 @@ export default function ConquestGame({
   const homeTheme  = readStoredHomeTheme();
   const themeStyle = getThemeBackgroundStyle(homeTheme);
   const themeAttr  = getThemeDataAttr(homeTheme);
+
+  // Mobile shell branches off the same gameplay state — see MobileConquestLayout.
+  // Both branches render the same TurkeyConquestMap / ConquestChallengePanel /
+  // ConquestActionPanel; only the surrounding chrome differs.
+  const { isMobile, orientation } = useIsMobile();
 
   const mapConfig = useMemo(
     () => getConquestMapConfig(settings.map),
@@ -805,6 +820,626 @@ export default function ConquestGame({
     return `Hamle sırası: ${actionHolder.name}`;
   })();
 
+  // ── Slot nodes shared between desktop and mobile shells ────────────
+  // The same React elements are reused in both branches so realtime
+  // state, refs, and effect ownership stay identical — only the
+  // surrounding chrome differs.
+  const mapNode = settings.map === "turkey" ? (
+    <>
+      {/* SVG map: primary interaction on all screens */}
+      <TurkeyConquestMap
+        regionStates={visibleRegionStates}
+        players={players}
+        playerColors={playerColors}
+        legalTargetIds={legalTargets}
+        flashRegionId={flashRegionId}
+        disabled={boardDisabled}
+        onRegionClick={phase === "action" ? handleRegionClick : undefined}
+      />
+      {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
+      <div className="cq-map-card-fallback">
+        <ConquestBoard
+          mapConfig={mapConfig}
+          regionStates={visibleRegionStates}
+          players={players}
+          playerColors={playerColors}
+          onRegionClick={phase === "action" ? handleRegionClick : undefined}
+          legalRegionIds={legalTargets}
+          flashRegionId={flashRegionId}
+          disabled={boardDisabled}
+        />
+      </div>
+    </>
+  ) : (
+    <ConquestBoard
+      mapConfig={mapConfig}
+      regionStates={visibleRegionStates}
+      players={players}
+      playerColors={playerColors}
+      onRegionClick={phase === "action" ? handleRegionClick : undefined}
+      legalRegionIds={legalTargets}
+      flashRegionId={flashRegionId}
+      disabled={boardDisabled}
+    />
+  );
+
+  // ── Toasts (shared across desktop and mobile) ──────────────────────
+  // Stay `position: fixed` for both branches; the mobile shell will get
+  // a queued toast slot in a later step.
+  const toastsNode = (
+    <>
+      {/* Bonus toast (transient, centered) */}
+      {showBonusToast && lastBonusToast && (() => {
+        const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId);
+        return (
+          <div
+            key={lastBonusToast.id}
+            className="cq-bonus-toast"
+            data-color={toastPlayerColor ?? undefined}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="cq-bonus-toast-icon" aria-hidden="true">
+              {copy.icon}
+            </span>
+            <div className="cq-bonus-toast-text">
+              <div className="cq-bonus-toast-title">
+                {copy.title}
+              </div>
+              <div className="cq-bonus-toast-detail">
+                {copy.detail}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Duel intro overlay (before question becomes visible) */}
+      {showDuelInfo && (
+        <div
+          className="cq-duel-overlay-toast cq-duel-intro-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">Savunma Düellosu Başladı</div>
+            <div className="cq-bonus-toast-detail">
+              {duelAttackerName}, {duelDefenderName} oyuncusunun {duelRegionLabel} bölgesine
+              saldırdı. İlk doğru cevaplayan bölgenin kaderini belirleyecek.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDuelCountdown && (
+        <div
+          className="cq-duel-overlay-toast cq-duel-countdown-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Hazırlık geri sayımı"
+        >
+          <div className="cq-duel-countdown-inner">
+            <div className="cq-duel-countdown-label">Hazır ol</div>
+            <div key={countdownNum} className="cq-duel-countdown-number">{countdownNum}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Duel result toast */}
+      {duelResultToast && (
+        <div
+          className="cq-duel-overlay-toast"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">{duelResultToast.icon}</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{duelResultToast.title}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Gizli Operasyon Başlatıldı (center, all viewers) */}
+      {hiddenOpToast && (
+        <div
+          className="cq-duel-overlay-toast cq-hidden-op-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🎭</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{hiddenOpToast.title}</div>
+            <div className="cq-bonus-toast-detail">{hiddenOpToast.detail}</div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // ── Mobile toast queue (Step 8) ─────────────────────────────────────
+  // Derive a typed spec list from the same toast state the desktop
+  // `toastsNode` reads.  MobileToastSlot picks one to render at a time —
+  // higher priority wins; ties broken by array order.  Stable IDs
+  // (`<kind>:<source-id-or-title>`) keep the same React mount across
+  // re-renders within one toast's lifetime, so the entry animation
+  // fires once per toast, not per parent render.
+  //
+  // Priority order:
+  //   100  duel-countdown  (3-2-1 just before the duel question shows)
+  //    90  duel-intro      ("Savunma Düellosu Başladı" detail card)
+  //    80  hidden-op       ("Gizli Operasyon Başlatıldı" — 7s)
+  //    70  duel-result     ("Bölge Savunuldu" / "Kalkan Kırıldı" — 4s)
+  //    50  bonus           (Çukurova / Karadeniz / İstanbul — 4.5s)
+  //
+  // Time-locked duel-* specs win against the informational toasts so
+  // they never queue behind a 4.5 s bonus card and miss their window.
+  const mobileToastSpecs: MobileToastSpec[] = [];
+  if (showDuelCountdown && duel) {
+    mobileToastSpecs.push({
+      id:        `duel-countdown:${duel.id}`,
+      kind:      "duel-countdown",
+      priority:  100,
+      className: "cq-duel-overlay-toast cq-duel-countdown-overlay",
+      ariaLabel: "Hazırlık geri sayımı",
+      content: (
+        <div className="cq-duel-countdown-inner">
+          <div className="cq-duel-countdown-label">Hazır ol</div>
+          <div key={countdownNum} className="cq-duel-countdown-number">
+            {countdownNum}
+          </div>
+        </div>
+      ),
+    });
+  }
+  if (showDuelInfo && duel) {
+    mobileToastSpecs.push({
+      id:        `duel-intro:${duel.id}`,
+      kind:      "duel-intro",
+      priority:  90,
+      className: "cq-duel-overlay-toast cq-duel-intro-overlay",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">Savunma Düellosu Başladı</div>
+            <div className="cq-bonus-toast-detail">
+              {duelAttackerName}, {duelDefenderName} oyuncusunun {duelRegionLabel} bölgesine
+              saldırdı. İlk doğru cevaplayan bölgenin kaderini belirleyecek.
+            </div>
+          </div>
+        </>
+      ),
+    });
+  }
+  if (hiddenOpToast) {
+    mobileToastSpecs.push({
+      id:        `hidden-op:${hiddenOpToast.title}`,
+      kind:      "hidden-op",
+      priority:  80,
+      className: "cq-duel-overlay-toast cq-hidden-op-overlay",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🎭</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{hiddenOpToast.title}</div>
+            <div className="cq-bonus-toast-detail">{hiddenOpToast.detail}</div>
+          </div>
+        </>
+      ),
+    });
+  }
+  if (duelResultToast) {
+    mobileToastSpecs.push({
+      id:        `duel-result:${duelResultToast.title}`,
+      kind:      "duel-result",
+      priority:  70,
+      className: "cq-duel-overlay-toast",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">
+            {duelResultToast.icon}
+          </span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{duelResultToast.title}</div>
+          </div>
+        </>
+      ),
+    });
+  }
+  if (showBonusToast && lastBonusToast) {
+    const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId);
+    mobileToastSpecs.push({
+      id:        `bonus:${lastBonusToast.id}`,
+      kind:      "bonus",
+      priority:  50,
+      className: "cq-bonus-toast",
+      dataColor: toastPlayerColor ?? undefined,
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">
+            {copy.icon}
+          </span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{copy.title}</div>
+            <div className="cq-bonus-toast-detail">{copy.detail}</div>
+          </div>
+        </>
+      ),
+    });
+  }
+
+  // Mobile branches render the slot instead of the multi-overlay
+  // `toastsNode` so only one toast is visible at a time and the
+  // positioning is shell-aware (clears header/strip in portrait, the
+  // right dock in landscape).
+  const mobileToastsNode = <MobileToastSlot specs={mobileToastSpecs} />;
+
+  // ── Phase panel body (shared between desktop floating card and the
+  //    mobile bottom sheet). The wrapper chrome differs per branch; this
+  //    is just the panel content per phase. ────────────────────────────
+  const phasePanelContent: ReactNode = (
+    <>
+      {phase === "challenge" && !hiddenOpToast && (
+        <ConquestChallengePanel
+          challengeState={challengeState}
+          players={players}
+          playerColors={playerColors}
+          myPlayerId={myPlayerId}
+          alreadyAnswered={
+            answeredChallengeId === challengeState.challenge.id
+          }
+          lastLocalFeedback={
+            answeredChallengeId === challengeState.challenge.id
+              ? localFeedback
+              : null
+          }
+          msRemaining={Math.max(0, challengeState.endsAt - now)}
+          onSubmitAnswer={handleSubmitAnswer}
+        />
+      )}
+
+      {phase === "action" && canActOnRegion && (
+        <ConquestActionPanel
+          actionHolder={actionHolder}
+          holderColor={actionHolder ? (playerColors[actionHolder.id] ?? null) : null}
+          noMovesLeft={noMovesLeft}
+          lastResult={lastResult}
+          msRemaining={moveMsRemaining}
+          totalMs={moveTotalMs}
+          hasPendingHiddenShield={
+            !!actionHolder
+            && !!gameState.playerBonuses?.[actionHolder.id]?.pendingHiddenShield
+          }
+          onSkip={handleSkipAction}
+        />
+      )}
+
+      {phase === "action" && !canActOnRegion && (
+        <section className="cq-action-panel" aria-label="Hamle paneli">
+          <p className="cq-action-line" role="status">
+            {actionTurnLine}
+          </p>
+          <p className="cq-action-hint">
+            {moveSecondsLeft !== null
+              ? `Rakibin hamlesi: ${moveSecondsLeft}sn`
+              : "Hamle tamamlanana kadar bekle."}
+          </p>
+          {moveMsRemaining !== null && moveTotalMs !== null && moveTotalMs > 0 && (
+            <div
+              className="cq-challenge-timer"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={Math.max(1, Math.round(moveTotalMs / 1000))}
+              aria-valuenow={moveSecondsLeft ?? 0}
+              aria-label="Hamle süresi"
+            >
+              <div
+                className="cq-challenge-timer-fill"
+                style={{ width: `${Math.max(0, Math.min(100, (moveMsRemaining / moveTotalMs) * 100))}%` }}
+                data-low={(moveSecondsLeft ?? 0) <= 3 ? "true" : undefined}
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {showDuelPanel && duel && (
+        <DefenseDuelPanel
+          duel={duel}
+          players={players}
+          playerColors={playerColors}
+          myPlayerId={myPlayerId}
+          regionLabel={duelRegionLabel}
+          alreadyAnswered={answeredDuelId === duel.id}
+          lastLocalFeedback={
+            answeredDuelId === duel.id ? duelLocalFeedback : null
+          }
+          msRemaining={duelMsRemaining}
+          onSubmitAnswer={handleSubmitDuelAnswer}
+        />
+      )}
+
+      {phase === "round_result" && (
+        <section className="cq-round-result-panel" aria-label="Tur sonucu">
+          <div className="cq-round-result-line">
+            <span className="cq-round-result-icon" aria-hidden="true">
+              {lastSuccess?.action === "skip" ? "⏭" : "🛡️"}
+            </span>
+            <span className="cq-round-result-text">
+              {lastResult?.message ?? "Tur tamamlandı."}
+            </span>
+          </div>
+          <p className="cq-round-auto-hint" role="status">
+            {roundNumber >= totalRounds
+              ? "Sonuçlar hazırlanıyor…"
+              : "Sonraki tur hazırlanıyor…"}
+          </p>
+          {isHost && (
+            <button
+              type="button"
+              className="btn btn-ghost cq-round-skip-btn"
+              onClick={handleNextRound}
+            >
+              {roundNumber >= totalRounds ? "Hemen Bitir" : "Hemen Geç →"}
+            </button>
+          )}
+        </section>
+      )}
+
+      {phase === "finished" && (
+        <section className="cq-finished-panel" aria-label="Maç sonucu">
+          <header className="cq-finished-head">
+            <span className="cq-finished-icon" aria-hidden="true">🏆</span>
+            <h3 className="cq-finished-title">Kuşatma Bitti</h3>
+          </header>
+
+          <ol className="cq-standings-list">
+            {standings.map(row => (
+              <li
+                key={row.playerId}
+                className="cq-standings-row"
+                data-color={playerColors[row.playerId]}
+                data-rank={row.rank}
+              >
+                <span className="cq-standings-rank">#{row.rank}</span>
+                <span className="cq-standings-dot" aria-hidden="true" />
+                <span className="cq-standings-name">{row.playerName}</span>
+                <span className="cq-standings-score">
+                  <span className="cq-standings-points">{row.points} puan</span>
+                  <span className="cq-standings-regions">{row.regionsHeld} bölge</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          <p className="cq-finished-note" role="status">
+            Bu maçta XP veya Altın ödül verilmedi — ödüller ilerleyen
+            aşamada eklenecek.
+          </p>
+
+          <div className="cq-finished-actions">
+            <button
+              type="button"
+              className="btn btn-accent cq-finished-back-btn"
+              onClick={handleBack}
+            >
+              ← Lobiye Dön
+            </button>
+          </div>
+        </section>
+      )}
+    </>
+  );
+
+  // ── Desktop overlays: toasts + the legacy floating phase card.
+  const overlaysNode = (
+    <>
+      {toastsNode}
+      <div className="cq-game-phase-panel" data-phase={phase}>
+        {phasePanelContent}
+      </div>
+    </>
+  );
+
+  // ── Landscape mobile dock content (Step 7) ────────────────────────
+  // The same `phasePanelContent` that fills the portrait sheet body
+  // renders inside the landscape dock as a flat HUD section — the dock
+  // chrome comes from `.mcq-dock-slot`, so we drop the floating-panel
+  // wrapper here. `data-phase` is preserved so phase-specific styling
+  // (e.g. duel red accent) keeps working.
+  const landscapeDockNode = (
+    <div className="mcq-dock-panel" data-phase={phase}>
+      {phasePanelContent}
+    </div>
+  );
+
+  // Landscape overlays: only the transient toasts.  The phase panel
+  // moves into the in-grid dock above, so the legacy floating card
+  // is no longer rendered in landscape mobile.  The actual toast JSX
+  // routes through `mobileToastsNode` (single-slot queue) below.
+
+  // ── Mobile bottom-sheet derivation (Step 4) ───────────────────────
+  // Each phase chooses a natural default state for the sheet and whether
+  // the user is allowed to collapse it.  The handle string ticks with the
+  // existing `now` state so countdowns stay live even when collapsed.
+  // The hidden-op center toast suppresses the sheet entirely (matches
+  // the existing challenge-panel gating).
+  let mobileSheetState: MobileBottomSheetState = "collapsed";
+  let mobileSheetDismissible = true;
+  let mobileSheetHandle: ReactNode = (
+    <span className="mcq-sheet-handle-title">Tur paneli</span>
+  );
+  const mobileSheetVisible = !hiddenOpToast;
+  // Reset the sheet's internal user-toggle whenever any of these
+  // identifiers changes (i.e. a meaningfully new phase begins).
+  const mobileSheetPhaseKey = [
+    phase,
+    String(roundNumber),
+    challengeState?.challenge?.id ?? "",
+    duel?.id ?? "",
+    gameState.round.actionHolderId ?? "",
+    canActOnRegion ? "h" : "w",
+  ].join("|");
+
+  if (phase === "challenge") {
+    mobileSheetState = "expanded";
+    mobileSheetDismissible = false;
+    const sec = Math.max(0, Math.ceil((challengeState.endsAt - now) / 1000));
+    mobileSheetHandle = (
+      <>
+        <span className="mcq-sheet-handle-title">Soru</span>
+        <span
+          className="mcq-sheet-handle-timer"
+          data-low={sec <= 3 ? "true" : undefined}
+        >
+          {sec}sn
+        </span>
+      </>
+    );
+  } else if (phase === "action") {
+    if (canActOnRegion) {
+      mobileSheetState = "expanded";
+      mobileSheetDismissible = true;
+      mobileSheetHandle = (
+        <>
+          <span className="mcq-sheet-handle-title">Hamle sırası sende</span>
+          {moveSecondsLeft !== null && (
+            <span
+              className="mcq-sheet-handle-timer"
+              data-low={moveSecondsLeft <= 3 ? "true" : undefined}
+            >
+              {moveSecondsLeft}sn
+            </span>
+          )}
+        </>
+      );
+    } else {
+      mobileSheetState = "collapsed";
+      mobileSheetDismissible = true;
+      mobileSheetHandle = (
+        <>
+          <span className="mcq-sheet-handle-title">
+            {actionTurnLine ?? "Hamle bekleniyor"}
+          </span>
+          {moveSecondsLeft !== null && (
+            <span
+              className="mcq-sheet-handle-timer"
+              data-low={moveSecondsLeft <= 3 ? "true" : undefined}
+            >
+              {moveSecondsLeft}sn
+            </span>
+          )}
+        </>
+      );
+    }
+  } else if (phase === "defense_duel") {
+    if (showDuelPanel && duel) {
+      mobileSheetState = "full";
+      mobileSheetDismissible = false;
+      const sec = Math.max(0, Math.ceil(duelMsRemaining / 1000));
+      mobileSheetHandle = (
+        <>
+          <span className="mcq-sheet-handle-title">⚔️ Savunma Düellosu</span>
+          <span
+            className="mcq-sheet-handle-timer"
+            data-low={sec <= 3 ? "true" : undefined}
+          >
+            {sec}sn
+          </span>
+        </>
+      );
+    } else {
+      // Intro / 3-2-1 countdown phase — the overlay toast already owns
+      // the screen, so just hide the sheet.
+      mobileSheetState = "collapsed";
+      mobileSheetDismissible = false;
+      mobileSheetHandle = (
+        <span className="mcq-sheet-handle-title">⚔️ Düello hazırlanıyor…</span>
+      );
+    }
+  } else if (phase === "round_result") {
+    mobileSheetState = "expanded";
+    mobileSheetDismissible = true;
+    mobileSheetHandle = (
+      <span className="mcq-sheet-handle-title">
+        {lastResult?.message ?? "Tur tamamlandı"}
+      </span>
+    );
+  } else if (phase === "finished") {
+    mobileSheetState = "full";
+    mobileSheetDismissible = false;
+    mobileSheetHandle = (
+      <span className="mcq-sheet-handle-title">🏆 Kuşatma Bitti</span>
+    );
+  }
+
+  const mobileOverlaysNode = (
+    <>
+      {mobileToastsNode}
+      <MobileBottomSheet
+        phaseKey={mobileSheetPhaseKey}
+        state={mobileSheetState}
+        dismissible={mobileSheetDismissible}
+        handle={mobileSheetHandle}
+        visible={mobileSheetVisible}
+      >
+        {phasePanelContent}
+      </MobileBottomSheet>
+    </>
+  );
+
+  // ── Mobile shell branch (Steps 1-4) ────────────────────────────────
+  // Desktop layout below is preserved verbatim; the mobile shell uses
+  // the same map and reuses `phasePanelContent` inside a real bottom
+  // sheet (see MobileBottomSheet) instead of the legacy floating card.
+  // Toasts still position:fixed for now — toast-queue lands in a later
+  // step.  Landscape uses the same shell for now and inherits the
+  // legacy side-dock CSS from `.cq-game-phase-panel` — but only on
+  // landscape (the sheet replaces the panel in portrait).
+  if (isMobile) {
+    return (
+      <div
+        className="app duel-screen cq-screen cq-game-screen"
+        style={themeStyle}
+        data-theme={themeAttr}
+      >
+        <MobileConquestLayout
+          orientation={orientation}
+          header={
+            <MobileHeader
+              roundNumber={roundNumber}
+              totalRounds={totalRounds}
+              onBack={handleBack}
+            />
+          }
+          scoreStrip={
+            <MobileScoreStrip
+              players={players}
+              playerColors={playerColors}
+              playerPoints={playerPoints}
+              regionCounts={regionCounts}
+              playerBonuses={playerBonuses}
+              openShieldOwners={openShieldOwners}
+              hiddenShieldOwners={hiddenShieldOwners}
+              actionHolderId={gameState.round.actionHolderId ?? null}
+              myPlayerId={myPlayerId}
+              neutralCount={neutralCount}
+              neutralPoints={neutralPoints}
+            />
+          }
+          map={mapNode}
+          dock={orientation === "landscape" ? landscapeDockNode : undefined}
+          overlays={
+            orientation === "portrait"
+              ? mobileOverlaysNode
+              : mobileToastsNode
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="app duel-screen cq-screen cq-game-screen"
@@ -906,297 +1541,19 @@ export default function ConquestGame({
         )}
       </div>
 
-      {/* ── Board ───────────────────────────────────────────────── */}
+      {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
       <div className="cq-game-board-wrap">
         <div className="cq-game-board-inner">
           <p className="cq-game-map-title" aria-hidden="true">
             {mapIcon(settings.map)} {mapConfig.displayName}
           </p>
-
-          {settings.map === "turkey" ? (
-            <>
-              {/* SVG map: primary interaction on all screens */}
-              <TurkeyConquestMap
-                regionStates={visibleRegionStates}
-                players={players}
-                playerColors={playerColors}
-                legalTargetIds={legalTargets}
-                flashRegionId={flashRegionId}
-                disabled={boardDisabled}
-                onRegionClick={phase === "action" ? handleRegionClick : undefined}
-              />
-              {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
-              <div className="cq-map-card-fallback">
-                <ConquestBoard
-                  mapConfig={mapConfig}
-                  regionStates={visibleRegionStates}
-                  players={players}
-                  playerColors={playerColors}
-                  onRegionClick={phase === "action" ? handleRegionClick : undefined}
-                  legalRegionIds={legalTargets}
-                  flashRegionId={flashRegionId}
-                  disabled={boardDisabled}
-                />
-              </div>
-            </>
-          ) : (
-            <ConquestBoard
-              mapConfig={mapConfig}
-              regionStates={visibleRegionStates}
-              players={players}
-              playerColors={playerColors}
-              onRegionClick={phase === "action" ? handleRegionClick : undefined}
-              legalRegionIds={legalTargets}
-              flashRegionId={flashRegionId}
-              disabled={boardDisabled}
-            />
-          )}
+          {mapNode}
         </div>
       </div>
 
-      {/* ── Bonus toast (transient, centered) ───────────────────── */}
-      {showBonusToast && lastBonusToast && (() => {
-        const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId);
-        const isOwnerView = myPlayerId !== null && myPlayerId === lastBonusToast.playerId;
-        const headPrefix  = isOwnerView ? "Sen" : lastBonusToast.playerName;
-        return (
-          <div
-            key={lastBonusToast.id}
-            className="cq-bonus-toast"
-            data-color={toastPlayerColor ?? undefined}
-            role="status"
-            aria-live="polite"
-          >
-            <span className="cq-bonus-toast-icon" aria-hidden="true">
-              {copy.icon}
-            </span>
-            <div className="cq-bonus-toast-text">
-              <div className="cq-bonus-toast-title">
-                {lastBonusToast.bonusType === "ankara_hidden_shield"
-                  ? copy.title
-                  : `${headPrefix} · ${copy.title}`}
-              </div>
-              <div className="cq-bonus-toast-detail">
-                {copy.detail}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* ── Toasts + floating phase card (shared with mobile shell) ── */}
+      {overlaysNode}
 
-      {/* ── Duel intro overlay (before question becomes visible) ───── */}
-      {showDuelInfo && (
-        <div
-          className="cq-duel-overlay-toast cq-duel-intro-overlay"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
-          <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">Savunma Düellosu Başladı</div>
-            <div className="cq-bonus-toast-detail">
-              {duelAttackerName}, {duelDefenderName} oyuncusunun {duelRegionLabel} bölgesine
-              saldırdı. İlk doğru cevaplayan bölgenin kaderini belirleyecek.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDuelCountdown && (
-        <div
-          className="cq-duel-overlay-toast cq-duel-countdown-overlay"
-          role="status"
-          aria-live="polite"
-          aria-label="Hazırlık geri sayımı"
-        >
-          <div className="cq-duel-countdown-inner">
-            <div className="cq-duel-countdown-label">Hazır ol</div>
-            <div key={countdownNum} className="cq-duel-countdown-number">{countdownNum}</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Duel result toast ────────────────────────────────────── */}
-      {duelResultToast && (
-        <div
-          className="cq-duel-overlay-toast"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="cq-bonus-toast-icon" aria-hidden="true">{duelResultToast.icon}</span>
-          <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">{duelResultToast.title}</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Gizli Operasyon Başlatıldı (center, all viewers) ────── */}
-      {hiddenOpToast && (
-        <div
-          className="cq-duel-overlay-toast cq-hidden-op-overlay"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="cq-bonus-toast-icon" aria-hidden="true">🎭</span>
-          <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">{hiddenOpToast.title}</div>
-            <div className="cq-bonus-toast-detail">{hiddenOpToast.detail}</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Floating phase card ────────────────────────────────── */}
-      <div className="cq-game-phase-panel" data-phase={phase}>
-        {phase === "challenge" && !hiddenOpToast && (
-          <ConquestChallengePanel
-            challengeState={challengeState}
-            players={players}
-            playerColors={playerColors}
-            myPlayerId={myPlayerId}
-            alreadyAnswered={
-              answeredChallengeId === challengeState.challenge.id
-            }
-            lastLocalFeedback={
-              answeredChallengeId === challengeState.challenge.id
-                ? localFeedback
-                : null
-            }
-            msRemaining={Math.max(0, challengeState.endsAt - now)}
-            onSubmitAnswer={handleSubmitAnswer}
-          />
-        )}
-
-        {phase === "action" && canActOnRegion && (
-          <ConquestActionPanel
-            actionHolder={actionHolder}
-            holderColor={actionHolder ? (playerColors[actionHolder.id] ?? null) : null}
-            noMovesLeft={noMovesLeft}
-            lastResult={lastResult}
-            msRemaining={moveMsRemaining}
-            totalMs={moveTotalMs}
-            hasPendingHiddenShield={
-              !!actionHolder
-              && !!gameState.playerBonuses?.[actionHolder.id]?.pendingHiddenShield
-            }
-            onSkip={handleSkipAction}
-          />
-        )}
-
-        {phase === "action" && !canActOnRegion && (
-          <section className="cq-action-panel" aria-label="Hamle paneli">
-            <p className="cq-action-line" role="status">
-              {actionTurnLine}
-            </p>
-            <p className="cq-action-hint">
-              {moveSecondsLeft !== null
-                ? `Rakibin hamlesi: ${moveSecondsLeft}sn`
-                : "Hamle tamamlanana kadar bekle."}
-            </p>
-            {moveMsRemaining !== null && moveTotalMs !== null && moveTotalMs > 0 && (
-              <div
-                className="cq-challenge-timer"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={Math.max(1, Math.round(moveTotalMs / 1000))}
-                aria-valuenow={moveSecondsLeft ?? 0}
-                aria-label="Hamle süresi"
-              >
-                <div
-                  className="cq-challenge-timer-fill"
-                  style={{ width: `${Math.max(0, Math.min(100, (moveMsRemaining / moveTotalMs) * 100))}%` }}
-                  data-low={(moveSecondsLeft ?? 0) <= 3 ? "true" : undefined}
-                />
-              </div>
-            )}
-          </section>
-        )}
-
-        {showDuelPanel && duel && (
-          <DefenseDuelPanel
-            duel={duel}
-            players={players}
-            playerColors={playerColors}
-            myPlayerId={myPlayerId}
-            regionLabel={duelRegionLabel}
-            alreadyAnswered={answeredDuelId === duel.id}
-            lastLocalFeedback={
-              answeredDuelId === duel.id ? duelLocalFeedback : null
-            }
-            msRemaining={duelMsRemaining}
-            onSubmitAnswer={handleSubmitDuelAnswer}
-          />
-        )}
-
-        {phase === "round_result" && (
-          <section className="cq-round-result-panel" aria-label="Tur sonucu">
-            <div className="cq-round-result-line">
-              <span className="cq-round-result-icon" aria-hidden="true">
-                {lastSuccess?.action === "skip" ? "⏭" : "🛡️"}
-              </span>
-              <span className="cq-round-result-text">
-                {lastResult?.message ?? "Tur tamamlandı."}
-              </span>
-            </div>
-            <p className="cq-round-auto-hint" role="status">
-              {roundNumber >= totalRounds
-                ? "Sonuçlar hazırlanıyor…"
-                : "Sonraki tur hazırlanıyor…"}
-            </p>
-            {isHost && (
-              <button
-                type="button"
-                className="btn btn-ghost cq-round-skip-btn"
-                onClick={handleNextRound}
-              >
-                {roundNumber >= totalRounds ? "Hemen Bitir" : "Hemen Geç →"}
-              </button>
-            )}
-          </section>
-        )}
-
-        {phase === "finished" && (
-          <section className="cq-finished-panel" aria-label="Maç sonucu">
-            <header className="cq-finished-head">
-              <span className="cq-finished-icon" aria-hidden="true">🏆</span>
-              <h3 className="cq-finished-title">Kuşatma Bitti</h3>
-            </header>
-
-            <ol className="cq-standings-list">
-              {standings.map(row => (
-                <li
-                  key={row.playerId}
-                  className="cq-standings-row"
-                  data-color={playerColors[row.playerId]}
-                  data-rank={row.rank}
-                >
-                  <span className="cq-standings-rank">#{row.rank}</span>
-                  <span className="cq-standings-dot" aria-hidden="true" />
-                  <span className="cq-standings-name">{row.playerName}</span>
-                  <span className="cq-standings-score">
-                    <span className="cq-standings-points">{row.points} puan</span>
-                    <span className="cq-standings-regions">{row.regionsHeld} bölge</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
-
-            <p className="cq-finished-note" role="status">
-              Bu maçta XP veya Altın ödül verilmedi — ödüller ilerleyen
-              aşamada eklenecek.
-            </p>
-
-            <div className="cq-finished-actions">
-              <button
-                type="button"
-                className="btn btn-accent cq-finished-back-btn"
-                onClick={handleBack}
-              >
-                ← Lobiye Dön
-              </button>
-            </div>
-          </section>
-        )}
-      </div>
 
       {/* ── Footer notice ──────────────────────────────────────── */}
       <div className="cq-game-footer">

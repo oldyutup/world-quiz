@@ -38,21 +38,68 @@ export function getBonusToastCopyForViewer(
   toast:    ConquestBonusToast,
   viewerId: string | null,
 ): { title: string; detail: string; icon: string } {
+  const isOwner = viewerId !== null && viewerId === toast.playerId;
+
   if (toast.bonusType === "ankara_hidden_shield") {
-    const isOwner = viewerId !== null && viewerId === toast.playerId;
     if (isOwner) {
       return {
-        icon:  "🎭",
-        title: "🎭 Ankara fethedildi: Gizli Operasyon aktif!",
+        icon:   "🎭",
+        title:  "🎭 Ankara fethedildi: Gizli Operasyon aktif!",
         detail: "Kendi bölgeni gizlice koruyabilir veya tarafsız bir bölgeyi gizlice fethedebilirsin (komşuluk şartı yok).",
       };
     }
     return {
-      icon:  "🎭",
-      title: `🎭 Rakip Ankara'yı fethetti (${toast.playerName})`,
+      icon:   "🎭",
+      title:  `🎭 Rakip Ankara'yı fethetti (${toast.playerName})`,
       detail: "Haritada gizli bir operasyon yapabilir. Dikkatli saldır!",
     };
   }
+
+  if (toast.bonusType === "cukurova_score") {
+    if (isOwner) {
+      return {
+        icon:   "🌾",
+        title:  "Çukurova Bonusu",
+        detail: "🌾 Bereket bonusu! +1 bonus puan kazandın.",
+      };
+    }
+    return {
+      icon:   "🌾",
+      title:  "Çukurova Ele Geçirildi",
+      detail: "🌾 Rakip Çukurova'dan güç topluyor! +1 bonus puan aldı — bu bölgeyi geri almak oyunu dengeleyebilir.",
+    };
+  }
+
+  if (toast.bonusType === "karadeniz_extra_time") {
+    if (isOwner) {
+      return {
+        icon:   "⛰️",
+        title:  "Doğu Karadeniz Bonusu",
+        detail: "⛰️ Dağ geçitleri sende! Sıradaki hamlene +5 saniye kazandın.",
+      };
+    }
+    return {
+      icon:   "⛰️",
+      title:  "Doğu Karadeniz Ele Geçirildi",
+      detail: "⛰️ Rakip dağ geçitlerini kontrol ediyor. Bir sonraki hamlesinde +5 saniye avantajı olacak.",
+    };
+  }
+
+  if (toast.bonusType === "istanbul_defense") {
+    if (isOwner) {
+      return {
+        icon:   "🛡️",
+        title:  "İstanbul Bonusu",
+        detail: "🛡️ İstanbul savunmaya geçti. Açık kalkan aktif.",
+      };
+    }
+    return {
+      icon:   "🛡️",
+      title:  "İstanbul Ele Geçirildi",
+      detail: "🛡️ Rakip İstanbul'u kalkanla korumaya aldı. İlk saldırı kalkanı kıracak.",
+    };
+  }
+
   return { icon: toast.icon, title: toast.title, detail: toast.detail };
 }
 
