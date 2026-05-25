@@ -544,6 +544,14 @@ export interface ConquestGameState {
    * cleared on resolution.  Optional so pre-duel rooms deserialize cleanly.
    */
   defenseDuel?:       ConquestDefenseDuelState;
+  /**
+   * Epoch ms when the game-start intro overlay should disappear and the first
+   * challenge question becomes interactive.  The first challenge's `startedAt`
+   * is anchored to this value so the 20-second timer doesn't begin until the
+   * intro finishes.  Absent in pre-intro rooms — UI falls through to immediate
+   * challenge display.
+   */
+  gameIntroEndsAt?:   number;
 }
 
 /** Final result row — one per player — used by the result screen. */

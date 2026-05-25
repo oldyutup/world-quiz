@@ -416,19 +416,21 @@ export default function ConquestGame({
   // Live countdown — re-renders ~4×/s so the timer bars animate.  Runs during
   // the challenge phase, the action phase, and the defense-duel phase; idle
   // otherwise to avoid useless re-renders.
-  const phaseForTicker  = gameState?.phase ?? null;
-  const statusForTicker = gameState?.round.challenge.status ?? null;
-  const actionEndsAt    = gameState?.round.actionEndsAt ?? null;
-  const duelEndsAt      = gameState?.defenseDuel?.endsAt ?? null;
+  const phaseForTicker    = gameState?.phase ?? null;
+  const statusForTicker   = gameState?.round.challenge.status ?? null;
+  const actionEndsAt      = gameState?.round.actionEndsAt ?? null;
+  const duelEndsAt        = gameState?.defenseDuel?.endsAt ?? null;
+  const introEndsAtForTicker = gameState?.gameIntroEndsAt ?? null;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const challengeTicking = phaseForTicker === "challenge"    && statusForTicker === "active";
     const actionTicking    = phaseForTicker === "action"       && actionEndsAt !== null;
     const duelTicking      = phaseForTicker === "defense_duel" && duelEndsAt   !== null;
-    if (!challengeTicking && !actionTicking && !duelTicking) return;
+    const introTicking     = introEndsAtForTicker !== null && Date.now() < introEndsAtForTicker;
+    if (!challengeTicking && !actionTicking && !duelTicking && !introTicking) return;
     const t = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(t);
-  }, [phaseForTicker, statusForTicker, challengeId, actionEndsAt, duelEndsAt]);
+  }, [phaseForTicker, statusForTicker, challengeId, actionEndsAt, duelEndsAt, introEndsAtForTicker]);
 
   // ── Derived ──────────────────────────────────────────────────────────
   const regionStates = gameState?.regionStates ?? [];
@@ -996,6 +998,18 @@ export default function ConquestGame({
   const showDuelPanel     = phase === "defense_duel" && !!duel && now >= duelQuestionVisibleAt;
   const countdownNum      = showDuelCountdown ? Math.max(1, Math.ceil((duelQuestionVisibleAt - now) / 1000)) : 0;
 
+  // Game-start intro overlay: info card (3s) → 3-2-1 countdown (3s) → first challenge.
+  // Only fires on round 1 of a fresh match (gameIntroEndsAt is set only by
+  // createInitialConquestGameState); pre-intro rooms have undefined → no overlay.
+  const GAME_INTRO_COUNTDOWN_MS = 3_000;
+  const gameIntroEndsAt         = gameState?.gameIntroEndsAt ?? 0;
+  const showGameIntro           = gameIntroEndsAt > 0 && phase === "challenge" && now < gameIntroEndsAt;
+  const showGameIntroText       = showGameIntro && now < gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
+  const showGameIntroCountdown  = showGameIntro && now >= gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
+  const gameIntroCountdownNum   = showGameIntroCountdown
+    ? Math.max(1, Math.ceil((gameIntroEndsAt - now) / 1000))
+    : 0;
+
   // ── Bonus toast lifecycle ────────────────────────────────────────────
   // The toast is part of synced state; we mount it for ~2s after `at` and
   // then dismiss locally.  Re-keying by `id` resets the dismiss timer when
@@ -1135,6 +1149,43 @@ export default function ConquestGame({
         );
       })()}
 
+      {/* Game-start intro: info card (3s) → 3-2-1 countdown (3s).
+       *  Only fires at the very start of a fresh match; never repeats.
+       *  Challenge panel and 20-second timer are suppressed until the
+       *  countdown ends (first challenge startedAt === gameIntroEndsAt). */}
+      {showGameIntroText && (
+        <div
+          className="cq-duel-overlay-toast cq-game-intro-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">⚔️ Kuşatma başlıyor</div>
+            <div className="cq-bonus-toast-detail">
+              Ekrana gelen sorulara ilk doğru cevabı veren oyuncu hamle yapma hakkı kazanır.<br />
+              Tarafsız bölgeler direkt fethedilir; rakibe ait bölgeler için düello gerekir.<br />
+              Hazır ol! Hamle hakkı kazanmak için ilk soru geliyor.
+            </div>
+          </div>
+        </div>
+      )}
+      {showGameIntroCountdown && (
+        <div
+          className="cq-duel-overlay-toast cq-duel-countdown-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Oyun geri sayımı"
+        >
+          <div className="cq-duel-countdown-inner">
+            <div className="cq-duel-countdown-label">Hazır ol</div>
+            <div key={gameIntroCountdownNum} className="cq-duel-countdown-number">
+              {gameIntroCountdownNum}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Duel attack focus card (replaces the old "Savunma Düellosu
        *  Başladı" header — same window, sharper "Hedef: X" framing).
        *  Question timer doesn't start until questionVisibleAt, so the
@@ -1236,15 +1287,55 @@ export default function ConquestGame({
   // fires once per toast, not per parent render.
   //
   // Priority order:
-  //   100  duel-countdown  (3-2-1 just before the duel question shows)
-  //    90  duel-intro      ("Savunma Düellosu Başladı" detail card)
-  //    80  hidden-op       ("Gizli Operasyon Başlatıldı" — 7s)
-  //    70  duel-result     ("Bölge Savunuldu" / "Kalkan Kırıldı" — 4s)
-  //    50  bonus           (Çukurova / Karadeniz / İstanbul — 4.5s)
+  //   120  game-intro-countdown  (3-2-1 at game start)
+  //   110  game-intro            (⚔️ Kuşatma başlıyor card)
+  //   100  duel-countdown        (3-2-1 just before the duel question shows)
+  //    90  duel-intro            ("Savunma Düellosu Başladı" detail card)
+  //    80  hidden-op             ("Gizli Operasyon Başlatıldı" — 7s)
+  //    70  duel-result           ("Bölge Savunuldu" / "Kalkan Kırıldı" — 4s)
+  //    50  bonus                 (Çukurova / Karadeniz / İstanbul — 4.5s)
   //
   // Time-locked duel-* specs win against the informational toasts so
   // they never queue behind a 4.5 s bonus card and miss their window.
   const mobileToastSpecs: MobileToastSpec[] = [];
+  if (showGameIntroCountdown) {
+    mobileToastSpecs.push({
+      id:        "game-intro-countdown",
+      kind:      "game-intro-countdown",
+      priority:  120,
+      className: "cq-duel-overlay-toast cq-duel-countdown-overlay",
+      ariaLabel: "Oyun geri sayımı",
+      content: (
+        <div className="cq-duel-countdown-inner">
+          <div className="cq-duel-countdown-label">Hazır ol</div>
+          <div key={gameIntroCountdownNum} className="cq-duel-countdown-number">
+            {gameIntroCountdownNum}
+          </div>
+        </div>
+      ),
+    });
+  }
+  if (showGameIntroText) {
+    mobileToastSpecs.push({
+      id:        "game-intro-text",
+      kind:      "game-intro",
+      priority:  110,
+      className: "cq-duel-overlay-toast cq-game-intro-overlay",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">⚔️ Kuşatma başlıyor</div>
+            <div className="cq-bonus-toast-detail">
+              Ekrana gelen sorulara ilk doğru cevabı veren oyuncu hamle yapma hakkı kazanır.
+              Tarafsız bölgeler direkt fethedilir; rakibe ait bölgeler için düello gerekir.
+              Hazır ol! Hamle hakkı kazanmak için ilk soru geliyor.
+            </div>
+          </div>
+        </>
+      ),
+    });
+  }
   if (showDuelCountdown && duel) {
     mobileToastSpecs.push({
       id:        `duel-countdown:${duel.id}`,
@@ -1376,7 +1467,7 @@ export default function ConquestGame({
   //    is just the panel content per phase. ────────────────────────────
   const phasePanelContent: ReactNode = (
     <>
-      {phase === "challenge" && !hiddenOpToast && (
+      {phase === "challenge" && !hiddenOpToast && !showGameIntro && (
         <ConquestChallengePanel
           challengeState={challengeState}
           players={players}

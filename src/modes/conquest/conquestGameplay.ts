@@ -142,6 +142,12 @@ export function consumeMoveTimeBonus(
  *
  * `totalRounds` is clamped to >=1 to keep downstream math safe.
  */
+// Duration of the game-start intro overlay.  The first challenge's timer
+// is anchored to `gameIntroEndsAt` so no seconds tick away during the intro.
+const GAME_INTRO_TEXT_MS      = 9_000; // info card visible
+const GAME_INTRO_COUNTDOWN_MS = 3_000; // 3-2-1 countdown
+const GAME_INTRO_TOTAL_MS     = GAME_INTRO_TEXT_MS + GAME_INTRO_COUNTDOWN_MS;
+
 export function createInitialConquestGameState(
   mapConfig:   ConquestMapConfig,
   players:     ConquestPlayer[],
@@ -158,10 +164,14 @@ export function createInitialConquestGameState(
 
   const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
 
+  // Anchor the first challenge's timer to after the intro so the 20-second
+  // clock doesn't start until the player can actually see the question.
+  const gameIntroEndsAt = now + GAME_INTRO_TOTAL_MS;
+
   const round: ConquestRoundState = {
     roundNumber:    1,
     totalRounds:    safeRounds,
-    challenge:      buildActiveChallengeState(challenge, now),
+    challenge:      buildActiveChallengeState(challenge, gameIntroEndsAt),
     actionHolderId: null,
     lastResult:     null,
   };
@@ -178,6 +188,7 @@ export function createInitialConquestGameState(
     usedChallengeKeys:  [bankId],
     lastChallengeType:  challenge.type as ConquestChallengeType,
     playerBonuses,
+    gameIntroEndsAt,
   };
 }
 

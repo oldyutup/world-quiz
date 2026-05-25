@@ -44,7 +44,9 @@ export type MobileToastKind =
   | "duel-result"
   | "duel-intro"
   | "duel-countdown"
-  | "attack-focus";
+  | "attack-focus"
+  | "game-intro"
+  | "game-intro-countdown";
 
 export interface MobileToastSpec {
   /** Stable key.  Convention: `<kind>:<source-id-or-title>`. */

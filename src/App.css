@@ -9752,6 +9752,20 @@ body {
   animation: cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
 }
 
+/* Game-start intro card: no auto-fade (React unmounts on gameIntroEndsAt).
+ * Golden accent border makes it visually distinct from the red duel cards. */
+.cq-game-intro-overlay {
+  animation: cq-bonus-toast-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(0,0,0,0.4),
+    0 0 24px rgba(251, 191, 36, 0.18);
+}
+.cq-game-intro-overlay .cq-bonus-toast-title {
+  color: #fef3c7;
+}
+
 /* Attack Focus framing — applied to both the duel-intro card (during
  * the 4s pre-question window) and the standalone non-duel banner.  Red
  * accent border + slightly larger title keeps "⚔️ Hedef: X" readable on
@@ -9817,7 +9831,7 @@ body {
 
 /* Result toast: fade out after ~3740ms (4000ms total − 260ms out).
  * Attack Focus solo card opts out — it owns its own shorter timing. */
-.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay):not(.cq-attack-focus-overlay--solo) {
+.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-game-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay):not(.cq-attack-focus-overlay--solo) {
   animation:
     cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
     cq-bonus-toast-out 320ms ease-in 3740ms forwards;
@@ -12847,5 +12861,44 @@ body {
   .mcq-sheet-body .cq-challenge-prompt,
   .mcq-dock-panel .cq-challenge-prompt {
     font-size: 15px !important;
+  }
+}
+
+/* Kuşatma: oyun başlangıç bilgi kartını daha okunur yap */
+.cq-game-intro-overlay {
+  min-width: min(560px, calc(100vw - 40px)) !important;
+  max-width: min(620px, calc(100vw - 40px)) !important;
+  padding: 24px 30px !important;
+  border-width: 2px !important;
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.55),
+    0 0 42px rgba(245, 158, 11, 0.24) !important;
+}
+
+.cq-game-intro-overlay .cq-bonus-toast-title {
+  font-size: 22px !important;
+  line-height: 1.15 !important;
+  margin-bottom: 10px !important;
+}
+
+.cq-game-intro-overlay .cq-bonus-toast-detail {
+  font-size: 16px !important;
+  line-height: 1.55 !important;
+  color: rgba(245, 248, 255, 0.9) !important;
+}
+
+@media (max-width: 600px) {
+  .cq-game-intro-overlay {
+    min-width: min(92vw, 420px) !important;
+    max-width: min(92vw, 420px) !important;
+    padding: 18px 20px !important;
+  }
+
+  .cq-game-intro-overlay .cq-bonus-toast-title {
+    font-size: 18px !important;
+  }
+
+  .cq-game-intro-overlay .cq-bonus-toast-detail {
+    font-size: 14px !important;
   }
 }
