@@ -28,6 +28,12 @@ export interface ConquestPlayer {
   isHost: boolean;
   /** Reserved for a future per-player color/region tint. */
   colorIndex?: number;
+  /**
+   * Persisted per-player palette pick. Absent for legacy rooms that joined
+   * before color persistence was added — readers must fall back to slot-based
+   * assignment via `assignConquestPlayerColors`.
+   */
+  color?: ConquestPlayerColor;
 }
 
 export interface ConquestRoomSettings {
@@ -116,7 +122,9 @@ export type ConquestPlayerColor =
   | "green"
   | "yellow"
   | "purple"
-  | "orange";
+  | "orange"
+  | "pink"
+  | "cyan";
 
 /** Opaque string id that uniquely identifies a region within its map. */
 export type ConquestRegionId = string;

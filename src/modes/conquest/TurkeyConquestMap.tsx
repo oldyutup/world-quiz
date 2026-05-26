@@ -130,6 +130,8 @@ const COLOR_MAP: Record<string, ColorTokens> = {
   yellow:  { fill: "rgba(234,179,8,0.28)",    regionBorder: "rgba(234,179,8,0.88)",   text: "#fde047", legalFill: "rgba(234,179,8,0.52)",    legalStroke: "#eab308" },
   purple:  { fill: "rgba(168,85,247,0.28)",   regionBorder: "rgba(168,85,247,0.88)",  text: "#d8b4fe", legalFill: "rgba(168,85,247,0.52)",   legalStroke: "#a855f7" },
   orange:  { fill: "rgba(249,115,22,0.28)",   regionBorder: "rgba(249,115,22,0.88)",  text: "#fdba74", legalFill: "rgba(249,115,22,0.52)",   legalStroke: "#f97316" },
+  pink:    { fill: "rgba(236,72,153,0.28)",   regionBorder: "rgba(236,72,153,0.88)",  text: "#f9a8d4", legalFill: "rgba(236,72,153,0.52)",   legalStroke: "#ec4899" },
+  cyan:    { fill: "rgba(6,182,212,0.28)",    regionBorder: "rgba(6,182,212,0.88)",   text: "#67e8f9", legalFill: "rgba(6,182,212,0.52)",    legalStroke: "#06b6d4" },
   neutral: { fill: "rgba(148,163,184,0.15)",  regionBorder: "rgba(148,196,228,0.72)", text: "rgba(203,213,225,0.82)", legalFill: "rgba(148,163,184,0.34)", legalStroke: "rgba(165,215,245,0.96)" },
 };
 

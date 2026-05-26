@@ -26,6 +26,7 @@
 
 import { supabase, type ConquestRoomRow } from "../../lib/supabase";
 import type { ConquestGameState } from "./types";
+import { recallConquestClaim } from "./conquestClaim";
 
 /**
  * JSON-serializable shape stored in conquest_rooms.gameplay_state.
@@ -113,19 +114,29 @@ export async function initializeConquestGameplayState(
  * (winner picked, action applied, next round, match finished).  Last-write
  * wins; callers must already have confirmed they are the eligible writer
  * (host for winner pick, action holder for region clicks, etc.).
+ *
+ * Goes through the conquest_apply_gameplay_state RPC which verifies the
+ * caller is a member of the room (auth.uid() or claim_token) and the room
+ * is in the 'playing' phase. Returns null on auth/state failure; the row
+ * itself comes back via realtime, not this call (the RPC returns void).
  */
 export async function updateConquestGameplayState(
-  roomId: string,
-  state:  ConquestGameState,
+  roomId:   string,
+  playerId: string,
+  state:    ConquestGameState,
 ): Promise<ConquestRoomRow | null> {
-  const { data, error } = await supabase
-    .from("conquest_rooms")
-    .update({ gameplay_state: serializeConquestGameState(state) })
-    .eq("id", roomId)
-    .select("*")
-    .single();
-  if (error || !data) return null;
-  return data as ConquestRoomRow;
+  const claimToken = recallConquestClaim(playerId);
+  const { error } = await supabase.rpc("conquest_apply_gameplay_state", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+    p_state:       serializeConquestGameState(state),
+  });
+  if (error) return null;
+  // We intentionally do not refetch — the realtime UPDATE event echoes the
+  // new gameplay_state back through subscribeToConquestRoom, which is the
+  // single source of truth for synced state.
+  return null;
 }
 
 /**

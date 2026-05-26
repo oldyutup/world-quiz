@@ -26,12 +26,20 @@ import {
 } from "../../lib/supabase";
 import type {
   ConquestMapId,
+  ConquestPlayerColor,
   ConquestRoomSettings,
 } from "./types";
 import {
   freshConquestPlayerId,
   generateConquestRoomCode,
 } from "./utils";
+import { pickNextConquestColor } from "./conquestState";
+import {
+  forgetConquestClaim,
+  generateConquestClaim,
+  recallConquestClaim,
+  rememberConquestClaim,
+} from "./conquestClaim";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Result types
@@ -173,18 +181,21 @@ export async function createConquestRoom(
 
     const createdRoom = roomData as ConquestRoomRow;
 
-    const { data: playerData, error: playerErr } = await supabase
-      .from("conquest_players")
-      .insert({
-        id:         hostPlayerId,
-        room_id:    createdRoom.id,
-        profile_id: profile.id,
-        guest_id:   null,
-        name:       trimmed,
-        is_host:    true,
-      })
-      .select("*")
-      .single();
+    const hostColor = pickNextConquestColor([]);
+    const claimToken = generateConquestClaim();
+    const { data: playerData, error: playerErr } = await supabase.rpc(
+      "conquest_register_player",
+      {
+        p_room_id:     createdRoom.id,
+        p_player_id:   hostPlayerId,
+        p_profile_id:  profile.id,
+        p_guest_id:    null,
+        p_name:        trimmed,
+        p_color:       hostColor,
+        p_is_host:     true,
+        p_claim_token: claimToken,
+      },
+    );
 
     if (playerErr || !playerData) {
       // Roll back the empty room so it doesn't pollute the public list.
@@ -197,10 +208,13 @@ export async function createConquestRoom(
       };
     }
 
+    const me = playerData as ConquestPlayerRow;
+    rememberConquestClaim(me.id, claimToken);
+
     return {
       ok: true,
       room: createdRoom,
-      me:   playerData as ConquestPlayerRow,
+      me,
     };
   }
 
@@ -288,18 +302,22 @@ export async function joinConquestRoom(
 
   const guestId = identity.profile ? null : freshConquestPlayerId();
   const trimmed = identity.name.trim();
+  const joinColor = pickNextConquestColor(players.map(p => p.color));
+  const claimToken = generateConquestClaim();
 
-  const { data: inserted, error: insertErr } = await supabase
-    .from("conquest_players")
-    .insert({
-      room_id:    room.id,
-      profile_id: identity.profile?.id ?? null,
-      guest_id:   guestId,
-      name:       trimmed,
-      is_host:    false,
-    })
-    .select("*")
-    .single();
+  const { data: inserted, error: insertErr } = await supabase.rpc(
+    "conquest_register_player",
+    {
+      p_room_id:     room.id,
+      p_player_id:   null,
+      p_profile_id:  identity.profile?.id ?? null,
+      p_guest_id:    guestId,
+      p_name:        trimmed,
+      p_color:       joinColor,
+      p_is_host:     false,
+      p_claim_token: claimToken,
+    },
+  );
 
   if (insertErr || !inserted) {
     // 23505: partial-unique violation → treat as "already joined", refetch
@@ -317,13 +335,12 @@ export async function joinConquestRoom(
     return conquestFail("error", insertErr?.message ?? "Odaya katılınamadı.");
   }
 
-  // Touch updated_at so the public list sees fresh activity.
-  await supabase
-    .from("conquest_rooms")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("id", room.id);
+  // The RPC also touches conquest_rooms.updated_at so the public list refresh
+  // is handled server-side; no extra UPDATE here (which would now be denied
+  // by the hardened RLS for non-host clients anyway).
 
   const me = inserted as ConquestPlayerRow;
+  rememberConquestClaim(me.id, claimToken);
   return { ok: true, room, me, players: [...players, me] };
 }
 
@@ -341,21 +358,20 @@ export async function joinConquestRoom(
 export async function leaveConquestRoom(
   roomId:   string,
   playerId: string,
-  isHost:   boolean,
+  _isHost:  boolean,
 ): Promise<void> {
-  // Always remove the player row first so the room is empty for the host-close
-  // path.
-  await supabase
-    .from("conquest_players")
-    .delete()
-    .eq("id", playerId);
-
-  if (isHost) {
-    await supabase
-      .from("conquest_rooms")
-      .update({ status: "closed", finished_at: new Date().toISOString() })
-      .eq("id", roomId);
-  }
+  // Under hardened RLS direct DELETE/UPDATE on these tables is denied. The
+  // RPC verifies caller identity (auth.uid() or claim_token) and handles the
+  // host-close transition atomically. _isHost is kept in the signature for
+  // call-site compatibility but is no longer load-bearing — the RPC reads
+  // is_host server-side.
+  const claimToken = recallConquestClaim(playerId);
+  await supabase.rpc("conquest_leave_room", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+  });
+  forgetConquestClaim(playerId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +410,49 @@ export async function updateConquestRoomSettings(
 
   if (error || !data) return null;
   return data as ConquestRoomRow;
+}
+
+/**
+ * Update a single player's color choice.  Performs a frontend-side conflict
+ * check (re-reads the room's current colors) before writing so two players
+ * cannot end up on the same tint.  Returns the updated row on success.
+ *
+ * Race window: between the read and the write another client could claim the
+ * same color.  The realtime echo would still show the conflict locally so the
+ * picker can re-disable the swatch on the next render; rare in practice with
+ * ≤4 players clicking deliberately.
+ */
+export interface ConquestColorUpdateOk    { ok: true;  player: ConquestPlayerRow; }
+export interface ConquestColorUpdateFail  { ok: false; reason: "taken" | "error"; message: string; }
+export type ConquestColorUpdateResult = ConquestColorUpdateOk | ConquestColorUpdateFail;
+
+export async function updateConquestPlayerColor(
+  _roomId:  string,
+  playerId: string,
+  color:    ConquestPlayerColor,
+): Promise<ConquestColorUpdateResult> {
+  // Conflict detection and the actual UPDATE both moved server-side into
+  // conquest_update_player_color RPC, which raises 'color_taken' (SQLSTATE
+  // P0001) when another player in the room already owns the requested swatch
+  // and 'unauthorized' (42501) if the caller can't prove ownership of the
+  // player row. _roomId stays in the signature so call sites don't change.
+  const claimToken = recallConquestClaim(playerId);
+  const { data, error } = await supabase.rpc("conquest_update_player_color", {
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+    p_color:       color,
+  });
+
+  if (error) {
+    if (error.message?.includes("color_taken")) {
+      return { ok: false, reason: "taken", message: "Bu renk başka bir oyuncu tarafından seçildi." };
+    }
+    return { ok: false, reason: "error", message: error.message ?? "Renk güncellenemedi." };
+  }
+  if (!data) {
+    return { ok: false, reason: "error", message: "Renk güncellenemedi." };
+  }
+  return { ok: true, player: data as ConquestPlayerRow };
 }
 
 /**

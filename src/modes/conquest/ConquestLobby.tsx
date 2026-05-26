@@ -29,10 +29,16 @@ import type {
   ConquestMapId,
   ConquestMaxPlayers,
   ConquestPlayer,
+  ConquestPlayerColor,
   ConquestRoomSettings,
   ConquestRoundCount,
   ConquestVisibility,
 } from "./types";
+import {
+  CONQUEST_COLOR_LABEL,
+  CONQUEST_COLOR_PALETTE,
+  assignConquestPlayerColors,
+} from "./conquestState";
 import { buildConquestShareLink } from "./utils";
 
 interface Props {
@@ -40,12 +46,15 @@ interface Props {
   hostName:          string;
   /** The current viewer's display name — used as the chat sender label. */
   myName:            string;
+  /** The current viewer's player id — null for spectators (no picker shown). */
+  myPlayerId:        string | null;
   settings:          ConquestRoomSettings;
   players:           ConquestPlayer[];
   isHost:            boolean;
   /** False for guest users — they can see chat but cannot write. */
   isLoggedIn:        boolean;
   onUpdateSettings:  (patch: Partial<ConquestRoomSettings>) => void;
+  onChangeColor:     (color: ConquestPlayerColor) => void;
   onStart:           () => void;
   onLeave:           () => void;
 }
@@ -54,11 +63,13 @@ export default function ConquestLobby({
   roomCode,
   hostName,
   myName,
+  myPlayerId,
   settings,
   players,
   isHost,
   isLoggedIn,
   onUpdateSettings,
+  onChangeColor,
   onStart,
   onLeave,
 }: Props) {
@@ -97,6 +108,72 @@ export default function ConquestLobby({
    * because the room is already partially filled. */
   const playerCountCapped = players.length > CONQUEST_PLAYER_COUNTS[0];
 
+  /* Resolved color per player.  Slot-based fallback covers legacy rows that
+   * pre-date the picker.  Same map is used both in lobby chips and the
+   * "taken" mask in the picker so the two views can never drift apart. */
+  const resolvedColors = useMemo(() => assignConquestPlayerColors(players), [players]);
+  const me            = myPlayerId ? players.find(p => p.id === myPlayerId) ?? null : null;
+  const myColor       = me ? resolvedColors[me.id] : null;
+  /* Build "taken by someone else" set on raw `player.color` (not the resolved
+   * fallback) so a freshly-joined player whose row hasn't synced a color yet
+   * doesn't accidentally lock out every other swatch. */
+  const colorsTakenByOthers = useMemo(() => {
+    const s = new Set<ConquestPlayerColor>();
+    for (const p of players) {
+      if (p.id === myPlayerId) continue;
+      if (p.color) s.add(p.color);
+    }
+    return s;
+  }, [players, myPlayerId]);
+
+  function renderColorPicker(idPrefix: string) {
+    if (!me) return null;
+    return (
+      <div className="cq-color-picker" role="group" aria-label="Rengini seç">
+        <div className="cq-color-picker-head">
+          <span className="cq-color-picker-title">🎨 Rengin</span>
+          {myColor && (
+            <span className="cq-color-picker-current" data-color={myColor}>
+              <span className="cq-color-picker-current-dot" aria-hidden />
+              {CONQUEST_COLOR_LABEL[myColor]}
+            </span>
+          )}
+        </div>
+        <div className="cq-color-swatch-row">
+          {CONQUEST_COLOR_PALETTE.map(c => {
+            const taken    = colorsTakenByOthers.has(c);
+            const selected = c === myColor;
+            return (
+              <button
+                key={`${idPrefix}-${c}`}
+                type="button"
+                className={
+                  "cq-color-swatch"
+                  + (selected ? " cq-color-swatch--selected" : "")
+                  + (taken    ? " cq-color-swatch--taken"    : "")
+                }
+                data-color={c}
+                disabled={taken && !selected}
+                aria-pressed={selected}
+                aria-label={CONQUEST_COLOR_LABEL[c] + (taken ? " (alındı)" : "")}
+                title={taken && !selected ? `${CONQUEST_COLOR_LABEL[c]} — başka oyuncu seçti` : CONQUEST_COLOR_LABEL[c]}
+                onClick={() => {
+                  if (taken || selected) return;
+                  playSound("click");
+                  onChangeColor(c);
+                }}
+              >
+                <span className="cq-color-swatch-dot" aria-hidden />
+                {selected && <span className="cq-color-swatch-check" aria-hidden>✓</span>}
+                {taken && !selected && <span className="cq-color-swatch-lock" aria-hidden>🔒</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="duel-lobby">
       <div className="wgg-grid cq-lobby-grid">
@@ -130,17 +207,26 @@ export default function ConquestLobby({
                   </div>
                 );
               }
+              const color = resolvedColors[p.id];
+              const isMe  = p.id === myPlayerId;
               return (
-                <div key={p.id} className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "")}>
+                <div
+                  key={p.id}
+                  className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
+                  data-color={color}
+                >
                   <div className="cq-player-chip-main">
-                    <span className="duel-player-dot" />
+                    <span className="duel-player-dot cq-player-chip-dot" />
                     <span className="cq-player-name">{p.name}</span>
+                    {isMe && <span className="cq-player-you-tag">sen</span>}
                     {p.isHost && <span className="duel-tag host">👑</span>}
                   </div>
                 </div>
               );
             })}
           </div>
+
+          {renderColorPicker("desktop")}
 
           {players.length < CONQUEST_MIN_PLAYERS && (
             <div className="cq-wait-chip" role="status">
@@ -366,17 +452,25 @@ export default function ConquestLobby({
                     </div>
                   );
                 }
+                const color = resolvedColors[p.id];
+                const isMe  = p.id === myPlayerId;
                 return (
-                  <div key={p.id} className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "")}>
+                  <div
+                    key={p.id}
+                    className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
+                    data-color={color}
+                  >
                     <div className="cq-player-chip-main">
-                      <span className="duel-player-dot" />
+                      <span className="duel-player-dot cq-player-chip-dot" />
                       <span className="cq-player-name">{p.name}</span>
+                      {isMe && <span className="cq-player-you-tag">sen</span>}
                       {p.isHost && <span className="duel-tag host">👑</span>}
                     </div>
                   </div>
                 );
               })}
             </div>
+            {renderColorPicker("mobile")}
             {players.length < CONQUEST_MIN_PLAYERS && (
               <div className="wgg-ps-warning">
                 En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli.

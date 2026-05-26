@@ -2300,7 +2300,7 @@ useEffect(() => {
   );
   if (screen === "conquest-game") return (
     <ConquestMode
-      initialPhase="setup"
+      initialPhase="create"
       onHome={() => setScreen("home")}
       profile={profile}
     />

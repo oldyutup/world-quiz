@@ -39,6 +39,7 @@ import {
   type ConquestMapId,
   type ConquestMaxPlayers,
   type ConquestPlayer,
+  type ConquestPlayerColor,
   type ConquestRoomSettings,
   type ConquestRoundCount,
 } from "./types";
@@ -48,6 +49,7 @@ import {
   leaveConquestRoom,
   markConquestRoomWaiting,
   normalizeConquestRoomCode,
+  updateConquestPlayerColor,
   updateConquestRoomSettings,
   type ConquestJoinResult,
 } from "./conquestService";
@@ -65,7 +67,7 @@ import type { ConquestGameState } from "./types";
 type Phase = "setup" | "rooms" | "join-code" | "joining" | "lobby" | "game";
 
 interface Props {
-  initialPhase: "setup" | "rooms" | "join-code";
+  initialPhase: "setup" | "rooms" | "join-code" | "create";
   profile:      Profile | null;
   onHome:       () => void;
 }
@@ -88,6 +90,7 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
     id:     row.id,
     name:   row.name,
     isHost: row.is_host,
+    color:  (row.color ?? undefined) as ConquestPlayerColor | undefined,
   };
 }
 
@@ -96,7 +99,9 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
-  const [phase, setPhase] = useState<Phase>(initialPhase);
+  const [phase, setPhase] = useState<Phase>(
+    initialPhase === "create" ? "joining" : initialPhase,
+  );
 
   // Active room state — populated when phase ∈ { lobby, game }.
   const [roomRow,     setRoomRow]     = useState<ConquestRoomRow | null>(null);
@@ -108,7 +113,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // Refs that mirror state — read inside realtime callbacks where stale
   // closures would otherwise trip us up.
   const myPlayerIdRef = useRef<string | null>(null);
-  const phaseRef      = useRef<Phase>(initialPhase);
+  const phaseRef      = useRef<Phase>(initialPhase === "create" ? "joining" : initialPhase);
   useEffect(() => { myPlayerIdRef.current = myPlayerId; }, [myPlayerId]);
   useEffect(() => { phaseRef.current      = phase;      }, [phase]);
 
@@ -161,6 +166,34 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
 
   // Pre-filled code for the join-code screen (from invite link redirects).
   const [pendingJoinCode, setPendingJoinCode] = useState<string>("");
+
+  // ── Auto-create: when launched from "Oda Kur" menu button ───────────────
+  // Fires once on mount; creates a room with defaults so the user lands
+  // straight in the lobby without a redundant settings form.
+  const didAutoCreate = useRef(false);
+  useEffect(() => {
+    if (initialPhase !== "create" || didAutoCreate.current) return;
+    didAutoCreate.current = true;
+    if (!profile?.username) {
+      setStatusMsg("Kuşatma odası kurmak için giriş yapmalısın.");
+      setPhase("setup");
+      return;
+    }
+    setStatusMsg("Oda kuruluyor…");
+    void createConquestRoom(profile, profile.username, CONQUEST_DEFAULT_SETTINGS).then(result => {
+      if (!result.ok) {
+        setStatusMsg(result.message);
+        setPhase("setup");
+        return;
+      }
+      setRoomRow(result.room);
+      setPlayerRows([result.me]);
+      setMyPlayerId(result.me.id);
+      setStatusMsg(null);
+      setPhase("lobby");
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Realtime subscription bound to the active room ──────────────────────
   useEffect(() => {
@@ -372,10 +405,10 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
    */
   const handlePushGameplayState = useCallback(
     async (next: ConquestGameState) => {
-      if (!roomRow) return;
-      await updateConquestGameplayState(roomRow.id, next);
+      if (!roomRow || !myPlayerId) return;
+      await updateConquestGameplayState(roomRow.id, myPlayerId, next);
     },
-    [roomRow],
+    [roomRow, myPlayerId],
   );
 
   // Decoded gameplay state from the synced room row.  Null while the room
@@ -383,6 +416,29 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   const syncedGameState = useMemo<ConquestGameState | null>(
     () => deserializeConquestGameState(roomRow?.gameplay_state),
     [roomRow?.gameplay_state],
+  );
+
+  const handleChangeColor = useCallback(
+    async (color: ConquestPlayerColor) => {
+      if (!roomRow || !myPlayerId) return;
+      // Optimistic local update so the picker feels instant; realtime echo
+      // confirms (or replaces) it within a frame.
+      setPlayerRows(prev =>
+        prev.map(r => (r.id === myPlayerId ? { ...r, color } : r)),
+      );
+      const result = await updateConquestPlayerColor(roomRow.id, myPlayerId, color);
+      if (!result.ok) {
+        // Roll back optimistic write and surface the reason in the banner.
+        const refreshed = await supabase
+          .from("conquest_players")
+          .select("*")
+          .eq("room_id", roomRow.id)
+          .order("joined_at", { ascending: true });
+        if (refreshed.data) setPlayerRows(refreshed.data as ConquestPlayerRow[]);
+        setStatusMsg(result.message);
+      }
+    },
+    [roomRow, myPlayerId],
   );
 
   const handleUpdateSettings = useCallback(
@@ -423,6 +479,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // ── Initial phase prop change (e.g. Home → Browse) ──────────────────────
   useEffect(() => {
     if (phase === "lobby" || phase === "game" || phase === "joining") return;
+    if (initialPhase === "create") return;
     setPhase(initialPhase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPhase]);
@@ -545,11 +602,13 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           roomCode={roomRow.room_code}
           hostName={roomRow.host_name}
           myName={myName}
+          myPlayerId={myPlayerId}
           settings={settings}
           players={uiPlayers}
           isHost={isHost}
           isLoggedIn={isLoggedIn}
           onUpdateSettings={handleUpdateSettings}
+          onChangeColor={handleChangeColor}
           onStart={handleStartGame}
           onLeave={handleLeaveLobby}
         />

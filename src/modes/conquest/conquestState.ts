@@ -15,13 +15,33 @@ import type {
   ConquestRegionState,
 } from "./types";
 
-/** Ordered color palette assigned by player slot (index 0 = first player). */
+/**
+ * Ordered color palette.  First four slots match the legacy slot-based
+ * assignment (red → blue → green → yellow) so rooms created before the
+ * picker shipped keep their original tints when falling back.
+ */
 export const CONQUEST_COLOR_PALETTE: ConquestPlayerColor[] = [
   "red",
   "blue",
   "green",
   "yellow",
+  "purple",
+  "orange",
+  "pink",
+  "cyan",
 ];
+
+/** TR label per color — used by tooltips in the lobby color picker. */
+export const CONQUEST_COLOR_LABEL: Record<ConquestPlayerColor, string> = {
+  red:    "Kırmızı",
+  blue:   "Mavi",
+  green:  "Yeşil",
+  yellow: "Sarı",
+  purple: "Mor",
+  orange: "Turuncu",
+  pink:   "Pembe",
+  cyan:   "Camgöbeği",
+};
 
 /** Hex values for each ConquestPlayerColor — used by UI components. */
 export const CONQUEST_COLOR_HEX: Record<ConquestPlayerColor, string> = {
@@ -31,20 +51,48 @@ export const CONQUEST_COLOR_HEX: Record<ConquestPlayerColor, string> = {
   yellow: "#eab308",
   purple: "#a855f7",
   orange: "#f97316",
+  pink:   "#ec4899",
+  cyan:   "#06b6d4",
 };
 
 /**
- * Assign a color from the fixed palette to each player by their slot index.
- * Returns a map of playerId → ConquestPlayerColor.
+ * Assign a color to each player.  Honours `player.color` when present
+ * (picker-driven) and falls back to slot-based palette rotation for legacy
+ * rows that pre-date persistence.  Slot fallback also skips colors already
+ * claimed by earlier players in the same list to avoid two players sharing
+ * a tint mid-migration.
  */
 export function assignConquestPlayerColors(
   players: ConquestPlayer[],
 ): Record<string, ConquestPlayerColor> {
-  const out: Record<string, ConquestPlayerColor> = {};
-  players.forEach((p, i) => {
-    out[p.id] = CONQUEST_COLOR_PALETTE[i % CONQUEST_COLOR_PALETTE.length];
-  });
+  const out:  Record<string, ConquestPlayerColor> = {};
+  const used: Set<ConquestPlayerColor>            = new Set();
+  // First pass: respect explicit picks.
+  for (const p of players) {
+    if (p.color) {
+      out[p.id] = p.color;
+      used.add(p.color);
+    }
+  }
+  // Second pass: assign the next free palette entry to anyone unset.
+  for (const p of players) {
+    if (out[p.id]) continue;
+    const free = CONQUEST_COLOR_PALETTE.find(c => !used.has(c))
+      ?? CONQUEST_COLOR_PALETTE[0];
+    out[p.id] = free;
+    used.add(free);
+  }
   return out;
+}
+
+/** First palette entry not present in `usedColors` — wraps if all 8 taken. */
+export function pickNextConquestColor(
+  usedColors: Iterable<string | null | undefined>,
+): ConquestPlayerColor {
+  const used = new Set<string>();
+  for (const c of usedColors) if (c) used.add(c);
+  return CONQUEST_COLOR_PALETTE.find(c => !used.has(c))
+    ?? CONQUEST_COLOR_PALETTE[0];
 }
 
 /**
