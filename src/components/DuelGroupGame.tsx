@@ -149,6 +149,7 @@ const denormalizeRegion = (r: string): string => {
 /* ─── localStorage helpers (1v1'inkinden ayrı namespace) ─── */
 const PLAYER_ID_KEY = "geoquiz_group_player_id";
 const ROOM_KEY      = "geoquiz_group_room";
+const GUEST_ID_KEY  = "geoquiz_group_guest_id";   // stabil guest_id (logged-out)
 
 function makeCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
@@ -165,10 +166,33 @@ function freshPlayerId(): string {
   return id;
 }
 
-interface RoomSession { roomId: string; roomCode: string; playerId: string; }
+/**
+ * Fresh claim_token: M1'de eklenen duel_group_player_claims tablosuna her
+ * yeni player satırı için bir tane yazılır. Session ile persist edilir;
+ * reload sonrasında aynı player_id ile devam edebilmek için kritik.
+ */
+function freshClaimToken(): string {
+  return crypto.randomUUID();
+}
 
-function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
-  localStorage.setItem(ROOM_KEY, JSON.stringify({ roomId, roomCode, playerId }));
+interface RoomSession {
+  roomId:     string;
+  roomCode:   string;
+  playerId:   string;
+  /** M1+M2 claim-token — RPC'ler authorize_player için bunu bekliyor */
+  claimToken: string;
+}
+
+function saveRoomSession(
+  roomId:     string,
+  roomCode:   string,
+  playerId:   string,
+  claimToken: string,
+) {
+  localStorage.setItem(
+    ROOM_KEY,
+    JSON.stringify({ roomId, roomCode, playerId, claimToken }),
+  );
 }
 function loadRoomSession(): RoomSession | null {
   try {
@@ -176,16 +200,66 @@ function loadRoomSession(): RoomSession | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.roomId || !parsed?.roomCode || !parsed?.playerId) return null;
+    // claimToken eski (M1 öncesi) session'larda olmayabilir — fresh akışa düş
+    if (!parsed?.claimToken) return null;
     return parsed as RoomSession;
   } catch { return null; }
 }
+
+/**
+ * Misafir kullanıcılar için stabil guest_id. Logged-in kullanıcılar için
+ * profile.id kullanılır; bu fonksiyon yalnız profile yokken çağrılmalı.
+ */
+function ensureGuestId(): string {
+  let g = localStorage.getItem(GUEST_ID_KEY);
+  if (!g) {
+    g = crypto.randomUUID();
+    localStorage.setItem(GUEST_ID_KEY, g);
+  }
+  return g;
+}
+
 function clearGroupSession() {
   const keys: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith("geoquiz_group")) keys.push(k);
+    // GUEST_ID_KEY'i koru — her oturumda yeni misafir kimliği üretmek istemiyoruz
+    if (k && k.startsWith("geoquiz_group") && k !== GUEST_ID_KEY) {
+      keys.push(k);
+    }
   }
   keys.forEach(k => localStorage.removeItem(k));
+}
+
+/* ─── Duel Group RPC error mapper ────────────────────────────────────
+ *  M2 RPC'leri PG raise exception ile business hata mesajları döner
+ *  (örn. 'room_full', 'name_taken'). Bunları kullanıcı dostu Türkçe
+ *  metne çevirir. Mevcut UI metinleri ile birebir uyumlu kalır.
+ */
+interface DuelGroupRpcError { code?: string; message?: string; details?: string }
+function describeDuelGroupRpcError(err: DuelGroupRpcError | null | undefined): string {
+  if (!err) return "İşlem başarısız.";
+  const m = (err.message ?? "") + " " + (err.details ?? "");
+  if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
+  if (m.includes("name_taken"))               return "Bu isim bu odada kullanılıyor. Farklı bir isim seç.";
+  if (m.includes("room_full"))                return "Oda dolu.";
+  if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
+  if (m.includes("room_finished"))            return "Bu oyun zaten bitti.";
+  if (m.includes("room_in_progress"))         return "Oyun başladı, katılamazsın.";
+  if (m.includes("room_not_waiting"))         return "Oda artık bekleme aşamasında değil.";
+  if (m.includes("room_not_playing"))         return "Oda artık oyunda değil.";
+  if (m.includes("room_not_finished"))        return "Oda henüz bitmedi.";
+  if (m.includes("not_enough_players"))       return "En az 3 oyuncu gerekli.";
+  if (m.includes("max_players_invalid"))      return "Geçersiz oyuncu sayısı (3–10).";
+  if (m.includes("max_players_too_low"))      return "Maksimum oyuncu sayısı şu an odada olan kişi sayısından düşük olamaz.";
+  if (m.includes("name_invalid"))             return "Geçersiz isim.";
+  if (m.includes("profile_mismatch"))         return "Oturum doğrulaması başarısız.";
+  if (m.includes("player_room_mismatch"))     return "Bu odada oyuncun yok.";
+  if (m.includes("cannot_kick_self"))         return "Kendini odadan çıkaramazsın.";
+  if (m.includes("unauthorized"))             return "Bu işlem için yetkin yok.";
+  if (m.includes("room_unavailable"))         return "Oda kullanılamıyor.";
+  if (err.code === "42501")                   return "Veritabanı izin hatası.";
+  return err.message || "İşlem başarısız.";
 }
 
 function buildAllowedSet(region: string): Set<string> | null {
@@ -210,6 +284,18 @@ export default function DuelGroupGame({
   /* identity */
   const myIdRef = useRef<string>("");
   const myId = myIdRef.current;
+
+  /* claim-token ref — session restore'da yüklenir, fresh akışlarda set edilir */
+  const claimTokenRef = useRef<string>("");
+
+  /** RPC'lere profile_id / guest_id paramını üreten helper. M1'in identity
+   *  XOR'unu (profile XOR guest) garanti altına alır:
+   *   - Giriş yapmışsa profile.id; guest_id null
+   *   - Misafirse profile null; stabil guest_id (localStorage) */
+  const getIdentityArgs = useCallback((): { profileId: string | null; guestId: string | null } => {
+    if (profile?.id) return { profileId: profile.id, guestId: null };
+    return { profileId: null, guestId: ensureGuestId() };
+  }, [profile?.id]);
 
   /* lobby form */
   const [playerName,   setPlayerName]   = useState("");
@@ -345,10 +431,13 @@ useEffect(() => {
 
   const myScore = scoreMap[myId] ?? 0;
   
-  const waitingPlayers = useMemo(
-  () => players.filter((p) => p.status === "waiting"),
-  [players]
-);
+  // Lobi listesi odadaki TÜM oyuncuları gösterir. status filtresi YOK:
+  // oyun bittikten sonra her client kendi satırını 'finished' yapar; host
+  // "Lobiye dön" RPC'siyle hepsini 'waiting'e resetleyene kadar status
+  // 'finished' kalabilir. Status'a göre filtrelersek host'tan önce lobiye
+  // dönen misafir kendi satırını dahi göremez. Üyelik = duel_group_players
+  // tablosunda satır olması; realtime DELETE/leave/kick listeyi temizliyor.
+  const waitingPlayers = players;
  
 /* leaderboard: tüm oyuncular skora göre sıralı */
   const leaderboard = useMemo(() => {
@@ -403,7 +492,8 @@ useEffect(() => {
     const saved = loadRoomSession();
     if (!saved) return;
 
-    myIdRef.current = saved.playerId;
+    myIdRef.current       = saved.playerId;
+    claimTokenRef.current = saved.claimToken;
 
     (async () => {
       const { data: r } = await supabase
@@ -626,15 +716,15 @@ useEffect(() => {
   /* — oyun bitince bu oyuncuyu finished işaretle — */
 useEffect(() => {
   if (phase !== "finished" || !room || !myIdRef.current) return;
+  if (!claimTokenRef.current) return;
 
-  supabase
-    .from("duel_group_players")
-    .update({
-      status: "finished",
-      last_seen_at: new Date().toISOString(),
-    })
-    .eq("room_id", room.id)
-    .eq("id", myIdRef.current);
+  supabase.rpc("duel_group_mark_finished", {
+    p_room_id:     room.id,
+    p_player_id:   myIdRef.current,
+    p_claim_token: claimTokenRef.current,
+  }).then(({ error }: { error: unknown }) => {
+    if (error) dbgErr("duel_group_mark_finished failed", error);
+  });
 }, [phase, room]);
 
   /* ── ESC → quit modal ── */
@@ -654,16 +744,16 @@ useEffect(() => {
    */
   const heartbeatThrottleRef = useRef(0);
   const touchHeartbeat = useCallback(() => {
-    if (!myIdRef.current) return;
+    if (!myIdRef.current || !claimTokenRef.current) return;
     const now = Date.now();
     if (now - heartbeatThrottleRef.current < 5000) return;
     heartbeatThrottleRef.current = now;
-    supabase.from("duel_group_players")
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq("id", myIdRef.current)
-      .then(({ error }: { error: unknown }) => {
-        if (error) dbgErr("heartbeat update failed", error);
-      });
+    supabase.rpc("duel_group_heartbeat", {
+      p_player_id:   myIdRef.current,
+      p_claim_token: claimTokenRef.current,
+    }).then(({ error }: { error: unknown }) => {
+      if (error) dbgErr("heartbeat rpc failed", error);
+    });
   }, []);
 
   /* ── Final leaderboard'u dondur ── */
@@ -707,11 +797,14 @@ useEffect(() => {
 
     await freezeLeaderboard(room.id, room.started_at);
 
-    // Conditional update — yalnız "playing" iken set'lensin (race-safe)
-    await supabase.from("duel_group_rooms")
-      .update({ status: "finished", updated_at: new Date().toISOString() })
-      .eq("id", room.id)
-      .eq("status", "playing");
+    // duel_group_finish_game RPC: conditional update (status='playing' guard)
+    // → double-call no-op (idempotent). Herhangi bir oyuncu tetikleyebilir.
+    const { error } = await supabase.rpc("duel_group_finish_game", {
+      p_room_id:     room.id,
+      p_player_id:   myIdRef.current,
+      p_claim_token: claimTokenRef.current,
+    });
+    if (error) dbgErr("duel_group_finish_game failed", error);
 
     setRoom(prev => prev ? { ...prev, status: "finished" } : prev);
     setPhase("finished");
@@ -791,48 +884,34 @@ if (usernameError) {
     setPhase("creating");
 
     clearGroupSession();
-    const freshId = freshPlayerId();
-    myIdRef.current = freshId;
+    const freshId    = freshPlayerId();
+    const freshToken = freshClaimToken();
+    myIdRef.current        = freshId;
+    claimTokenRef.current  = freshToken;
 
     const code = makeCode();
+    const { profileId, guestId } = getIdentityArgs();
 
-    const { data: roomData, error: roomErr } = await supabase
-      .from("duel_group_rooms")
-      .insert({
-        code,
-        status:           "waiting",
-        duration_seconds: hostDuration,
-        region:           normalizeRegion(hostRegion),
-        max_players:      safeMax,
-      })
-      .select("*")
-      .single();
+    // duel_group_create_room RPC: room + host player + claim tek transaction
+    const { data: roomData, error: roomErr } = await supabase.rpc("duel_group_create_room", {
+      p_player_id:   freshId,
+      p_profile_id:  profileId,
+      p_guest_id:    guestId,
+      p_name:        name,
+      p_code:        code,
+      p_duration:    hostDuration,
+      p_region:      normalizeRegion(hostRegion),
+      p_max_players: safeMax,
+      p_claim_token: freshToken,
+    });
 
-    if (roomErr || !roomData?.id) {
-      dbgErr("room insert failed", roomErr);
-      setErrorMsg("Oda oluşturulamadı. Tekrar dene.");
+    if (roomErr || !roomData) {
+      dbgErr("duel_group_create_room failed", roomErr);
+      setErrorMsg(describeDuelGroupRpcError(roomErr));
       setStatusMsg(null); setPhase("lobby"); return;
     }
 
     const newRoom = roomData as GroupRoom;
-
-    const { error: pErr } = await supabase
-      .from("duel_group_players")
-      .insert({
-  id: freshId,
-  room_id: newRoom.id,
-  name,
-  is_host: true,
-  status: "waiting",
-});
-
-    if (pErr) {
-      dbgErr("host insert failed", pErr);
-      // best-effort cleanup
-      await supabase.from("duel_group_rooms").delete().eq("id", newRoom.id);
-      setErrorMsg("Oda oluşturulamadı. Tekrar dene.");
-      setStatusMsg(null); setPhase("lobby"); return;
-    }
 
     const { data: ps } = await supabase
       .from("duel_group_players").select("*").eq("room_id", newRoom.id);
@@ -841,7 +920,7 @@ if (usernameError) {
     setPlayers((ps as GroupPlayer[]) ?? []);
     setClaims([]);
     setIsHost(true);
-    saveRoomSession(newRoom.id, newRoom.code, freshId);
+    saveRoomSession(newRoom.id, newRoom.code, freshId, freshToken);
     setTimeLeft(hostDuration);
     setStatusMsg(null);
     setPhase("waiting");
@@ -869,71 +948,69 @@ if (!code) {
 
     setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
 
-    const { data: r, error: re } = await supabase
-      .from("duel_group_rooms").select("*").eq("code", code).single();
-
-    if (re || !r?.id) {
-      setErrorMsg("Oda bulunamadı. Kodu kontrol et."); setStatusMsg(null); return;
-    }
-    if (r.status === "finished") {
-      setErrorMsg("Bu oyun zaten bitti."); setStatusMsg(null); return;
-    }
-    if (r.status === "playing") {
-      setErrorMsg("Oyun başladı, katılamazsın."); setStatusMsg(null); return;
-    }
-
-    const targetRoom = r as GroupRoom;
-
-    // Kapasite + aynı isim kontrolü
-const { data: ps0 } = await supabase
-  .from("duel_group_players")
-  .select("id, name")
-  .eq("room_id", targetRoom.id);
-
-const cleanName = playerName.trim();
-
-const sameNameExists = (ps0 ?? []).some((p: any) =>
-  String(p.name ?? "").trim().toLocaleLowerCase("tr-TR") ===
-  cleanName.toLocaleLowerCase("tr-TR")
-);
-
-if (sameNameExists) {
-  setErrorMsg("Bu isim bu odada kullanılıyor. Farklı bir isim seç.");
-  setStatusMsg(null);
-  return;
-}
-
-if ((ps0?.length ?? 0) >= targetRoom.max_players) {
-  setErrorMsg(`Oda dolu (${targetRoom.max_players} kişi).`);
-  setStatusMsg(null);
-  return;
-}
-
-    // Önceki session bu odadaysa devam et, değilse yeni id
+    // Resume akışı: aynı odada kayıtlı session varsa direkt restore et,
+    // RPC çağırma (server zaten o player'ı tanıyor).
     const saved = loadRoomSession();
-    const joinId = (saved?.roomCode === code && saved?.playerId) ? saved.playerId : freshPlayerId();
-    if (joinId !== saved?.playerId) clearGroupSession();
-    myIdRef.current = joinId;
+    const isResume = !!(saved?.roomCode === code && saved?.playerId && saved?.claimToken);
 
-    // Bu id zaten odada mı?
-    const { data: existing } = await supabase
-      .from("duel_group_players").select("id").eq("room_id", targetRoom.id).eq("id", joinId);
+    if (isResume) {
+      const joinId = saved!.playerId;
+      const joinToken = saved!.claimToken;
+      myIdRef.current       = joinId;
+      claimTokenRef.current = joinToken;
 
-    if (!existing?.length) {
-      const { error: pErr } = await supabase
-        .from("duel_group_players")
-        .insert({
-  id: joinId,
-  room_id: targetRoom.id,
-  name,
-  is_host: false,
-  status: "waiting",
-});
-      if (pErr && pErr.code !== "23505") {
-        dbgErr("join insert failed", pErr);
-        setErrorMsg("Odaya katılınamadı."); setStatusMsg(null); return;
+      const { data: r } = await supabase
+        .from("duel_group_rooms").select("*").eq("code", code).single();
+      if (!r?.id) {
+        setErrorMsg("Oda bulunamadı. Kodu kontrol et."); setStatusMsg(null); return;
+      }
+      if (r.status === "finished") {
+        setErrorMsg("Bu oyun zaten bitti."); setStatusMsg(null); return;
+      }
+      const targetRoom = r as GroupRoom;
+      const { data: ps } = await supabase
+        .from("duel_group_players").select("*").eq("room_id", targetRoom.id);
+      const myRow = (ps ?? []).find((p: GroupPlayer) => p.id === joinId);
+      if (!myRow) {
+        // Session geçersiz: oda mevcut ama satırımız silinmiş → fresh path'e düş
+        clearGroupSession();
+      } else {
+        setRoom(targetRoom);
+        setPlayers((ps as GroupPlayer[]) ?? []);
+        setClaims([]);
+        setIsHost(!!myRow.is_host);
+        saveRoomSession(targetRoom.id, targetRoom.code, joinId, joinToken);
+        setTimeLeft(targetRoom.duration_seconds);
+        setStatusMsg(null); setPhase("waiting");
+        dbg("joinRoom resume ✓", { roomId: targetRoom.id });
+        return;
       }
     }
+
+    // Fresh join: yeni player_id + claim_token; duel_group_join_room RPC
+    // server-side kapasite + isim çakışması + room status guard yapar.
+    const joinId    = freshPlayerId();
+    const joinToken = freshClaimToken();
+    myIdRef.current       = joinId;
+    claimTokenRef.current = joinToken;
+
+    const { profileId, guestId } = getIdentityArgs();
+    const { data: roomData, error: joinErr } = await supabase.rpc("duel_group_join_room", {
+      p_code:        code,
+      p_player_id:   joinId,
+      p_profile_id:  profileId,
+      p_guest_id:    guestId,
+      p_name:        name,
+      p_claim_token: joinToken,
+    });
+
+    if (joinErr || !roomData) {
+      dbgErr("duel_group_join_room failed", joinErr);
+      setErrorMsg(describeDuelGroupRpcError(joinErr));
+      setStatusMsg(null); return;
+    }
+
+    const targetRoom = roomData as GroupRoom;
 
     const { data: ps } = await supabase
       .from("duel_group_players").select("*").eq("room_id", targetRoom.id);
@@ -942,7 +1019,7 @@ if ((ps0?.length ?? 0) >= targetRoom.max_players) {
     setPlayers((ps as GroupPlayer[]) ?? []);
     setClaims([]);
     setIsHost(false);
-    saveRoomSession(targetRoom.id, targetRoom.code, joinId);
+    saveRoomSession(targetRoom.id, targetRoom.code, joinId, joinToken);
     setTimeLeft(targetRoom.duration_seconds);
     setStatusMsg(null); setPhase("waiting");
     dbg("joinRoom ✓", { roomId: targetRoom.id });
@@ -960,17 +1037,20 @@ if ((ps0?.length ?? 0) >= targetRoom.max_players) {
       return;
     }
 
-    const { error } = await supabase
-      .from("duel_group_rooms")
-      .update({
-        ...patch,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", room.id);
+    // duel_group_update_settings RPC: host-only, status='waiting' guard,
+    // server-side max_players_too_low kontrolü.
+    const { error } = await supabase.rpc("duel_group_update_settings", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    claimTokenRef.current,
+      p_duration:       patch.duration_seconds ?? null,
+      p_region:         patch.region           ?? null,
+      p_max_players:    patch.max_players      ?? null,
+    });
 
     if (error) {
-      dbgErr("updateRoomSettings failed", error);
-      setErrorMsg("Oda ayarları güncellenemedi.");
+      dbgErr("duel_group_update_settings failed", error);
+      setErrorMsg(describeDuelGroupRpcError(error));
       return;
     }
 
@@ -984,35 +1064,24 @@ if ((ps0?.length ?? 0) >= targetRoom.max_players) {
     if (players.length < MIN_PLAYERS) {
       setErrorMsg(`En az ${MIN_PLAYERS} oyuncu gerekli.`); return;
     }
-    const startedAt = new Date().toISOString();
 
-const { error: clearClaimsError } = await supabase
-  .from("duel_group_claims")
-  .delete()
-  .eq("room_id", room.id);
+    // duel_group_start_game RPC: claims DELETE + players UPDATE + room UPDATE
+    // tek transaction. Server-side host + status='waiting' + count>=3 guard'ı.
+    const { data: startedRoom, error } = await supabase.rpc("duel_group_start_game", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    claimTokenRef.current,
+    });
+    if (error) {
+      dbgErr("duel_group_start_game failed", error);
+      setErrorMsg(describeDuelGroupRpcError(error));
+      return;
+    }
 
-if (clearClaimsError) {
-  dbgErr("startGame clear claims failed", clearClaimsError);
-  setErrorMsg("Eski cevaplar temizlenemedi. Oyunu başlatamadık.");
-  return;
-}
-
-setClaims([]);
-
-    await supabase
-  .from("duel_group_players")
-  .update({
-    status: "playing",
-    last_seen_at: startedAt,
-  })
-  .eq("room_id", room.id);
-    const { error } = await supabase
-      .from("duel_group_rooms")
-      .update({ status: "playing", started_at: startedAt, updated_at: startedAt })
-      .eq("id", room.id);
-    if (error) { setErrorMsg("Oyun başlatılamadı."); return; }
+    setClaims([]);
     // Realtime ile zaten gelecek; ama yine de hızlı geçiş için yerel set
-    setRoom(prev => prev ? { ...prev, status: "playing", started_at: startedAt } : prev);
+    const r = startedRoom as GroupRoom | null;
+    setRoom(prev => prev ? { ...prev, ...(r ?? { status: "playing" as const, started_at: new Date().toISOString() }) } : prev);
     setPhase("playing");
   };
 
@@ -1035,49 +1104,28 @@ setClaims([]);
     if (timeLeftRef.current <= 0 || gameEndedRef.current) return;
 
     setInput("");
-    const insertClaim = () => supabase.from("duel_group_claims").insert({
-      room_id:      room.id,
-      player_id:    myIdRef.current,
-      country_code: topoId,
+
+    // duel_group_submit_claim RPC: server-side player_room_mismatch +
+    // status='playing' + atomic insert + stale-claim retry (önceki maçtan
+    // kalmış satır varsa sil + retry). Frontend client-side retry mantığı
+    // artık gereksiz; server tek shot'ta çözüyor.
+    const { data: claimRes, error } = await supabase.rpc("duel_group_submit_claim", {
+      p_room_id:      room.id,
+      p_player_id:    myIdRef.current,
+      p_claim_token:  claimTokenRef.current,
+      p_country_code: topoId,
     });
 
-    const first = await insertClaim();
-    if (!first.error) { showFeedback("ok"); return; }
-    if (first.error.code !== "23505") { showFeedback("err"); return; }
-
-    // 23505: (room_id, country_code) çakıştı. Önceki maçtan kalmış stale bir
-    // satır olabilir (host'un startGame DELETE'i geç gelen bir INSERT ile
-    // yarışı kaybetmiş ya da prod'da temizlik tam çalışmamış olabilir). Mevcut
-    // maçın started_at değerinden önce oluşturulmuş satırı sil ve tekrar dene;
-    // aksi halde gerçekten bu maçta yazılmış demektir.
-    const startedAt = room.started_at;
-    if (startedAt) {
-      const { data: existing } = await supabase
-        .from("duel_group_claims")
-        .select("id, created_at")
-        .eq("room_id", room.id)
-        .eq("country_code", topoId)
-        .maybeSingle();
-
-      if (existing && existing.created_at < startedAt) {
-        const { error: delErr } = await supabase
-          .from("duel_group_claims")
-          .delete()
-          .eq("id", existing.id);
-        if (delErr) {
-          dbgErr("stale claim delete failed", delErr);
-          showFeedback("err");
-          return;
-        }
-        const retry = await insertClaim();
-        if (!retry.error) { showFeedback("ok"); return; }
-        if (retry.error.code === "23505") { showFeedback("dup"); return; }
-        showFeedback("err");
-        return;
-      }
+    if (error) {
+      dbgErr("duel_group_submit_claim failed", error);
+      showFeedback("err");
+      return;
     }
 
-    showFeedback("dup"); // başkası daha hızlı yazdı (bu maçta)
+    const res = claimRes as { claimed: boolean; reason?: string } | null;
+    if (res?.claimed) { showFeedback("ok"); return; }
+    if (res?.reason === "dup") { showFeedback("dup"); return; }
+    showFeedback("err");
   };
 
   /* ── COPY INVITE ── */
@@ -1104,47 +1152,11 @@ ${shareLink}`
     });
   };
 
-  /* ── Room reconciliation after a player leaves ──
-   *  - Kalan oyuncu yoksa odayı sil (DB trigger da safety-net olarak aynısını
-   *    yapıyor; client tarafında da yapmak diğer client'lara realtime DELETE
-   *    olayını daha hızlı ulaştırıyor).
-   *  - Host kalmadıysa en eski joined_at oyuncusunu host yap. Race durumunda
-   *    iki client ayrı ayrı promote etmeye çalışırsa, ikisi de aynı en eski
-   *    oyuncuyu seçeceği için tek host kalır.
+  /* ── NOT: reconcileRoomAfterLeave helper'ı RPC switch'ten önce host transfer
+   *  ve boş-oda cleanup'ını client-side yapıyordu. Bu mantık artık
+   *  duel_group_leave_room RPC içinde server-side (FOR UPDATE lock'lu, atomik).
+   *  kickPlayer için ek reconcile gerekmiyor — caller zaten host kalır.
    */
-  const reconcileRoomAfterLeave = useCallback(async (roomId: string) => {
-    try {
-      const { data: ps } = await supabase
-        .from("duel_group_players")
-        .select("id, is_host, joined_at, status")
-        .eq("room_id", roomId)
-        .order("joined_at", { ascending: true });
-      const remaining = (ps ?? []) as Array<Pick<GroupPlayer, "id" | "is_host" | "joined_at" | "status">>;
-
-      if (remaining.length === 0) {
-        await supabase.from("duel_group_rooms").delete().eq("id", roomId);
-        return;
-      }
-
-      const hasHost = remaining.some((p) => p.is_host);
-      if (!hasHost) {
-        const candidate = remaining.find((p) => p.status === "waiting") ?? remaining[0];
-        if (candidate) {
-          const { error: promoteErr } = await supabase
-            .from("duel_group_players")
-            .update({
-              is_host: true,
-              last_seen_at: new Date().toISOString(),
-            })
-            .eq("id", candidate.id)
-            .eq("room_id", roomId);
-          if (promoteErr) dbgErr("host promote failed", promoteErr);
-        }
-      }
-    } catch (e) {
-      dbgErr("reconcileRoomAfterLeave failed", e);
-    }
-  }, []);
 
   /* — KICK PLAYER (sadece host, sadece bekleme odası) — */
 const kickPlayer = useCallback(
@@ -1153,26 +1165,25 @@ const kickPlayer = useCallback(
     if (phaseRef.current !== "waiting") return;
     if (playerId === myIdRef.current) return;
 
-    const roomId = room.id;
-    const { error } = await supabase
-      .from("duel_group_players")
-      .delete()
-      .eq("room_id", roomId)
-      .eq("id", playerId);
+    // duel_group_kick_player RPC: host-only + self-kick blocked + lobby-only
+    // + target player delete (cascade ile target'ın claim_token'ı temizlenir).
+    const { error } = await supabase.rpc("duel_group_kick_player", {
+      p_room_id:          room.id,
+      p_host_player_id:   myIdRef.current,
+      p_host_claim_token: claimTokenRef.current,
+      p_target_player_id: playerId,
+    });
 
     if (error) {
-      dbgErr("kickPlayer failed", error);
-      setErrorMsg("Oyuncu odadan çıkarılamadı.");
+      dbgErr("duel_group_kick_player failed", error);
+      setErrorMsg(describeDuelGroupRpcError(error));
       return;
     }
 
     setPlayers((prev) => prev.filter((p) => p.id !== playerId));
     setKickTarget(null);
-    // Defensive: ensure host invariant after kicking (host is still here, so
-    // reconcile is essentially a no-op, but it keeps the cleanup path uniform).
-    await reconcileRoomAfterLeave(roomId);
   },
-  [room, reconcileRoomAfterLeave]
+  [room]
 );
 
   /* ── BACK TO LOBBY ── */
@@ -1180,20 +1191,24 @@ const kickPlayer = useCallback(
     if (leavingRef.current) return;
     leavingRef.current = true;
     try {
-      // Eğer waiting'deyiz ve oyuncuysak → kendimi sil, sonra odayı reconcile et
-      if (room && phaseRef.current === "waiting") {
+      // Odadaki player satırını her durumda sil. Eskiden burada
+      // `phaseRef.current === "waiting"` guard'ı vardı; oyun bittikten sonra
+      // "Yeni Oyun" akışı (phase==='finished') leave_room'u atlıyordu,
+      // ayrılan oyuncu diğerlerinin listesinde "hayalet" olarak kalıyordu.
+      // RPC faz-bağımsız: host transfer / boş oda silme / non-host self-delete
+      // mantığını kendi içinde atomik handle eder.
+      if (room && claimTokenRef.current) {
         try {
-          const roomId = room.id;
-          const { error: leaveErr } = await supabase
-            .from("duel_group_players")
-            .delete()
-            .eq("id", myIdRef.current)
-            .eq("room_id", roomId);
-          if (leaveErr) dbgErr("self leave failed", leaveErr);
-          await reconcileRoomAfterLeave(roomId);
+          const { error: leaveErr } = await supabase.rpc("duel_group_leave_room", {
+            p_room_id:     room.id,
+            p_player_id:   myIdRef.current,
+            p_claim_token: claimTokenRef.current,
+          });
+          if (leaveErr) dbgErr("duel_group_leave_room failed", leaveErr);
         } catch (e) { dbgErr("backToLobby cleanup failed", e); }
       }
       clearGroupSession();
+      claimTokenRef.current = "";
       setRoom(null);
       setPlayers([]);
       setClaims([]);
@@ -1209,26 +1224,28 @@ const kickPlayer = useCallback(
     } finally {
       leavingRef.current = false;
     }
-  }, [room, reconcileRoomAfterLeave]);
+  }, [room]);
 
-/* — RETURN TO SAME ROOM (oyun sonu -> aynı odaya dön) — */
+/* — RETURN TO SAME ROOM (oyun sonu -> aynı odaya dön) —
+ *  duel_group_return_to_lobby RPC: HOST-ONLY. Server tarafında hem rooms.status
+ *  'waiting'e çekilir hem host'un kendi player satırı 'waiting'e çekilir
+ *  (atomik). Non-host caller'lar RPC'yi çağırmaz; realtime room UPDATE'i
+ *  ile waiting phase'e geçerler.
+ */
 const returnToRoom = useCallback(async () => {
   if (!room) return;
 
-  try {
-    // Sadece host odayı tekrar waiting durumuna çeksin
-    if (isHostRef.current) {
-      await supabase
-        .from("duel_group_rooms")
-        .update({
-          status: "waiting",
-          started_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", room.id);
+  if (isHostRef.current && claimTokenRef.current) {
+    try {
+      const { error } = await supabase.rpc("duel_group_return_to_lobby", {
+        p_room_id:        room.id,
+        p_host_player_id: myIdRef.current,
+        p_claim_token:    claimTokenRef.current,
+      });
+      if (error) dbgErr("duel_group_return_to_lobby failed", error);
+    } catch (e) {
+      dbgErr("returnToRoom failed", e);
     }
-  } catch (e) {
-    dbgErr("returnToRoom failed", e);
   }
 
   // Oyunun geçici state'lerini temizle ama ODAYI ve OYUNCULARI KORU
@@ -1239,46 +1256,52 @@ const returnToRoom = useCallback(async () => {
   setQuitModal(false);
   gameEndedRef.current = false;
 
-  setClaims([]);
-setFinalLeaderboard(null);
-setErrorMsg(null);
-setStatusMsg(null);
-setQuitModal(false);
-gameEndedRef.current = false;
-
-await supabase
-  .from("duel_group_players")
-  .update({
-    status: "waiting",
-    last_seen_at: new Date().toISOString(),
-  })
-  .eq("room_id", room.id)
-  .eq("id", myIdRef.current);
-
-setPhase("waiting");
   // Aynı odanın bekleme ekranına dön
   setPhase("waiting");
 }, [room]);
+
+  /* — GO HOME (oyun sonu ekranından "Ana Menü") —
+   *  Eskiden buton doğrudan onHome() çağırıyordu; player satırı odada
+   *  kalıyor, diğer oyuncuların listesinde hayalet olarak görünüyordu.
+   *  leave_room RPC önce çağrılır (host transfer / oda silme / non-host
+   *  self-delete semantiği server tarafında atomik), sonra navigate.
+   */
+  const leaveAndGoHome = useCallback(async () => {
+    if (room && claimTokenRef.current) {
+      try {
+        const { error } = await supabase.rpc("duel_group_leave_room", {
+          p_room_id:     room.id,
+          p_player_id:   myIdRef.current,
+          p_claim_token: claimTokenRef.current,
+        });
+        if (error) dbgErr("leaveAndGoHome leave_room failed", error);
+      } catch (e) { dbgErr("leaveAndGoHome cleanup failed", e); }
+    }
+    clearGroupSession();
+    claimTokenRef.current = "";
+    onHome();
+  }, [room, onHome]);
 
   /* ── FORFEIT (oyun sırasında çık) ── */
   const forfeit = useCallback(async (target: "lobby" | "home") => {
     // Skor zaten claim sayısına göre olduğu için "kaybetmek" davranışı:
     // sadece odadan ayrıl. Geri kalanlar kendi aralarında yarışmaya devam eder.
-    if (room) {
+    if (room && claimTokenRef.current) {
       try {
-        const roomId = room.id;
-        await supabase.from("duel_group_players")
-          .delete()
-          .eq("id", myIdRef.current)
-          .eq("room_id", roomId);
-        await reconcileRoomAfterLeave(roomId);
+        const { error } = await supabase.rpc("duel_group_leave_room", {
+          p_room_id:     room.id,
+          p_player_id:   myIdRef.current,
+          p_claim_token: claimTokenRef.current,
+        });
+        if (error) dbgErr("forfeit leave_room failed", error);
       } catch (e) { dbgErr("forfeit cleanup failed", e); }
     }
     clearGroupSession();
+    claimTokenRef.current = "";
     setQuitModal(false);
     if (target === "home") onHome();
     else backToLobby();
-  }, [room, backToLobby, onHome, reconcileRoomAfterLeave]);
+  }, [room, backToLobby, onHome]);
 
   /* ─────────── RENDER ─────────── */
 
@@ -2121,7 +2144,7 @@ setPhase("waiting");
                   <button
                     type="button"
                     className="wheel-ghost-btn"
-                    onClick={onHome}
+                    onClick={leaveAndGoHome}
                   >
                     ⌂ Ana Menü
                   </button>
