@@ -155,6 +155,10 @@ const REGION_OPTIONS: { label: string; value: Region }[] = [
 
 const PLAYER_ID_KEY = "geoquiz_wheel_duel_player_id";
 const ROOM_KEY = "geoquiz_wheel_duel_room";
+/** RLS hardening (M2 RPC switch): tüm yazma RPC'leri claim_token istiyor.
+ *  Hem misafir hem logged-in oyuncuda aynı kanıt yolu; logged-in ek olarak
+ *  auth.uid() ile de yetki kazanır ama claim_token tek-tip path olarak kalır. */
+const CLAIM_TOKEN_KEY = "geoquiz_wheel_duel_claim_token";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -214,9 +218,23 @@ function freshPlayerId(): string {
   return id;
 }
 
+/** RLS hardening: her oda kuruluşunda / katılımda taze claim_token üretip
+ *  localStorage'a yaz. UUID; misafir oyuncu için yegane sahiplik kanıtı,
+ *  logged-in için ek yetki kanıtı. Public tabloda saklanmaz (token-only
+ *  realtime'dan dışlanmış wheel_duel_player_claims'a yazılır). */
+function freshClaimToken(): string {
+  const tok =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(CLAIM_TOKEN_KEY, tok);
+  return tok;
+}
+
 function clearWheelDuelSession() {
   localStorage.removeItem(PLAYER_ID_KEY);
   localStorage.removeItem(ROOM_KEY);
+  localStorage.removeItem(CLAIM_TOKEN_KEY);
 }
 
 function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
@@ -239,6 +257,47 @@ function describeSupabaseError(code: string | undefined): string | null {
     return "Veritabanı tabloları hazır değil. Yöneticiyle iletişime geç.";
   if (code === "42501") return "Veritabanı izin hatası. RLS politikalarını kontrol et.";
   return null;
+}
+
+/** M2 RPC'lerinden dönen hata mesajlarını kullanıcı dostu Türkçe karşılıklarına
+ *  çevirir. RPC'ler `raise exception 'name_taken' using errcode='P0001'` gibi
+ *  açık etiketler kullanıyor; error.message bu etiketi içerir. errcode da
+ *  kontrol edilir, böylece beklenmeyen mesajda generic fallback'e düşeriz. */
+function describeWheelDuelRpcError(
+  error: { code?: string; message?: string } | null | undefined,
+): string | null {
+  if (!error) return null;
+  const msg = (error.message ?? "").toLowerCase();
+  if (msg.includes("code_taken"))         return "Bu oda kodu az önce kullanıldı. Tekrar dene.";
+  if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
+  if (msg.includes("name_invalid"))       return "Oyuncu adı en az 2 karakter olmalı.";
+  if (msg.includes("room_full"))          return "Oda dolu (2 oyuncu mevcut).";
+  if (msg.includes("room_finished"))      return "Bu oda kapanmış.";
+  if (msg.includes("room_in_progress"))   return "Maç zaten başlamış. Katılamazsın.";
+  if (msg.includes("room_unavailable"))   return "Oda şu an müsait değil.";
+  if (msg.includes("room_not_found"))     return "Oda bulunamadı. Kodu kontrol et.";
+  if (msg.includes("room_not_waiting"))   return "Oda artık lobby fazında değil.";
+  if (msg.includes("room_not_playing"))   return "Oyun durumu değişti.";
+  if (msg.includes("room_not_finished"))  return "Maç henüz bitmedi.";
+  if (msg.includes("not_enough_players")) return "Başlamak için 2 oyuncu lazım.";
+  if (msg.includes("not_enough_votes"))   return "Yeterli oy yok.";
+  if (msg.includes("profile_mismatch"))   return "Kimlik uyuşmazlığı. Lütfen yeniden gir.";
+  if (msg.includes("guest_id_required"))  return "Misafir kimliği eksik.";
+  if (msg.includes("claim_token_required"))
+    return "Oturum bilgin eksik. Sayfayı yenileyip tekrar dene.";
+  if (msg.includes("player_room_mismatch"))
+    return "Bu odanın oyuncusu değilsin.";
+  if (msg.includes("unauthorized"))
+    return "Bu işlem için yetkin yok. Oturumun bayatlamış olabilir.";
+  if (msg.includes("first_target_required") || msg.includes("target_required"))
+    return "Hedef bilgisi eksik.";
+  if (msg.includes("duration_invalid"))   return "Geçersiz süre.";
+  if (msg.includes("region_required") || msg.includes("region_invalid"))
+    return "Geçersiz bölge.";
+  if (msg.includes("code_required"))      return "Oda kodu gerekli.";
+  if (msg.includes("player_id_required")) return "Oyuncu kimliği eksik.";
+  // Generic fallback
+  return describeSupabaseError(error.code);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -315,6 +374,10 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
   /* ── Identity (set fresh on create/join) ──────────────────── */
   const myIdRef = useRef<string>("");
+  /** RLS hardening: M2 RPC'lerine her yazma çağrısında geçirilen sahiplik
+   *  kanıtı. createRoom / joinRoomByCode / joinQuickMatchRoom yollarında
+   *  taze üretilir; render boyunca ref'te tutulur. */
+  const myClaimTokenRef = useRef<string>("");
 
   /* ── Refs for transitions / guards ────────────────────────── */
   const prevTargetRef = useRef<string | null>(null);
@@ -508,21 +571,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     const next = remaining[Math.floor(Math.random() * remaining.length)];
 
-    await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        // used_target_topoids burada büyütülmez — aktif hedef bu listede
-        // olursa WorldMap onu "claim edilmiş" gibi yeşil gösterir. Liste
-        // sadece bir oyuncu doğru tıkladığında handleMapClick içinde büyür.
-        current_target_topoid: next,
-        // Yeni hedefe geçildi → pas oyları temizlenir (savunma; çoğunlukla
-        // zaten claim/skip atomik UPDATE'inde temizlenmiş olur).
-        pass_requested_by: [],
-        pass_target_topoid: null,
-      })
-      .eq("id", r.id)
-      .eq("status", "playing")
-      .is("current_target_topoid", null);
+    // RPC server tarafında aynı atomik guard'ı uygular (status=playing +
+    // current_target IS NULL). pas alanları RPC tarafından temizlenir.
+    const { error } = await supabase.rpc("wheel_duel_pick_target", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_target:         next,
+    });
+    if (error) {
+      console.error("[WheelDuel] pick_target RPC failed", error);
+    }
   }, [buildTargetPool]);
 
   const finishGame = useCallback(async (reason: "timeout" | "pool") => {
@@ -532,36 +591,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     if (endingRef.current) return;
     endingRef.current = true;
 
-    // En güncel skorları DB'den çek (stale state riskine karşı)
-    const { data: ps } = await supabase
-      .from("wheel_duel_players")
-      .select("id, score")
-      .eq("room_id", r.id);
-
-    let winnerId: string | null = null;
-    if (ps && ps.length > 0) {
-      const sorted = [...ps].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-      if (sorted.length === 1) {
-        winnerId = sorted[0].id;
-      } else if ((sorted[0].score ?? 0) > (sorted[1].score ?? 0)) {
-        winnerId = sorted[0].id;
-      }
-    }
-
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        status: "finished",
-        finished_at: new Date().toISOString(),
-        finished_reason: reason,
-        winner_player_id: winnerId,
-        current_target_topoid: null,
-      })
-      .eq("id", r.id)
-      .eq("status", "playing");
+    // RPC winner_player_id'yi server-side hesaplar; client'tan winner
+    // göndermiyoruz. finished_at server now() ile yazılır.
+    const { error } = await supabase.rpc("wheel_duel_finish_game", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_reason:         reason,
+    });
 
     if (error) {
-      console.error("[WheelDuel] finishGame failed", error);
+      console.error("[WheelDuel] finish_game RPC failed", error);
       endingRef.current = false;
     }
   }, []);
@@ -587,52 +627,30 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         return;
       }
 
-      // Doğru: atomic claim
-      const newUsed = [...(r.used_target_topoids ?? []), topoId];
-      const claimedTarget = topoId;
-      const { data: claimRows, error: claimErr } = await supabase
-        .from("wheel_duel_rooms")
-        .update({
-          current_target_topoid: null,
-          used_target_topoids: newUsed,
-          // Hedef değiştiği için pas state'i temizlenir — aynı oylar yeni
-          // hedef için yanlışlıkla geçerli sayılmasın.
-          pass_requested_by: [],
-          pass_target_topoid: null,
-        })
-        .eq("id", r.id)
-        .eq("current_target_topoid", claimedTarget)
-        .select("id");
+      // Doğru: atomik claim + skor artışı SERVER tarafında tek transaction'da.
+      // Client skor değeri GÖNDERMEZ; server score = score + 1 uygular.
+      // Yarış kaybı (rakip önce kapmış) durumunda RPC {claimed:false} döner;
+      // sessiz no-op (sound çalmaz). Skor güncellemesi realtime payload'ı
+      // ile zaten taşınır, ekstra select gerekmez.
+      const { data, error } = await supabase.rpc("wheel_duel_claim_target", {
+        p_room_id:     r.id,
+        p_player_id:   myIdRef.current,
+        p_claim_token: myClaimTokenRef.current,
+        p_target:      topoId,
+      });
 
-      if (claimErr) {
-        console.error("[WheelDuel] claim failed", claimErr);
+      if (error) {
+        console.error("[WheelDuel] claim_target RPC failed", error);
         return;
       }
 
-      if (!claimRows || claimRows.length === 0) {
-        // Rakip kapmış — sessizce no-op
+      const res = (data ?? {}) as { claimed?: boolean; new_score?: number | null };
+      if (!res.claimed) {
+        // Yarışı kaybettin (rakip kapmış) veya hedef bayatlamış — sessizce no-op
         return;
       }
 
       playSound("correct");
-
-      // ── Skor: DB'den fresh oku, +1 ile yaz (stale local state'e güvenme) ──
-      const myId = myIdRef.current;
-      const { data: meRow } = await supabase
-        .from("wheel_duel_players")
-        .select("score")
-        .eq("id", myId)
-        .maybeSingle();
-
-      const latestScore = meRow?.score ?? 0;
-      const { error: scoreErr } = await supabase
-        .from("wheel_duel_players")
-        .update({ score: latestScore + 1 })
-        .eq("id", myId);
-
-      if (scoreErr) {
-        console.error("[WheelDuel] score update failed", scoreErr);
-      }
     },
     [],
   );
@@ -996,20 +1014,19 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       return;
     }
 
-    const newVotes = [...existing, myId];
     setIPressedLocally(true);
 
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        pass_requested_by: newVotes,
-        pass_target_topoid: target,
-      })
-      .eq("id", r.id)
-      .eq("current_target_topoid", target); // 🔒 hedef bayatladıysa yazma
+    // RPC idempotent: aynı oyuncudan ikinci çağrı no-op; bayat hedef için
+    // sessiz no-op (WHERE current_target_topoid = p_target guard'ı tutmaz).
+    const { error } = await supabase.rpc("wheel_duel_request_pass", {
+      p_room_id:     r.id,
+      p_player_id:   myId,
+      p_claim_token: myClaimTokenRef.current,
+      p_target:      target,
+    });
 
     if (error) {
-      console.error("[WheelDuel] requestPass failed", error);
+      console.error("[WheelDuel] request_pass RPC failed", error);
     }
   }, []);
 
@@ -1028,23 +1045,16 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     if (r.pass_target_topoid !== r.current_target_topoid) return;
     if ((r.pass_requested_by ?? []).length < 2) return;
 
-    const target = r.current_target_topoid;
-    const newUsed = [...(r.used_target_topoids ?? []), target];
-
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        current_target_topoid: null,
-        used_target_topoids: newUsed,
-        pass_requested_by: [],
-        pass_target_topoid: null,
-      })
-      .eq("id", r.id)
-      .eq("current_target_topoid", target)
-      .eq("status", "playing");
+    // RPC server tarafında ≥2 oy + target eşleşmesi guard'ını tekrar uygular;
+    // çakışan ikinci tetiklemede sessiz no-op olur.
+    const { error } = await supabase.rpc("wheel_duel_process_skip", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+    });
 
     if (error) {
-      console.error("[WheelDuel] processSkip failed", error);
+      console.error("[WheelDuel] process_skip RPC failed", error);
     }
   }, []);
 
@@ -1112,17 +1122,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       return;
     }
 
-    const newVotes = [...existing, myId];
     setIRequestedRematchLocally(true);
 
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({ rematch_requested_by: newVotes })
-      .eq("id", r.id)
-      .eq("status", "finished"); // 🔒 host arada reset attıysa yazma
+    // RPC idempotent + status='finished' guard içeride.
+    const { error } = await supabase.rpc("wheel_duel_request_rematch", {
+      p_room_id:     r.id,
+      p_player_id:   myId,
+      p_claim_token: myClaimTokenRef.current,
+    });
 
     if (error) {
-      console.error("[WheelDuel] requestRematch failed", error);
+      console.error("[WheelDuel] request_rematch RPC failed", error);
     }
   }, []);
 
@@ -1138,47 +1148,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     if (r.status !== "finished") return;
     if ((r.rematch_requested_by ?? []).length < 2) return;
 
-    // 1) Skorları sıfırla. Lobby ekranı skor göstermiyor; bu UPDATE
-    //    finished overlay henüz açıkken atılır ama hemen ardından room
-    //    UPDATE'i status'u 'waiting'e çevirip overlay'i kapatır.
-    const { error: scoreErr } = await supabase
-      .from("wheel_duel_players")
-      .update({ score: 0 })
-      .eq("room_id", r.id);
+    // RPC: skor reset + room reset tek transaction'da.
+    // match_seq +1 ve current_match_id = gen_random_uuid() SERVER-SIDE
+    // üretilir (XP idempotency anahtarı manipülasyona kapatılır).
+    const { error } = await supabase.rpc("wheel_duel_process_rematch", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+    });
 
-    if (scoreErr) {
-      console.error("[WheelDuel] processRematch score reset failed", scoreErr);
-      // Devam et — room reset yine de yapılmalı; aksi halde lobby'ye
-      // dönemeyiz ve kullanıcı sıkışır. Skor next maç başında startGame
-      // sırasında zaten kritik değil; tek senaryo: skor 0'dan başlamayabilir.
-    }
-
-    // 2) Room'u tamamen sıfırla. Guard concurrent host-yarışını engeller.
-    //    match_seq +1 (debug/segment), current_match_id yeni UUID
-    //    (XP RPC idempotency anahtarı; aynı oda satırında ikinci maç
-    //    aynı xp_events satırına çakışmasın diye). Host üretir, realtime
-    //    UPDATE her iki client'a da aynı değeri yayar.
-    const { error: roomErr } = await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        status: "waiting",
-        started_at: null,
-        finished_at: null,
-        finished_reason: null,
-        winner_player_id: null,
-        current_target_topoid: null,
-        used_target_topoids: [],
-        pass_requested_by: [],
-        pass_target_topoid: null,
-        rematch_requested_by: [],
-        match_seq: (r.match_seq ?? 1) + 1,
-        current_match_id: crypto.randomUUID(),
-      })
-      .eq("id", r.id)
-      .eq("status", "finished");
-
-    if (roomErr) {
-      console.error("[WheelDuel] processRematch room reset failed", roomErr);
+    if (error) {
+      console.error("[WheelDuel] process_rematch RPC failed", error);
     }
   }, []);
 
@@ -1245,6 +1225,26 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       quickMatchAbortRef.current = true;  // dönmemiş RPC response'larını yut
 
       myIdRef.current = playerId;
+
+      // ── RLS hardening: claim_token enjeksiyonu ──────────────────────────
+      // wheel_duel_quick_match RPC'sine imza değişikliği yapmadık; player
+      // satırını o RPC ekledi ama wheel_duel_player_claims'a token yazılmadı.
+      // M2 RPC'leri (pass/claim/rematch/leave) claim_token istiyor, bu yüzden
+      // burada taze bir token üretip claims tablosuna INSERT ediyoruz. Bu
+      // INSERT anon/authenticated için açık (M1 policy). Best-effort: hata
+      // verirse pas/claim akışları "unauthorized" yer; quick match yine
+      // çalışır ama gameplay bozulur → log + UI mesajı.
+      const quickMatchClaimToken = freshClaimToken();
+      myClaimTokenRef.current = quickMatchClaimToken;
+      const { error: claimErr } = await supabase
+        .from("wheel_duel_player_claims")
+        .insert({ player_id: playerId, claim_token: quickMatchClaimToken });
+      if (claimErr) {
+        console.error("[WheelDuel] quick-match claim insert failed", claimErr);
+        setErrorMsg(
+          "Oturum güvenlik kaydı yazılamadı. Maç devam etse de bazı işlemler hata verebilir.",
+        );
+      }
 
       const { data: roomData, error: roomErr } = await supabase
         .from("wheel_duel_rooms")
@@ -1540,27 +1540,35 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     clearWheelDuelSession();
     const freshId = freshPlayerId();
+    const claimToken = freshClaimToken();
     myIdRef.current = freshId;
+    myClaimTokenRef.current = claimToken;
 
     const code = generateRoomCode();
     const trimmedName = playerName.trim();
+    const profileId = profile?.id ?? null;
+    // Misafir için guest_id = freshId (stable per-session anchor); logged-in
+    // tarafta NULL bırakılır, server profile_id = auth.uid() kontrolü yapar.
+    const guestId = profileId ? null : freshId;
 
-    // 1) Oda insert
-    const { data: roomData, error: roomErr } = await supabase
-      .from("wheel_duel_rooms")
-      .insert({
-        code,
-        status: "waiting",
-        duration_seconds: hostDuration,
-        region: normalizeRegion(hostRegion),
-        host_player_id: freshId,
-      })
-      .select("*")
-      .single();
+    // Tek RPC: oda + host player + claim transaction'da.
+    const { data: roomData, error: roomErr } = await supabase.rpc(
+      "wheel_duel_create_room",
+      {
+        p_player_id:   freshId,
+        p_profile_id:  profileId,
+        p_guest_id:    guestId,
+        p_name:        trimmedName,
+        p_code:        code,
+        p_duration:    hostDuration,
+        p_region:      normalizeRegion(hostRegion),
+        p_claim_token: claimToken,
+      },
+    );
 
     if (roomErr || !roomData?.id) {
       const friendly =
-        describeSupabaseError(roomErr?.code) ??
+        describeWheelDuelRpcError(roomErr) ??
         "Oda oluşturulamadı. Bağlantıyı kontrol et.";
       setErrorMsg(friendly);
       setStatusMsg(null);
@@ -1570,33 +1578,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     const createdRoom = roomData as WheelDuelRoom;
 
-    // 2) Host oyuncuyu ekle
-    const { error: playerErr } = await supabase
-      .from("wheel_duel_players")
-      .insert({
-        id: freshId,
-        room_id: createdRoom.id,
-        name: trimmedName,
-        score: 0,
-      });
-
-    if (playerErr) {
-      // Orphan oda temizliği (best-effort)
-      supabase
-        .from("wheel_duel_rooms")
-        .delete()
-        .eq("id", createdRoom.id)
-        .then(() => {});
-      const friendly =
-        describeSupabaseError(playerErr.code) ??
-        "Host eklenemedi. Tekrar dene.";
-      setErrorMsg(friendly);
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
-    // 3) İlk player listesini çek (realtime + ilk render)
+    // İlk player listesini çek (realtime devreye girene kadar UI hazır olsun)
     const { data: ps } = await supabase
       .from("wheel_duel_players")
       .select("*")
@@ -1630,84 +1612,40 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     clearWheelDuelSession();
     const freshId = freshPlayerId();
+    const claimToken = freshClaimToken();
     myIdRef.current = freshId;
-
-    // 1) Oda kodu lookup
-    const { data: r, error: re } = await supabase
-      .from("wheel_duel_rooms")
-      .select("*")
-      .eq("code", normalized)
-      .maybeSingle();
-
-    if (re || !r?.id) {
-      const friendly =
-        describeSupabaseError(re?.code) ?? "Oda bulunamadı. Kodu kontrol et.";
-      setErrorMsg(friendly);
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
-    const targetRoom = r as WheelDuelRoom;
-
-    if (targetRoom.status === "finished") {
-      setErrorMsg("Bu oda kapanmış.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-    if (targetRoom.status === "playing") {
-      setErrorMsg("Maç zaten başlamış. Katılamazsın.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
-    // 2) Kapasite + isim çakışması
-    const { data: existing } = await supabase
-      .from("wheel_duel_players")
-      .select("id, name")
-      .eq("room_id", targetRoom.id);
+    myClaimTokenRef.current = claimToken;
 
     const trimmedName = playerName.trim();
-    const sameName = (existing ?? []).some(
-      p =>
-        p.name?.trim().toLocaleLowerCase("tr-TR") ===
-        trimmedName.toLocaleLowerCase("tr-TR"),
+    const profileId = profile?.id ?? null;
+    const guestId = profileId ? null : freshId;
+
+    // RPC tek atışta: oda lookup + status/kapasite/isim çakışması check +
+    // player insert + claim insert. for update ile race-safe kapasite.
+    const { data: roomData, error: joinErr } = await supabase.rpc(
+      "wheel_duel_join_room",
+      {
+        p_code:        normalized,
+        p_player_id:   freshId,
+        p_profile_id:  profileId,
+        p_guest_id:    guestId,
+        p_name:        trimmedName,
+        p_claim_token: claimToken,
+      },
     );
-    if (sameName) {
-      setErrorMsg("Bu odada bu isim zaten kullanılıyor.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-    if ((existing?.length ?? 0) >= 2) {
-      setErrorMsg("Oda dolu (2 oyuncu mevcut).");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
 
-    // 3) Player insert
-    const { error: pe } = await supabase
-      .from("wheel_duel_players")
-      .insert({
-        id: freshId,
-        room_id: targetRoom.id,
-        name: trimmedName,
-        score: 0,
-      });
-
-    if (pe) {
+    if (joinErr || !roomData?.id) {
       const friendly =
-        describeSupabaseError(pe.code) ?? "Odaya katılınamadı.";
+        describeWheelDuelRpcError(joinErr) ?? "Odaya katılınamadı.";
       setErrorMsg(friendly);
       setStatusMsg(null);
       setPhase("setup");
       return;
     }
 
-    // 4) Player listesini çek
+    const targetRoom = roomData as WheelDuelRoom;
+
+    // Player listesini çek (realtime devreye girene kadar UI hazır olsun)
     const { data: ps } = await supabase
       .from("wheel_duel_players")
       .select("*")
@@ -1725,7 +1663,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     playSound("click");
     const currentRoom = room;
     const currentMyId = myIdRef.current;
-    const amHost = !!currentRoom && currentRoom.host_player_id === currentMyId;
+    const currentClaim = myClaimTokenRef.current;
 
     // UI önce sıfırlansın — DB silinmesini beklemeden setup'a dönelim
     setRoom(null);
@@ -1762,18 +1700,16 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     if (!currentRoom) return;
 
-    if (amHost) {
-      // Cascade delete sayesinde players da silinir
-      await supabase
-        .from("wheel_duel_rooms")
-        .delete()
-        .eq("id", currentRoom.id);
-    } else {
-      await supabase
-        .from("wheel_duel_players")
-        .delete()
-        .eq("id", currentMyId)
-        .eq("room_id", currentRoom.id);
+    // RPC host/non-host ayrımını server'da yapar. Host ise oda DELETE
+    // (cascade ile players + claims temizlenir); değilse kendi player satırı.
+    // Idempotent: oda yoksa sessiz no-op.
+    const { error } = await supabase.rpc("wheel_duel_leave_room", {
+      p_room_id:     currentRoom.id,
+      p_player_id:   currentMyId,
+      p_claim_token: currentClaim,
+    });
+    if (error) {
+      console.error("[WheelDuel] leave_room RPC failed", error);
     }
   }
 
@@ -1807,40 +1743,41 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       isHost,
     });
 
-    // setPhase("playing") burada ÇAĞIRMIYORUZ. UPDATE dönüp room.started_at
+    // setPhase("playing") burada ÇAĞIRMIYORUZ. RPC dönüp room.started_at
     // lokal state'e oturduktan sonra phase'i flip ediyoruz; aksi halde
     // "phase=playing + room.started_at=null" tek render bile finish effect'in
     // anında tetiklenmesine yol açıyor.
-    const { data: updated, error } = await supabase
-      .from("wheel_duel_rooms")
-      .update({
-        status: "playing",
-        started_at: startedAt,
-        current_target_topoid: firstTarget,
-        // used_target_topoids sadece claim'lerle büyür; aktif hedef burada
-        // EKLENMEZ — yoksa hedef oyuncu tıklamadan haritada yeşil görünür.
-        used_target_topoids: [],
-      })
-      .eq("id", room.id)
-      .select("*")
-      .single();
+    // Not: started_at değeri RPC tarafında server now() ile yazılır;
+    // client'ın gönderdiği startedAt artık kullanılmıyor (clock-skew kapanır).
+    const { data: updated, error } = await supabase.rpc(
+      "wheel_duel_start_game",
+      {
+        p_room_id:        room.id,
+        p_host_player_id: myIdRef.current,
+        p_claim_token:    myClaimTokenRef.current,
+        p_first_target:   firstTarget,
+      },
+    );
 
-    console.log("[WD/startGame] update result", { error, updated });
+    console.log("[WD/startGame] update result", { error, updated, startedAt });
 
     if (error || !updated) {
-      setErrorMsg("Oyun başlatılamadı. Tekrar dene.");
+      setErrorMsg(
+        describeWheelDuelRpcError(error) ?? "Oyun başlatılamadı. Tekrar dene.",
+      );
       return;
     }
 
+    const updatedRoom = updated as WheelDuelRoom;
     console.log("[WD/startGame] state set", {
-      updatedStatus: (updated as WheelDuelRoom).status,
-      updatedStartedAt: (updated as WheelDuelRoom).started_at,
-      updatedDuration: (updated as WheelDuelRoom).duration_seconds,
-      updatedTarget: (updated as WheelDuelRoom).current_target_topoid,
+      updatedStatus:    updatedRoom.status,
+      updatedStartedAt: updatedRoom.started_at,
+      updatedDuration:  updatedRoom.duration_seconds,
+      updatedTarget:    updatedRoom.current_target_topoid,
     });
 
-    setRoom(updated as WheelDuelRoom);  // started_at + status dolu satır
-    setPhase("playing");                // güvenli: room artık tutarlı
+    setRoom(updatedRoom);  // started_at + status dolu satır
+    setPhase("playing");   // güvenli: room artık tutarlı
   }
 
   async function updateHostSetting(
@@ -1851,14 +1788,19 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     // Optimistic
     setRoom(prev => (prev ? { ...prev, ...next } : prev));
 
-    const { error } = await supabase
-      .from("wheel_duel_rooms")
-      .update(next)
-      .eq("id", room.id);
+    // RPC partial update: dokunulmayan alana NULL geçilir → coalesce ile
+    // mevcut değer korunur. RPC tarafında status='waiting' guard'ı uygulanır.
+    const { error } = await supabase.rpc("wheel_duel_update_settings", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_duration:       next.duration_seconds ?? null,
+      p_region:         next.region ?? null,
+    });
 
     if (error) {
       // Rollback'i realtime echo'ya bırakıyoruz; en kötü ihtimal eski değer geri gelir
-      console.error("[WheelDuel] updateHostSetting failed", error);
+      console.error("[WheelDuel] update_settings RPC failed", error);
     }
   }
 
