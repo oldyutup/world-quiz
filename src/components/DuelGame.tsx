@@ -562,6 +562,8 @@ useEffect(() => {
   const showFeedback = useCallback((type: "ok" | "err" | "dup" | "region") => {
     if (fbTimerRef.current) clearTimeout(fbTimerRef.current);
     setFeedback(type);
+    if (type === "ok")  playSound("correct");
+    else if (type === "err" || type === "region") playSound("wrong");
     fbTimerRef.current = setTimeout(() => setFeedback(null), 900);
   }, []);
 
