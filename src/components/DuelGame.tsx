@@ -94,6 +94,7 @@ const denormalizeRegion = (r: string): string => {
 /* ─── localStorage helpers ─── */
 const PLAYER_ID_KEY = "geoquiz_duel_player_id";   // persists across rooms (resume)
 const ROOM_KEY      = "geoquiz_duel_room";         // current room session
+const GUEST_ID_KEY  = "geoquiz_duel_guest_id";     // stabil guest_id (logged-out)
 
 const DUEL_VERSION = "Online v3";
 
@@ -121,35 +122,107 @@ function freshPlayerId(): string {
   return id;
 }
 
-interface RoomSession { roomId: string; roomCode: string; playerId: string; }
+/**
+ * Fresh claim_token: M1'de eklenen duel_player_claims tablosuna her yeni
+ * player satırı için bir tane yazılır. Mevcut session'la birlikte persist
+ * edilir; reload sonrasında aynı player_id ile devam edebilmek için kritik.
+ */
+function freshClaimToken(): string {
+  return crypto.randomUUID();
+}
 
-function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
-  localStorage.setItem(ROOM_KEY, JSON.stringify({ roomId, roomCode, playerId }));
+interface RoomSession {
+  roomId:     string;
+  roomCode:   string;
+  playerId:   string;
+  /** M1+M2 claim-token — RPC'ler authorize_player için bunu bekliyor */
+  claimToken: string;
+}
+
+function saveRoomSession(
+  roomId:     string,
+  roomCode:   string,
+  playerId:   string,
+  claimToken: string,
+) {
+  localStorage.setItem(
+    ROOM_KEY,
+    JSON.stringify({ roomId, roomCode, playerId, claimToken }),
+  );
 }
 function loadRoomSession(): RoomSession | null {
   try {
     const raw = localStorage.getItem(ROOM_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // Validate required fields
+    // Required fields — claimToken eski sürümlerde olmayabilir; o satırları
+    // null sayıp resume akışını fresh path'e düşürüyoruz.
     if (!parsed?.roomId || !parsed?.roomCode || !parsed?.playerId) return null;
+    if (!parsed?.claimToken) return null;
     return parsed as RoomSession;
   } catch { return null; }
 }
 
 /**
- * Full duel session reset — clears ALL duel-related localStorage keys.
+ * Misafir kullanıcılar için stabil guest_id. Logged-in kullanıcılar için
+ * profile.id kullanılır; bu fonksiyon yalnız profile yokken çağrılmalı.
+ */
+function ensureGuestId(): string {
+  let g = localStorage.getItem(GUEST_ID_KEY);
+  if (!g) {
+    g = crypto.randomUUID();
+    localStorage.setItem(GUEST_ID_KEY, g);
+  }
+  return g;
+}
+
+/**
+ * Full duel session reset — clears ALL duel-related localStorage keys
+ * EXCEPT guest_id (stabil kalmalı, aksi halde her oturumda yeni misafir
+ * kimliği üretilirdi).
  * Call before creating a new room or on explicit logout/menu navigation.
  */
 function clearDuelSession() {
-  // Remove all keys that start with "geoquiz_duel"
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith("geoquiz_duel")) keysToRemove.push(k);
+    if (k && k.startsWith("geoquiz_duel") && k !== GUEST_ID_KEY) {
+      keysToRemove.push(k);
+    }
   }
   keysToRemove.forEach(k => localStorage.removeItem(k));
   dbg("clearDuelSession: removed", keysToRemove);
+}
+
+/* ─── Duel RPC error mapper ──────────────────────────────────────────
+ *  M2 RPC'leri PG raise exception ile business hata mesajları döner
+ *  (örn. 'room_full', 'name_taken'). Bunları kullanıcı dostu Türkçe
+ *  metne çevirir. Mevcut UI metinleri ile birebir uyumlu kalır.
+ */
+interface DuelRpcError { code?: string; message?: string; details?: string }
+function describeDuelRpcError(err: DuelRpcError | null | undefined): string {
+  if (!err) return "İşlem başarısız.";
+  const m = (err.message ?? "") + " " + (err.details ?? "");
+  if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
+  if (m.includes("name_taken"))               return "Bu odada bu isim zaten kullanılıyor.";
+  if (m.includes("room_full"))                return "Oda dolu (2 oyuncu mevcut).";
+  if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
+  if (m.includes("old_room_not_found"))       return "Önceki oda bulunamadı.";
+  if (m.includes("old_room_not_finished"))    return "Önceki maç henüz bitmedi.";
+  if (m.includes("room_finished"))            return "Bu maç zaten bitti.";
+  if (m.includes("room_in_progress"))         return "Maç zaten devam ediyor. Katılamazsın.";
+  if (m.includes("room_not_waiting_rematch")) return "Rövanş odası hazır değil.";
+  if (m.includes("room_not_waiting"))         return "Oda artık bekleme aşamasında değil.";
+  if (m.includes("room_not_playing"))         return "Oda artık oyunda değil.";
+  if (m.includes("not_enough_players"))       return "Yeterli oyuncu yok.";
+  if (m.includes("name_invalid"))             return "Geçersiz isim.";
+  if (m.includes("profile_mismatch"))         return "Oturum doğrulaması başarısız.";
+  if (m.includes("player_room_mismatch"))     return "Bu odada oyuncun yok.";
+  if (m.includes("room_code_mismatch"))       return "Oda doğrulaması başarısız.";
+  if (m.includes("unauthorized"))             return "Bu işlem için yetkin yok.";
+  if (m.includes("room_unavailable"))         return "Oda kullanılamıyor.";
+  if (err.code === "42501")                   return "Veritabanı izin hatası.";
+  return err.message || "İşlem başarısız.";
 }
 
 
@@ -179,6 +252,18 @@ export default function DuelGame({
   const myIdRef = useRef<string>("");
   // Convenience getter so we don't change 30+ call sites
   const myId = myIdRef.current;
+
+  /* claim-token ref — session restore'da yüklenir, fresh akışlarda set edilir */
+  const claimTokenRef = useRef<string>("");
+
+  /** RPC'lere profile_id / guest_id paramını üreten helper. M1'in identity
+   *  XOR'unu (profile XOR guest) garanti altına alır:
+   *   - Giriş yapmışsa profile.id; guest_id null
+   *   - Misafirse profile null; stabil guest_id (localStorage) */
+  const getIdentityArgs = useCallback((): { profileId: string | null; guestId: string | null } => {
+    if (profile?.id) return { profileId: profile.id, guestId: null };
+    return { profileId: null, guestId: ensureGuestId() };
+  }, [profile?.id]);
 
   /* lobby form */
   const [playerName,   setPlayerName]   = useState("");
@@ -485,8 +570,9 @@ useEffect(() => {
     const saved = loadRoomSession();
     if (!saved) return;
 
-    // Restore the stored playerId into the ref FIRST
+    // Restore the stored playerId + claim-token into refs FIRST
     myIdRef.current = saved.playerId;
+    claimTokenRef.current = saved.claimToken;
     activePlayerIdRef.current = saved.playerId;
     dbg("session restore: playerId loaded", saved.playerId);
 
@@ -579,12 +665,14 @@ useEffect(() => {
         setFinalScores({ my: counts[myId] ?? 0, opp: 0 });
       } catch { /* ignore — UI falls back to live score state */ }
 
-      await supabase.from("duel_rooms").update({
-        status:              "finished",
-        finished_reason:     "disconnect",
-        winner_player_id:    myId,
-        forfeited_player_id: null,
-      }).eq("id", roomId).eq("status", "playing");
+      // duel_handle_disconnect RPC: server (45 + GRACE) sn threshold doğrular.
+      // Yanlış-pozitifi engeller (rakip yeniden bağlanmışsa no-op).
+      const { error: dcErr } = await supabase.rpc("duel_handle_disconnect", {
+        p_room_id:     roomId,
+        p_player_id:   myId,
+        p_claim_token: claimTokenRef.current,
+      });
+      if (dcErr) dbgErr("duel_handle_disconnect failed", dcErr);
 
       clearDuelSession();
       setOppDisconnected(false);
@@ -675,36 +763,23 @@ useEffect(() => {
                 data.length >= 2
               ) {
                 dbg("quickMatch RT: 2nd player arrived, host auto-starting");
-                const startedAt = new Date().toISOString();
-                supabase.from("duel_rooms")
-                  .update({ status: "playing", started_at: startedAt })
-                  .eq("id", room.id)
-                  .then(({ error }) => {
-                    if (error) dbgErr("quickMatch auto-start failed", error);
-                    else dbg("quickMatch: room set to playing ✓");
-                  });
+                supabase.rpc("duel_start_game", {
+                  p_room_id:        room.id,
+                  p_host_player_id: myIdRef.current,
+                  p_claim_token:    claimTokenRef.current,
+                }).then(({ error }) => {
+                  if (error) dbgErr("quickMatch auto-start failed", error);
+                  else dbg("quickMatch: room set to playing ✓");
+                });
               }
 
-              // Opponent left → they forfeit, we win
-              if (
-                phaseRef.current === "playing" &&
-                !gameEndedRef.current &&
-                data.length < 2
-              ) {
-                dbg("RT: opponent left — they forfeit, we win");
-                gameEndedRef.current = true;
-                if (rafRef.current) cancelAnimationFrame(rafRef.current);
-                const myId = myIdRef.current;
-                const oppLeftUpdates = {
-                  status:           "finished" as const,
-                  finished_reason:  "forfeit" as const,
-                  winner_player_id: myId,
-                };
-                setRoom(prev => prev ? { ...prev, ...oppLeftUpdates } : prev);
-                supabase.from("duel_rooms").update(oppLeftUpdates).eq("id", room.id).then(() => {});
-                clearDuelSession();
-                setPhase("finished");
-              }
+              // NOT: "Opponent left → they forfeit" edge-case yolu (rakibin
+              // duel_players satırının playing fazında silinmesi) kaldırıldı.
+              // Ana akışta forfeit/disconnect RPC'leri rakibin SATIRINI silmez,
+              // sadece duel_rooms.status='finished' olur. Rakip sekme kapatırsa
+              // bizim handleOppDisconnect → duel_handle_disconnect RPC akışı
+              // (45 + GRACE sn threshold) maçı bitirir. Bu sayede ek bir RPC
+              // gerekmeden senaryo kapanır; eski direct UPDATE artık yok.
             });
         })
       .on("postgres_changes",
@@ -761,6 +836,8 @@ useEffect(() => {
     const oppFinal = oppEntry ? oppEntry[1] : 0;
     setFinalScores({ my: myFinal, opp: oppFinal });
 
+    // Local winner hesabı sadece optimistic state için; server kendi yetkili
+    // sayımını duel_finish_game RPC içinde duel_claims COUNT üzerinden yapıyor.
     const ids = Object.keys(counts);
     let winnerId: string | null = null;
     if (ids.length >= 2) {
@@ -770,30 +847,32 @@ useEffect(() => {
       winnerId = ids[0];
     }
 
-    // Conditional update: only succeeds if room is still "playing"
-    // Both clients may race here — only one will actually change the row.
-    await supabase.from("duel_rooms")
-      .update({
-        status: "finished",
-        finished_reason: "timeout",
-        winner_player_id: winnerId,
-      })
-      .eq("id", room.id)
-      .eq("status", "playing");   // ← prevents double-write
-
+    // duel_finish_game RPC: player_in_room + status='playing' guard +
+    // winner SERVER-SIDE hesaplanır. Double-call no-op (idempotent).
+    const { data: finishedRoom, error } = await supabase.rpc("duel_finish_game", {
+      p_room_id:     room.id,
+      p_player_id:   myId,
+      p_claim_token: claimTokenRef.current,
+    });
+    if (error) dbgErr("duel_finish_game failed", error);
     dbg("finishGameByTimeout: written or no-op", { winnerId, myFinal, oppFinal });
 
     // FIX: Always transition to finished on THIS client immediately after the DB
     // write (whether it won the race or not). The non-triggerer arrives via the
     // Realtime UPDATE handler below. Without this line the triggerer could hang
     // indefinitely if its own Realtime echo is delayed or dropped.
+    const serverRoom = finishedRoom as DuelRoom | null;
     setRoom(prev => prev
-      ? { ...prev, status: "finished", finished_reason: "timeout", winner_player_id: winnerId }
+      ? { ...prev, ...(serverRoom ?? {
+          status: "finished" as const,
+          finished_reason: "timeout" as const,
+          winner_player_id: winnerId,
+        }) }
       : prev
     );
     setPhase("finished");
     clearDuelSession();
-  }, [room]);
+  }, [room, myId]);
 
   /* ── SERVER-AUTHORITATIVE TIMER ──
    *  Source of truth: room.started_at (written by server on game start).
@@ -957,13 +1036,14 @@ setTimeLeft(safeRem);
     if (!myId || !roomId) return;
 
     const tick = () => {
-      supabase
-        .from("duel_players")
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq("id", myId)
-        .then(({ error }) => {
-          if (error) dbgErr("heartbeat update failed", error);
-        });
+      const token = claimTokenRef.current;
+      if (!token) return;
+      supabase.rpc("duel_heartbeat", {
+        p_player_id:   myId,
+        p_claim_token: token,
+      }).then(({ error }) => {
+        if (error) dbgErr("heartbeat rpc failed", error);
+      });
     };
 
     tick(); // immediate first tick
@@ -1061,85 +1141,41 @@ if (usernameError) {
     setStatusMsg("Oda kuruluyor…");
     setPhase("creating");
 
-    // ── Clear old session and generate a FRESH player ID ──
-    // This prevents the 23505 unique-violation: old rows in Supabase
-    // from previous rooms will never share this new UUID.
+    // ── Clear old session and generate FRESH identity (player_id + claim_token) ──
     clearDuelSession();
-    const freshId = freshPlayerId();
-    myIdRef.current = freshId;
+    const freshId    = freshPlayerId();
+    const freshToken = freshClaimToken();
+    myIdRef.current        = freshId;
+    claimTokenRef.current  = freshToken;
 
     const code = makeCode();
-    dbg("createRoom start", { code, playerId: freshId, hostDuration, hostRegion });
+    const { profileId, guestId } = getIdentityArgs();
+    dbg("createRoom start (RPC)", { code, playerId: freshId, hostDuration, hostRegion });
 
-    // ── Step 1: Insert duel_rooms ──
-    const { data: roomData, error: roomErr } = await supabase
-      .from("duel_rooms")
-      .insert({ code, status: "waiting", duration_seconds: hostDuration, region: normalizeRegion(hostRegion) })
-      .select("id, code, status, duration_seconds, region, created_at")
-      .single();
+    // ── duel_create_room RPC: oda + player + claim tek transaction ──
+    const { data: roomData, error: roomErr } = await supabase.rpc("duel_create_room", {
+      p_player_id:   freshId,
+      p_profile_id:  profileId,
+      p_guest_id:    guestId,
+      p_name:        name,
+      p_code:        code,
+      p_duration:    hostDuration,
+      p_region:      normalizeRegion(hostRegion),
+      p_claim_token: freshToken,
+    });
 
-    dbg("duel_rooms insert result", { roomData, roomErr });
+    dbg("duel_create_room result", { roomData, roomErr });
 
-    let room: DuelRoom | null = null;
-
-    if (roomErr || !roomData?.id) {
-      dbgErr("duel_rooms insert failed", roomErr, { code });
-      // Fallback: maybe insert succeeded but .select failed — try fetching by code
-      const { data: fetched, error: fetchErr } = await supabase
-        .from("duel_rooms")
-        .select("id, code, status, duration_seconds, region, created_at")
-        .eq("code", code)
-        .single();
-      dbg("duel_rooms fallback fetch", { fetched, fetchErr });
-      if (!fetched?.id) {
-        const msg = roomErr?.code === "42501"
-          ? "Veritabanı izin hatası. Yöneticiyle iletişime geç."
-          : "Oda oluşturulamadı. Bağlantıyı kontrol et.";
-        setErrorMsg(msg);
-        setStatusMsg(null); setPhase("lobby"); return;
-      }
-      room = fetched as DuelRoom;
-    } else {
-      room = roomData as DuelRoom;
-    }
-
-    dbg("room confirmed", { id: room.id, code: room.code });
-
-    // ── Step 2: Insert duel_players with the fresh ID ──
-    const { data: playerData, error: playerErr } = await supabase
-      .from("duel_players")
-      .insert({ id: freshId, room_id: room.id, name, score: 0 })
-      .select("id, room_id, name")
-      .single();
-
-    dbg("duel_players insert result", { playerData, playerErr });
-
-    if (playerErr) {
-      dbgErr("duel_players insert failed", playerErr, { freshId, room_id: room.id });
-
-      // Best-effort: delete the orphan room
-      supabase.from("duel_rooms").delete().eq("id", room.id)
-        .then(({ error: delErr }) => {
-          if (delErr) dbgErr("orphan room cleanup failed", delErr);
-          else dbg("orphan room cleaned up", room!.id);
-        });
-
-      if (playerErr.code === "23505") {
-        // This should no longer happen with fresh IDs, but handle gracefully
-        dbgErr("Unexpected 23505 with fresh ID — retrying with another UUID", playerErr);
-        clearDuelSession();
-        setErrorMsg("Eski oturum temizlendi, tekrar deneyebilirsin.");
-      } else if (playerErr.code === "42501") {
-        setErrorMsg("Veritabanı izin hatası. RLS politikalarını kontrol et.");
-      } else if (playerErr.message?.toLowerCase().includes("network")) {
-        setErrorMsg("Bağlantı hatası. Tekrar dene.");
-      } else {
-        setErrorMsg("Oda oluşturulamadı. Tekrar dene.");
-      }
+    if (roomErr || !roomData) {
+      dbgErr("duel_create_room failed", roomErr, { code });
+      setErrorMsg(describeDuelRpcError(roomErr));
       setStatusMsg(null); setPhase("lobby"); return;
     }
 
-    // ── Step 3: Fetch player list ──
+    const room = roomData as DuelRoom;
+    dbg("room confirmed", { id: room.id, code: room.code });
+
+    // ── Fetch player list (state için; RPC sadece room satırı döndürüyor) ──
     const { data: players, error: psErr } = await supabase
       .from("duel_players").select("*").eq("room_id", room.id);
     dbg("duel_players fetch", { players, psErr });
@@ -1148,7 +1184,7 @@ if (usernameError) {
     setPlayers(players ?? []);
     setClaims([]);
     setIsHost(true);
-    saveRoomSession(room.id, room.code, freshId);
+    saveRoomSession(room.id, room.code, freshId, freshToken);
     activePlayerIdRef.current = freshId;
     setTimeLeft(hostDuration);
     setStatusMsg(null);
@@ -1177,101 +1213,72 @@ if (!code) {
 
     setErrorMsg(null); setStatusMsg("Odaya bağlanılıyor…");
 
-    // Determine player ID: reuse stored one ONLY if it matches this room's session
+    // Determine player ID + token: reuse stored ones ONLY if this room session matches.
     const savedSession = loadRoomSession();
-    const joinId: string = (savedSession?.roomCode === code && savedSession?.playerId)
-      ? savedSession.playerId  // resume same room
-      : freshPlayerId();       // new join → fresh ID, clear old session
-    if (joinId !== savedSession?.playerId) clearDuelSession();
-    myIdRef.current = joinId;
+    const isResume = !!(savedSession?.roomCode === code && savedSession?.playerId && savedSession?.claimToken);
+    const joinId: string = isResume
+      ? savedSession!.playerId
+      : freshPlayerId();
+    const joinToken: string = isResume
+      ? savedSession!.claimToken
+      : freshClaimToken();
+    if (!isResume) clearDuelSession();
+    myIdRef.current       = joinId;
+    claimTokenRef.current = joinToken;
 
-    dbg("joinRoom start", { code, joinId, isResume: joinId === savedSession?.playerId });
+    dbg("joinRoom start", { code, joinId, isResume });
 
-    // ── Step 1: Fetch room by code ──
-    const { data: r, error: re } = await supabase
-      .from("duel_rooms")
-      .select("id, code, status, duration_seconds, region, created_at")
-      .eq("code", code)
-      .single();
+    if (isResume) {
+      // ── Resume akışı: RPC ÇAĞIRMAYIZ (oda zaten kayıtlı, claim_token var) ──
+      const { data: r } = await supabase
+        .from("duel_rooms")
+        .select("*")
+        .eq("code", code)
+        .single();
+      if (!r?.id) {
+        setErrorMsg("Oda bulunamadı. Kodu kontrol et.");
+        setStatusMsg(null); return;
+      }
+      const room = r as DuelRoom;
+      const { data: ps } = await supabase
+        .from("duel_players").select("*").eq("room_id", room.id);
+      setRoom(room); setPlayers(ps ?? []); setClaims([]); setIsHost(false);
+      saveRoomSession(room.id, room.code, joinId, joinToken);
+      activePlayerIdRef.current = joinId;
+      setTimeLeft(room.duration_seconds ?? 60);
+      setStatusMsg(null); setPhase("waiting");
+      dbg("joinRoom resume ✓", { roomId: room.id, joinId });
+      return;
+    }
 
-    dbg("room fetch", { r, re });
+    // ── Fresh join: duel_join_room RPC (kapasite + isim + insert tek transaction) ──
+    const { profileId, guestId } = getIdentityArgs();
+    const { data: roomData, error: joinErr } = await supabase.rpc("duel_join_room", {
+      p_code:         code,
+      p_player_id:    joinId,
+      p_profile_id:   profileId,
+      p_guest_id:     guestId,
+      p_name:         name,
+      p_claim_token:  joinToken,
+    });
 
-    if (re || !r?.id) {
-      dbgErr("room fetch failed", re, { code });
-      setErrorMsg("Oda bulunamadı. Kodu kontrol et.");
+    dbg("duel_join_room result", { roomData, joinErr });
+
+    if (joinErr || !roomData) {
+      dbgErr("duel_join_room failed", joinErr, { joinId, code });
+      setErrorMsg(describeDuelRpcError(joinErr));
       setStatusMsg(null); return;
     }
-    if (r.status === "finished") {
-      setErrorMsg("Bu maç zaten bitti."); setStatusMsg(null); return;
-    }
-    if (r.status === "playing") {
-      setErrorMsg("Maç zaten devam ediyor. Katılamazsın."); setStatusMsg(null); return;
-    }
 
-    const room = r as DuelRoom;
+    const room = roomData as DuelRoom;
 
-    // ── Step 2: Check if already in room ──
-    const { data: existing } = await supabase
-      .from("duel_players").select("id").eq("room_id", room.id).eq("id", joinId);
-    dbg("existing player check", { existing });
-
-    if (!existing?.length) {
-      // Check capacity + duplicate name
-const { data: allPs } = await supabase
-  .from("duel_players")
-  .select("id, name")
-  .eq("room_id", room.id);
-
-const sameNameExists = (allPs ?? []).some(
-  (p) =>
-    p.id !== joinId &&
-    p.name?.trim().toLocaleLowerCase("tr-TR") ===
-      name.trim().toLocaleLowerCase("tr-TR")
-);
-
-if (sameNameExists) {
-  setErrorMsg("Bu odada bu isim zaten kullanılıyor.");
-  setStatusMsg(null);
-  return;
-}
-
-if ((allPs?.length ?? 0) >= 2) {
-  setErrorMsg("Oda dolu (2 oyuncu mevcut).");
-  setStatusMsg(null);
-  return;
-}
-      // ── Step 3: Insert player ──
-      const { data: playerData, error: pe } = await supabase
-        .from("duel_players")
-        .insert({ id: joinId, room_id: room.id, name, score: 0 })
-        .select("id, room_id, name")
-        .single();
-
-      dbg("duel_players insert (join)", { playerData, pe });
-
-      if (pe) {
-        dbgErr("duel_players insert failed (join)", pe, { joinId, room_id: room.id });
-        if (pe.code === "23505") {
-          // joinId already in DB for this room — treat as resume
-          dbg("23505 on join: treating as resume for this room");
-        } else {
-          let msg = "Odaya katılınamadı.";
-          if (pe.code === "42501") msg = "Veritabanı izin hatası.";
-          else if (pe.message?.toLowerCase().includes("network")) msg = "Bağlantı hatası. Tekrar dene.";
-          setErrorMsg(msg); setStatusMsg(null); return;
-        }
-      }
-    } else {
-      dbg("already in room (session resume), skipping insert");
-    }
-
-    // ── Step 4: Fetch full player list ──
+    // Fetch full player list for state
     const { data: ps } = await supabase
       .from("duel_players").select("*").eq("room_id", room.id);
     dbg("player list after join", ps);
 
     setRoom(room); setPlayers(ps ?? []); setClaims([]); setIsHost(false);
-    saveRoomSession(room.id, room.code, joinId);
+    saveRoomSession(room.id, room.code, joinId, joinToken);
     activePlayerIdRef.current = joinId;
     setTimeLeft(room.duration_seconds ?? 60);
     setStatusMsg(null); setPhase("waiting");
@@ -1281,29 +1288,17 @@ if ((allPs?.length ?? 0) >= 2) {
   /* ── START GAME (host only) — sets server-authoritative started_at ── */
   const startGame = async () => {
     if (!room || !isHost) return;
-    const startedAt = new Date().toISOString();
-    const { error } = await supabase
-  .from("duel_rooms")
-  .update({
-    status: "playing",
-    started_at: startedAt,
-    finished_reason: null,
-    winner_player_id: null,
-    forfeited_player_id: null,
-    disconnected_player_id: null,
-    disconnect_at: null,
-  })
-  .eq("id", room.id);
+    const { error } = await supabase.rpc("duel_start_game", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    claimTokenRef.current,
+    });
+    if (error) {
+      dbgErr("duel_start_game failed", error);
+      setErrorMsg(describeDuelRpcError(error));
+      return;
+    }
 
-if (error) { 
-  setErrorMsg("Oyun başlatılamadı."); 
-  return; 
-}
-
-await supabase
-  .from("duel_players")
-  .update({ last_seen_at: startedAt })
-  .eq("room_id", room.id);
     const { data: cs } = await supabase
       .from("duel_claims").select("*").eq("room_id", room.id);
     setClaims(cs ?? []);
@@ -1315,16 +1310,17 @@ await supabase
     // ── GUARD: must be playing, have a room, and have time left ──
     if (phaseRef.current !== "playing") return;
     if (gameEndedRef.current) return;
-    if (activePlayerIdRef.current) {
+    if (activePlayerIdRef.current && claimTokenRef.current) {
   const now = Date.now();
 
   if (now - lastWriteRef.current > 2000) {
     lastWriteRef.current = now;
 
-    await supabase
-      .from("duel_players")
-      .update({ last_seen_at: new Date().toISOString() })
-      .eq("id", activePlayerIdRef.current);
+    // Heartbeat RPC — kendi last_seen_at'imi güncellerken claim_token authz
+    await supabase.rpc("duel_heartbeat", {
+      p_player_id:   activePlayerIdRef.current,
+      p_claim_token: claimTokenRef.current,
+    });
   }
 }
     if (timeLeftRef.current <= 0) return;
@@ -1355,24 +1351,32 @@ if (claims.some(c => c.country_code === topoId)) {
     if (timeLeftRef.current <= 0 || gameEndedRef.current) return;
 
     setInput("");
-    const { error } = await supabase.from("duel_claims").insert({
-      room_id: room.id, player_id: myId, country_code: topoId,
+    // duel_submit_claim RPC: server-side player_room_mismatch + status guard
+    // + atomic claim insert. Dup'ta {claimed:false, reason:'dup'} döner.
+    const { data: claimRes, error } = await supabase.rpc("duel_submit_claim", {
+      p_room_id:      room.id,
+      p_player_id:    myId,
+      p_claim_token:  claimTokenRef.current,
+      p_country_code: topoId,
     });
-  if (!error) {
-  showFeedback("ok");
-  return;
-}
 
-if (error.code === "23505") {
-  showFeedback("dup");
-  setInput("");
-  return;
-}
+    if (error) {
+      dbgErr("duel_submit_claim failed", error);
+      showFeedback("err");
+      return;
+    }
 
-showFeedback("err");
-setInput("");
-return;
-  showFeedback("ok");
+    const res = claimRes as { claimed: boolean; reason?: string } | null;
+    if (res?.claimed) {
+      showFeedback("ok");
+      return;
+    }
+    if (res?.reason === "dup") {
+      showFeedback("dup");
+      return;
+    }
+    showFeedback("err");
+    return;
 }
   /* ── COPY INVITE MESSAGE ── */
   const inviteMessage = room
@@ -1423,10 +1427,13 @@ if (usernameError) {
 
     await supabase.rpc("cleanup_expired_duel_lobbies");
 
-    // Always generate a fresh player ID for quick match
+    // Always generate a fresh identity for quick match
     clearDuelSession();
-    const freshId = freshPlayerId();
-    myIdRef.current = freshId;
+    const freshId    = freshPlayerId();
+    const freshToken = freshClaimToken();
+    myIdRef.current        = freshId;
+    claimTokenRef.current  = freshToken;
+    const { profileId, guestId } = getIdentityArgs();
 
     // Normalize region for DB consistency
     const dbRegion   = normalizeRegion(hostRegion);
@@ -1505,58 +1512,43 @@ if (usernameError) {
     }
 
     if (targetRoom) {
-      const { error: joinErr } = await supabase
-        .from("duel_players")
-        .insert({ id: freshId, room_id: targetRoom.id, name, score: 0 });
+      // duel_join_room RPC: kapasite + isim çakışması + insert tek transaction.
+      // RPC name_taken / room_full / room_in_progress / room_finished hatalarını
+      // PG raise ile döner; fall-through ile create yoluna düşeriz.
+      const { data: joinedRoom, error: joinErr } = await supabase.rpc("duel_join_room", {
+        p_code:        targetRoom.code,
+        p_player_id:   freshId,
+        p_profile_id:  profileId,
+        p_guest_id:    guestId,
+        p_name:        name,
+        p_claim_token: freshToken,
+      });
 
-      if (joinErr && joinErr.code !== "23505") {
-        console.error("[QM] join insert failed:", joinErr);
-        // Fall through to create
-        targetRoom = null;
-      }
-    }
-
-    if (targetRoom) {
-      // Verify we have exactly 2 players after insert
-      const { data: afterPs } = await supabase
-        .from("duel_players")
-        .select("*")
-        .eq("room_id", targetRoom.id);
-
-      const afterCount = afterPs?.length ?? 0;
-      console.log("[QM] post-insert player count:", afterCount);
-
-      if (afterCount < 2) {
-        // Something went wrong — roll back and create our own room
-        console.log("[QM] unexpected count after insert, rolling back");
-        await supabase.from("duel_players")
-          .delete().eq("id", freshId).eq("room_id", targetRoom.id);
+      if (joinErr || !joinedRoom) {
+        console.warn("[QM] duel_join_room failed, falling through to create:", joinErr);
         targetRoom = null;
       } else {
-        // ── We're player 2 — trigger game start with server-authoritative time ──
-        const startedAt = new Date().toISOString();
-        const { error: startErr } = await supabase
-          .from("duel_rooms")
-          .update({ status: "playing", started_at: startedAt })
-          .eq("id", targetRoom.id);
-
-        console.log("[QM] status updated to playing:", startErr ? startErr.message : "ok", "started_at:", startedAt);
+        // ── Joiner state'i set; status='playing'i biz YAZMIYORUZ.
+        //    Host realtime'da 2. player'ı görünce duel_start_game atar.
+        const joined = joinedRoom as DuelRoom;
+        const { data: afterPs } = await supabase
+          .from("duel_players").select("*").eq("room_id", joined.id);
 
         const { data: cs } = await supabase
-          .from("duel_claims").select("*").eq("room_id", targetRoom.id);
+          .from("duel_claims").select("*").eq("room_id", joined.id);
 
-        // Merge started_at into room object so local timer fires immediately
-        const playingRoom: DuelRoom = { ...(targetRoom as DuelRoom), status: "playing", started_at: startedAt };
-        saveRoomSession(playingRoom.id, playingRoom.code, freshId);
-        setRoom(playingRoom);
+        saveRoomSession(joined.id, joined.code, freshId, freshToken);
+        setRoom(joined);
         setPlayers(afterPs ?? []);
         setClaims(cs ?? []);
         setIsHost(false);
         setIsQuickMatch(true);
-        setTimeLeft(playingRoom.duration_seconds);
+        setTimeLeft(joined.duration_seconds);
         setStatusMsg(null);
-        setPhase("playing");
-        console.log("[QM] joined + started ✓", playingRoom.code, "started_at:", startedAt);
+        // Joiner için phase: status='playing' realtime UPDATE'iyle gelecek;
+        // başlangıçta "waiting" tut, RT host'tan playing UPDATE'i alınca geçer.
+        setPhase(joined.status === "playing" ? "playing" : "waiting");
+        console.log("[QM] joined ✓ (host will auto-start)", joined.code);
         return;
       }
     }
@@ -1564,44 +1556,28 @@ if (usernameError) {
     // ─── Step 2b: CREATE new room and wait ──────────────────────────────────
     console.log("[QM] creating new room (no suitable room found)");
     const code = makeCode();
-    const { data: roomData, error: roomErr } = await supabase
-      .from("duel_rooms")
-      .insert({ code, status: "waiting", duration_seconds: dbDuration, region: dbRegion })
-      .select("id, code, status, duration_seconds, region, created_at")
-      .single();
+    const { data: roomData, error: roomErr } = await supabase.rpc("duel_create_room", {
+      p_player_id:   freshId,
+      p_profile_id:  profileId,
+      p_guest_id:    guestId,
+      p_name:        name,
+      p_code:        code,
+      p_duration:    dbDuration,
+      p_region:      dbRegion,
+      p_claim_token: freshToken,
+    });
 
-    let newRoom: DuelRoom | null = null;
-    if (roomErr || !roomData?.id) {
-      // Fallback fetch in case insert succeeded but select failed
-      const { data: fetched } = await supabase
-        .from("duel_rooms")
-        .select("id, code, status, duration_seconds, region, created_at")
-        .eq("code", code).single();
-      if (!fetched?.id) {
-        console.error("[QM] failed to create room:", roomErr);
-        setErrorMsg("Eşleşme oluşturulamadı. Tekrar dene.");
-        setStatusMsg(null); setPhase("lobby"); return;
-      }
-      newRoom = fetched as DuelRoom;
-    } else {
-      newRoom = roomData as DuelRoom;
-    }
-
-    const { error: pErr } = await supabase
-      .from("duel_players")
-      .insert({ id: freshId, room_id: newRoom.id, name, score: 0 });
-
-    if (pErr) {
-      console.error("[QM] player insert failed:", pErr);
-      await supabase.from("duel_rooms").delete().eq("id", newRoom.id);
-      setErrorMsg("Eşleşme oluşturulamadı. Tekrar dene.");
+    if (roomErr || !roomData) {
+      console.error("[QM] failed to create room:", roomErr);
+      setErrorMsg(describeDuelRpcError(roomErr));
       setStatusMsg(null); setPhase("lobby"); return;
     }
+    const newRoom = roomData as DuelRoom;
 
     const { data: initPs } = await supabase
       .from("duel_players").select("*").eq("room_id", newRoom.id);
 
-    saveRoomSession(newRoom.id, newRoom.code, freshId);
+    saveRoomSession(newRoom.id, newRoom.code, freshId, freshToken);
     setRoom(newRoom);
     setPlayers(initPs ?? []);
     setClaims([]);
@@ -1615,16 +1591,16 @@ if (usernameError) {
 
     /* ── CANCEL QUICK MATCH ── */
   const cancelQuickMatch = async () => {
-    if (room) {
-      // Remove player from room
-      await supabase.from("duel_players").delete().eq("id", myIdRef.current).eq("room_id", room.id);
-      // If we were the only player, delete the room too
-      const { data: remaining } = await supabase
-        .from("duel_players").select("id").eq("room_id", room.id);
-      if (!remaining?.length) {
-        await supabase.from("duel_rooms").delete().eq("id", room.id);
-      }
-      dbg("cancelQuickMatch: cleaned up room", room.id);
+    if (room && claimTokenRef.current) {
+      // duel_leave_room RPC: host ise oda+player'lar cascade delete; misafir
+      // ise kendi satırı + oda boşaldıysa oda da silinir.
+      const { error } = await supabase.rpc("duel_leave_room", {
+        p_room_id:     room.id,
+        p_player_id:   myIdRef.current,
+        p_claim_token: claimTokenRef.current,
+      });
+      if (error) dbgErr("cancelQuickMatch leave_room failed", error);
+      else dbg("cancelQuickMatch: cleaned up room", room.id);
     }
     setIsQuickMatch(false);
     backToLobby();
@@ -1649,17 +1625,23 @@ if (usernameError) {
 
     if (snapshotRoom) {
       const winnerId = snapshotPlayers.find(p => p.id !== myId)?.id ?? null;
-      const updates = {
-        status:              "finished"  as const,
-        finished_reason:     "forfeit"   as const,
+      // Optimistic local update — result screen shows correct result immediately
+      setRoom({
+        ...snapshotRoom,
+        status:              "finished",
+        finished_reason:     "forfeit",
         forfeited_player_id: myId,
         winner_player_id:    winnerId,
-      };
-      // Optimistic local update — result screen shows correct result immediately
-      setRoom({ ...snapshotRoom, ...updates });
-      // DB write — triggers realtime on opponent
-      await supabase.from("duel_rooms").update(updates).eq("id", snapshotRoom.id);
-      dbg("forfeit: written", { forfeitedBy: myId, winnerId, room: snapshotRoom.id });
+      });
+      // duel_forfeit_game RPC: server-side forfeit eden = loser, rakip = winner.
+      // Conditional update (status='playing') → double-call no-op (idempotent).
+      const { error } = await supabase.rpc("duel_forfeit_game", {
+        p_room_id:     snapshotRoom.id,
+        p_player_id:   myId,
+        p_claim_token: claimTokenRef.current,
+      });
+      if (error) dbgErr("duel_forfeit_game failed", error);
+      else dbg("forfeit: written", { forfeitedBy: myId, winnerId, room: snapshotRoom.id });
     }
 
     clearDuelSession();
@@ -1686,18 +1668,19 @@ if (usernameError) {
     if (oppMonitorRef.current)        { clearInterval(oppMonitorRef.current);         oppMonitorRef.current        = null; }
     setOppDisconnected(false);
     setDisconnectCountdown(0);
-    if (room && phase === "waiting") {
-      if (isHost) {
-        await supabase.from("duel_players").delete().eq("room_id", room.id);
-        await supabase.from("duel_rooms").delete().eq("id", room.id);
-      } else {
-        const myPlayerId = myIdRef.current;
-        const { error } = await supabase.from("duel_players").delete().eq("id", myPlayerId);
-        console.log("[backToLobby] misafir player silme:", myPlayerId, error);
-      }
+    if (room && phase === "waiting" && claimTokenRef.current) {
+      // duel_leave_room RPC: host ise oda+player'lar cascade delete; misafir
+      // ise kendi satırı (+ oda boşaldıysa oda).
+      const { error } = await supabase.rpc("duel_leave_room", {
+        p_room_id:     room.id,
+        p_player_id:   myIdRef.current,
+        p_claim_token: claimTokenRef.current,
+      });
+      console.log("[backToLobby] duel_leave_room result:", error?.message ?? "ok");
     }
     clearDuelSession();
     myIdRef.current = "";
+    claimTokenRef.current = "";
     setRoom(null); setPlayers([]); setClaims([]);
     setIsQuickMatch(false); setRematch("idle"); setFinalScores(null);
 setXpResult(null); xpAwardedRef.current = false;
@@ -1710,32 +1693,33 @@ gameEndedRef.current = false; startTimeRef.current = null;
   const joinRematchRoom = useCallback(async (newRoomId: string) => {
     const oldName = me?.name ?? playerName;
     clearDuelSession();
-    const freshId = freshPlayerId();
-    myIdRef.current = freshId;
+    const freshId    = freshPlayerId();
+    const freshToken = freshClaimToken();
+    myIdRef.current        = freshId;
+    claimTokenRef.current  = freshToken;
 
-    const { data: newRoomData } = await supabase
-      .from("duel_rooms").select("*").eq("id", newRoomId).single();
-    if (!newRoomData?.id) {
-      dbgErr("joinRematchRoom: new room not found");
+    // duel_join_rematch_room RPC: status='waiting_rematch' kabul eder, player
+    // insert + claim + atomik status='playing' transition.
+    const { profileId, guestId } = getIdentityArgs();
+    const { data: roomData, error: joinErr } = await supabase.rpc("duel_join_rematch_room", {
+      p_new_room_id: newRoomId,
+      p_player_id:   freshId,
+      p_profile_id:  profileId,
+      p_guest_id:    guestId,
+      p_name:        oldName,
+      p_claim_token: freshToken,
+    });
+    if (joinErr || !roomData) {
+      dbgErr("duel_join_rematch_room failed", joinErr);
+      setErrorMsg(describeDuelRpcError(joinErr));
       return;
     }
-    const newRoom = newRoomData as DuelRoom;
-
-    // Add ourselves to new room
-    await supabase.from("duel_players")
-      .insert({ id: freshId, room_id: newRoom.id, name: oldName, score: 0 });
-
-    // We're the joiner (player 2) — start the match with server-auth time
-    const startedAt = new Date().toISOString();
-    await supabase.from("duel_rooms")
-      .update({ status: "playing", started_at: startedAt })
-      .eq("id", newRoom.id);
+    const updatedRoom = roomData as DuelRoom;
 
     const { data: ps } = await supabase
-      .from("duel_players").select("*").eq("room_id", newRoom.id);
+      .from("duel_players").select("*").eq("room_id", updatedRoom.id);
 
-    const updatedRoom: DuelRoom = { ...newRoom, status: "playing", started_at: startedAt };
-    saveRoomSession(updatedRoom.id, updatedRoom.code, freshId);
+    saveRoomSession(updatedRoom.id, updatedRoom.code, freshId, freshToken);
     setRoom(updatedRoom);
     setPlayers(ps ?? []);
     setClaims([]);
@@ -1746,7 +1730,7 @@ setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(updatedRoom.duration_seconds);
     setPhase("playing");
     dbg("joinRematchRoom: switched + started ✓", updatedRoom.code);
-  }, [me, playerName]);
+  }, [me, playerName, getIdentityArgs]);
 
   /* ── REMATCH (via Realtime broadcast on the finished room's channel) ── */
   const requestRematch = useCallback(() => {
@@ -1760,57 +1744,45 @@ setXpResult(null); xpAwardedRef.current = false;
 
   const acceptRematch = useCallback(async () => {
     if (!room) return;
-    const oldRoomId  = room.id;
-    const oldName    = me?.name ?? playerName;
-    const dbRegion   = normalizeRegion(room.region);
-    const dbDuration = room.duration_seconds;
+    const oldRoomId      = room.id;
+    const oldPlayerId    = myIdRef.current;
+    const oldClaimToken  = claimTokenRef.current;
+    const dbDuration     = room.duration_seconds;
     setRematch("idle");
 
-    // Fresh player id
+    // ÖNEMLİ: Fresh kimliği session'a HENÜZ yazmıyoruz — duel_accept_rematch
+    // RPC eski player'ı (oldPlayerId + oldClaimToken) authorize edecek.
+    // RPC dönüşünde state'i yeni odaya çevirip session'ı güncelliyoruz.
+    const newPlayerId = crypto.randomUUID();
+    const newToken    = freshClaimToken();
+    const code        = makeCode();
+
+    const { data: newRoomData, error: rpcErr } = await supabase.rpc("duel_accept_rematch", {
+      p_old_room_id:     oldRoomId,
+      p_old_player_id:   oldPlayerId,
+      p_old_claim_token: oldClaimToken,
+      p_new_room_code:   code,
+      p_new_player_id:   newPlayerId,
+      p_new_claim_token: newToken,
+    });
+
+    if (rpcErr || !newRoomData) {
+      dbgErr("duel_accept_rematch failed", rpcErr);
+      setErrorMsg(describeDuelRpcError(rpcErr) || "Rövanş odası açılamadı.");
+      return;
+    }
+    const newRoom = newRoomData as DuelRoom;
+    dbg("acceptRematch: new room + pointer written", { oldRoomId, newRoomId: newRoom.id });
+
+    // Yeni odaya geçiş — şimdi yeni kimliği session'a yaz
     clearDuelSession();
-    const freshId = freshPlayerId();
-    myIdRef.current = freshId;
+    localStorage.setItem(PLAYER_ID_KEY, newPlayerId);
+    myIdRef.current       = newPlayerId;
+    claimTokenRef.current = newToken;
 
-    // Create new room with status "waiting_rematch" (won't be picked by Quick Match)
-    const code = makeCode();
-    const { data: roomData, error: roomErr } = await supabase
-      .from("duel_rooms")
-      .insert({
-        code,
-        status: "waiting_rematch",
-        duration_seconds: dbDuration,
-        region: dbRegion,
-      })
-      .select("*").single();
-
-    if (roomErr || !roomData?.id) {
-      dbgErr("acceptRematch: room create failed", roomErr);
-      setErrorMsg("Rövanş odası açılamadı.");
-      return;
-    }
-    const newRoom = roomData as DuelRoom;
-
-    // Add ourselves
-    const { error: pErr } = await supabase
-      .from("duel_players")
-      .insert({ id: freshId, room_id: newRoom.id, name: oldName, score: 0 });
-    if (pErr) {
-      dbgErr("acceptRematch: player insert failed", pErr);
-      await supabase.from("duel_rooms").delete().eq("id", newRoom.id);
-      setErrorMsg("Rövanş odası açılamadı.");
-      return;
-    }
-
-    // Write rematch_room_id pointer on OLD room → requester sees this via realtime
-    await supabase.from("duel_rooms")
-      .update({ rematch_room_id: newRoom.id })
-      .eq("id", oldRoomId);
-    dbg("acceptRematch: pointer written", { oldRoomId, newRoomId: newRoom.id });
-
-    // Switch local state to new room
     const { data: ps } = await supabase
       .from("duel_players").select("*").eq("room_id", newRoom.id);
-    saveRoomSession(newRoom.id, newRoom.code, freshId);
+    saveRoomSession(newRoom.id, newRoom.code, newPlayerId, newToken);
     setRoom(newRoom);
     setPlayers(ps ?? []);
     setClaims([]);
@@ -1820,7 +1792,7 @@ setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(dbDuration);
     setPhase("waiting");
     dbg("acceptRematch: switched to new room", newRoom.code);
-  }, [room, me, playerName]);
+  }, [room]);
 
   const declineRematch = useCallback(() => {
     if (!room) return;
@@ -2324,7 +2296,13 @@ setXpResult(null); xpAwardedRef.current = false;
           </div>
        {!isQuickMatch && (
   <div className="duel-wait-chat-align">
-    <LobbyChat roomCode={room.code} playerName={effectivePlayerName} />
+    <LobbyChat
+      roomCode={room.code}
+      playerName={effectivePlayerName}
+      sendMode="duel"
+      playerId={myIdRef.current}
+      claimToken={claimTokenRef.current}
+    />
   </div>
 )}
           </div>

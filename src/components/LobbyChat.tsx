@@ -27,6 +27,19 @@ interface Props {
   mobileSheetOpen?:         boolean;
   onMobileSheetOpenChange?: (open: boolean) => void;
   hideMobileFab?:           boolean;
+  /**
+   * Yazma yolu seçici:
+   *   - "duel"    → duel_send_message RPC (M2 hardening, player_name SERVER-SIDE
+   *                 resolve edilir; playerId + claimToken zorunlu)
+   *   - "direct"  → eski supabase.from("duel_messages").insert akışı (default)
+   * Diğer modlar (conquest / wheel_group / wheel_duel / flag_duel / duel_group)
+   * şimdilik "direct" yolunda kalır; kendi M2/M3 hardening setlerinde geçecek.
+   */
+  sendMode?:   "duel" | "direct";
+  /** sendMode="duel" için zorunlu — duel_players.id */
+  playerId?:   string;
+  /** sendMode="duel" için zorunlu — duel_player_claims.claim_token */
+  claimToken?: string;
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -105,7 +118,16 @@ const InputRow = memo(({ draft, setDraft, onSend, sending, inputRef }: InputRowP
    Ana bileşen
    ──────────────────────────────────────────────────────────── */
 
-export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMobileSheetOpenChange, hideMobileFab }: Props) {
+export default function LobbyChat({
+  roomCode,
+  playerName,
+  mobileSheetOpen,
+  onMobileSheetOpenChange,
+  hideMobileFab,
+  sendMode   = "direct",
+  playerId,
+  claimToken,
+}: Props) {
   const myName = playerName.trim();
   const isControlled = onMobileSheetOpenChange !== undefined;
 
@@ -222,20 +244,36 @@ export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMob
     setMessages(prev => [...prev, optimistic]);
 
     try {
-      // c) DB INSERT (id'yi DB üretsin, geri al)
-      const { data, error } = await supabase
-        .from("duel_messages")
-        .insert({
-          room_code:   roomCode,
-          player_name: myName,
-          message:     text,
-        })
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const real = data as DuelMessage;
+      // c) DB write — mode'a göre RPC ya da direct insert
+      let real: DuelMessage;
+      if (sendMode === "duel") {
+        if (!playerId || !claimToken) {
+          throw new Error("LobbyChat: duel mode requires playerId + claimToken");
+        }
+        // duel_send_message RPC: player_name CLIENT'TAN GÖNDERİLMEZ;
+        // server-side duel_players.name kullanılır.
+        const { data, error } = await supabase.rpc("duel_send_message", {
+          p_room_code:   roomCode,
+          p_player_id:   playerId,
+          p_claim_token: claimToken,
+          p_message:     text,
+        });
+        if (error) throw error;
+        real = data as DuelMessage;
+      } else {
+        // Eski direct insert yolu — diğer modlar (M3 öncesi açık RLS gerekiyor)
+        const { data, error } = await supabase
+          .from("duel_messages")
+          .insert({
+            room_code:   roomCode,
+            player_name: myName,
+            message:     text,
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        real = data as DuelMessage;
+      }
 
       // Optimistic'i gerçek satırla değiştir
       setMessages(prev =>
@@ -262,7 +300,7 @@ export default function LobbyChat({ roomCode, playerName, mobileSheetOpen, onMob
       }, 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, myName, roomCode, sending, effectiveSheetOpen]);
+  }, [draft, myName, roomCode, sending, effectiveSheetOpen, sendMode, playerId, claimToken]);
 
   /* ─────────── render ─────────── */
   return (
