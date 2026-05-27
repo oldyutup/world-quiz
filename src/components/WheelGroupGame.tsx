@@ -120,6 +120,12 @@ const WHEEL_GROUP_EXCLUDED_TOPOIDS = new Set<string>([
 
 const PLAYER_ID_KEY = "geoquiz_wheel_group_player_id";
 const ROOM_KEY      = "geoquiz_wheel_group_room";
+/** RLS hardening (M2 RPC switch): tüm yazma RPC'leri claim_token istiyor.
+ *  Hem misafir hem logged-in oyuncuda aynı kanıt yolu; logged-in ek olarak
+ *  auth.uid() ile de yetki kazanır ama claim_token tek-tip path olarak kalır.
+ *  Public tabloda saklanmaz (token-only realtime'dan dışlanmış
+ *  wheel_group_player_claims tablosuna yazılır). */
+const CLAIM_TOKEN_KEY = "geoquiz_wheel_group_claim_token";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -174,9 +180,22 @@ function freshPlayerId(): string {
   return id;
 }
 
+/** RLS hardening: her oda kuruluşunda / katılımda taze claim_token üretip
+ *  localStorage'a yaz. UUID; misafir oyuncu için yegane sahiplik kanıtı,
+ *  logged-in için ek yetki kanıtı. */
+function freshClaimToken(): string {
+  const tok =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(CLAIM_TOKEN_KEY, tok);
+  return tok;
+}
+
 function clearWheelGroupSession() {
   localStorage.removeItem(PLAYER_ID_KEY);
   localStorage.removeItem(ROOM_KEY);
+  localStorage.removeItem(CLAIM_TOKEN_KEY);
 }
 
 function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
@@ -199,6 +218,51 @@ function describeSupabaseError(code: string | undefined): string | null {
     return "Veritabanı tabloları hazır değil. Migration çalıştırılmamış olabilir.";
   if (code === "42501") return "Veritabanı izin hatası. RLS politikalarını kontrol et.";
   return null;
+}
+
+/** M2 RPC'lerinden dönen hata mesajlarını kullanıcı dostu Türkçe karşılıklarına
+ *  çevirir. RPC'ler `raise exception 'name_taken' using errcode='P0001'` gibi
+ *  açık etiketler kullanıyor; error.message bu etiketi içerir. errcode da
+ *  kontrol edilir, böylece beklenmeyen mesajda generic fallback'e düşeriz. */
+function describeWheelGroupRpcError(
+  error: { code?: string; message?: string } | null | undefined,
+): string | null {
+  if (!error) return null;
+  const msg = (error.message ?? "").toLowerCase();
+  if (msg.includes("code_taken"))         return "Bu oda kodu az önce kullanıldı. Tekrar dene.";
+  if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
+  if (msg.includes("name_invalid"))       return "Oyuncu adı en az 2 karakter olmalı.";
+  if (msg.includes("room_full"))          return "Oda dolu.";
+  if (msg.includes("room_finished"))      return "Bu oda kapanmış.";
+  if (msg.includes("room_in_progress"))   return "Maç başlamış. Katılamazsın.";
+  if (msg.includes("room_unavailable"))   return "Oda şu an müsait değil.";
+  if (msg.includes("room_not_found"))     return "Oda bulunamadı. Kodu kontrol et.";
+  if (msg.includes("room_not_waiting"))   return "Oda artık lobby fazında değil.";
+  if (msg.includes("room_not_playing"))   return "Oyun durumu değişti.";
+  if (msg.includes("room_not_finished"))  return "Maç henüz bitmedi.";
+  if (msg.includes("room_not_startable")) return "Oyun bu durumdan başlatılamaz.";
+  if (msg.includes("not_enough_players")) return "Başlamak için en az 3 oyuncu lazım.";
+  if (msg.includes("cannot_kick_self"))   return "Kendini kickleyemezsin.";
+  if (msg.includes("max_players_invalid")) return "Oyuncu sayısı 3 ile 10 arasında olmalı.";
+  if (msg.includes("profile_mismatch"))   return "Kimlik uyuşmazlığı. Lütfen yeniden gir.";
+  if (msg.includes("guest_id_required"))  return "Misafir kimliği eksik.";
+  if (msg.includes("claim_token_required"))
+    return "Oturum bilgin eksik. Sayfayı yenileyip tekrar dene.";
+  if (msg.includes("player_room_mismatch"))
+    return "Bu odanın oyuncusu değilsin.";
+  if (msg.includes("unauthorized"))
+    return "Bu işlem için yetkin yok. Oturumun bayatlamış olabilir.";
+  if (msg.includes("first_target_required") || msg.includes("target_required"))
+    return "Hedef bilgisi eksik.";
+  if (msg.includes("target_player_required")) return "Hedef oyuncu kimliği eksik.";
+  if (msg.includes("reason_required"))    return "Bitiş sebebi eksik.";
+  if (msg.includes("duration_invalid"))   return "Geçersiz süre.";
+  if (msg.includes("region_required") || msg.includes("region_invalid"))
+    return "Geçersiz bölge.";
+  if (msg.includes("code_required"))      return "Oda kodu gerekli.";
+  if (msg.includes("player_id_required")) return "Oyuncu kimliği eksik.";
+  // Generic fallback
+  return describeSupabaseError(error.code);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -313,6 +377,10 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
   /* ── Identity ── */
   const myIdRef = useRef<string>("");
+  /** RLS hardening (M2 RPC switch): tüm yazma RPC'leri claim_token istiyor.
+   *  Hem misafir hem logged-in oyuncuda aynı kanıt yolu; logged-in ek olarak
+   *  auth.uid() ile de yetki kazanır ama claim_token tek-tip path olarak kalır. */
+  const myClaimTokenRef = useRef<string>("");
 
   /* ── Refs for transitions / guards ────────────────────────── */
   const prevTargetRef = useRef<string | null>(null);
@@ -551,7 +619,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       .filter(id => !WHEEL_GROUP_EXCLUDED_TOPOIDS.has(id));
   }, []);
 
-  /** Host: yeni hedef seç. Atomic guard: current_target_topoid IS NULL. */
+  /** Host: yeni hedef seç. Atomic guard server-side
+   *  (status='playing' + current_target_topoid IS NULL). */
   const pickNextTarget = useCallback(async () => {
     const r = roomRef.current;
     if (!r) return;
@@ -570,12 +639,15 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     const next = remaining[Math.floor(Math.random() * remaining.length)];
 
-    await supabase
-      .from("wheel_group_rooms")
-      .update({ current_target_topoid: next })
-      .eq("id", r.id)
-      .eq("status", "playing")
-      .is("current_target_topoid", null);
+    const { error } = await supabase.rpc("wheel_group_pick_target", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_target:         next,
+    });
+    if (error) {
+      console.error("[WheelGroup] pick_target RPC failed", error);
+    }
   }, [buildTargetPool]);
 
   const finishGame = useCallback(async (reason: "timeout" | "pool") => {
@@ -585,19 +657,17 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     if (endingRef.current) return;
     endingRef.current = true;
 
-    const { error } = await supabase
-      .from("wheel_group_rooms")
-      .update({
-        status: "finished",
-        finished_at: new Date().toISOString(),
-        finished_reason: reason,
-        current_target_topoid: null,
-      })
-      .eq("id", r.id)
-      .eq("status", "playing");
+    // RPC: server-side now() ile finished_at yazılır + status='playing' guard.
+    // Status guard fail olursa room_not_playing exception → endingRef rollback.
+    const { error } = await supabase.rpc("wheel_group_finish_game", {
+      p_room_id:        r.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_reason:         reason,
+    });
 
     if (error) {
-      console.error("[WheelGroup] finishGame failed", error);
+      console.error("[WheelGroup] finish_game RPC failed", error);
       endingRef.current = false;
     }
   }, []);
@@ -628,45 +698,33 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
         return;
       }
 
-      // Doğru: atomic claim
-      const newUsed = [...(r.used_target_topoids ?? []), topoId];
-      const claimedTarget = topoId;
-      const { data: claimRows, error: claimErr } = await supabase
-        .from("wheel_group_rooms")
-        .update({
-          current_target_topoid: null,
-          used_target_topoids: newUsed,
-        })
-        .eq("id", r.id)
-        .eq("current_target_topoid", claimedTarget)
-        .select("id");
+      // Doğru: server-atomik claim + skor +1 tek RPC'de.
+      // SKOR SERVER-SIDE artırılır; client değer GÖNDERMEZ. Yarışı kaybeden
+      // client'lar claimed=false alır ve sessiz no-op olur.
+      const { data: claimResult, error: claimErr } = await supabase.rpc(
+        "wheel_group_claim_target",
+        {
+          p_room_id:     r.id,
+          p_player_id:   myIdRef.current,
+          p_claim_token: myClaimTokenRef.current,
+          p_target:      topoId,
+        },
+      );
 
       if (claimErr) {
-        console.error("[WheelGroup] claim failed", claimErr);
+        console.error("[WheelGroup] claim_target RPC failed", claimErr);
         return;
       }
-      if (!claimRows || claimRows.length === 0) {
-        // Başkası kapmış — sessizce no-op
+
+      const claimed =
+        (claimResult as { claimed?: boolean } | null)?.claimed === true;
+      if (!claimed) {
+        // Yarışı başkası kazandı, hedef bayatladı veya status değişti → no-op.
         return;
       }
 
       playSound("correct");
-
-      // ── Skor: DB'den fresh oku, +1 ile yaz ──
-      const myId = myIdRef.current;
-      const { data: meRow } = await supabase
-        .from("wheel_group_players")
-        .select("score")
-        .eq("id", myId)
-        .maybeSingle();
-      const latestScore = meRow?.score ?? 0;
-      const { error: scoreErr } = await supabase
-        .from("wheel_group_players")
-        .update({ score: latestScore + 1 })
-        .eq("id", myId);
-      if (scoreErr) {
-        console.error("[WheelGroup] score update failed", scoreErr);
-      }
+      // Skor realtime UPDATE'iyle wheel_group_players abonesine yansır.
     },
     [penaltyUntilMs],
   );
@@ -955,26 +1013,39 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     clearWheelGroupSession();
     const freshId = freshPlayerId();
+    const claimToken = freshClaimToken();
     myIdRef.current = freshId;
+    myClaimTokenRef.current = claimToken;
 
     const code = generateRoomCode();
     const trimmedName = effectiveName;
+    const profileId = profile?.id ?? null;
+    // Misafir için guest_id = freshId (stable per-session anchor); logged-in
+    // tarafta NULL bırakılır, server profile_id = auth.uid() kontrolü yapar.
+    const guestId = profileId ? null : freshId;
 
-    const { data: roomData, error: roomErr } = await supabase
-      .from("wheel_group_rooms")
-      .insert({
-        code,
-        status: "waiting",
-        duration_seconds: hostDuration,
-        region: normalizeRegion(hostRegion),
-        penalty_enabled: hostPenalty,
-        host_player_id: freshId,
-      })
-      .select("*")
-      .single();
+    // Tek RPC: oda + host player + claim transaction'da. Orphan-room rollback
+    // gerekmez (function rollback ile garantili). max_players init default'u
+    // (10) ile başlatılır; host updateHostSetting ile sonradan değiştirir.
+    const { data: roomData, error: roomErr } = await supabase.rpc(
+      "wheel_group_create_room",
+      {
+        p_player_id:   freshId,
+        p_profile_id:  profileId,
+        p_guest_id:    guestId,
+        p_name:        trimmedName,
+        p_code:        code,
+        p_duration:    hostDuration,
+        p_region:      normalizeRegion(hostRegion),
+        p_penalty:     hostPenalty,
+        p_max_players: 10,
+        p_claim_token: claimToken,
+      },
+    );
 
     if (roomErr || !roomData?.id) {
-      const friendly = describeSupabaseError(roomErr?.code) ??
+      const friendly =
+        describeWheelGroupRpcError(roomErr) ??
         "Oda oluşturulamadı. Bağlantıyı kontrol et.";
       setErrorMsg(friendly);
       setStatusMsg(null);
@@ -984,24 +1055,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     const createdRoom = roomData as WheelGroupRoom;
 
-    const { error: playerErr } = await supabase
-      .from("wheel_group_players")
-      .insert({
-        id: freshId,
-        room_id: createdRoom.id,
-        name: trimmedName,
-        score: 0,
-      });
-
-    if (playerErr) {
-      supabase.from("wheel_group_rooms").delete().eq("id", createdRoom.id).then(() => {});
-      const friendly = describeSupabaseError(playerErr.code) ?? "Host eklenemedi. Tekrar dene.";
-      setErrorMsg(friendly);
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
+    // İlk player listesini çek (realtime devreye girene kadar UI hazır olsun).
     const { data: ps } = await supabase
       .from("wheel_group_players")
       .select("*")
@@ -1037,84 +1091,41 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     clearWheelGroupSession();
     const freshId = freshPlayerId();
+    const claimToken = freshClaimToken();
     myIdRef.current = freshId;
-
-    const { data: r, error: re } = await supabase
-      .from("wheel_group_rooms")
-      .select("*")
-      .eq("code", normalized)
-      .maybeSingle();
-
-    if (re || !r?.id) {
-      const friendly = describeSupabaseError(re?.code) ?? "Oda bulunamadı. Kodu kontrol et.";
-      setErrorMsg(friendly);
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
-    const targetRoom = r as WheelGroupRoom;
-
-    if (targetRoom.status === "finished") {
-      setErrorMsg("Bu oda kapanmış.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-    if (targetRoom.status === "playing") {
-      setErrorMsg("Maç başlamış. Katılamazsın.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-
-    const { data: existing } = await supabase
-      .from("wheel_group_players")
-      .select("id, name")
-      .eq("room_id", targetRoom.id);
+    myClaimTokenRef.current = claimToken;
 
     const trimmedName = effectiveName;
-    const sameName = (existing ?? []).some(
-      p => p.name?.trim().toLocaleLowerCase("tr-TR") ===
-           trimmedName.toLocaleLowerCase("tr-TR"),
+    const profileId = profile?.id ?? null;
+    const guestId = profileId ? null : freshId;
+
+    // RPC tek atışta: oda lookup (FOR UPDATE) + status/kapasite/isim çakışması
+    // check + player insert + claim insert. Capacity trigger backup olarak
+    // INSERT sırasında da çalışır; mesaj 'room_full' olarak yeniden raise edilir.
+    const { data: roomData, error: joinErr } = await supabase.rpc(
+      "wheel_group_join_room",
+      {
+        p_code:        normalized,
+        p_player_id:   freshId,
+        p_profile_id:  profileId,
+        p_guest_id:    guestId,
+        p_name:        trimmedName,
+        p_claim_token: claimToken,
+      },
     );
-    if (sameName) {
-      setErrorMsg("Bu odada bu isim zaten kullanılıyor.");
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
-    if ((existing?.length ?? 0) >= targetRoom.max_players) {
-      setErrorMsg(`Oda dolu (${targetRoom.max_players} oyuncu).`);
-      setStatusMsg(null);
-      setPhase("setup");
-      return;
-    }
 
-    const { error: pe } = await supabase
-      .from("wheel_group_players")
-      .insert({
-        id: freshId,
-        room_id: targetRoom.id,
-        name: trimmedName,
-        score: 0,
-      });
-
-    if (pe) {
-      // Server capacity trigger: 20260519120000_wheel_group_capacity_trigger.sql
-      // tarafindan raise edilen "wheel_group_room_full" mesajini yakala →
-      // race condition'da bile (iki client ayni anda 10. ve 11. olarak girerse)
-      // kullaniciya "Oda dolu" gosterilir.
-      const isCapacityErr = (pe.message ?? "").includes("wheel_group_room_full");
-      const friendly = isCapacityErr
-        ? "Oda dolu."
-        : describeSupabaseError(pe.code) ?? "Odaya katılınamadı.";
+    if (joinErr || !roomData?.id) {
+      const friendly =
+        describeWheelGroupRpcError(joinErr) ?? "Odaya katılınamadı.";
       setErrorMsg(friendly);
       setStatusMsg(null);
       setPhase("setup");
       return;
     }
 
+    const targetRoom = roomData as WheelGroupRoom;
+
+    // Player listesini çek (realtime devreye girene kadar UI hazır olsun).
     const { data: ps } = await supabase
       .from("wheel_group_players")
       .select("*")
@@ -1128,16 +1139,18 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     setPhase("lobby");
   }
 
-  /** Lobby/playing/finished'dan çıkış. Host ise:
-   *   - Başka aktif oyuncu varsa: host_player_id'yi onlara devret, kendi
-   *     row'unu sil.
-   *   - Yoksa: odayı tamamen sil.
-   *  Misafir ise sadece kendi player row'unu siler. */
+  /** Lobby/playing/finished'dan çıkış. Server RPC üç dalı tek transaction'da
+   *  atomik yönetir:
+   *   - Host & başkası varsa: host_player_id'yi en eski joined_at'e sahip BAŞKA
+   *     oyuncuya devret, sonra kendi player row'unu sil.
+   *   - Host & yalnız: odayı tamamen sil (cascade ile player + claim temizlenir).
+   *   - Non-host: sadece kendi player row'unu sil.
+   *  Idempotent: oda yoksa sessiz no-op. */
   async function leaveRoom() {
     playSound("click");
     const currentRoom = roomRef.current;
     const currentMyId = myIdRef.current;
-    const amHost = !!currentRoom && currentRoom.host_player_id === currentMyId;
+    const currentClaim = myClaimTokenRef.current;
 
     // UI önce sıfırlansın
     setRoom(null);
@@ -1167,38 +1180,16 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     if (!currentRoom) return;
 
-    if (amHost) {
-      // Host devretme: en eski joined_at'e sahip BAŞKA oyuncuyu bul
-      const others = playersRef.current
-        .filter(p => p.id !== currentMyId)
-        .sort((a, b) =>
-          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime(),
-        );
-      if (others.length > 0) {
-        const newHostId = others[0].id;
-        // Önce host_player_id'yi devret, sonra eski host'u sil
-        await supabase
-          .from("wheel_group_rooms")
-          .update({ host_player_id: newHostId })
-          .eq("id", currentRoom.id);
-        await supabase
-          .from("wheel_group_players")
-          .delete()
-          .eq("id", currentMyId)
-          .eq("room_id", currentRoom.id);
-      } else {
-        // Tek başınaydım → odayı tamamen sil (cascade ile player da)
-        await supabase
-          .from("wheel_group_rooms")
-          .delete()
-          .eq("id", currentRoom.id);
-      }
-    } else {
-      await supabase
-        .from("wheel_group_players")
-        .delete()
-        .eq("id", currentMyId)
-        .eq("room_id", currentRoom.id);
+    // RPC host/non-host ayrımını + host transfer + self DELETE'i tek transaction'da
+    // yapar. Eski iki-step host transfer yarış penceresi (host UPDATE ile self
+    // DELETE arasında concurrent leave) kapanır.
+    const { error } = await supabase.rpc("wheel_group_leave_room", {
+      p_room_id:     currentRoom.id,
+      p_player_id:   currentMyId,
+      p_claim_token: currentClaim,
+    });
+    if (error) {
+      console.error("[WheelGroup] leave_room RPC failed", error);
     }
   }
 
@@ -1213,7 +1204,6 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       return;
     }
     const firstTarget = pool[Math.floor(Math.random() * pool.length)];
-    const startedAt = new Date().toISOString();
 
     endingRef.current = false;
     prevTargetRef.current = firstTarget;
@@ -1224,36 +1214,24 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     setXpResult(null);
     xpAwardedRef.current = false;
 
-    // Önce tüm oyuncuların skorlarını sıfırla
-    await supabase
-      .from("wheel_group_players")
-      .update({ score: 0 })
-      .eq("room_id", room.id);
-
-    const newMatchId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
-    const { data: updated, error } = await supabase
-      .from("wheel_group_rooms")
-      .update({
-        status: "playing",
-        started_at: startedAt,
-        finished_at: null,
-        finished_reason: null,
-        current_target_topoid: firstTarget,
-        used_target_topoids: [],
-        match_seq: (room.match_seq ?? 1) + (room.status === "finished" ? 1 : 0),
-        current_match_id:
-          room.status === "finished" ? newMatchId : room.current_match_id,
-      })
-      .eq("id", room.id)
-      .select("*")
-      .single();
+    // Tek RPC: tüm oyuncuların skorlarını 0'a çek + room satırını 'playing'
+    // fazına geçir. started_at server-side now() ile yazılır (clock skew kapanır).
+    // match_seq / current_match_id rotation server-side; mevcut semantik korunur
+    // (yalnız status='finished' geçişinde bump, waiting → playing'de aynı kalır).
+    const { data: updated, error } = await supabase.rpc(
+      "wheel_group_start_game",
+      {
+        p_room_id:        room.id,
+        p_host_player_id: myIdRef.current,
+        p_claim_token:    myClaimTokenRef.current,
+        p_first_target:   firstTarget,
+      },
+    );
 
     if (error || !updated) {
-      setErrorMsg("Oyun başlatılamadı. Tekrar dene.");
+      setErrorMsg(
+        describeWheelGroupRpcError(error) ?? "Oyun başlatılamadı. Tekrar dene.",
+      );
       return;
     }
 
@@ -1267,50 +1245,65 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     if (!room || !isHost) return;
     // Optimistic
     setRoom(prev => (prev ? { ...prev, ...next } : prev));
-    const { error } = await supabase
-      .from("wheel_group_rooms")
-      .update(next)
-      .eq("id", room.id);
+
+    // RPC partial update: dokunulmayan alana NULL geçilir → coalesce ile
+    // mevcut değer korunur. RPC tarafında status='waiting' guard'ı uygulanır.
+    // max_players küçültme mevcut davranışı korur: var olan oyuncular
+    // kicklenmez, yalnız yeni katılım limiti değişir.
+    const { error } = await supabase.rpc("wheel_group_update_settings", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_duration:       next.duration_seconds ?? null,
+      p_region:         next.region ?? null,
+      p_penalty:        next.penalty_enabled ?? null,
+      p_max_players:    next.max_players ?? null,
+    });
     if (error) {
-      console.error("[WheelGroup] updateHostSetting failed", error);
+      // Rollback realtime echo'ya bırakılır; en kötü eski değer geri gelir.
+      console.error("[WheelGroup] update_settings RPC failed", error);
     }
   }
 
   async function kickPlayer(targetId: string) {
     if (!room || !isHost) return;
     if (targetId === myIdRef.current) return;
-    const { error } = await supabase
-      .from("wheel_group_players")
-      .delete()
-      .eq("room_id", room.id)
-      .eq("id", targetId);
+    // RPC server-side validation: authorize_host + status='waiting' guard +
+    // self-kick reject. Hedef yoksa idempotent no-op (zaten ayrılmış).
+    const { error } = await supabase.rpc("wheel_group_kick_player", {
+      p_room_id:          room.id,
+      p_host_player_id:   myIdRef.current,
+      p_host_claim_token: myClaimTokenRef.current,
+      p_target_player_id: targetId,
+    });
     if (error) {
-      console.error("[WheelGroup] kick failed", error);
-      setErrorMsg("Oyuncu odadan çıkarılamadı.");
+      console.error("[WheelGroup] kick_player RPC failed", error);
+      setErrorMsg(
+        describeWheelGroupRpcError(error) ?? "Oyuncu odadan çıkarılamadı.",
+      );
       return;
     }
     setPlayers(prev => prev.filter(p => p.id !== targetId));
     setKickTarget(null);
   }
 
-  /** Sonuç ekranından lobiye geri dön. Host ise odayı 'waiting'e döndür.
+  /** Sonuç ekranından lobiye geri dön. Host ise oda 'finished' → 'waiting'.
    *  Misafir ise sadece phase 'lobby'ye geçer; realtime row UPDATE'iyle
-   *  zaten host'tan gelen reset herkese yayılır. */
+   *  zaten host'tan gelen reset herkese yayılır.
+   *  RPC tarafında status='finished' guard uygulanır → mid-game lobiye dönüş
+   *  reddedilir (UI zaten yalnız finished fazında bu butonu gösteriyor). */
   async function returnToLobby() {
     playSound("click");
     if (!room) return;
     if (isHost) {
-      await supabase
-        .from("wheel_group_rooms")
-        .update({
-          status: "waiting",
-          started_at: null,
-          finished_at: null,
-          finished_reason: null,
-          current_target_topoid: null,
-          used_target_topoids: [],
-        })
-        .eq("id", room.id);
+      const { error } = await supabase.rpc("wheel_group_return_to_lobby", {
+        p_room_id:        room.id,
+        p_host_player_id: myIdRef.current,
+        p_claim_token:    myClaimTokenRef.current,
+      });
+      if (error) {
+        console.error("[WheelGroup] return_to_lobby RPC failed", error);
+      }
     }
     setFinalLeaderboard(null);
     setXpResult(null);
