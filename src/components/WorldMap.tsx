@@ -410,6 +410,11 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const dragRef = useRef<{ sx: number; sy: number; tx0: number; ty0: number } | null>(null);
   const projectedDimsRef = useRef({ w: 0, h: 0 });
   const didInitRef = useRef(false);
+  // Tracks the (region, dims) we last auto-fitted to. Parents (e.g. WheelDuel /
+  // WheelGroup) rebuild `activeIds` as a new Set on every render, which would
+  // otherwise re-fire the auto-fit effect and snap the user's pan/zoom back to
+  // the framed region after every score tick or room update.
+  const lastFitKeyRef = useRef<string>("");
   const dimsRef = useRef({ w: 0, h: 0 });
   dimsRef.current = dims;
   // Track pointer movement so a drag never fires onCountryClick.
@@ -463,6 +468,8 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
 
   useEffect(() => {
     if (resetKey === 0) return;
+    // Allow a manual reset to re-fit the active region on the next pass.
+    lastFitKeyRef.current = "";
     const reset = initialTransform(dimsRef.current.w, dimsRef.current.h);
     xfRef.current = reset;
     setXf(reset);
@@ -480,11 +487,17 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     setXf(init);
   }, [dims, region]);
 
-  // Auto-zoom to fit the selected region whenever region or layout changes
+  // Auto-zoom to fit the selected region. Fires once per (region, dims)
+  // combination — not on every activeIds identity flip — so user pan/zoom
+  // survives subsequent parent re-renders. Re-fits if the user resizes /
+  // rotates the device, or when region changes.
   useEffect(() => {
     if (!region || region === "world" || computed.length === 0 || dims.w === 0) return;
+    const key = `${region}|${Math.round(dims.w)}x${Math.round(dims.h)}`;
+    if (lastFitKeyRef.current === key) return;
     const fit = fitRegion(activeIds, computed, dims.w, dims.h);
     if (!fit) return;
+    lastFitKeyRef.current = key;
     xfRef.current = fit;
     setXf({ ...fit });
   // eslint-disable-next-line react-hooks/exhaustive-deps
