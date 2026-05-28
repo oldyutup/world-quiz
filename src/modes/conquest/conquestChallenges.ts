@@ -39,6 +39,14 @@ import type {
  */
 export const CONQUEST_CHALLENGE_DURATION_MS = 20_000;
 
+/**
+ * How long the "reveal" sub-phase stays on screen after the challenge timer
+ * ends.  During reveal the correct answer + first-correct player are shown
+ * to every client; the host then transitions to the action (or round_result)
+ * phase.  Tuned to feel snappy on mobile without flashing past too fast.
+ */
+export const CONQUEST_REVEAL_DURATION_MS = 3_000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Type metadata
 // ─────────────────────────────────────────────────────────────────────────────

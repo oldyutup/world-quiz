@@ -428,6 +428,24 @@ export interface ConquestChallengeState {
   challenge:        ConquestChallenge;
   status:           ConquestChallengeStatus;
   winnerPlayerId:   string | null;
+  /**
+   * Player whose submission was the first correct answer to land on the
+   * synced state during the challenge phase.  Recorded *without* triggering
+   * a phase transition — the phase stays "challenge" until the timer runs
+   * out, then jumps to "reveal" with this player promoted to
+   * `winnerPlayerId`.  Optional for backward compat with pre-reveal rooms.
+   */
+  firstCorrectPlayerId?: string | null;
+  /**
+   * Set of player ids that have submitted *any* answer (correct or wrong)
+   * for this challenge.  Used by the host-side "early reveal" check:
+   * when every still-in-room eligible player appears here, the host fires
+   * `expireChallenge` immediately instead of waiting on the timer.  Race
+   * semantics inherited from `firstCorrectPlayerId` (last-write-wins on
+   * the Supabase row); a stale write can soft-fail to the timer fallback,
+   * but never breaks gameplay.  Optional for backward compat.
+   */
+  answeredPlayerIds?: string[];
   /** Epoch ms when this challenge started. */
   startedAt:        number;
   /** Epoch ms when this challenge will time out (status → skipped). */
@@ -445,6 +463,7 @@ export interface ConquestChallengeState {
 export type ConquestGamePhase =
   | "setup"
   | "challenge"
+  | "reveal"
   | "action"
   | "defense_duel"
   | "round_result"
@@ -509,6 +528,12 @@ export interface ConquestRoundState {
    *  countdown from it. Future bonuses (e.g. Doğu Karadeniz +5s) extend the
    *  window by mutating `getMovePhaseDurationMs` only. */
   actionEndsAt?:    number;
+  /** Epoch ms when the reveal/results sub-phase started.  Set on the
+   *  challenge → reveal transition. */
+  revealStartedAt?: number;
+  /** Epoch ms when the reveal phase finalises (host transitions to action
+   *  or round_result depending on whether anyone answered correctly). */
+  revealEndsAt?:    number;
 }
 
 /** Compact per-round log entry kept across the whole match. */

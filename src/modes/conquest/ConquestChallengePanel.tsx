@@ -38,8 +38,6 @@ interface Props {
   myPlayerId:      string | null;
   /** True if this client already submitted (correct OR wrong) for this challenge. */
   alreadyAnswered: boolean;
-  /** Last local submission result (for "Yanlış cevap." feedback after a miss). */
-  lastLocalFeedback: "correct" | "wrong" | null;
   /** Live ms remaining, supplied by the parent so the countdown ticks every frame. */
   msRemaining:     number;
   /** Fired with the raw text the user typed/clicked.  Parent validates. */
@@ -52,7 +50,6 @@ export default function ConquestChallengePanel({
   playerColors,
   myPlayerId,
   alreadyAnswered,
-  lastLocalFeedback,
   msRemaining,
   onSubmitAnswer,
 }: Props) {
@@ -65,11 +62,17 @@ export default function ConquestChallengePanel({
   const canSubmit  = isActive && isEligible && !alreadyAnswered && msRemaining > 0;
 
   const [draft, setDraft] = useState("");
+  // What the user *picked* this round — used purely for neutral "selected"
+  // highlighting on quiz choices.  We deliberately do NOT colour by
+  // correct/wrong while the question is live; the reveal lands later in the
+  // action / round_result panel (see ConquestGame.tsx).
+  const [pickedChoice, setPickedChoice] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset local draft whenever the challenge id changes (new round).
+  // Reset local draft + picked choice whenever the challenge id changes (new round).
   useEffect(() => {
     setDraft("");
+    setPickedChoice(null);
     // Auto-focus the text input on mount for typing flows.
     if (challenge.type !== "quiz" || !challenge.choices) {
       // setTimeout 0 to wait for input to be in the DOM.
@@ -99,6 +102,7 @@ export default function ConquestChallengePanel({
   }
 
   function handleChoice(choice: string) {
+    setPickedChoice(choice);
     submit(choice);
   }
 
@@ -160,17 +164,22 @@ export default function ConquestChallengePanel({
           role="group"
           aria-label="Cevap seçenekleri"
         >
-          {challenge.choices!.map(choice => (
-            <button
-              key={choice}
-              type="button"
-              className="cq-challenge-choice-btn"
-              disabled={!canSubmit}
-              onClick={() => handleChoice(choice)}
-            >
-              {choice}
-            </button>
-          ))}
+          {challenge.choices!.map(choice => {
+            const isPicked = pickedChoice === choice;
+            return (
+              <button
+                key={choice}
+                type="button"
+                className="cq-challenge-choice-btn"
+                data-picked={isPicked ? "true" : undefined}
+                aria-pressed={isPicked || undefined}
+                disabled={!canSubmit}
+                onClick={() => handleChoice(choice)}
+              >
+                {choice}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -209,20 +218,12 @@ export default function ConquestChallengePanel({
         </form>
       )}
 
-      {/* Local feedback after a submission */}
-      {isActive && lastLocalFeedback === "wrong" && (
-        <p className="cq-challenge-feedback cq-challenge-feedback--wrong" role="status">
-          ❌ Yanlış cevap. Bu tur tekrar deneyemezsin.
-        </p>
-      )}
-      {isActive && lastLocalFeedback === "correct" && (
-        <p className="cq-challenge-feedback cq-challenge-feedback--right" role="status">
-          ✅ Doğru! Hamle hakkı senin.
-        </p>
-      )}
-      {isActive && !lastLocalFeedback && alreadyAnswered && (
+      {/* Submission feedback — deliberately neutral.  We never reveal
+       *  correct/wrong while the challenge is live; the reveal lands in
+       *  the action / round_result panel after finalize. */}
+      {isActive && alreadyAnswered && (
         <p className="cq-challenge-feedback" role="status">
-          ⏳ Cevabını gönderdin — diğer oyuncuları bekle.
+          ✓ Cevabın kaydedildi. Süre bitince sonuç gösterilecek.
         </p>
       )}
       {isActive && !isEligible && (

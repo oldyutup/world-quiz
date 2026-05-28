@@ -68,6 +68,7 @@ import {
   expireActionPhase,
   expireChallenge,
   expireDuel,
+  finalizeReveal,
   getCurrentLegalTargets,
   getPlayerOwningAllRegions,
   placeHiddenConquestOnNeutralRegion,
@@ -76,6 +77,7 @@ import {
   submitDuelAnswer,
 } from "./conquestGameplay";
 import { inferActionFromRegionClick } from "./conquestActions";
+import { normaliseAnswer } from "./conquestChallengeValidation";
 import ConquestBoard from "./ConquestBoard";
 import ConquestChallengePanel from "./ConquestChallengePanel";
 import ConquestActionPanel from "./ConquestActionPanel";
@@ -424,10 +426,11 @@ export default function ConquestGame({
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const challengeTicking = phaseForTicker === "challenge"    && statusForTicker === "active";
+    const revealTicking    = phaseForTicker === "reveal";
     const actionTicking    = phaseForTicker === "action"       && actionEndsAt !== null;
     const duelTicking      = phaseForTicker === "defense_duel" && duelEndsAt   !== null;
     const introTicking     = introEndsAtForTicker !== null && Date.now() < introEndsAtForTicker;
-    if (!challengeTicking && !actionTicking && !duelTicking && !introTicking) return;
+    if (!challengeTicking && !revealTicking && !actionTicking && !duelTicking && !introTicking) return;
     const t = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(t);
   }, [phaseForTicker, statusForTicker, challengeId, actionEndsAt, duelEndsAt, introEndsAtForTicker]);
@@ -600,19 +603,30 @@ export default function ConquestGame({
     if (gameState.round.challenge.status !== "active") return;
     if (answeredChallengeId === gameState.round.challenge.challenge.id) return;
 
-    const { ok, winning, state: next } = submitChallengeAnswer(
+    const { ok, correct, firstCorrect, state: next } = submitChallengeAnswer(
       gameState, myPlayerId, rawAnswer,
     );
     if (!ok) return;
 
     // Lock further submissions for this challenge on this client.
     setAnsweredChallengeId(gameState.round.challenge.challenge.id);
-    setLocalFeedback(winning ? "correct" : "wrong");
-    playSound(winning ? "correct" : "wrong");
+    // We still track the local verdict — the reveal-phase panel uses it
+    // (`showCorrectButLost`) to render the "Doğru bildin ama ilk cevap …"
+    // line *after* the timer ends.  No audio/visual reveal happens here:
+    // the per-submission feedback is intentionally neutral.
+    setLocalFeedback(correct ? "correct" : "wrong");
+    playSound("click");
 
-    if (winning && next !== gameState) {
+    // Push every successful submission so the synced answeredPlayerIds set
+    // updates — that's what the host's early-reveal check watches.  The
+    // first correct submission additionally records firstCorrectPlayerId
+    // for the eventual reveal attribution.
+    if (next !== gameState) {
       void onPushGameState(next);
     }
+    // Suppress the unused-var warning while keeping the destructure
+    // self-documenting for future readers.
+    void firstCorrect;
   }, [gameState, myPlayerId, answeredChallengeId, onPushGameState]);
 
   const handleSubmitDuelAnswer = useCallback((rawAnswer: string) => {
@@ -638,7 +652,9 @@ export default function ConquestGame({
   // ── Host-only: drive challenge expiry from the synced endsAt ─────────
   // Only the host pushes the expire write so two clients don't race.  The
   // timeout is computed from `endsAt - Date.now()` so every client agrees
-  // on when it fires (host's clock is authoritative).
+  // on when it fires (host's clock is authoritative).  expireChallenge
+  // transitions the round into the "reveal" sub-phase (see gameplay.ts);
+  // the next effect below schedules the reveal → action/round_result step.
   useEffect(() => {
     if (!isHost) return;
     if (!gameState) return;
@@ -656,6 +672,65 @@ export default function ConquestGame({
     isHost,
     gameState,
     challengeId,
+    onPushGameState,
+  ]);
+
+  // ── Host-only: fire reveal early when every still-in-room eligible
+  //    player has submitted (correct OR wrong).  Two-player rooms snap
+  //    into reveal the moment both answer; >2 player rooms still wait on
+  //    the slowest active player.  Disconnect/leave handled by intersecting
+  //    eligible ids with the live `players` array.
+  useEffect(() => {
+    if (!isHost) return;
+    if (!gameState) return;
+    if (gameState.phase !== "challenge") return;
+    if (gameState.round.challenge.status !== "active") return;
+
+    const eligible = gameState.round.challenge.challenge.eligiblePlayerIds
+      .filter(id => players.some(p => p.id === id));
+    if (eligible.length === 0) return;
+
+    const answered = gameState.round.challenge.answeredPlayerIds ?? [];
+    const allAnswered = eligible.every(id => answered.includes(id));
+    if (!allAnswered) return;
+
+    // Skip a microtask so a stale snapshot mid-render can't race us into
+    // an extra expireChallenge write.  expireChallenge is idempotent, so
+    // the duplicate is cosmetic — but the microtask gives the timer
+    // effect cleanup a chance to run first.
+    const t = window.setTimeout(() => {
+      const expired = expireChallenge(gameState);
+      if (expired !== gameState) void onPushGameState(expired);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [
+    isHost,
+    gameState,
+    players,
+    onPushGameState,
+  ]);
+
+  // ── Host-only: drive reveal phase finalisation from revealEndsAt ─────
+  // Mirrors the challenge expiry above. The reveal window is short (~3s)
+  // but each client renders the same countdown locally so the reveal copy
+  // lands at the same wall-clock moment everywhere. The host alone pushes
+  // the finalize write to avoid two clients racing the transition.
+  useEffect(() => {
+    if (!isHost) return;
+    if (!gameState) return;
+    if (gameState.phase !== "reveal") return;
+    const endsAt = gameState.round.revealEndsAt;
+    if (typeof endsAt !== "number") return;
+
+    const delay = Math.max(0, endsAt - Date.now());
+    const t = window.setTimeout(() => {
+      const next = finalizeReveal(gameState);
+      if (next !== gameState) void onPushGameState(next);
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [
+    isHost,
+    gameState,
     onPushGameState,
   ]);
 
@@ -1059,6 +1134,78 @@ export default function ConquestGame({
     return `Hamle sırası: ${actionHolder.name}`;
   })();
 
+  /* Challenge winner attribution — drives the post-finalize UX so a player
+   * who answered correctly but lost the race understands *why* the turn
+   * went to the opponent. winnerPlayerId stays populated on the round
+   * snapshot after the phase transitions to "action", so we can derive
+   * this purely from synced state. */
+  const challengeWinnerId = gameState.round.challenge.winnerPlayerId ?? null;
+  const challengeWinner   = challengeWinnerId
+    ? players.find(p => p.id === challengeWinnerId) ?? null
+    : null;
+  const challengeWinnerName = challengeWinner?.name ?? null;
+  const iSubmittedCorrectThisRound =
+    localFeedback === "correct"
+    && answeredChallengeId === gameState.round.challenge.challenge.id;
+  const iWonChallenge =
+    !!myPlayerId && !!challengeWinnerId && challengeWinnerId === myPlayerId;
+  const showCorrectButLost =
+    iSubmittedCorrectThisRound && !iWonChallenge && !!challengeWinnerName;
+
+  /* Reveal-phase answer copy.
+   *
+   * Single-canonical challenges (quiz, flag_guess) have one "correct"
+   * string — `acceptedAnswers[0]` is authoritative.
+   *
+   * `type_race` ("Ülke Yaz") is multi-canonical: every entry in
+   * `acceptedAnswers` is equally correct.  Showing `[0]` made the panel
+   * lie when the winner typed a different valid country (e.g. winner
+   * typed "Belarus" but the reveal claimed "Doğru cevap: Brezilya").  For
+   * type_race we therefore prefer the winner's actual submission, falling
+   * back to a short list of example accepted answers when nobody got it.
+   */
+  const challengeForReveal = gameState.round.challenge.challenge;
+  const winningSubmission = challengeWinnerId
+    ? gameState.round.challenge.submittedAnswers.find(
+        a => a.playerId === challengeWinnerId && a.correct,
+      ) ?? null
+    : null;
+  const canonicaliseRaceAnswer = (raw: string): string => {
+    const norm = normaliseAnswer(raw);
+    if (!norm) return raw.trim();
+    const match = challengeForReveal.acceptedAnswers?.find(
+      a => normaliseAnswer(a) === norm,
+    );
+    return match ?? raw.trim();
+  };
+  const challengeCorrectAnswer: string | null = (() => {
+    const accepted = challengeForReveal.acceptedAnswers;
+    if (!accepted || accepted.length === 0) return null;
+    if (challengeForReveal.type === "type_race") {
+      if (winningSubmission?.answer) {
+        return canonicaliseRaceAnswer(winningSubmission.answer);
+      }
+      return null;
+    }
+    return accepted[0];
+  })();
+  const challengeAnswerExamples: string[] =
+    challengeForReveal.type === "type_race"
+      && !challengeCorrectAnswer
+      && challengeForReveal.acceptedAnswers
+      ? challengeForReveal.acceptedAnswers.slice(0, 3)
+      : [];
+
+  /* Reveal-phase countdown — drives the small "Xsn" chip on the reveal
+   * panel.  Null outside the reveal phase / for pre-reveal rooms without a
+   * revealEndsAt stamp. */
+  const revealSecondsLeft = (() => {
+    if (phase !== "reveal") return null;
+    const endsAt = gameState.round.revealEndsAt;
+    if (typeof endsAt !== "number") return null;
+    return Math.max(0, Math.ceil((endsAt - now) / 1000));
+  })();
+
   // ── Attack Focus target marker (map + overlay copy) ────────────
   // The map's red ring + ⚔️ glyph is driven by `attackTargetRegionId`:
   //   - During the duel intro / 3-2-1 countdown window, point it at the
@@ -1261,6 +1408,73 @@ export default function ConquestGame({
         </div>
       )}
 
+      {/* Reveal/results card — premium center overlay shown for
+       *  CONQUEST_REVEAL_DURATION_MS between the question and the move
+       *  phase.  Same `position: fixed` chrome as the other duel overlays
+       *  so it stays above the map without occluding it. */}
+      {phase === "reveal" && (
+        <div
+          className="cq-duel-overlay-toast cq-reveal-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Soru sonucu"
+        >
+          <div className="cq-reveal-card-head">
+            <span className="cq-reveal-card-chip">SONUÇ</span>
+            {revealSecondsLeft !== null && (
+              <span
+                className="cq-reveal-card-countdown"
+                data-low={revealSecondsLeft <= 1 ? "true" : undefined}
+                aria-label="Reveal kalan süre"
+              >
+                {revealSecondsLeft}sn
+              </span>
+            )}
+          </div>
+          {challengeCorrectAnswer ? (
+            <p className="cq-reveal-card-line cq-reveal-card-answer">
+              Doğru cevap: <strong>{challengeCorrectAnswer}</strong>
+            </p>
+          ) : challengeAnswerExamples.length > 0 ? (
+            <p className="cq-reveal-card-line cq-reveal-card-answer">
+              Geçerli cevap örnekleri:{" "}
+              <strong>{challengeAnswerExamples.join(", ")}</strong>
+            </p>
+          ) : null}
+          {challengeWinnerName ? (
+            <>
+              <p className="cq-reveal-card-line cq-reveal-card-winner">
+                🏆 İlk doğru cevap:{" "}
+                <strong>
+                  {iWonChallenge ? "sen" : challengeWinnerName}
+                </strong>
+              </p>
+              {showCorrectButLost && (
+                <p className="cq-reveal-card-line cq-reveal-card-second">
+                  ✅ Doğru bildin, ama ilk cevap{" "}
+                  <strong>{challengeWinnerName}</strong> tarafından verildi.
+                </p>
+              )}
+              <p className="cq-reveal-card-line cq-reveal-card-turn">
+                Hamle hakkı:{" "}
+                <strong>
+                  {iWonChallenge ? "sen" : challengeWinnerName}
+                </strong>
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="cq-reveal-card-line cq-reveal-card-miss">
+                Doğru cevap gelmedi.
+              </p>
+              <p className="cq-reveal-card-line cq-reveal-card-turn cq-reveal-card-turn--miss">
+                Hamle yapılamadı.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Gizli Operasyon Başlatıldı (center, all viewers) */}
       {hiddenOpToast && (
         <div
@@ -1287,6 +1501,7 @@ export default function ConquestGame({
   // fires once per toast, not per parent render.
   //
   // Priority order:
+  //   130  reveal                (Soru sonuç kartı — 3s, gameplay-critical)
   //   120  game-intro-countdown  (3-2-1 at game start)
   //   110  game-intro            (⚔️ Kuşatma başlıyor card)
   //   100  duel-countdown        (3-2-1 just before the duel question shows)
@@ -1297,7 +1512,74 @@ export default function ConquestGame({
   //
   // Time-locked duel-* specs win against the informational toasts so
   // they never queue behind a 4.5 s bonus card and miss their window.
+  // Reveal sits at the top — it's the gameplay-critical "kim hamle yapacak"
+  // moment that everyone needs to read before the action phase begins.
   const mobileToastSpecs: MobileToastSpec[] = [];
+  if (phase === "reveal") {
+    mobileToastSpecs.push({
+      id:        `reveal:${challengeState.challenge.id}`,
+      kind:      "reveal",
+      priority:  130,
+      className: "cq-duel-overlay-toast cq-reveal-overlay",
+      ariaLabel: "Soru sonucu",
+      content: (
+        <>
+          <div className="cq-reveal-card-head">
+            <span className="cq-reveal-card-chip">SONUÇ</span>
+            {revealSecondsLeft !== null && (
+              <span
+                className="cq-reveal-card-countdown"
+                data-low={revealSecondsLeft <= 1 ? "true" : undefined}
+              >
+                {revealSecondsLeft}sn
+              </span>
+            )}
+          </div>
+          {challengeCorrectAnswer ? (
+            <p className="cq-reveal-card-line cq-reveal-card-answer">
+              Doğru cevap: <strong>{challengeCorrectAnswer}</strong>
+            </p>
+          ) : challengeAnswerExamples.length > 0 ? (
+            <p className="cq-reveal-card-line cq-reveal-card-answer">
+              Geçerli cevap örnekleri:{" "}
+              <strong>{challengeAnswerExamples.join(", ")}</strong>
+            </p>
+          ) : null}
+          {challengeWinnerName ? (
+            <>
+              <p className="cq-reveal-card-line cq-reveal-card-winner">
+                🏆 İlk doğru cevap:{" "}
+                <strong>
+                  {iWonChallenge ? "sen" : challengeWinnerName}
+                </strong>
+              </p>
+              {showCorrectButLost && (
+                <p className="cq-reveal-card-line cq-reveal-card-second">
+                  ✅ Doğru bildin, ama ilk cevap{" "}
+                  <strong>{challengeWinnerName}</strong> tarafından verildi.
+                </p>
+              )}
+              <p className="cq-reveal-card-line cq-reveal-card-turn">
+                Hamle hakkı:{" "}
+                <strong>
+                  {iWonChallenge ? "sen" : challengeWinnerName}
+                </strong>
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="cq-reveal-card-line cq-reveal-card-miss">
+                Doğru cevap gelmedi.
+              </p>
+              <p className="cq-reveal-card-line cq-reveal-card-turn cq-reveal-card-turn--miss">
+                Hamle yapılamadı.
+              </p>
+            </>
+          )}
+        </>
+      ),
+    });
+  }
   if (showGameIntroCountdown) {
     mobileToastSpecs.push({
       id:        "game-intro-countdown",
@@ -1476,15 +1758,14 @@ export default function ConquestGame({
           alreadyAnswered={
             answeredChallengeId === challengeState.challenge.id
           }
-          lastLocalFeedback={
-            answeredChallengeId === challengeState.challenge.id
-              ? localFeedback
-              : null
-          }
           msRemaining={Math.max(0, challengeState.endsAt - now)}
           onSubmitAnswer={handleSubmitAnswer}
         />
       )}
+
+      {/* Reveal phase intentionally renders no panel content here — the
+       *  result card is a centered overlay (see cq-reveal-overlay below)
+       *  so it doesn't get buried in the side card or mobile sheet body. */}
 
       {phase === "action" && canActOnRegion && (
         <ConquestActionPanel
@@ -1508,9 +1789,13 @@ export default function ConquestGame({
             {actionTurnLine}
           </p>
           <p className="cq-action-hint">
-            {moveSecondsLeft !== null
-              ? `Rakibin hamlesi: ${moveSecondsLeft}sn`
-              : "Hamle tamamlanana kadar bekle."}
+            {challengeWinnerName
+              ? (moveSecondsLeft !== null
+                  ? `${challengeWinnerName} hamlesini yapıyor, bekle. (${moveSecondsLeft}sn)`
+                  : `${challengeWinnerName} hamlesini yapıyor, bekle.`)
+              : (moveSecondsLeft !== null
+                  ? `Rakibin hamlesi: ${moveSecondsLeft}sn`
+                  : "Hamle tamamlanana kadar bekle.")}
           </p>
           {moveMsRemaining !== null && moveTotalMs !== null && moveTotalMs > 0 && (
             <div
@@ -1679,6 +1964,25 @@ export default function ConquestGame({
         >
           {sec}sn
         </span>
+      </>
+    );
+  } else if (phase === "reveal") {
+    // Body content is intentionally empty during reveal — the centered
+    // overlay card owns the moment. Collapse the sheet so it doesn't
+    // claim screen space while the card is on screen.
+    mobileSheetState = "collapsed";
+    mobileSheetDismissible = false;
+    mobileSheetHandle = (
+      <>
+        <span className="mcq-sheet-handle-title">Sonuç</span>
+        {revealSecondsLeft !== null && (
+          <span
+            className="mcq-sheet-handle-timer"
+            data-low={revealSecondsLeft <= 1 ? "true" : undefined}
+          >
+            {revealSecondsLeft}sn
+          </span>
+        )}
       </>
     );
   } else if (phase === "action") {

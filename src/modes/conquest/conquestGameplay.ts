@@ -23,6 +23,7 @@ import {
 } from "./conquestActions";
 import {
   CONQUEST_CHALLENGE_DURATION_MS,
+  CONQUEST_REVEAL_DURATION_MS,
   pickRandomConquestChallenge,
 } from "./conquestChallenges";
 import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
@@ -203,11 +204,13 @@ function buildActiveChallengeState(
 ): ConquestChallengeState {
   return {
     challenge,
-    status:           "active",
-    winnerPlayerId:   null,
-    startedAt:        now,
-    endsAt:           now + CONQUEST_CHALLENGE_DURATION_MS,
-    submittedAnswers: [],
+    status:                "active",
+    winnerPlayerId:        null,
+    firstCorrectPlayerId:  null,
+    answeredPlayerIds:     [],
+    startedAt:             now,
+    endsAt:                now + CONQUEST_CHALLENGE_DURATION_MS,
+    submittedAnswers:      [],
   };
 }
 
@@ -276,20 +279,38 @@ export function resolveChallengeWithWinner(
 /**
  * Validate `rawAnswer` against the active challenge for `submitterId`.
  *
- * Returns `{ ok: true, state, winning: true }` if the answer is correct and
- * resolves the challenge; `{ ok: true, winning: false }` if the answer is
- * wrong (state unchanged — caller surfaces "Yanlış cevap." locally);
- * `{ ok: false }` if the submission is illegal (phase wrong, challenge not
- * active, submitter not eligible).
+ * Two-phase semantics (see also `expireChallenge` + `finalizeReveal`):
+ *   - The challenge timer runs for its full duration regardless of who
+ *     answered when.  A correct submission is *recorded* into the synced
+ *     state (so the eventual reveal can attribute it) but the phase does
+ *     NOT transition early.  Only the *first* correct submission seen on
+ *     a snapshot is recorded; later corrects are accepted-but-not-first.
+ *   - When the timer hits zero, `expireChallenge` promotes
+ *     `firstCorrectPlayerId` → `winnerPlayerId` and moves the round into
+ *     the "reveal" phase.  `finalizeReveal` then drives the transition to
+ *     `action` (winner exists) or `round_result` (skip).
  *
- * This is the single funnel ConquestGame uses for player-typed submissions.
- * It does NOT enforce one-answer-per-player — that's a client-local
- * convenience to avoid write races on wrong attempts.
+ * Result fields:
+ *   - `ok`           — was this a legal submission at all?
+ *   - `correct`      — did the answer match `acceptedAnswers`?
+ *   - `firstCorrect` — did this submission land as the *first* correct
+ *     answer on the snapshot the caller passed in?  Drives the host-side
+ *     reveal attribution (last-write-wins race semantics inherited from the
+ *     pre-reveal code; server-authoritative resolution is future work).
+ *   - `winning`      — alias for `firstCorrect`, retained so existing
+ *     callers that destructure { winning } stay source-compatible.
+ *
+ * One-answer-per-player is NOT enforced here; the client (ConquestGame)
+ * applies it locally via `answeredChallengeId` so wrong submissions never
+ * touch the synced state.
  */
 export interface SubmitAnswerResult {
-  ok:       boolean;
-  winning:  boolean;
-  state:    ConquestGameState;
+  ok:           boolean;
+  correct:      boolean;
+  firstCorrect: boolean;
+  /** @deprecated — use `firstCorrect`. Kept for backward-compat destructuring. */
+  winning:      boolean;
+  state:        ConquestGameState;
 }
 
 export function submitChallengeAnswer(
@@ -298,35 +319,94 @@ export function submitChallengeAnswer(
   rawAnswer:   string,
 ): SubmitAnswerResult {
   if (state.phase !== "challenge") {
-    return { ok: false, winning: false, state };
+    return { ok: false, correct: false, firstCorrect: false, winning: false, state };
   }
   if (state.round.challenge.status !== "active") {
-    return { ok: false, winning: false, state };
+    return { ok: false, correct: false, firstCorrect: false, winning: false, state };
   }
   const challenge = state.round.challenge.challenge;
   if (!challenge.eligiblePlayerIds.includes(submitterId)) {
-    return { ok: false, winning: false, state };
+    return { ok: false, correct: false, firstCorrect: false, winning: false, state };
   }
 
-  const correct = isChallengeAnswerCorrect(challenge, rawAnswer);
+  const correct          = isChallengeAnswerCorrect(challenge, rawAnswer);
+  const existingAnswered = state.round.challenge.answeredPlayerIds ?? [];
+  const alreadyInSet     = existingAnswered.includes(submitterId);
+  const answeredPlayerIds = alreadyInSet
+    ? existingAnswered
+    : [...existingAnswered, submitterId];
+
+  const baseChallengeUpdate = {
+    ...state.round.challenge,
+    answeredPlayerIds,
+  };
+
   if (!correct) {
-    return { ok: true, winning: false, state };
+    // Wrong answer: record participation only.  Push lets the host see
+    // every active player has weighed in, enabling early reveal.
+    const next: ConquestGameState = {
+      ...state,
+      round: {
+        ...state.round,
+        challenge: baseChallengeUpdate,
+      },
+    };
+    return { ok: true, correct: false, firstCorrect: false, winning: false, state: next };
+  }
+
+  // Already-recorded first correct on this snapshot — accept locally but
+  // do not overwrite firstCorrect.  Still record participation so the
+  // early-reveal check trips.
+  if (state.round.challenge.firstCorrectPlayerId) {
+    const next: ConquestGameState = {
+      ...state,
+      round: {
+        ...state.round,
+        challenge: baseChallengeUpdate,
+      },
+    };
+    return { ok: true, correct: true, firstCorrect: false, winning: false, state: next };
   }
 
   const submitter = state.players.find(p => p.id === submitterId);
-  const next = resolveChallengeWithWinner(state, submitterId, {
-    text:       rawAnswer,
+  const now = Date.now();
+  const answerEntry: ConquestChallengeAnswer = {
+    playerId:   submitterId,
     playerName: submitter?.name ?? "Oyuncu",
-  });
-  return { ok: true, winning: true, state: next };
+    answer:     rawAnswer,
+    correct:    true,
+    at:         now,
+  };
+
+  // Record the first correct WITHOUT transitioning phase — the timer must
+  // still run to completion (or the early-reveal check trip) so every
+  // client gets to attempt the question.
+  const next: ConquestGameState = {
+    ...state,
+    round: {
+      ...state.round,
+      challenge: {
+        ...baseChallengeUpdate,
+        firstCorrectPlayerId: submitterId,
+        submittedAnswers: [
+          ...state.round.challenge.submittedAnswers,
+          answerEntry,
+        ],
+      },
+    },
+  };
+  return { ok: true, correct: true, firstCorrect: true, winning: true, state: next };
 }
 
 /**
- * Mark the active challenge as expired (timer hit zero with no winner).
- * Distinct from `skipChallenge` only in messaging — both routes leave the
- * round resultless and ready to advance.  Idempotent: returns the state
- * unchanged if the challenge is already resolved/skipped or the phase has
- * moved on.
+ * Challenge timer hit zero.  Promotes the (possibly null) firstCorrect
+ * submission to the round's `winnerPlayerId` and transitions the phase
+ * into the new "reveal" sub-phase, where the answer + winner are shown to
+ * every client for `CONQUEST_REVEAL_DURATION_MS` before `finalizeReveal`
+ * routes the round forward.
+ *
+ * Idempotent: returns state unchanged if the challenge is already past the
+ * "active" status or the phase has moved on.
  *
  * Host-only writer in the live loop (see ConquestGame.tsx) to keep the
  * timeout authoritative and avoid two clients racing to expire.
@@ -336,6 +416,67 @@ export function expireChallenge(state: ConquestGameState): ConquestGameState {
   if (state.round.challenge.status !== "active") return state;
 
   const now = Date.now();
+  const firstCorrectPlayerId = state.round.challenge.firstCorrectPlayerId ?? null;
+  const hasWinner = !!firstCorrectPlayerId
+    && state.round.challenge.challenge.eligiblePlayerIds.includes(firstCorrectPlayerId);
+
+  return {
+    ...state,
+    phase: "reveal",
+    round: {
+      ...state.round,
+      challenge: {
+        ...state.round.challenge,
+        status:         hasWinner ? "resolved" : "skipped",
+        winnerPlayerId: hasWinner ? firstCorrectPlayerId : null,
+        resolvedAt:     now,
+      },
+      revealStartedAt: now,
+      revealEndsAt:    now + CONQUEST_REVEAL_DURATION_MS,
+    },
+  };
+}
+
+/**
+ * Reveal window ended — drive the round forward.
+ *
+ * Winner-present case: spend the move-time bonus (if any), set the action
+ * holder + action timer, transition to "action" phase.  This mirrors the
+ * pre-reveal `resolveChallengeWithWinner` setup, just deferred so the
+ * reveal copy gets airtime.
+ *
+ * No-winner case: jump straight to round_result with the existing skip
+ * messaging so downstream flows (round history, mobile sheet, etc.) keep
+ * recognising the "kimse bilemedi" branch.
+ *
+ * Idempotent: returns state unchanged if the phase isn't "reveal".
+ */
+export function finalizeReveal(state: ConquestGameState): ConquestGameState {
+  if (state.phase !== "reveal") return state;
+
+  const now = Date.now();
+  const winnerId = state.round.challenge.winnerPlayerId ?? null;
+
+  if (winnerId
+    && state.round.challenge.challenge.eligiblePlayerIds.includes(winnerId)
+  ) {
+    const { durationMs, playerBonuses } = consumeMoveTimeBonus(state, winnerId);
+    return {
+      ...state,
+      phase: "action",
+      playerBonuses,
+      round: {
+        ...state.round,
+        actionHolderId:  winnerId,
+        actionStartedAt: now,
+        actionEndsAt:    now + durationMs,
+        revealStartedAt: undefined,
+        revealEndsAt:    undefined,
+      },
+    };
+  }
+
+  // No correct answer in the window → skip the round.
   const expiredResult: ConquestActionResult = {
     ok:       true,
     action:   "skip",
@@ -348,13 +489,10 @@ export function expireChallenge(state: ConquestGameState): ConquestGameState {
     phase: "round_result",
     round: {
       ...state.round,
-      challenge: {
-        ...state.round.challenge,
-        status:     "skipped",
-        resolvedAt: now,
-      },
-      actionHolderId: null,
-      lastResult:     expiredResult,
+      actionHolderId:  null,
+      lastResult:      expiredResult,
+      revealStartedAt: undefined,
+      revealEndsAt:    undefined,
     },
   };
 }
