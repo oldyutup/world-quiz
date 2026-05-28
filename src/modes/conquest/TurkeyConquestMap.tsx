@@ -173,6 +173,32 @@ interface OwnershipFxEntry {
  *  leaving permanently-styled stale paths in the tree. */
 const OWNERSHIP_FX_MS = 1500;
 
+/** Local-only shield-break FX entry — fires when a region transitions
+ *  out of any shielded state (open İstanbul shield, or hidden Ankara
+ *  shield) without an ownership change.  Region id + monotonic stamp
+ *  keep keys unique across re-fires on the same region. */
+interface ShieldBreakFxEntry {
+  id:       string;
+  regionId: ConquestRegionId;
+}
+/** Slightly longer than the slowest keyframe (cqMapShieldShatter =
+ *  900ms) so the React node lives across the full animation. */
+const SHIELD_BREAK_FX_MS = 1000;
+
+/** Eight short radial cracks rendered around the label anchor.  Angle in
+ *  degrees, length in SVG units.  Mild variance keeps it from feeling
+ *  like a perfect snowflake while staying compact for mobile. */
+const SHIELD_SHATTER_CRACKS: ReadonlyArray<{ a: number; len: number }> = [
+  { a:    0, len: 26 },
+  { a:   46, len: 22 },
+  { a:   92, len: 28 },
+  { a:  138, len: 21 },
+  { a:  180, len: 25 },
+  { a:  224, len: 23 },
+  { a:  268, len: 27 },
+  { a:  314, len: 22 },
+];
+
 export default function TurkeyConquestMap({
   regionStates,
   players,
@@ -201,9 +227,21 @@ export default function TurkeyConquestMap({
   const [ownershipFx, setOwnershipFx] = useState<OwnershipFxEntry[]>([]);
   const fxTimeoutsRef = useRef<Map<string, number>>(new Map());
 
+  // ── Shield-break FX (open shield or hidden shield → none) ──────────
+  // Same diff pattern as ownership: prevShieldsRef is the baseline; on
+  // any transition out of a shielded state we mount a one-shot overlay
+  // for the affected region.  Gated by "owner did NOT change in the same
+  // diff" so the capture glow keeps its lane when the two events would
+  // otherwise stack.
+  const prevShieldsRef = useRef<Record<string, { open: boolean; hidden: boolean }> | null>(null);
+  const [shieldBreakFx, setShieldBreakFx] = useState<ShieldBreakFxEntry[]>([]);
+  const shieldFxTimeoutsRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => () => {
     fxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     fxTimeoutsRef.current.clear();
+    shieldFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
+    shieldFxTimeoutsRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -240,6 +278,54 @@ export default function TurkeyConquestMap({
     }
     prevOwnersRef.current = current;
   }, [regionStates, playerColors]);
+
+  useEffect(() => {
+    const current: Record<string, { open: boolean; hidden: boolean }> = {};
+    for (const rs of regionStates) {
+      current[rs.regionId] = {
+        open:   rs.shielded === true,
+        hidden: !!rs.hiddenShieldOwnerId,
+      };
+    }
+
+    const prev = prevShieldsRef.current;
+    if (!prev) {
+      prevShieldsRef.current = current;
+      return;
+    }
+
+    // Skip shield-break FX on a region whose owner also changed this tick —
+    // the capture glow already covers that moment (and per gameplay, real
+    // shield-break events leave ownership intact, so this guard just protects
+    // the legacy flipOwnership path from double-stacking effects).
+    const ownerPrev = prevOwnersRef.current ?? {};
+    const ownerCur: Record<string, string | null> = {};
+    for (const rs of regionStates) ownerCur[rs.regionId] = rs.ownerPlayerId;
+
+    const fresh: ShieldBreakFxEntry[] = [];
+    const now = Date.now();
+    for (const rid of Object.keys(current)) {
+      const before = prev[rid] ?? { open: false, hidden: false };
+      const after  = current[rid];
+      const brokeOpen   = before.open   && !after.open;
+      const brokeHidden = before.hidden && !after.hidden;
+      if (!brokeOpen && !brokeHidden) continue;
+      if ((ownerPrev[rid] ?? null) !== (ownerCur[rid] ?? null)) continue;
+      fresh.push({ id: `shield-fx:${rid}:${now}`, regionId: rid as ConquestRegionId });
+    }
+
+    if (fresh.length > 0) {
+      setShieldBreakFx(p => [...p, ...fresh]);
+      for (const fx of fresh) {
+        const handle = window.setTimeout(() => {
+          setShieldBreakFx(cur => cur.filter(e => e.id !== fx.id));
+          shieldFxTimeoutsRef.current.delete(fx.id);
+        }, SHIELD_BREAK_FX_MS);
+        shieldFxTimeoutsRef.current.set(fx.id, handle);
+      }
+    }
+    prevShieldsRef.current = current;
+  }, [regionStates]);
 
   const handleKey = useCallback((
     e: React.KeyboardEvent,
@@ -574,6 +660,61 @@ export default function TurkeyConquestMap({
                 fill="none"
                 stroke={c.legalStroke}
               />
+            );
+          })}
+        </g>
+
+        {/* ── Layer 7: shield-shatter FX (one-shot, ~900ms) ──────────
+             Three sublayers per broken region:
+               · region-shaped halo (gold/white pulse on the path itself)
+               · radial crack lines emanating from the label anchor
+               · shield glyph that brightens then fades
+             Pointer events off; fires only on the breaking tick so it
+             never lingers and never re-emits on the steady state.        */}
+        <g className="cq-map-shield-shatter-layer" pointerEvents="none" aria-hidden="true">
+          {shieldBreakFx.map((fx) => {
+            const entry = regionEntries.find(e => e.id === fx.regionId);
+            if (!entry) return null;
+            const lbl = REGION_LABEL_POS[entry.id] ?? { x: 0, y: 0 };
+            return (
+              <g key={`shatter-${fx.id}`} className="cq-map-shield-shatter">
+                <path
+                  d={entry.d}
+                  className="cq-map-shield-shatter-halo"
+                  fillRule="evenodd"
+                  fill="none"
+                />
+                <g
+                  className="cq-map-shield-shatter-cracks"
+                  transform={`translate(${lbl.x} ${lbl.y})`}
+                >
+                  {SHIELD_SHATTER_CRACKS.map(({ a, len }, i) => {
+                    const rad = (a * Math.PI) / 180;
+                    const x2  = Math.cos(rad) * len;
+                    const y2  = Math.sin(rad) * len;
+                    return (
+                      <line
+                        key={`crack-${i}`}
+                        x1={0}
+                        y1={0}
+                        x2={x2}
+                        y2={y2}
+                        className="cq-map-shield-shatter-crack"
+                        style={{ animationDelay: `${i * 16}ms` }}
+                      />
+                    );
+                  })}
+                </g>
+                <text
+                  x={lbl.x}
+                  y={lbl.y}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  className="cq-map-shield-shatter-icon"
+                >
+                  🛡️
+                </text>
+              </g>
             );
           })}
         </g>

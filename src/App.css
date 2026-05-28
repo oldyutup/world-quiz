@@ -13380,6 +13380,65 @@ body {
   animation: cqMapCaptureGlow 1400ms ease-out forwards;
 }
 
+/* ── Map: shield-shatter FX (one-shot when a shield breaks) ───
+ * Three sublayers on a single <g class="cq-map-shield-shatter">:
+ *   · region halo: gold/white pulse on the region path itself.
+ *     Stroke + drop-shadow only — no fill, keeps the underlying
+ *     ownership colour readable through the moment.
+ *   · cracks: short radial lines from the label anchor, revealed
+ *     via stroke-dashoffset so they "draw out" instead of popping in.
+ *   · icon: a 🛡️ glyph that flares (scale 0.6 → 1.2 → 0.85) then
+ *     fades — quick gesture, no rotation/bounce.
+ * Total presence ≈ 900ms; React unmounts after 1000ms so `forwards`
+ * never sticks. */
+@keyframes cqMapShieldShatterHalo {
+  0%   { opacity: 0;    stroke-width: 1.0; stroke-opacity: 0.6; }
+  18%  { opacity: 1;    stroke-width: 5.0; stroke-opacity: 1;   }
+  60%  { opacity: 0.55; stroke-width: 2.6; stroke-opacity: 0.7; }
+  100% { opacity: 0;    stroke-width: 0.6; stroke-opacity: 0;   }
+}
+@keyframes cqMapShieldShatterCrack {
+  0%   { opacity: 0;    stroke-dashoffset: 30; stroke-width: 2.4; }
+  22%  { opacity: 1;    stroke-dashoffset: 0;  stroke-width: 2.2; }
+  70%  { opacity: 0.65; stroke-dashoffset: 0;  stroke-width: 1.4; }
+  100% { opacity: 0;    stroke-dashoffset: 0;  stroke-width: 0.8; }
+}
+@keyframes cqMapShieldShatterIcon {
+  0%   { opacity: 0;    transform-origin: center; transform: scale(0.6); }
+  20%  { opacity: 1;    transform: scale(1.22); }
+  55%  { opacity: 0.92; transform: scale(0.95); }
+  100% { opacity: 0;    transform: scale(0.85); }
+}
+.cq-map-shield-shatter-halo {
+  stroke: #fde68a;
+  filter: drop-shadow(0 0 7px rgba(253, 224, 71, 0.85))
+          drop-shadow(0 0 14px rgba(255, 255, 255, 0.4));
+  animation: cqMapShieldShatterHalo 880ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.cq-map-shield-shatter-crack {
+  stroke: #fff8dc;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-dasharray: 30;
+  filter: drop-shadow(0 0 4px rgba(253, 224, 71, 0.95));
+  animation: cqMapShieldShatterCrack 760ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.cq-map-shield-shatter-icon {
+  font-size: 18px;
+  fill: #fff8dc;
+  filter: drop-shadow(0 0 6px rgba(253, 224, 71, 0.95))
+          drop-shadow(0 0 12px rgba(255, 255, 255, 0.55));
+  animation: cqMapShieldShatterIcon 880ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* Mobile: trim the radial crack array (hide every second crack) and
+ * shrink the icon so the burst stays light on small viewports. */
+@media (max-width: 720px) {
+  .cq-map-shield-shatter-crack:nth-child(2n) { display: none; }
+  .cq-map-shield-shatter-icon { font-size: 15px; }
+}
+
 /* ── Score: +N / -N transient delta badge ───────────────────── */
 /* Renders inside .cq-players-panel-score (desktop) and inside
  * .mcq-strip__pill-stats (mobile).  Positioned absolutely so it
@@ -13552,6 +13611,16 @@ body {
     animation-duration: 200ms;
     animation-timing-function: ease;
   }
+  /* Shield-shatter: drop the radial cracks entirely and collapse the
+   * halo + icon to a single soft fade.  Still communicates "the shield
+   * broke here" without flickering strokes or scale pumps. */
+  .cq-map-shield-shatter-crack { display: none; }
+  .cq-map-shield-shatter-halo,
+  .cq-map-shield-shatter-icon {
+    animation-duration: 380ms;
+    animation-timing-function: ease;
+  }
+  .cq-map-shield-shatter-icon { transform: none !important; }
   .cq-players-panel-delta,
   .mcq-strip__pill-delta {
     animation: cqEventFeedIn 200ms ease forwards;
