@@ -1668,6 +1668,9 @@ const returnToRoom = useCallback(async () => {
                     mobileSheetOpen={dggChatOpen}
                     onMobileSheetOpenChange={(v) => { setDggChatOpen(v); if (v) setDggPlayersOpen(false); }}
                     hideMobileFab={dggChatOpen || dggPlayersOpen}
+                    sendMode="duel_group"
+                    playerId={myIdRef.current}
+                    claimToken={claimTokenRef.current}
                   />
                 </div>
                 </div>

@@ -2283,7 +2283,13 @@ ${shareLink}`;
               </button>
             </div>
 
-            <LobbyChat roomCode={room.code} playerName={myPlayer?.name ?? effectivePlayerName} />
+            <LobbyChat
+              roomCode={room.code}
+              playerName={myPlayer?.name ?? effectivePlayerName}
+              sendMode="flag_duel"
+              playerId={myIdRef.current}
+              claimToken={claimTokenRef.current}
+            />
           </div>
         </div>
       )}

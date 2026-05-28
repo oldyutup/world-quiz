@@ -28,19 +28,41 @@ interface Props {
   onMobileSheetOpenChange?: (open: boolean) => void;
   hideMobileFab?:           boolean;
   /**
-   * Yazma yolu seçici:
-   *   - "duel"    → duel_send_message RPC (M2 hardening, player_name SERVER-SIDE
-   *                 resolve edilir; playerId + claimToken zorunlu)
-   *   - "direct"  → eski supabase.from("duel_messages").insert akışı (default)
-   * Diğer modlar (conquest / wheel_group / wheel_duel / flag_duel / duel_group)
-   * şimdilik "direct" yolunda kalır; kendi M2/M3 hardening setlerinde geçecek.
+   * Yazma yolu seçici (M-Chat-A / 20260614120000):
+   *   - "duel"        → duel_send_message RPC          (Duel 1v1)
+   *   - "flag_duel"   → flag_duel_send_message RPC     (Flag Duel manual+QM)
+   *   - "wheel_duel"  → wheel_duel_send_message RPC    (Wheel Duel 1v1)
+   *   - "wheel_group" → wheel_group_send_message RPC   (Wheel Group)
+   *   - "duel_group"  → duel_group_send_message RPC    (Duel Group)
+   *   - "conquest"    → conquest_send_message RPC      (Conquest)
+   *   - "direct"      → fallback: supabase.from("duel_messages").insert
+   *                     Dilim 1 (yumuşak geçiş) süresince tutuluyor; tüm
+   *                     call-site'lar RPC moduna geçtikten ve Dilim 2
+   *                     duel_messages INSERT lockdown'ı uygulandıktan sonra
+   *                     bu yol komple ölür ve kaldırılabilir.
+   *
+   * Tüm RPC modlarında: player_name CLIENT'TAN GÖNDERİLMEZ — server-side
+   * <mode>_players.name resolve edilir. playerId + claimToken zorunlu.
    */
-  sendMode?:   "duel" | "direct";
-  /** sendMode="duel" için zorunlu — duel_players.id */
+  sendMode?:   "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "direct";
+  /** RPC modları için zorunlu — <mode>_players.id */
   playerId?:   string;
-  /** sendMode="duel" için zorunlu — duel_player_claims.claim_token */
+  /** RPC modları için zorunlu — <mode>_player_claims.claim_token */
   claimToken?: string;
 }
+
+/** sendMode → RPC adı eşlemesi. "direct" buraya düşmez. */
+const SEND_RPC: Record<
+  "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest",
+  string
+> = {
+  duel:        "duel_send_message",
+  flag_duel:   "flag_duel_send_message",
+  wheel_duel:  "wheel_duel_send_message",
+  wheel_group: "wheel_group_send_message",
+  duel_group:  "duel_group_send_message",
+  conquest:    "conquest_send_message",
+};
 
 /* ────────────────────────────────────────────────────────────
    Sabit alt component'ler (parent'ın dışında — focus kaybı yok)
@@ -243,25 +265,38 @@ export default function LobbyChat({
     };
     setMessages(prev => [...prev, optimistic]);
 
+    let rpcName: string | null = null;
     try {
-      // c) DB write — mode'a göre RPC ya da direct insert
+      // c) DB write — mode'a göre RPC ya da (geçici) direct insert
       let real: DuelMessage;
-      if (sendMode === "duel") {
-        if (!playerId || !claimToken) {
-          throw new Error("LobbyChat: duel mode requires playerId + claimToken");
+      if (sendMode !== "direct") {
+        // RPC yolu (M-Chat-A): player_name CLIENT'TAN GÖNDERİLMEZ —
+        // server-side <mode>_players.name kullanılır.
+        if (!playerId) {
+          throw new Error(
+            `LobbyChat: ${sendMode} mode requires playerId`,
+          );
         }
-        // duel_send_message RPC: player_name CLIENT'TAN GÖNDERİLMEZ;
-        // server-side duel_players.name kullanılır.
-        const { data, error } = await supabase.rpc("duel_send_message", {
+        rpcName = SEND_RPC[sendMode];
+        // p_claim_token uuid: PostgREST empty string'i uuid'e cast edemez
+        // ('22P02 invalid_text_representation'). Flag Duel QM gibi senaryolarda
+        // claim_token boş kalabilir; authorize helper'ları null'da profile_id
+        // (auth.uid()) fallback'ine düşer. Boş string'i açıkça null'a normalize
+        // ediyoruz ki PG parser hatası yerine düzgün authorize akışı çalışsın.
+        const claimTokenParam =
+          claimToken && claimToken.length > 0 ? claimToken : null;
+        const { data, error } = await supabase.rpc(rpcName, {
           p_room_code:   roomCode,
           p_player_id:   playerId,
-          p_claim_token: claimToken,
+          p_claim_token: claimTokenParam,
           p_message:     text,
         });
         if (error) throw error;
         real = data as DuelMessage;
       } else {
-        // Eski direct insert yolu — diğer modlar (M3 öncesi açık RLS gerekiyor)
+        // Direct insert (yumuşak geçiş dönemi fallback'i). Tüm call-site'lar
+        // RPC moduna geçtikten + duel_messages INSERT lockdown'ı yapıldıktan
+        // sonra bu dal ölü kalacak ve kaldırılabilir.
         const { data, error } = await supabase
           .from("duel_messages")
           .insert({
@@ -287,7 +322,21 @@ export default function LobbyChat({
         payload: real,
       });
     } catch (err) {
-      console.error("[LobbyChat] send failed:", err);
+      // Diagnostic: gerçek claim_token değerini loglamıyoruz; yalnız boolean
+      // varlığı + RPC adı + hata mesajı/kodu. Bu, sendMode prop hatası vs
+      // RPC server hatası ayrımını hızlıca yapmamızı sağlıyor.
+      const e = err as { message?: string; code?: string; details?: string; hint?: string };
+      console.error("[LobbyChat] send failed:", {
+        sendMode,
+        rpc:           rpcName,
+        roomCode,
+        hasPlayerId:   !!playerId,
+        hasClaimToken: !!(claimToken && claimToken.length > 0),
+        errorCode:     e?.code,
+        errorMessage:  e?.message,
+        errorDetails:  e?.details,
+        errorHint:     e?.hint,
+      });
       // d) Geri al
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setDraft(text);

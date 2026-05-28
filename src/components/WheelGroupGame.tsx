@@ -1806,6 +1806,9 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 mobileSheetOpen={wggChatOpen}
                 onMobileSheetOpenChange={v => { setWggChatOpen(v); if (v) setWggPlayersOpen(false); }}
                 hideMobileFab={wggChatOpen || wggPlayersOpen}
+                sendMode="wheel_group"
+                playerId={myIdRef.current}
+                claimToken={myClaimTokenRef.current}
               />
             </div>
           </div>

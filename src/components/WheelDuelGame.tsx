@@ -2351,6 +2351,9 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
               <LobbyChat
                 roomCode={room.code}
                 playerName={playerName.trim()}
+                sendMode="wheel_duel"
+                playerId={myIdRef.current}
+                claimToken={myClaimTokenRef.current}
               />
             </div>
           </div>

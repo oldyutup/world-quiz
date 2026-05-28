@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 import LobbyChat from "../../components/LobbyChat";
 import { playSound } from "../../lib/sound";
+import { recallConquestClaim } from "./conquestClaim";
 import {
   CONQUEST_MAPS,
   CONQUEST_MIN_PLAYERS,
@@ -377,13 +378,16 @@ export default function ConquestLobby({
 
         {/* ══ RIGHT: Sohbet ══ */}
         <div className="wgg-chat-card cq-chat-card">
-          {isLoggedIn ? (
+          {isLoggedIn && myPlayerId ? (
             <LobbyChat
               roomCode={roomCode}
               playerName={myName || hostName}
               mobileSheetOpen={chatOpen}
               onMobileSheetOpenChange={v => { setChatOpen(v); if (v) setPlayersOpen(false); }}
               hideMobileFab={chatOpen || playersOpen}
+              sendMode="conquest"
+              playerId={myPlayerId}
+              claimToken={recallConquestClaim(myPlayerId) ?? ""}
             />
           ) : (
             <div className="cq-chat-guest">
