@@ -159,6 +159,11 @@ export default function LobbyChat({
   const [sheetOpen,setSheetOpen]= useState(false);
   const [unread,   setUnread]   = useState(0);
   const [sending,  setSending]  = useState(false);
+  // Soft anti-spam UX (M-Chat-C): rate_limited / duplicate_message gibi
+  // server-side baraj hatalarında kısa süreli kullanıcı uyarısı. 2.5sn
+  // sonra otomatik kaybolur. Normal hata akışı (network/auth) etkilenmez.
+  const [notice,   setNotice]   = useState<string | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const effectiveSheetOpen = isControlled ? (mobileSheetOpen ?? false) : sheetOpen;
   const openSheet  = () => { if (isControlled) onMobileSheetOpenChange!(true);  else setSheetOpen(true);  };
@@ -168,6 +173,20 @@ export default function LobbyChat({
   const desktopRef    = useRef<HTMLInputElement>(null);
   const sheetRef      = useRef<HTMLInputElement>(null);
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  /* ── Soft notice helper: 2.5sn sonra otomatik kaybolur ── */
+  const showNotice = useCallback((text: string) => {
+    setNotice(text);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => {
+      setNotice(null);
+      noticeTimerRef.current = null;
+    }, 2500);
+  }, []);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
 
   /* ── Ortak ekleyici: dedupe garantili ── */
   const addMessage = useCallback((msg: DuelMessage) => {
@@ -224,10 +243,39 @@ export default function LobbyChat({
     return () => { supabase.removeChannel(chan); channelRef.current = null; };
   }, [roomCode, addMessage]);
 
-  /* ── 3) Yeni mesaj geldikçe scroll + unread sayacı ── */
+  /* ── 3) Scroll yönetimi ── */
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollIntoView({ behavior, block: "end" });
+    });
+  }, []);
+
+  const prevMsgCountRef = useRef(0);
+
+  // Yeni mesaj → sadece kullanıcı zaten altaysa otomatik kaydır.
+  // Toplu yükleme (initial load, delta > 1) → her zaman en alta.
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+    const delta = messages.length - prevMsgCountRef.current;
+    prevMsgCountRef.current = messages.length;
+    if (delta <= 0) return;
+    if (delta > 1) {
+      scrollToBottom("auto");
+    } else {
+      const el = scrollRef.current?.parentElement as HTMLElement | null;
+      const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      if (atBottom) scrollToBottom("smooth");
+    }
+  }, [messages, scrollToBottom]);
+
+  // Desktop panel açıldığında en alta in (MsgList remount olur, messages değişmez).
+  useEffect(() => {
+    if (open) scrollToBottom("auto");
+  }, [open, scrollToBottom]);
+
+  // Mobil sheet açıldığında en alta in.
+  useEffect(() => {
+    if (effectiveSheetOpen) scrollToBottom("auto");
+  }, [effectiveSheetOpen, scrollToBottom]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -339,7 +387,20 @@ export default function LobbyChat({
       });
       // d) Geri al
       setMessages(prev => prev.filter(m => m.id !== tempId));
-      setDraft(text);
+
+      // Soft anti-spam hataları: server-side baraj (M-Chat-C migration).
+      // Kullanıcıya kısa uyarı göster, draft'ı GERİ KOYMA — aksi halde
+      // kullanıcı tekrar tıklasa bile aynı baraja takılır, döngü kötüleşir.
+      const errMsg = e?.message ?? "";
+      if (errMsg === "rate_limited") {
+        showNotice("Çok hızlı yazıyorsun, biraz yavaşla.");
+      } else if (errMsg === "duplicate_message") {
+        showNotice("Aynı mesajı arka arkaya gönderemezsin.");
+      } else {
+        // Diğer hatalar: önceki davranış — mesajı input'a geri koy ki
+        // kullanıcı tekrar deneyebilsin (network / auth / transient errors).
+        setDraft(text);
+      }
     } finally {
       setSending(false);
       // Focus geri ver — hangi panel açıksa ona
@@ -349,7 +410,7 @@ export default function LobbyChat({
       }, 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, myName, roomCode, sending, effectiveSheetOpen, sendMode, playerId, claimToken]);
+  }, [draft, myName, roomCode, sending, effectiveSheetOpen, sendMode, playerId, claimToken, showNotice]);
 
   /* ─────────── render ─────────── */
   return (
@@ -373,6 +434,27 @@ export default function LobbyChat({
         {open && (
           <>
             <MsgList messages={messages} myName={myName} scrollRef={scrollRef} />
+            {notice && (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  margin: "0 12px 8px",
+                  padding: "6px 10px",
+                  background: "rgba(15, 23, 42, 0.92)",
+color: "#ffffff",
+border: "1px solid rgba(255, 255, 255, 0.65)",
+boxShadow: "0 0 14px rgba(255, 255, 255, 0.12)",
+fontWeight: 700,
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  lineHeight: 1.35,
+                  textAlign: "center",
+                }}
+              >
+                {notice}
+              </div>
+            )}
             <InputRow
               draft={draft}
               setDraft={setDraft}
@@ -417,6 +499,27 @@ export default function LobbyChat({
               </button>
             </header>
             <MsgList messages={messages} myName={myName} scrollRef={scrollRef} />
+            {notice && (
+              <div
+                role="status"
+                aria-live="polite"
+                style={{
+                  margin: "0 12px 8px",
+                  padding: "6px 10px",
+                  background: "rgba(15, 23, 42, 0.92)",
+color: "#ffffff",
+border: "1px solid rgba(255, 255, 255, 0.65)",
+boxShadow: "0 0 14px rgba(255, 255, 255, 0.12)",
+fontWeight: 700,
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  lineHeight: 1.35,
+                  textAlign: "center",
+                }}
+              >
+                {notice}
+              </div>
+            )}
             <InputRow
               draft={draft}
               setDraft={setDraft}
