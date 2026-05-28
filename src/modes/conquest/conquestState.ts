@@ -113,6 +113,40 @@ const STARTING_REGIONS_PER_PLAYER: Record<number, number> = {
   4: 5,
 };
 
+/**
+ * Number of distinct *seeds* (initial scattered spawn tiles) per player before
+ * the adjacency-growth phase kicks in. More seeds = more fronts = less
+ * single-blob clustering.
+ *
+ *   2 players → 3 seeds each, then 4 growth picks
+ *   3 players → 2 seeds each, then 4 growth picks
+ *   4 players → 2 seeds each, then 3 growth picks
+ *
+ * Pure clusterability tuning — does not affect totals or per-player region
+ * counts. Falls back to 2 for unusual headcounts, clamped to perPlayer.
+ */
+const SEEDS_PER_PLAYER: Record<number, number> = {
+  2: 3,
+  3: 2,
+  4: 2,
+};
+
+/**
+ * Regions whose initial concentration should be spread across players. These
+ * are the bonus-bearing tiles from REGION_BONUSES — letting one player snag
+ * two of these in the opening is a known "snowball" failure mode.
+ *
+ * Kept as a local literal Set (not imported) to avoid coupling state to the
+ * bonus-effect module; the *identity* of these tiles is what matters for
+ * fairness, not the effect they grant.
+ */
+const BONUS_REGION_IDS: ReadonlySet<ConquestRegionId> = new Set<ConquestRegionId>([
+  "istanbul_kocaeli",
+  "ankara_cevre",
+  "cukurova",
+  "dogu_karadeniz",
+]);
+
 /** mulberry32 — small, fast, deterministic 32-bit PRNG. Returns floats in [0,1). */
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
@@ -153,23 +187,91 @@ function snakeDraftPlayerIndex(pickIndex: number, playerCount: number): number {
   return cycle % 2 === 0 ? within : playerCount - 1 - within;
 }
 
+/** BFS shortest-path distance map from `from` to every reachable region. */
+function bfsDistancesFrom(
+  regions: ConquestRegion[],
+  from:    ConquestRegionId,
+): Map<ConquestRegionId, number> {
+  const out: Map<ConquestRegionId, number> = new Map();
+  const neighborMap: Map<ConquestRegionId, readonly ConquestRegionId[]> = new Map();
+  for (const r of regions) neighborMap.set(r.id, r.neighbors);
+  out.set(from, 0);
+  const queue: ConquestRegionId[] = [from];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const d   = out.get(cur)!;
+    for (const n of neighborMap.get(cur) ?? []) {
+      if (out.has(n)) continue;
+      out.set(n, d + 1);
+      queue.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * Group a player's owned regions into connected components and return a map
+ * from regionId → clusterIndex. Used by the growth phase to bias picks toward
+ * the player's *smallest* sub-cluster so all seeds grow at similar rates
+ * instead of one super-blob swallowing the others.
+ */
+function computeOwnedClusters(
+  regions: ConquestRegion[],
+  owned:   Set<ConquestRegionId>,
+): Map<ConquestRegionId, number> {
+  const out: Map<ConquestRegionId, number> = new Map();
+  const neighborMap: Map<ConquestRegionId, readonly ConquestRegionId[]> = new Map();
+  for (const r of regions) neighborMap.set(r.id, r.neighbors);
+  let clusterId = 0;
+  for (const r of regions) {
+    if (!owned.has(r.id) || out.has(r.id)) continue;
+    out.set(r.id, clusterId);
+    const queue: ConquestRegionId[] = [r.id];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const n of neighborMap.get(cur) ?? []) {
+        if (!owned.has(n) || out.has(n)) continue;
+        out.set(n, clusterId);
+        queue.push(n);
+      }
+    }
+    clusterId++;
+  }
+  return out;
+}
+
+/** Count cluster sizes from a regionId → clusterIndex map. */
+function clusterSizesFrom(
+  clusterMap: Map<ConquestRegionId, number>,
+): Map<number, number> {
+  const out: Map<number, number> = new Map();
+  for (const cid of clusterMap.values()) out.set(cid, (out.get(cid) ?? 0) + 1);
+  return out;
+}
+
 /**
  * Run one seeded distribution attempt.  See `pickInitialOwners` for the
  * outer retry loop and acceptance criteria.
  *
- * Randomness lives in three controlled places:
- *   1. Draft slot order — Fisher-Yates shuffle of the player list, so a
- *      different player gets "first pick" across matches.
- *   2. Seed pick — when multiple isolated regions tie at the highest value
- *      (e.g. İstanbul and Ankara both value-5 and both isolated), pick one
- *      uniformly at random instead of always taking the lowest index.
- *   3. Growth pick — same logic, applied within the player's frontier so
- *      a player who could equally well take three different value-3 regions
- *      doesn't always pick the same one.
+ * Two-phase draft, both phases obey the snake order so per-player value
+ * still converges:
  *
- * Value-greedy selection (always pick from the top-value tier) is preserved
- * everywhere, so per-pick value never drops below the deterministic version
- * — only the *identity* of the chosen tile varies.
+ *   1. Seed phase — each player drops K seeds (see SEEDS_PER_PLAYER) chosen
+ *      to be FAR from their own previous seeds AND from opponent seeds.
+ *      This deliberately scatters each player across the map so they don't
+ *      grow as a single blob.  Value still factors into the score (high-
+ *      value tiles preferred among similarly-spread candidates), and a
+ *      penalty term discourages a single player hoarding bonus-bearing
+ *      tiles (İstanbul/Ankara/Çukurova/D.Karadeniz).
+ *
+ *   2. Growth phase — adjacency-aware, but biased to extend the player's
+ *      *smallest* sub-cluster so all seeds grow at similar rates.  This
+ *      preserves spread instead of letting one cluster swallow the others.
+ *      Value-greedy is the tie-breaker.
+ *
+ * Randomness lives in three controlled places (Fisher-Yates draft order,
+ * tied-score seed pick, tied-score growth pick) — all driven by the seeded
+ * mulberry32 RNG so host/guest sync via the persisted snapshot is unaffected.
  */
 function runDistributionAttempt(
   regions: ConquestRegion[],
@@ -185,46 +287,128 @@ function runDistributionAttempt(
     ?? Math.max(1, Math.floor(regions.length / playerCount) - 1);
   const target = Math.min(perPlayer * playerCount, regions.length);
 
-  const owners: Record<ConquestRegionId, string> = {};
+  // Seeds per player, clamped so we never request more seeds than the player
+  // will receive picks for (e.g. tiny maps where perPlayer < 2).
+  const seedRequest = SEEDS_PER_PLAYER[playerCount] ?? 2;
+  const seedCount   = Math.max(1, Math.min(seedRequest, perPlayer));
+  const seedTarget  = Math.min(seedCount * playerCount, target);
+
+  // Precompute all-pairs BFS distances. Cheap (≤24 regions on the live map).
+  const distances: Map<ConquestRegionId, Map<ConquestRegionId, number>> = new Map();
+  for (const r of regions) distances.set(r.id, bfsDistancesFrom(regions, r.id));
+  const dist = (a: ConquestRegionId, b: ConquestRegionId): number =>
+    distances.get(a)?.get(b) ?? Infinity;
+
+  const owners: Record<ConquestRegionId, string>            = {};
   const ownedByPlayer: Record<string, Set<ConquestRegionId>> = {};
-  for (const p of draftPlayers) ownedByPlayer[p.id] = new Set();
-  const firstPickDone = new Set<string>();
+  const bonusCountByPlayer: Record<string, number>           = {};
+  for (const p of draftPlayers) {
+    ownedByPlayer[p.id]       = new Set();
+    bonusCountByPlayer[p.id]  = 0;
+  }
 
-  /** Pick uniformly from the highest-value entries in `pool`. */
-  const pickWithRandomTie = (pool: ConquestRegion[]): ConquestRegion => {
-    let bestVal = -Infinity;
-    for (const r of pool) {
-      const v = getRegionPoints(r.id);
-      if (v > bestVal) bestVal = v;
-    }
-    const top = pool.filter(r => getRegionPoints(r.id) === bestVal);
-    return top[Math.floor(rng() * top.length)];
-  };
-
-  for (let pickIndex = 0; pickIndex < target; pickIndex++) {
+  // ── Phase 1: seed scatter ──────────────────────────────────────────────
+  // Spread heavily weighted; value contributes as a softer factor; bonus
+  // hoarding penalized.  Score numbers tuned so a far high-value tile beats
+  // a near low-value tile, but two equally-spread candidates still rank by
+  // value (preserving snake-draft value balance).
+  for (let pickIndex = 0; pickIndex < seedTarget; pickIndex++) {
     const playerIdx = snakeDraftPlayerIndex(pickIndex, playerCount);
     const player    = draftPlayers[playerIdx];
     const remaining = regions.filter(r => !(r.id in owners));
     if (remaining.length === 0) break;
 
-    let pool: ConquestRegion[];
-    if (!firstPickDone.has(player.id)) {
-      const isolated = remaining.filter(r =>
-        r.neighbors.every(n => !(n in owners)),
-      );
-      pool = isolated.length > 0 ? isolated : remaining;
-      firstPickDone.add(player.id);
-    } else {
-      const myRegions = ownedByPlayer[player.id];
-      const adjacent  = remaining.filter(r =>
-        r.neighbors.some(n => myRegions.has(n)),
-      );
-      pool = adjacent.length > 0 ? adjacent : remaining;
+    const myOwned = Array.from(ownedByPlayer[player.id]);
+    const oppOwned: ConquestRegionId[] = [];
+    for (const otherP of draftPlayers) {
+      if (otherP.id === player.id) continue;
+      for (const rid of ownedByPlayer[otherP.id]) oppOwned.push(rid);
     }
 
-    const chosen = pickWithRandomTie(pool);
+    const scoreOf = (r: ConquestRegion): number => {
+      let dSelf = Infinity;
+      for (const o of myOwned) {
+        const d = dist(r.id, o);
+        if (d < dSelf) dSelf = d;
+      }
+      let dOpp = Infinity;
+      for (const o of oppOwned) {
+        const d = dist(r.id, o);
+        if (d < dOpp) dOpp = d;
+      }
+      const spreadSelf  = Math.min(dSelf, 4) * 5;   // strong: avoid clustering
+      const spreadOpp   = Math.min(dOpp, 3) * 2;    // medium: breathing room
+      const valueScore  = getRegionPoints(r.id);    // soft: high-value bias
+      const bonusGuard  =
+        bonusCountByPlayer[player.id] > 0 && BONUS_REGION_IDS.has(r.id) ? -6 : 0;
+      return spreadSelf + spreadOpp + valueScore + bonusGuard;
+    };
+
+    let bestScore = -Infinity;
+    for (const r of remaining) {
+      const s = scoreOf(r);
+      if (s > bestScore) bestScore = s;
+    }
+    const top = remaining.filter(r => scoreOf(r) >= bestScore - 0.001);
+    const chosen = top[Math.floor(rng() * top.length)];
+
     owners[chosen.id] = player.id;
     ownedByPlayer[player.id].add(chosen.id);
+    if (BONUS_REGION_IDS.has(chosen.id)) bonusCountByPlayer[player.id]++;
+  }
+
+  // ── Phase 2: spread-aware growth ───────────────────────────────────────
+  // Each pick extends the player's frontier, preferring extensions to the
+  // smallest existing cluster (so all seeds grow at similar rates instead
+  // of one swallowing the rest). Within the smallest-cluster tier, value-
+  // greedy + random tie-break is preserved.
+  for (let pickIndex = seedTarget; pickIndex < target; pickIndex++) {
+    const playerIdx = snakeDraftPlayerIndex(pickIndex, playerCount);
+    const player    = draftPlayers[playerIdx];
+    const myRegions = ownedByPlayer[player.id];
+    const remaining = regions.filter(r => !(r.id in owners));
+    if (remaining.length === 0) break;
+
+    const adjacent = remaining.filter(r =>
+      r.neighbors.some(n => myRegions.has(n)),
+    );
+    const pool = adjacent.length > 0 ? adjacent : remaining;
+
+    const clusterMap   = computeOwnedClusters(regions, myRegions);
+    const clusterSizes = clusterSizesFrom(clusterMap);
+
+    type Candidate = { region: ConquestRegion; smallest: number; value: number };
+    const candidates: Candidate[] = pool.map(r => {
+      let smallest = Infinity;
+      for (const n of r.neighbors) {
+        const cid = clusterMap.get(n);
+        if (cid === undefined) continue;
+        const size = clusterSizes.get(cid) ?? 0;
+        if (size < smallest) smallest = size;
+      }
+      // Fallback (disconnected pick — only possible when no adjacent pool):
+      // treat as the largest possible bucket so the connected candidates
+      // (rare to coexist with this fallback) still win.
+      if (smallest === Infinity) smallest = myRegions.size + 1;
+      return { region: r, smallest, value: getRegionPoints(r.id) };
+    });
+
+    const minSmall = Math.min(...candidates.map(c => c.smallest));
+    const smallestTier = candidates.filter(c => c.smallest === minSmall);
+    const bestVal = Math.max(...smallestTier.map(c => c.value));
+    let topTier = smallestTier.filter(c => c.value === bestVal);
+
+    // Bonus diversity guard: if this player already holds a bonus tile and
+    // a non-bonus alternative exists in the top tier, drop the bonus picks.
+    if (bonusCountByPlayer[player.id] > 0) {
+      const nonBonus = topTier.filter(c => !BONUS_REGION_IDS.has(c.region.id));
+      if (nonBonus.length > 0) topTier = nonBonus;
+    }
+
+    const chosen = topTier[Math.floor(rng() * topTier.length)].region;
+    owners[chosen.id] = player.id;
+    myRegions.add(chosen.id);
+    if (BONUS_REGION_IDS.has(chosen.id)) bonusCountByPlayer[player.id]++;
   }
 
   return owners;
@@ -273,13 +457,18 @@ function summarizeFrontiers(
 
 /**
  * Pick a fair distribution.  Tries up to MAX_ATTEMPTS seed variations and
- * accepts the first one that satisfies both fairness gates:
+ * accepts the first one that clears all four fairness gates:
  *
  *   - value-diff (max − min totals) ≤ 2
  *   - no player is fully boxed in (every player has ≥ 1 unowned neighbor)
+ *   - no player owns >1 connected blob (multi-front spread)
+ *   - no player hoards 2+ bonus-bearing tiles (İstanbul/Ankara/Çukurova/D.Kara.)
  *
- * If no attempt meets both gates, returns the attempt with the lowest
+ * If no attempt meets all gates, returns the attempt with the lowest
  * composite penalty so we never block game start on a degenerate map.
+ * Attempt budget is generous (12) because the multi-seed scatter has
+ * stricter constraints than the legacy single-seed grow — most maps still
+ * resolve in 1–3 attempts.
  *
  * Seeds are derived by perturbing `baseSeed` with a fixed golden-ratio
  * stride; using a real RNG would lose host/guest determinism, but since
@@ -291,14 +480,17 @@ function pickInitialOwners(
   players: ConquestPlayer[],
   baseSeed: number,
 ): Record<ConquestRegionId, string> {
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = 12;
   let bestOwners: Record<ConquestRegionId, string> | null = null;
   let bestPenalty = Infinity;
+
+  const totalBonusOnMap = regions.filter(r => BONUS_REGION_IDS.has(r.id)).length;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     // Golden-ratio stride avoids near-duplicate seeds across attempts.
     const seed   = (baseSeed + attempt * 0x9e3779b9) >>> 0;
     const owners = runDistributionAttempt(regions, players, seed);
+
     const totals    = summarizeTotals(regions, players, owners);
     const frontiers = summarizeFrontiers(regions, players, owners);
     const totalValues = Object.values(totals);
@@ -309,13 +501,50 @@ function pickInitialOwners(
       ? Math.min(...Object.values(frontiers))
       : 1;
 
-    // Penalty: value imbalance hurts most; boxed-in players are a hard
-    // strike (penalty 100) since they can't expand without attacking.
-    const penalty = valueDiff * 10 + (minFrontier === 0 ? 100 : 0);
+    // Cluster diversity: how many players end up with a single connected
+    // blob (i.e. the spread phase failed for them).
+    let monoBlobCount = 0;
+    // Bonus diversity: how many players exceed the fair-share ceiling of
+    // bonus tiles. ceil(B/P) is the smallest count any player must hold in
+    // a perfectly-fair split, so >ceil is a true imbalance (not just a
+    // 2/2 split being flagged when both players are equal).
+    const bonusCeiling = players.length > 0
+      ? Math.ceil(totalBonusOnMap / players.length)
+      : Infinity;
+    let bonusHoarders = 0;
+    for (const p of players) {
+      const myOwned: Set<ConquestRegionId> = new Set();
+      for (const r of regions) if (owners[r.id] === p.id) myOwned.add(r.id);
+      if (myOwned.size === 0) continue;
+      const clusters = new Set(computeOwnedClusters(regions, myOwned).values());
+      if (clusters.size <= 1 && myOwned.size > 1) monoBlobCount++;
+      if (totalBonusOnMap >= 2) {
+        let bonusHeld = 0;
+        for (const rid of myOwned) if (BONUS_REGION_IDS.has(rid)) bonusHeld++;
+        if (bonusHeld > bonusCeiling) bonusHoarders++;
+      }
+    }
+
+    // Penalty weights:
+    //   valueDiff       — primary fairness lever, scale 10 per point
+    //   boxed-in        — hard strike (100): match start would feel rigged
+    //   mono-blob       — soft (8 each): the user explicitly wants spread
+    //   bonus hoarders  — meaningful (20 each): snowball failure mode
+    const penalty =
+      valueDiff * 10
+      + (minFrontier === 0 ? 100 : 0)
+      + monoBlobCount * 8
+      + bonusHoarders * 20;
+
     if (penalty < bestPenalty) {
       bestPenalty = penalty;
       bestOwners  = owners;
-      if (valueDiff <= 2 && minFrontier > 0) break; // fair enough — stop early
+      if (
+        valueDiff   <= 2
+        && minFrontier > 0
+        && monoBlobCount === 0
+        && bonusHoarders === 0
+      ) break;
     }
   }
 

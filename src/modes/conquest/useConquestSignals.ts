@@ -6,7 +6,8 @@
  * and feeds them through a single-slot center banner (ConquestSignalBanner).
  *
  * Tier table — what fires here:
- *   critical  — last_stand                                (2400ms hold)
+ *   major     — capital_fell                               (1300ms hold)
+ *   critical  — last_stand                                 (2400ms hold)
  *
  * Tier table — what stays elsewhere (intentional; don't duplicate):
  *   minor     — normal captures, bonus toasts, pass, sıra değişti
@@ -24,7 +25,12 @@
  * Pure local diff. No new sync surface. Late joiners see only signals
  * that fire after they mount — acceptable for short Kuşatma matches.
  *
- * Future hooks (Ankara düştü, oyuncu elendi, capital_fell) can be added
+ * Capital reveal coordination: the Ankara bonus toast carries gameplay
+ * info (Gizli Operasyon) and shows for ~6s. To prevent a stacked overlay
+ * on capture, ConquestGame delays the toast by CAPITAL_REVEAL_HOLD_MS so
+ * the cinematic banner here owns the first ~1.4s alone.
+ *
+ * Future hooks (oyuncu elendi, additional capital systems) can be added
  * by appending a new ConquestSignalKind + a small detector effect; the
  * renderer never needs to change.
  */
@@ -36,10 +42,12 @@ import type {
   ConquestPlayer,
   ConquestPlayerColor,
 } from "./types";
+import { CAPITAL_REGION_IDS } from "./conquestCapital";
 
 export type ConquestSignalTier = "minor" | "major" | "critical";
 
 export type ConquestSignalKind =
+  | "capital_fell"
   | "last_stand";
 
 export interface ConquestSignal {
@@ -54,6 +62,7 @@ export interface ConquestSignal {
   ttlMs:     number;
 }
 
+const TTL_MAJOR    = 1300;
 const TTL_CRITICAL = 2400;
 
 export function useConquestSignals(
@@ -64,9 +73,10 @@ export function useConquestSignals(
   _mapConfig:   ConquestMapConfig | null | undefined,
 ): ConquestSignal | null {
   const [queue, setQueue] = useState<ConquestSignal[]>([]);
-  const seenRef           = useRef<Set<string>>(new Set());
-  const prevOwnersRef     = useRef<Record<string, string | null> | null>(null);
-  const lastStandFiredRef = useRef<Set<string>>(new Set());
+  const seenRef            = useRef<Set<string>>(new Set());
+  const prevOwnersRef      = useRef<Record<string, string | null> | null>(null);
+  const lastStandFiredRef  = useRef<Set<string>>(new Set());
+  const capitalFiredRef    = useRef<Set<string>>(new Set());
 
   const enqueue = (s: ConquestSignal) => {
     setQueue(q => (q.some(e => e.id === s.id) ? q : [...q, s]));
@@ -101,6 +111,35 @@ export function useConquestSignals(
     }
 
     const now = Date.now();
+
+    // ── Capital fell (major) ─────────────────────────────────────────
+    // Any capital region whose owner changed to a non-null player this
+    // tick. Guarded per (regionId, newOwner, tick) so re-renders don't
+    // re-fire on the steady state. Normal region captures intentionally
+    // never reach this branch — they stay in the event feed / bonus
+    // toast lane. Future capital systems plug in by extending
+    // CAPITAL_REGION_IDS; no change here is needed.
+    for (const regionId of CAPITAL_REGION_IDS) {
+      const before = prev[regionId] ?? null;
+      const after  = current[regionId] ?? null;
+      if (before === after || after === null) continue;
+      const key = `capital-fell:${regionId}:${after}:${now}`;
+      if (capitalFiredRef.current.has(key)) continue;
+      capitalFiredRef.current.add(key);
+      if (seenRef.current.has(key)) continue;
+      seenRef.current.add(key);
+      enqueue({
+        id:       key,
+        kind:     "capital_fell",
+        tier:     "major",
+        icon:     "🏛️",
+        title:    "Ankara Ele Geçirildi",
+        subtitle: "Merkez el değiştirdi.",
+        colorKey: playerColors[after] ?? null,
+        at:       now,
+        ttlMs:    TTL_MAJOR,
+      });
+    }
 
     // Last-stand: a player dropped from >1 to exactly 1 region this tick.
     // Guarded per (player, round) to prevent re-fire from re-renders.

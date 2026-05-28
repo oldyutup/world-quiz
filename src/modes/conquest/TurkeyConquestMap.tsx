@@ -25,6 +25,7 @@ import type {
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
 import { REGION_BONUSES } from "./regionBonuses";
+import { CAPITAL_REGION_IDS } from "./conquestCapital";
 
 // Per-region offset (in SVG units) for the point badge, relative to label
 // position. Default = badge sits just above the region label. Override only
@@ -185,6 +186,18 @@ interface ShieldBreakFxEntry {
  *  900ms) so the React node lives across the full animation. */
 const SHIELD_BREAK_FX_MS = 1000;
 
+/** Capital "merkez" reveal FX entry — fires only when a region in
+ *  CAPITAL_REGION_IDS changes hands (any non-null new owner). Renders a
+ *  golden/white halo + center pulse on top of the standard capture glow
+ *  so the moment reads as ceremonial rather than tactical. */
+interface CapitalFxEntry {
+  id:       string;
+  regionId: ConquestRegionId;
+}
+/** Hold matches the slowest capital keyframe (cqMapCapitalPulse = 1400ms)
+ *  so React unmounts after the animation has fully resolved. */
+const CAPITAL_FX_MS = 1500;
+
 /** Eight short radial cracks rendered around the label anchor.  Angle in
  *  degrees, length in SVG units.  Mild variance keeps it from feeling
  *  like a perfect snowflake while staying compact for mobile. */
@@ -237,11 +250,22 @@ export default function TurkeyConquestMap({
   const [shieldBreakFx, setShieldBreakFx] = useState<ShieldBreakFxEntry[]>([]);
   const shieldFxTimeoutsRef = useRef<Map<string, number>>(new Map());
 
+  // ── Capital reveal FX (Ankara / future capitals) ───────────────────
+  // Watches the same ownership diff as the standard capture glow, but
+  // only fires for regions in CAPITAL_REGION_IDS. Layers on top of the
+  // regular FX rather than replacing it so a capital capture reads as
+  // "normal capture + ceremonial overlay" instead of a separate state
+  // machine.
+  const [capitalFx, setCapitalFx] = useState<CapitalFxEntry[]>([]);
+  const capitalFxTimeoutsRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => () => {
     fxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     fxTimeoutsRef.current.clear();
     shieldFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     shieldFxTimeoutsRef.current.clear();
+    capitalFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
+    capitalFxTimeoutsRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -276,6 +300,24 @@ export default function TurkeyConquestMap({
         fxTimeoutsRef.current.set(fx.id, handle);
       }
     }
+
+    // Capital overlay: same diff source, narrower membership. We use the
+    // freshly computed `fresh` list rather than re-iterating so the two
+    // FX stay in lockstep and never disagree on which tick fired.
+    const capitalFresh: CapitalFxEntry[] = fresh
+      .filter(e => CAPITAL_REGION_IDS.has(e.regionId))
+      .map(e => ({ id: `cap:${e.id}`, regionId: e.regionId }));
+    if (capitalFresh.length > 0) {
+      setCapitalFx(prev => [...prev, ...capitalFresh]);
+      for (const fx of capitalFresh) {
+        const handle = window.setTimeout(() => {
+          setCapitalFx(cur => cur.filter(e => e.id !== fx.id));
+          capitalFxTimeoutsRef.current.delete(fx.id);
+        }, CAPITAL_FX_MS);
+        capitalFxTimeoutsRef.current.set(fx.id, handle);
+      }
+    }
+
     prevOwnersRef.current = current;
   }, [regionStates, playerColors]);
 
@@ -660,6 +702,39 @@ export default function TurkeyConquestMap({
                 fill="none"
                 stroke={c.legalStroke}
               />
+            );
+          })}
+        </g>
+
+        {/* ── Layer 6.5: capital reveal FX (one-shot, ~1400ms) ─────────
+             Two sublayers per fallen capital:
+               · region-shaped golden halo on the path itself (pulse)
+               · concentric ring + glyph anchored at the label position
+             Layered above the regular impact ring so a capital capture
+             reads ceremonial. Pointer events off; clipped by the SVG
+             viewBox so it never escapes onto mobile chrome. */}
+        <g className="cq-map-capital-layer" pointerEvents="none" aria-hidden="true">
+          {capitalFx.map((fx) => {
+            const entry = regionEntries.find(e => e.id === fx.regionId);
+            if (!entry) return null;
+            const lbl = REGION_LABEL_POS[entry.id] ?? { x: 0, y: 0 };
+            return (
+              <g key={`cap-${fx.id}`} className="cq-map-capital-fx">
+                <path
+                  d={entry.d}
+                  className="cq-map-capital-halo"
+                  fillRule="evenodd"
+                  fill="none"
+                />
+                <g
+                  className="cq-map-capital-anchor"
+                  transform={`translate(${lbl.x} ${lbl.y})`}
+                >
+                  <circle r={6}  className="cq-map-capital-ring cq-map-capital-ring--1" />
+                  <circle r={6}  className="cq-map-capital-ring cq-map-capital-ring--2" />
+                  <circle r={3.2} className="cq-map-capital-core" />
+                </g>
+              </g>
             );
           })}
         </g>

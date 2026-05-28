@@ -13439,6 +13439,66 @@ body {
   .cq-map-shield-shatter-icon { font-size: 15px; }
 }
 
+/* ── Map: capital reveal FX (one-shot, ~1400ms) ─────────────────
+ * Ceremonial overlay for the merkez moment. Sits on top of the
+ * regular impact ring so a capital capture reads as
+ * "normal capture + ceremonial flourish". Two sublayers:
+ *   · region halo: golden stroke pulse on the region path. No fill —
+ *     the underlying capture-glow tint stays readable through it.
+ *   · anchor: a small bright core with two concentric rings that
+ *     expand outward, hinting at "the center is now active" without
+ *     drifting toward arcade-style sparkles.
+ * Total ≈ 1.3s of motion; React unmounts after CAPITAL_FX_MS (1500ms)
+ * so `forwards` never sticks. */
+@keyframes cqMapCapitalHalo {
+  0%   { opacity: 0;    stroke-width: 0.8; stroke-opacity: 0.55; }
+  16%  { opacity: 1;    stroke-width: 4.2; stroke-opacity: 1;    }
+  55%  { opacity: 0.62; stroke-width: 2.4; stroke-opacity: 0.72; }
+  100% { opacity: 0;    stroke-width: 0.6; stroke-opacity: 0;    }
+}
+@keyframes cqMapCapitalRing {
+  0%   { opacity: 0;    transform: scale(0.55); stroke-width: 2.2; }
+  20%  { opacity: 0.95; transform: scale(1.00); stroke-width: 1.6; }
+  100% { opacity: 0;    transform: scale(2.30); stroke-width: 0.5; }
+}
+@keyframes cqMapCapitalCore {
+  0%   { opacity: 0;    transform: scale(0.4); }
+  18%  { opacity: 1;    transform: scale(1.25); }
+  60%  { opacity: 0.85; transform: scale(0.95); }
+  100% { opacity: 0;    transform: scale(0.7); }
+}
+.cq-map-capital-halo {
+  stroke: #fde68a;
+  filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.90))
+          drop-shadow(0 0 18px rgba(255, 255, 255, 0.42));
+  animation: cqMapCapitalHalo 1300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.cq-map-capital-anchor {
+  transform-box: fill-box;
+}
+.cq-map-capital-ring {
+  fill: none;
+  stroke: rgba(255, 248, 220, 0.95);
+  filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.85));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cqMapCapitalRing 1200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.cq-map-capital-ring--2 { animation-delay: 240ms; }
+.cq-map-capital-core {
+  fill: #fff8dc;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.85))
+          drop-shadow(0 0 12px rgba(250, 204, 21, 0.90));
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cqMapCapitalCore 1100ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+/* Mobile: trim the second ring so the moment stays light on small
+ * viewports. The halo + first ring + core still carry the gesture. */
+@media (max-width: 720px) {
+  .cq-map-capital-ring--2 { display: none; }
+}
+
 /* ── Score: +N / -N transient delta badge ───────────────────── */
 /* Renders inside .cq-players-panel-score (desktop) and inside
  * .mcq-strip__pill-stats (mobile).  Positioned absolutely so it
@@ -13621,6 +13681,16 @@ body {
     animation-timing-function: ease;
   }
   .cq-map-shield-shatter-icon { transform: none !important; }
+  /* Capital reveal: collapse to a single soft halo fade. Drop the
+   * concentric rings entirely so nothing scales, keep the core dot as
+   * a quiet anchor. */
+  .cq-map-capital-ring { display: none; }
+  .cq-map-capital-halo,
+  .cq-map-capital-core {
+    animation-duration: 420ms;
+    animation-timing-function: ease;
+  }
+  .cq-map-capital-core { transform: none !important; }
   .cq-players-panel-delta,
   .mcq-strip__pill-delta {
     animation: cqEventFeedIn 200ms ease forwards;
@@ -13702,6 +13772,26 @@ body {
 /* Tier — MAJOR (default). Soft violet glow. */
 .cq-signal-banner[data-tier="major"] {
   --cq-signal-accent: rgba(168, 85, 247, 0.42);
+}
+
+/* Kind — CAPITAL_FELL. Ceremonial gold accent for the merkez moment.
+ * Wins over the major default because data-kind is more specific. The
+ * cinematic banner holds the spotlight alone for CAPITAL_REVEAL_HOLD_MS
+ * (ConquestGame delays the Ankara bonus toast for the same window). */
+.cq-signal-banner[data-kind="capital_fell"] {
+  --cq-signal-accent: rgba(250, 204, 21, 0.55);
+  background:
+    linear-gradient(180deg, rgba(28, 22, 8, 0.94), rgba(14, 10, 4, 0.94));
+  box-shadow:
+    0 16px 48px -10px rgba(0, 0, 0, 0.78),
+    0 0 0 1px rgba(253, 230, 138, 0.10) inset,
+    0 0 36px -6px rgba(250, 204, 21, 0.55);
+}
+.cq-signal-banner[data-kind="capital_fell"] .cq-signal-banner__title {
+  color: #fef3c7;
+}
+.cq-signal-banner[data-kind="capital_fell"] .cq-signal-banner__icon {
+  filter: drop-shadow(0 2px 10px rgba(250, 204, 21, 0.55));
 }
 
 /* Tier — CRITICAL. Larger card, stronger red glow, slightly heavier

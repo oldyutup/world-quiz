@@ -60,6 +60,7 @@ import {
   HIDDEN_OP_PLACED_MESSAGE_PREFIX,
   HIDDEN_OP_PLACED_TITLE,
 } from "./regionBonuses";
+import { CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
   actionHolderHasNoMoves,
   advanceToNextRound,
@@ -1150,8 +1151,38 @@ export default function ConquestGame({
     }, remaining);
     return () => window.clearTimeout(t);
   }, [lastBonusToast?.id, lastBonusToast?.at, dismissedToastId]);
+  // Capital-reveal coordination: the Ankara bonus toast is suppressed for
+  // CAPITAL_REVEAL_HOLD_MS after `at` so the cinematic capital_fell signal
+  // banner (rendered by useConquestSignals → ConquestSignalBanner) owns
+  // the moment alone. After the hold elapses, the toast appears with its
+  // remaining lifetime intact and carries the gameplay info (Gizli
+  // Operasyon copy). Non-Ankara bonuses are revealed immediately.
+  const [bonusToastReadyId, setBonusToastReadyId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lastBonusToast) {
+      setBonusToastReadyId(null);
+      return;
+    }
+    if (lastBonusToast.bonusType !== "ankara_hidden_shield") {
+      setBonusToastReadyId(lastBonusToast.id);
+      return;
+    }
+    const remaining = lastBonusToast.at + CAPITAL_REVEAL_HOLD_MS - Date.now();
+    if (remaining <= 0) {
+      setBonusToastReadyId(lastBonusToast.id);
+      return;
+    }
+    setBonusToastReadyId(null);
+    const t = window.setTimeout(
+      () => setBonusToastReadyId(lastBonusToast.id),
+      remaining,
+    );
+    return () => window.clearTimeout(t);
+  }, [lastBonusToast?.id, lastBonusToast?.at, lastBonusToast?.bonusType]);
   const showBonusToast =
-    !!lastBonusToast && dismissedToastId !== lastBonusToast.id;
+    !!lastBonusToast
+    && dismissedToastId   !== lastBonusToast.id
+    && bonusToastReadyId  === lastBonusToast.id;
   const toastPlayerColor = lastBonusToast
     ? (playerColors[lastBonusToast.playerId] ?? null)
     : null;
