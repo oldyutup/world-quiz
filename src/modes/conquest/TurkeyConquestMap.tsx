@@ -124,15 +124,15 @@ interface ColorTokens {
 }
 
 const COLOR_MAP: Record<string, ColorTokens> = {
-  red:     { fill: "rgba(239,68,68,0.28)",   regionBorder: "rgba(239,68,68,0.88)",   text: "#fca5a5", legalFill: "rgba(239,68,68,0.52)",   legalStroke: "#ef4444" },
-  blue:    { fill: "rgba(59,130,246,0.28)",   regionBorder: "rgba(59,130,246,0.88)",  text: "#93c5fd", legalFill: "rgba(59,130,246,0.52)",   legalStroke: "#3b82f6" },
-  green:   { fill: "rgba(34,197,94,0.28)",    regionBorder: "rgba(34,197,94,0.88)",   text: "#86efac", legalFill: "rgba(34,197,94,0.52)",    legalStroke: "#22c55e" },
-  yellow:  { fill: "rgba(234,179,8,0.28)",    regionBorder: "rgba(234,179,8,0.88)",   text: "#fde047", legalFill: "rgba(234,179,8,0.52)",    legalStroke: "#eab308" },
-  purple:  { fill: "rgba(168,85,247,0.28)",   regionBorder: "rgba(168,85,247,0.88)",  text: "#d8b4fe", legalFill: "rgba(168,85,247,0.52)",   legalStroke: "#a855f7" },
-  orange:  { fill: "rgba(249,115,22,0.28)",   regionBorder: "rgba(249,115,22,0.88)",  text: "#fdba74", legalFill: "rgba(249,115,22,0.52)",   legalStroke: "#f97316" },
-  pink:    { fill: "rgba(236,72,153,0.28)",   regionBorder: "rgba(236,72,153,0.88)",  text: "#f9a8d4", legalFill: "rgba(236,72,153,0.52)",   legalStroke: "#ec4899" },
-  cyan:    { fill: "rgba(6,182,212,0.28)",    regionBorder: "rgba(6,182,212,0.88)",   text: "#67e8f9", legalFill: "rgba(6,182,212,0.52)",    legalStroke: "#06b6d4" },
-  neutral: { fill: "rgba(148,163,184,0.15)",  regionBorder: "rgba(148,196,228,0.72)", text: "rgba(203,213,225,0.82)", legalFill: "rgba(148,163,184,0.34)", legalStroke: "rgba(165,215,245,0.96)" },
+  red:     { fill: "rgba(239,68,68,0.22)",    regionBorder: "rgba(239,68,68,0.74)",   text: "#fca5a5", legalFill: "rgba(239,68,68,0.46)",    legalStroke: "#ef4444" },
+  blue:    { fill: "rgba(59,130,246,0.22)",   regionBorder: "rgba(59,130,246,0.74)",  text: "#93c5fd", legalFill: "rgba(59,130,246,0.46)",   legalStroke: "#3b82f6" },
+  green:   { fill: "rgba(34,197,94,0.22)",    regionBorder: "rgba(34,197,94,0.74)",   text: "#86efac", legalFill: "rgba(34,197,94,0.46)",    legalStroke: "#22c55e" },
+  yellow:  { fill: "rgba(234,179,8,0.22)",    regionBorder: "rgba(234,179,8,0.74)",   text: "#fde047", legalFill: "rgba(234,179,8,0.46)",    legalStroke: "#eab308" },
+  purple:  { fill: "rgba(168,85,247,0.22)",   regionBorder: "rgba(168,85,247,0.74)",  text: "#d8b4fe", legalFill: "rgba(168,85,247,0.46)",   legalStroke: "#a855f7" },
+  orange:  { fill: "rgba(249,115,22,0.22)",   regionBorder: "rgba(249,115,22,0.74)",  text: "#fdba74", legalFill: "rgba(249,115,22,0.46)",   legalStroke: "#f97316" },
+  pink:    { fill: "rgba(236,72,153,0.22)",   regionBorder: "rgba(236,72,153,0.74)",  text: "#f9a8d4", legalFill: "rgba(236,72,153,0.46)",   legalStroke: "#ec4899" },
+  cyan:    { fill: "rgba(6,182,212,0.22)",    regionBorder: "rgba(6,182,212,0.74)",   text: "#67e8f9", legalFill: "rgba(6,182,212,0.46)",    legalStroke: "#06b6d4" },
+  neutral: { fill: "rgba(148,163,184,0.13)",  regionBorder: "rgba(148,196,228,0.62)", text: "rgba(203,213,225,0.82)", legalFill: "rgba(148,163,184,0.30)", legalStroke: "rgba(165,215,245,0.90)" },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────

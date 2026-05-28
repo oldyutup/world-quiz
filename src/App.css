@@ -11513,9 +11513,8 @@ body {
    Tune this single opacity to dial the terrain intensity up or down.   */
 /* Turkey terrain image underlay — maksimum belirginlik */
 .cq-terrain-image-underlay {
-  opacity: 0.82 !important;
-  pointer-events: none;
-  filter: contrast(1.14) saturate(1.10) brightness(0.97);
+  opacity: 0.82;
+  filter: saturate(0.72) brightness(0.88) contrast(0.92);
 }
 
  .cq-region-terrain-image {
