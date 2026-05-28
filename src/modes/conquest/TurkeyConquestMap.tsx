@@ -151,6 +151,14 @@ interface Props {
    * intercepts pointer events or alters legal-target highlights.
    */
   attackTargetRegionId?: ConquestRegionId | null;
+  /**
+   * True when the local viewer is the current action holder. Drives the
+   * "viewer-acting" vs "spectator-turn" data attributes on the wrap so
+   * non-holders see a quieter map (faint pulses, no hover, not-allowed
+   * cursor). Defaults to true to keep non-gameplay surfaces (lobby
+   * previews) at full strength.
+   */
+  viewerIsHolder?: boolean;
 }
 
 interface OwnershipFxEntry {
@@ -159,10 +167,11 @@ interface OwnershipFxEntry {
   colorKey:  string;
 }
 
-/** Lifetime of impact ring + capture glow.  React unmounts the SVG nodes
- *  after this delay so the CSS keyframes (which use `forwards`) don't leave
- *  permanently-styled stale paths in the tree. */
-const OWNERSHIP_FX_MS = 900;
+/** Lifetime of impact ring + capture glow. Matches the longest CSS
+ *  keyframe (cqMapCaptureGlow = 1400ms) so React unmounts the SVG nodes
+ *  only after the animation has fully resolved — keeps `forwards` from
+ *  leaving permanently-styled stale paths in the tree. */
+const OWNERSHIP_FX_MS = 1500;
 
 export default function TurkeyConquestMap({
   regionStates,
@@ -173,10 +182,16 @@ export default function TurkeyConquestMap({
   onRegionClick,
   flashRegionId,
   attackTargetRegionId = null,
+  viewerIsHolder = true,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
   const interactive = !!onRegionClick && !disabled;
+  // The map is "active" for the local viewer when it's their turn to move.
+  // Spectator turns keep the click handlers wired (so illegal taps still
+  // flash) but visually retreat — see the data-spectator-turn CSS block.
+  const viewerActing    = interactive && viewerIsHolder;
+  const spectatorTurn   = interactive && !viewerIsHolder;
 
   // ── Ownership-change FX (impact ring + capture glow) ───────────────
   // Pure local presentation: diff regionStates against the previous render
@@ -237,25 +252,44 @@ export default function TurkeyConquestMap({
   }, [onRegionClick]);
 
   // Pre-compute per-region display state once per render.
+  // Legal-target affordance (fill, pulse ring, dimming of non-legals) is
+  // a *call to action* for the local viewer: it only makes sense when
+  // this player is the action holder AND the map is interactive. For
+  // any spectator view, or any non-action sub-phase where clicks aren't
+  // accepted (reveal, defense_duel, round_result), the map reads as a
+  // pure ownership snapshot. This prevents the waiting player from
+  // seeing "attackable" hints that belong to the opponent.
+  const showLegalAffordance = viewerActing;
   const regionEntries = TURKEY_CONQUEST_REGION_PATHS.map(({ id, d }) => {
     const rid       = id as ConquestRegionId;
     const rs        = stateById[id];
     const owner     = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
     const colorKey  = owner ? (playerColors[owner.id] ?? "neutral") : "neutral";
     const c         = COLOR_MAP[colorKey] ?? COLOR_MAP.neutral;
-    const isLegal   = legalTargetIds.has(rid);
+    const isLegal   = showLegalAffordance && legalTargetIds.has(rid);
     const isFlash   = flashRegionId === id;
-    const isDimmed  = interactive && !isLegal;
+    const isDimmed  = showLegalAffordance && interactive && !isLegal;
     const isShielded = !!rs?.shielded;          // open shield (İstanbul)
     const fill      = isLegal ? c.legalFill   : c.fill;
     const stroke    = isLegal ? c.legalStroke : c.regionBorder;
     const labelPos  = REGION_LABEL_POS[id] ?? { x: 0, y: 0 };
     const label     = REGION_LABELS[id]    ?? id;
-    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label };
+    const points    = getRegionPoints(rid);
+    const bonus     = REGION_BONUSES[id] ?? null;
+    // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Boğaz Kalesi"
+    // Desktop hover only; touch devices ignore the SVG <title>.
+    const ownerSuffix = owner ? ` (${owner.name})` : "";
+    const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}` : "";
+    const tooltip   = `${label}${ownerSuffix} — ${points} puan${bonusSuffix}`;
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, tooltip };
   });
 
   return (
-    <div className="cq-turkey-map-wrap">
+    <div
+      className="cq-turkey-map-wrap"
+      data-viewer-acting={viewerActing ? "" : undefined}
+      data-spectator-turn={spectatorTurn ? "" : undefined}
+    >
       <svg
         viewBox="0 0 1005 490"
         preserveAspectRatio="xMidYMid meet"
@@ -301,7 +335,7 @@ export default function TurkeyConquestMap({
 
 
         {/* ── Layer 1: region fills + borders (single path per region) ── */}
-        {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, label }) => (
+        {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, label, tooltip }) => (
           <path
             key={`region-${id}`}
             d={d}
@@ -326,7 +360,9 @@ export default function TurkeyConquestMap({
             role={interactive ? "button" : undefined}
             tabIndex={interactive ? (isLegal ? 0 : -1) : undefined}
             aria-label={`${REGION_LABELS[id] ?? id}${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
-          />
+          >
+            <title>{tooltip}{isLegal ? " (hedef)" : ""}</title>
+          </path>
         ))}
 
         {/* ── Layer 2: legal-target pulse rings ──────────────────────── */}
@@ -426,41 +462,49 @@ export default function TurkeyConquestMap({
 
         {/* ── Layer 4b: bonus region icons (decorative; never intercepts clicks) ── */}
         <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
-          {regionEntries.map(({ id, labelPos }) => {
-            const bonus = REGION_BONUSES[id];
+          {regionEntries.map(({ id, labelPos, bonus, isShielded }) => {
             if (!bonus) return null;
             // Anchor the bonus glyph to the right of the point badge so they
             // never overlap; identical offset behaviour as the points badge.
             const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
-            const cx  = labelPos.x + off.dx + 18;
+            const cx  = labelPos.x + off.dx + 21;
             const cy  = labelPos.y + off.dy;
             return (
-              <text
+              <g
                 key={`bonus-${id}`}
-                x={cx}
-                y={cy + 0.5}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="cq-map-bonus-icon"
-                style={{ fontSize: 11, userSelect: "none" }}
+                className="cq-map-bonus-chip"
+                data-shielded={isShielded ? "" : undefined}
               >
-                {bonus.icon}
-              </text>
+                {/* Backdrop disc keeps the emoji legible against terrain. */}
+                <circle cx={cx} cy={cy} r={8.5} className="cq-map-bonus-chip-bg" />
+                <text
+                  x={cx}
+                  y={cy + 0.5}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  className="cq-map-bonus-icon"
+                >
+                  {bonus.icon}
+                </text>
+              </g>
             );
           })}
         </g>
 
         {/* ── Layer 5: region point badges (decorative; never intercepts clicks) ── */}
         <g className="cq-map-points-layer" pointerEvents="none" aria-hidden="true">
-          {regionEntries.map(({ id, labelPos }) => {
-            const points = getRegionPoints(id);
+          {regionEntries.map(({ id, labelPos, points, bonus }) => {
             if (!points) return null;
             const off  = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
             const cx   = labelPos.x + off.dx;
             const cy   = labelPos.y + off.dy;
             return (
-              <g key={`pts-${id}`} className="cq-map-point-badge">
-                <circle cx={cx} cy={cy} r={7.5} className="cq-map-point-badge-ring" />
+              <g
+                key={`pts-${id}`}
+                className="cq-map-point-badge"
+                data-bonus={bonus ? "" : undefined}
+              >
+                <circle cx={cx} cy={cy} r={8.5} className="cq-map-point-badge-ring" />
                 <text
                   x={cx}
                   y={cy + 0.5}

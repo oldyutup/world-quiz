@@ -9958,6 +9958,30 @@ body {
   color: #fef3c7;
 }
 
+/* Per-round intro card (rounds 2+): emerald accent so it never reads as a
+ * duel cue or game-start cue.  React unmounts at challenge.startedAt; no
+ * auto-fade needed.  Slightly bolder shadow than the bonus toast keeps it
+ * unmistakably "round transition" rather than transient feedback. */
+.cq-round-intro-overlay {
+  animation: cq-bonus-toast-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.4),
+    0 0 24px rgba(52, 211, 153, 0.22);
+  max-width: min(500px, 92vw);
+}
+.cq-round-intro-overlay .cq-bonus-toast-title {
+  color: #d1fae5;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.cq-round-intro-overlay .cq-bonus-toast-detail {
+  color: rgba(226, 232, 240, 0.85);
+  margin-top: 4px;
+}
+
 /* Attack Focus framing — applied to both the duel-intro card (during
  * the 4s pre-question window) and the standalone non-duel banner.  Red
  * accent border + slightly larger title keeps "⚔️ Hedef: X" readable on
@@ -10023,7 +10047,7 @@ body {
 
 /* Result toast: fade out after ~3740ms (4000ms total − 260ms out).
  * Attack Focus solo card opts out — it owns its own shorter timing. */
-.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-game-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay):not(.cq-attack-focus-overlay--solo):not(.cq-reveal-overlay) {
+.cq-duel-overlay-toast:not(.cq-duel-intro-overlay):not(.cq-game-intro-overlay):not(.cq-round-intro-overlay):not(.cq-duel-countdown-overlay):not(.cq-hidden-op-overlay):not(.cq-attack-focus-overlay--solo):not(.cq-reveal-overlay) {
   animation:
     cq-bonus-toast-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
     cq-bonus-toast-out 320ms ease-in 3740ms forwards;
@@ -10174,12 +10198,20 @@ body {
 }
 
 /* Open-shield map overlay — public marker for İstanbul-style bonus.
- * Pure stroke outline so the region fill / labels stay readable. */
+ * Pure stroke outline so the region fill / labels stay readable.
+ * Slow breathing animation draws the eye but stays subtle enough
+ * that a glance is enough to register "this region is protected". */
+@keyframes cqMapShieldPulse {
+  0%, 100% { stroke-opacity: 0.9; filter: drop-shadow(0 0 5px rgba(254,240,138,0.7)); }
+  50%      { stroke-opacity: 1;   filter: drop-shadow(0 0 10px rgba(254,240,138,0.95)); }
+}
 .cq-map-shield-overlay {
-  stroke: #fef08a;
-  stroke-dasharray: 4 3;
-  filter: drop-shadow(0 0 4px rgba(254,240,138,0.55));
-  opacity: 0.85;
+  stroke: #fde047;
+  stroke-width: 3.5;
+  stroke-dasharray: 5 3;
+  filter: drop-shadow(0 0 5px rgba(254,240,138,0.7));
+  opacity: 1;
+  animation: cqMapShieldPulse 2.2s ease-in-out infinite;
 }
 
 /* Tiny chips between name and score that show a player's active bonuses.
@@ -11111,6 +11143,178 @@ body {
   border-radius: 10px;
 }
 
+/* ───────────────────────────────────────────────────────────────────
+   Turn ownership UX — Active (holder) vs Waiting (spectator)
+   ───────────────────────────────────────────────────────────────────
+   ConquestActionPanel mounts only for the turn holder; the waiting
+   panel is rendered inline in ConquestGame.tsx with the
+   .cq-action-panel--waiting modifier. The two share .cq-action-panel
+   chrome but diverge on accent glow, border, copy weight, and the
+   holder chip treatment so the two players never feel symmetrical.
+
+   The phase-panel container also picks up data-turn ("mine" | "theirs")
+   so the surrounding floating card / mobile dock can subtly amplify
+   the same signal without re-mounting children. */
+
+@keyframes cqActionActivePulse {
+  0%, 100% {
+    box-shadow:
+      0 4px 36px -4px rgba(0, 0, 0, 0.70),
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 0 0 1px rgba(168, 85, 247, 0.32),
+      0 0 22px -8px rgba(168, 85, 247, 0.40);
+  }
+  50% {
+    box-shadow:
+      0 4px 36px -4px rgba(0, 0, 0, 0.70),
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 0 0 1px rgba(168, 85, 247, 0.48),
+      0 0 34px -2px rgba(168, 85, 247, 0.62);
+  }
+}
+
+@keyframes cqHolderTagPulse {
+  0%, 100% { opacity: 0.92; }
+  50%      { opacity: 1; }
+}
+
+.cq-action-panel--active {
+  border-color: rgba(168, 85, 247, 0.50);
+  animation:
+    cq-float-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    cqActionActivePulse 2.6s ease-in-out 200ms infinite;
+}
+.cq-action-panel--active .cq-action-holder-chip--active {
+  background:
+    linear-gradient(180deg, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0.08));
+  border-color: rgba(168, 85, 247, 0.55);
+  padding: 5px 12px;
+}
+.cq-action-panel--active .cq-action-holder-name {
+  font-weight: 800;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.cq-action-panel--active .cq-action-holder-tag {
+  background: rgba(168, 85, 247, 0.22);
+  border: 1px solid rgba(168, 85, 247, 0.55);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: #ddd6fe;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  animation: cqHolderTagPulse 1.8s ease-in-out infinite;
+}
+.cq-action-panel--active .cq-action-hint {
+  color: rgba(237, 233, 254, 0.92);
+  font-weight: 600;
+}
+.cq-action-panel--active .cq-challenge-timer {
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.22) inset;
+}
+
+/* Waiting / defensive state — local viewer is NOT the holder. Pull the
+ * panel into a quieter visual register: lower opacity, mute the holder
+ * chip, drop the timer's saturation so it reads as a status display
+ * rather than a CTA. */
+.cq-action-panel--waiting {
+  background: rgba(7, 9, 20, 0.72);
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 2px 22px -8px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  opacity: 0.92;
+}
+.cq-action-panel--waiting .cq-action-holder-chip--waiting {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  padding: 3px 10px;
+}
+.cq-action-panel--waiting .cq-action-holder-name {
+  color: rgba(226, 232, 240, 0.82);
+  font-weight: 700;
+  font-size: 13px;
+}
+.cq-action-panel--waiting .cq-action-holder-tag {
+  background: rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: rgba(203, 213, 225, 0.86);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+}
+.cq-action-panel--waiting .cq-action-line {
+  color: rgba(226, 232, 240, 0.82);
+}
+.cq-action-panel--waiting .cq-action-hint,
+.cq-action-panel--waiting .cq-action-hint--waiting {
+  color: rgba(148, 163, 184, 0.78);
+  font-size: 12.5px;
+}
+.cq-action-panel--waiting .cq-challenge-timer {
+  filter: saturate(0.45);
+  opacity: 0.78;
+}
+
+/* Phase panel container — same chrome, slightly different presence per
+ * turn. Active turn sits a hair brighter; waiting turn drops back so the
+ * holder's panel always feels closer. */
+.cq-game-phase-panel[data-turn="mine"]    { z-index: 22; }
+.cq-game-phase-panel[data-turn="theirs"]  { z-index: 20; }
+.mcq-dock-panel[data-turn="theirs"]       { filter: saturate(0.92); }
+
+/* Map: spectator turn. The component no longer renders pulse rings or
+ * the legal-target fill for non-holders (see TurkeyConquestMap.tsx —
+ * showLegalAffordance gate), so the map reads as a pure ownership
+ * snapshot. Cursor and hover are still neutralised here so an
+ * accidental tap doesn't feel like a CTA — the click handler stays
+ * wired so misclicks still flash red and register as input. */
+.cq-turkey-map-wrap[data-spectator-turn] .cq-map-region[data-interactive] {
+  cursor: not-allowed;
+}
+.cq-turkey-map-wrap[data-spectator-turn] .cq-map-region[data-interactive]:hover {
+  filter: none;
+}
+
+/* Map: active turn — strengthen the legal-target pulse with a soft
+ * white-amber drop-shadow so attackable regions read at a glance even
+ * when the board is dense. Color-neutral on purpose; the per-region
+ * legalStroke handles the team color. */
+.cq-turkey-map-wrap[data-viewer-acting] .cq-map-pulse-ring {
+  filter: drop-shadow(0 0 5px rgba(255, 226, 168, 0.65));
+}
+
+/* Honor reduced-motion preferences: kill the active panel pulse and
+ * the holder-tag breathing animation, keep the visual ranking via
+ * static box-shadows. */
+@media (prefers-reduced-motion: reduce) {
+  .cq-action-panel--active {
+    animation: cq-float-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    box-shadow:
+      0 4px 36px -4px rgba(0, 0, 0, 0.70),
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 0 0 1px rgba(168, 85, 247, 0.42),
+      0 0 28px -6px rgba(168, 85, 247, 0.52);
+  }
+  .cq-action-panel--active .cq-action-holder-tag {
+    animation: none;
+  }
+}
+
+/* ConquestBoard (card fallback) mirrors the spectator gating — legal
+ * styling is suppressed inside the component, so only cursor + hover
+ * resets stay here. */
+.cq-board[data-spectator-turn] .cq-region-card[data-interactive] {
+  cursor: not-allowed;
+}
+.cq-board[data-spectator-turn] .cq-region-card[data-interactive]:hover {
+  transform: none;
+  filter: none;
+}
+
 /* ── Round result transition card ──────────────────────────────── */
 .cq-round-result-panel {
   display: flex;
@@ -11386,18 +11590,41 @@ body {
 
 /* ── Region point badge (gold, sits near label) ──────────────── */
 .cq-map-point-badge-ring {
-  fill: rgba(20, 14, 4, 0.78);
-  stroke: rgba(250, 204, 21, 0.92);
-  stroke-width: 1.1;
-  filter: drop-shadow(0 0 1.5px rgba(250, 204, 21, 0.35));
+  fill: rgba(8, 12, 20, 0.86);
+  stroke: rgba(250, 204, 21, 0.95);
+  stroke-width: 1.4;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+.cq-map-point-badge[data-bonus] .cq-map-point-badge-ring {
+  /* Bonus regions get a brighter rim so a quick glance shows
+     "this region is worth something special". */
+  stroke: rgba(255, 215, 90, 1);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.55));
 }
 .cq-map-point-badge-text {
   font-family: inherit;
-  font-size: 9.5px;
-  font-weight: 800;
-  fill: rgba(253, 224, 71, 0.98);
-  letter-spacing: 0.01em;
+  font-size: 11px;
+  font-weight: 900;
+  fill: rgba(255, 246, 200, 1);
+  letter-spacing: 0;
+  paint-order: stroke fill;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 1.2px;
   user-select: none;
+}
+
+/* ── Bonus region chip (small backdrop disc + emoji) ─────────── */
+.cq-map-bonus-chip-bg {
+  fill: rgba(8, 12, 20, 0.72);
+  stroke: rgba(255, 215, 120, 0.78);
+  stroke-width: 1.1;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.5));
+}
+.cq-map-bonus-icon {
+  font-size: 10px;
+  user-select: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
 }
 
 /* ── Legal target pulse ring ─────────────────────────────────── */
@@ -11409,6 +11636,10 @@ body {
 .cq-map-pulse-ring {
   animation: cqMapPulse 1.55s ease-in-out infinite;
   pointer-events: none;
+  /* Smooth the spectator → holder swap so pulses don't pop in/out at
+   * full strength when the turn rotates. */
+  transition: stroke-opacity 220ms ease, stroke-width 220ms ease,
+              filter 220ms ease, opacity 220ms ease;
 }
 
 /* ── Attack Focus target marker (map) ────────────────────────
@@ -11500,12 +11731,24 @@ body {
   .cq-game-screen .cq-map-points-layer {
     display: block;
   }
-  /* Scale up point badge text and ring for mobile readability */
+  /* Scale up point badge text and ring for mobile readability.
+     The desktop !important block doesn't pin font-size / r anymore,
+     so the values below win on specificity. */
   .cq-game-screen .cq-map-point-badge-text {
-    font-size: 16px;
+    font-size: 17px;
   }
   .cq-game-screen .cq-map-point-badge-ring {
-    r: 11;
+    r: 12 !important;
+    stroke-width: 1.8px !important;
+  }
+  /* Bonus chip scales alongside the value badge on mobile so the special
+     marker stays paired with the number it sits next to. */
+  .cq-game-screen .cq-map-bonus-icon {
+    font-size: 16px;
+  }
+  .cq-game-screen .cq-map-bonus-chip-bg {
+    r: 12 !important;
+    stroke-width: 1.6px !important;
   }
 }
 
@@ -11658,21 +11901,76 @@ body {
 }
 
 
-/* Kuşatma: bölge puan rozetlerini daha sade yap */
+/* Kuşatma: bölge puan rozetlerini okunaklı tut.
+ * Dark disc + bright gold rim + warm white digit gives a Civ-like badge
+ * that pops on any terrain shade. Bonus regions get a brighter rim via
+ * the `[data-bonus]` selector below.
+ * NOTE: avoid !important on font-size / r so the mobile media-query bumps
+ * at the bottom of this file can still scale these up on small screens. */
 .cq-map-point-badge-ring {
-  fill: rgba(170, 125, 35, 0.82) !important;
-  stroke: rgba(255, 226, 140, 0.72) !important;
-  stroke-width: 1.2px !important;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)) !important;
+  fill: rgba(8, 11, 18, 0.94) !important;
+  stroke: rgba(255, 215, 100, 0.98) !important;
+  stroke-width: 1.6px !important;
+  filter:
+    drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)) !important;
+  r: 9;
+}
+.cq-map-point-badge[data-bonus] .cq-map-point-badge-ring {
+  stroke: rgba(255, 228, 140, 1) !important;
+  stroke-width: 2px !important;
+  filter:
+    drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 4px rgba(250, 204, 21, 0.65)) !important;
 }
 
 .cq-map-point-badge-text {
-  fill: rgba(255, 242, 180, 0.96) !important;
-  font-size: 8px !important;
+  fill: rgba(255, 248, 215, 1) !important;
+  font-size: 12px;
   font-weight: 900 !important;
-  paint-order: stroke !important;
-  stroke: rgba(0, 0, 0, 0.55) !important;
+  paint-order: stroke fill !important;
+  stroke: rgba(0, 0, 0, 0.75) !important;
+  stroke-width: 1.5px !important;
+  letter-spacing: 0 !important;
+}
+
+/* Bonus chip — distinguishes "this region has a special bonus" from the
+ * generic gold value badge.  Warmer amber rim + amber glow halo so a
+ * glance separates the two at a glance, even at desktop scale. */
+.cq-map-bonus-chip-bg {
+  fill: rgba(20, 14, 8, 0.86) !important;
+  stroke: rgba(255, 188, 92, 0.95) !important;
   stroke-width: 1.4px !important;
+  filter:
+    drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)) !important;
+  r: 9;
+}
+.cq-map-bonus-icon {
+  font-size: 12px;
+  user-select: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75)) !important;
+}
+
+/* When a bonus region currently has its shield active (İstanbul today),
+ * pulse the bonus chip so the player can see the buff is live without
+ * adding a separate icon. Slow + small so it never feels noisy. */
+@keyframes cqMapBonusChipShieldPulse {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
+      drop-shadow(0 0 4px rgba(255, 215, 90, 0.7));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
+      drop-shadow(0 0 9px rgba(255, 235, 130, 1));
+  }
+}
+.cq-map-bonus-chip[data-shielded] .cq-map-bonus-chip-bg {
+  stroke: rgba(254, 240, 138, 1) !important;
+  stroke-width: 1.8px !important;
+  animation: cqMapBonusChipShieldPulse 1.8s ease-in-out infinite;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -13051,29 +13349,36 @@ body {
    media query at the bottom strips animation to opacity-only.
 ═══════════════════════════════════════════════════════════════════ */
 
-/* ── Map: impact ring (ownership change top-most one-shot) ──── */
+/* ── Map: impact ring (ownership change top-most one-shot) ────
+ * Lifetime needs to feel like a moment, not a blip — the waiting
+ * player reads "oh, that region just changed hands" on this ring
+ * before the event-feed row catches their eye. */
 @keyframes cqMapImpactRing {
   0%   { opacity: 0.00; stroke-width: 1.0; stroke-opacity: 0.85; }
-  18%  { opacity: 1.00; stroke-width: 4.5; stroke-opacity: 0.95; }
-  100% { opacity: 0.00; stroke-width: 0.5; stroke-opacity: 0.0; }
+  14%  { opacity: 1.00; stroke-width: 5.5; stroke-opacity: 1.00; }
+  55%  { opacity: 0.85; stroke-width: 3.2; stroke-opacity: 0.82; }
+  100% { opacity: 0.00; stroke-width: 0.5; stroke-opacity: 0.0;  }
 }
 .cq-map-impact-ring {
   pointer-events: none;
   fill: none;
-  animation: cqMapImpactRing 550ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  filter: drop-shadow(0 0 5px currentColor);
+  animation: cqMapImpactRing 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  filter: drop-shadow(0 0 8px currentColor);
 }
 
-/* ── Map: capture glow (under labels, soft fill flash) ──────── */
+/* ── Map: capture glow (under labels, soft fill flash) ────────
+ * Holds longer than the impact ring so the captured region keeps
+ * a readable tint while the new owner label settles in. */
 @keyframes cqMapCaptureGlow {
   0%   { opacity: 0.0; }
-  20%  { opacity: 0.55; }
+  18%  { opacity: 0.72; }
+  60%  { opacity: 0.42; }
   100% { opacity: 0.0; }
 }
 .cq-map-capture-glow {
   pointer-events: none;
   mix-blend-mode: screen;
-  animation: cqMapCaptureGlow 800ms ease-out forwards;
+  animation: cqMapCaptureGlow 1400ms ease-out forwards;
 }
 
 /* ── Score: +N / -N transient delta badge ───────────────────── */
@@ -13259,6 +13564,129 @@ body {
   .cq-event-feed__row {
     animation: none;
   }
+}
+
+/* ── Conquest cinematic signal banner (single-slot, tiered) ──────
+ * Center overlay used for MAJOR (1500ms) and CRITICAL (2400ms)
+ * events. MINOR events stay in ConquestEventFeed; the banner's
+ * renderer suppresses the minor tier so this CSS only needs to
+ * style major/critical.
+ *
+ * pointer-events: none — never blocks the map or bottom sheet.
+ * Animation duration is data-driven via --cq-signal-ttl so the same
+ * keyframe handles both tiers; longer hold == softer pacing for
+ * critical.  z-index sits above the map + dock but below the
+ * defense_duel intro overlays so dramatic moments still stack. */
+@keyframes cqSignalIn {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.00); }
+  82%  { opacity: 1; transform: translate(-50%, -50%) scale(1.00); }
+  100% { opacity: 0; transform: translate(-50%, -54%) scale(1.04); }
+}
+
+.cq-signal-banner {
+  position: fixed;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 70;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 22px 16px;
+  min-width: 220px;
+  max-width: min(92vw, 420px);
+  text-align: center;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(15, 20, 36, 0.93), rgba(8, 11, 22, 0.93));
+  border: 1px solid var(--cq-signal-accent, rgba(255, 255, 255, 0.12));
+  box-shadow:
+    0 14px 44px -10px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 32px -8px var(--cq-signal-accent, rgba(255, 255, 255, 0.18));
+  animation: cqSignalIn var(--cq-signal-ttl, 1500ms)
+             cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.cq-signal-banner__icon {
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+.cq-signal-banner__title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  line-height: 1.2;
+}
+.cq-signal-banner__subtitle {
+  font-size: 12px;
+  color: rgba(203, 213, 225, 0.82);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+/* Tier — MAJOR (default). Soft violet glow. */
+.cq-signal-banner[data-tier="major"] {
+  --cq-signal-accent: rgba(168, 85, 247, 0.42);
+}
+
+/* Tier — CRITICAL. Larger card, stronger red glow, slightly heavier
+ * weight. Pulled out of MAJOR so future tiers can fork without
+ * cascade weirdness. */
+.cq-signal-banner[data-tier="critical"] {
+  --cq-signal-accent: rgba(239, 68, 68, 0.58);
+  min-width: 260px;
+  padding: 18px 26px 20px;
+}
+.cq-signal-banner[data-tier="critical"] .cq-signal-banner__icon {
+  font-size: 34px;
+}
+.cq-signal-banner[data-tier="critical"] .cq-signal-banner__title {
+  font-size: 19px;
+}
+
+/* Per-player tint — mirrors the event-feed color tokens so the banner
+ * reads as "this player's moment". Wins over the tier default because
+ * data-color is more specific. */
+.cq-signal-banner[data-color="red"]    { --cq-signal-accent: rgba(239,  68,  68, 0.55); }
+.cq-signal-banner[data-color="blue"]   { --cq-signal-accent: rgba( 59, 130, 246, 0.55); }
+.cq-signal-banner[data-color="green"]  { --cq-signal-accent: rgba( 34, 197,  94, 0.55); }
+.cq-signal-banner[data-color="yellow"] { --cq-signal-accent: rgba(234, 179,   8, 0.55); }
+.cq-signal-banner[data-color="purple"] { --cq-signal-accent: rgba(168,  85, 247, 0.55); }
+.cq-signal-banner[data-color="orange"] { --cq-signal-accent: rgba(249, 115,  22, 0.55); }
+.cq-signal-banner[data-color="pink"]   { --cq-signal-accent: rgba(236,  72, 153, 0.55); }
+.cq-signal-banner[data-color="cyan"]   { --cq-signal-accent: rgba(  6, 182, 212, 0.55); }
+
+/* Mobile: slightly smaller, raised so it doesn't collide with the
+ * bottom-sheet handle. */
+@media (max-width: 600px) {
+  .cq-signal-banner {
+    top: 28%;
+    min-width: 200px;
+    padding: 12px 18px 14px;
+  }
+  .cq-signal-banner__icon                                  { font-size: 24px; }
+  .cq-signal-banner__title                                 { font-size: 15px; }
+  .cq-signal-banner__subtitle                              { font-size: 11.5px; }
+  .cq-signal-banner[data-tier="critical"] .cq-signal-banner__icon  { font-size: 30px; }
+  .cq-signal-banner[data-tier="critical"] .cq-signal-banner__title { font-size: 17px; }
+}
+
+/* Reduced motion: drop scale, keep fade-in/out only. */
+@media (prefers-reduced-motion: reduce) {
+  .cq-signal-banner {
+    animation-name: cqSignalInReduced;
+  }
+}
+@keyframes cqSignalInReduced {
+  0%, 100% { opacity: 0; transform: translate(-50%, -50%); }
+  10%, 82% { opacity: 1; transform: translate(-50%, -50%); }
 }
 
 /* Kuşatma: soru metnini daha okunur ve baskın yap */

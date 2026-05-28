@@ -36,6 +36,13 @@ interface Props {
   flashRegionId?:  ConquestRegionId | null;
   /** Disable interaction entirely (round_result, finished, etc.). */
   disabled?:       boolean;
+  /**
+   * True when the local viewer is the action holder. Used to mark the
+   * board as "spectator-turn" so the card fallback dims legal highlights
+   * and shows a not-allowed cursor for non-holders during the action
+   * phase. Defaults to true so display-only uses (lobby) stay vivid.
+   */
+  viewerIsHolder?: boolean;
 }
 
 export default function ConquestBoard({
@@ -47,15 +54,23 @@ export default function ConquestBoard({
   legalRegionIds,
   flashRegionId,
   disabled = false,
+  viewerIsHolder = true,
 }: Props) {
   const playerById = Object.fromEntries(players.map(p => [p.id, p]));
   const stateById  = Object.fromEntries(regionStates.map(rs => [rs.regionId, rs]));
   const interactive = !!onRegionClick && !disabled;
+  const spectatorTurn = interactive && !viewerIsHolder;
+  // Mirrors TurkeyConquestMap: legal-target affordance is a CTA for the
+  // local viewer — only meaningful when this player is the action holder
+  // AND the board is clickable. Spectator and non-action phases get a
+  // pure ownership snapshot.
+  const viewerActing  = interactive && viewerIsHolder;
 
   return (
     <div
       className="cq-board"
       data-interactive={interactive ? "" : undefined}
+      data-spectator-turn={spectatorTurn ? "" : undefined}
       role="grid"
       aria-label={`${mapConfig.displayName} harita bölgeleri`}
     >
@@ -63,7 +78,9 @@ export default function ConquestBoard({
         const rs    = stateById[region.id];
         const owner = rs?.ownerPlayerId ? playerById[rs.ownerPlayerId] : null;
         const color = owner ? playerColors[owner.id] : null;
-        const isLegal = legalRegionIds?.has(region.id) ?? false;
+        // Spectator + non-action phases: drop the legal-target affordance
+        // entirely so the waiting player only sees ownership state.
+        const isLegal = viewerActing && (legalRegionIds?.has(region.id) ?? false);
         const isFlash = flashRegionId === region.id;
 
         return (

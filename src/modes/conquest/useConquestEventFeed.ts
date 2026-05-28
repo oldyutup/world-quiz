@@ -111,7 +111,7 @@ export function useConquestEventFeed(
         text = `${label} elinden çıktı — ${newName}`;
       } else if (isMine && before !== null) {
         icon = "🗡️";
-        text = `${label}'i fethettin (${oldName})`;
+        text = `${label} bölgesini fethettin (${oldName})`;
       } else if (isMine && before === null) {
         icon = "🚩";
         text = `${label} senindir`;
@@ -120,7 +120,7 @@ export function useConquestEventFeed(
         text = `${newName}, ${label}'i aldı`;
       } else {
         icon = "⚔️";
-        text = `${newName}, ${label}'i ele geçirdi`;
+        text = `${newName} ${label} bölgesini fethetti`;
       }
 
       newEntries.push({

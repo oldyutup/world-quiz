@@ -134,8 +134,9 @@ export function consumeMoveTimeBonus(
 /**
  * Build the initial ConquestGameState for a brand-new match.
  *
- *  - Distributes regions evenly via createInitialRegionStates (round-robin,
- *    leftovers neutral)
+ *  - Distributes regions via createInitialRegionStates (seeded snake-draft,
+ *    value-balanced, adjacency-aware; controlled-random with fairness
+ *    retry, leftovers neutral)
  *  - Mounts the round-1 placeholder challenge in `active` status
  *  - Phase starts at `challenge` so the UI shows the challenge panel
  *    immediately; the `setup` phase is reserved for any future async
@@ -149,6 +150,22 @@ const GAME_INTRO_TEXT_MS      = 9_000; // info card visible
 const GAME_INTRO_COUNTDOWN_MS = 3_000; // 3-2-1 countdown
 const GAME_INTRO_TOTAL_MS     = GAME_INTRO_TEXT_MS + GAME_INTRO_COUNTDOWN_MS;
 
+// Per-round intro pacing (rounds 2+).  We push the new challenge's
+// startedAt this far into the future so the dedicated intro overlay
+// (info card + 3-2-1 countdown) gets airtime before the question and
+// its timer appear.  The host's expireChallenge timer reads endsAt
+// (= startedAt + CONQUEST_CHALLENGE_DURATION_MS), so it shifts
+// forward automatically — no seconds tick away during the intro.
+//
+// Split into two phases so the renderer can switch overlays without
+// re-deriving timings:
+//   - ROUND_INTRO_CARD_MS  : "Tur N Başlıyor" info card
+//   - ROUND_COUNTDOWN_MS   : "3 → 2 → 1" countdown
+// Total intro window = sum of the two.
+export const ROUND_INTRO_CARD_MS  = 4_000;
+export const ROUND_COUNTDOWN_MS   = 3_000;
+const ROUND_INTRO_PACING_MS = ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS;
+
 export function createInitialConquestGameState(
   mapConfig:   ConquestMapConfig,
   players:     ConquestPlayer[],
@@ -156,7 +173,10 @@ export function createInitialConquestGameState(
 ): ConquestGameState {
   const safeRounds = Math.max(1, Math.floor(totalRounds));
   const now        = Date.now();
-  const regionStates = createInitialRegionStates(mapConfig, players);
+  // `now` doubles as the per-match seed for the controlled-random region
+  // allocator. The host computes this once and uploads the result, so the
+  // seed itself doesn't need to be persisted or shared with guests.
+  const regionStates = createInitialRegionStates(mapConfig, players, now);
 
   // Seed empty bonus state for every player.  Bonuses only trigger via
   // capture events, so starting ownership never grants them.
@@ -1543,7 +1563,7 @@ export function advanceToNextRound(state: ConquestGameState): ConquestGameState 
     round: {
       roundNumber:    nextRoundNumber,
       totalRounds:    state.round.totalRounds,
-      challenge:      buildActiveChallengeState(challenge, now),
+      challenge:      buildActiveChallengeState(challenge, now + ROUND_INTRO_PACING_MS),
       actionHolderId: null,
       lastResult:     null,
     },

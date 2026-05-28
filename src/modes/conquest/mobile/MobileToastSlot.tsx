@@ -47,6 +47,8 @@ export type MobileToastKind =
   | "attack-focus"
   | "game-intro"
   | "game-intro-countdown"
+  | "round-intro"
+  | "round-intro-countdown"
   | "reveal";
 
 export interface MobileToastSpec {

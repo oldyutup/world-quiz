@@ -73,6 +73,7 @@ import {
   getPlayerOwningAllRegions,
   placeHiddenConquestOnNeutralRegion,
   placeHiddenShieldOnOwnRegion,
+  ROUND_COUNTDOWN_MS,
   submitChallengeAnswer,
   submitDuelAnswer,
 } from "./conquestGameplay";
@@ -94,6 +95,8 @@ import MobileToastSlot, {
 } from "./mobile/MobileToastSlot";
 import ConquestEventFeed from "./ConquestEventFeed";
 import { useConquestEventFeed } from "./useConquestEventFeed";
+import ConquestSignalBanner from "./ConquestSignalBanner";
+import { useConquestSignals } from "./useConquestSignals";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
@@ -128,6 +131,17 @@ const HIDDEN_OP_TOAST_MS = 8500;
  *  longer than HIDDEN_OP_TOAST_MS so the toast clears before the next
  *  challenge (and its timer) starts. */
 const HIDDEN_OP_AUTO_ADVANCE_MS = 9000;
+
+/** Subtitles rotated under the "Tur N Başlıyor" intro card; copy stays
+ *  generic on purpose so it never lies about gameplay state. */
+const ROUND_INTRO_SUBTITLES = [
+  "Cepheler yeniden şekilleniyor",
+  "Yeni hamle, yeni şans",
+  "Savunmalar zayıflıyor",
+  "Bonus bölgeler bekliyor",
+  "Hat yeniden çiziliyor",
+  "Hedef: en güçlü cephe",
+];
 
 /** Map a round lastResult to a short icon + Turkish title for the transition card. */
 function getRoundResultCardData(
@@ -579,6 +593,17 @@ export default function ConquestGame({
   // Derived from ownership diffs + lastBonusToast id + duel start/end.
   // No new sync surface; each client builds its own list (max 6 rows).
   const eventFeedEntries = useConquestEventFeed(
+    gameState,
+    players,
+    playerColors,
+    myPlayerId,
+    mapConfig,
+  );
+
+  // Cinematic signal layer — ONE major/critical banner at a time.
+  // Minor events stay in the event feed above; this hook only fires for
+  // the round_intro / bonus_capture / last_stand / match_over moments.
+  const activeSignal = useConquestSignals(
     gameState,
     players,
     playerColors,
@@ -1085,6 +1110,26 @@ export default function ConquestGame({
     ? Math.max(1, Math.ceil((gameIntroEndsAt - now) / 1000))
     : 0;
 
+  // Per-round intro pacing (rounds 2+): challenge.startedAt is anchored
+  // ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS into the future by
+  // advanceToNextRound so the dedicated intro overlay (info card →
+  // 3-2-1 countdown) gets airtime before the question and timer appear.
+  // challengeState.endsAt = startedAt + duration, so no seconds tick away
+  // during the intro.  Round 1 uses the game-intro flow instead.
+  const roundIntroMsRemaining = Math.max(0, challengeState.startedAt - now);
+  const showRoundIntro =
+    phase === "challenge"
+    && !showGameIntro
+    && roundIntroMsRemaining > 0;
+  const showRoundIntroCard      = showRoundIntro && roundIntroMsRemaining > ROUND_COUNTDOWN_MS;
+  const showRoundIntroCountdown = showRoundIntro && roundIntroMsRemaining <= ROUND_COUNTDOWN_MS;
+  const roundIntroCountdownNum  = showRoundIntroCountdown
+    ? Math.max(1, Math.ceil(roundIntroMsRemaining / 1000))
+    : 0;
+  const roundIntroSubtitle = ROUND_INTRO_SUBTITLES[
+    (gameState.round.roundNumber - 1) % ROUND_INTRO_SUBTITLES.length
+  ];
+
   // ── Bonus toast lifecycle ────────────────────────────────────────────
   // The toast is part of synced state; we mount it for ~2s after `at` and
   // then dismiss locally.  Re-keying by `id` resets the dismiss timer when
@@ -1236,6 +1281,7 @@ export default function ConquestGame({
         flashRegionId={flashRegionId}
         attackTargetRegionId={attackTargetRegionId}
         disabled={boardDisabled}
+        viewerIsHolder={isActionHolder}
         onRegionClick={phase === "action" ? handleRegionClick : undefined}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
@@ -1249,6 +1295,7 @@ export default function ConquestGame({
           legalRegionIds={legalTargets}
           flashRegionId={flashRegionId}
           disabled={boardDisabled}
+          viewerIsHolder={isActionHolder}
         />
       </div>
     </>
@@ -1262,6 +1309,7 @@ export default function ConquestGame({
       legalRegionIds={legalTargets}
       flashRegionId={flashRegionId}
       disabled={boardDisabled}
+      viewerIsHolder={isActionHolder}
     />
   );
 
@@ -1328,6 +1376,43 @@ export default function ConquestGame({
             <div className="cq-duel-countdown-label">Hazır ol</div>
             <div key={gameIntroCountdownNum} className="cq-duel-countdown-number">
               {gameIntroCountdownNum}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Round intro: "Tur N Başlıyor" info card (4s) → 3-2-1 countdown (3s).
+       *  Fires for rounds 2+ only — round 1 uses the game-intro flow above.
+       *  Challenge panel and timer are suppressed until the countdown ends
+       *  (challenge.startedAt anchors the question reveal). */}
+      {showRoundIntroCard && (
+        <div
+          className="cq-duel-overlay-toast cq-round-intro-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🚩</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              Tur {gameState.round.roundNumber} Başlıyor
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {roundIntroSubtitle}
+            </div>
+          </div>
+        </div>
+      )}
+      {showRoundIntroCountdown && (
+        <div
+          className="cq-duel-overlay-toast cq-duel-countdown-overlay"
+          role="status"
+          aria-live="polite"
+          aria-label="Tur geri sayımı"
+        >
+          <div className="cq-duel-countdown-inner">
+            <div className="cq-duel-countdown-label">Yeni soru hazırlanıyor</div>
+            <div key={roundIntroCountdownNum} className="cq-duel-countdown-number">
+              {roundIntroCountdownNum}
             </div>
           </div>
         </div>
@@ -1502,7 +1587,9 @@ export default function ConquestGame({
   //
   // Priority order:
   //   130  reveal                (Soru sonuç kartı — 3s, gameplay-critical)
+  //   125  round-intro-countdown (3-2-1 between rounds 2+, before question)
   //   120  game-intro-countdown  (3-2-1 at game start)
+  //   115  round-intro           (🚩 Tur N Başlıyor card — 4s)
   //   110  game-intro            (⚔️ Kuşatma başlıyor card)
   //   100  duel-countdown        (3-2-1 just before the duel question shows)
   //    90  duel-intro            ("Savunma Düellosu Başladı" detail card)
@@ -1594,6 +1681,44 @@ export default function ConquestGame({
             {gameIntroCountdownNum}
           </div>
         </div>
+      ),
+    });
+  }
+  if (showRoundIntroCountdown) {
+    mobileToastSpecs.push({
+      id:        `round-intro-countdown:${gameState.round.roundNumber}`,
+      kind:      "round-intro-countdown",
+      priority:  125,
+      className: "cq-duel-overlay-toast cq-duel-countdown-overlay",
+      ariaLabel: "Tur geri sayımı",
+      content: (
+        <div className="cq-duel-countdown-inner">
+          <div className="cq-duel-countdown-label">Yeni soru hazırlanıyor</div>
+          <div key={roundIntroCountdownNum} className="cq-duel-countdown-number">
+            {roundIntroCountdownNum}
+          </div>
+        </div>
+      ),
+    });
+  }
+  if (showRoundIntroCard) {
+    mobileToastSpecs.push({
+      id:        `round-intro-card:${gameState.round.roundNumber}`,
+      kind:      "round-intro",
+      priority:  115,
+      className: "cq-duel-overlay-toast cq-round-intro-overlay",
+      content: (
+        <>
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🚩</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              Tur {gameState.round.roundNumber} Başlıyor
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {roundIntroSubtitle}
+            </div>
+          </div>
+        </>
       ),
     });
   }
@@ -1749,7 +1874,7 @@ export default function ConquestGame({
   //    is just the panel content per phase. ────────────────────────────
   const phasePanelContent: ReactNode = (
     <>
-      {phase === "challenge" && !hiddenOpToast && !showGameIntro && (
+      {phase === "challenge" && !hiddenOpToast && !showGameIntro && !showRoundIntro && (
         <ConquestChallengePanel
           challengeState={challengeState}
           players={players}
@@ -1784,18 +1909,27 @@ export default function ConquestGame({
       )}
 
       {phase === "action" && !canActOnRegion && (
-        <section className="cq-action-panel" aria-label="Hamle paneli">
-          <p className="cq-action-line" role="status">
-            {actionTurnLine}
-          </p>
-          <p className="cq-action-hint">
-            {challengeWinnerName
-              ? (moveSecondsLeft !== null
-                  ? `${challengeWinnerName} hamlesini yapıyor, bekle. (${moveSecondsLeft}sn)`
-                  : `${challengeWinnerName} hamlesini yapıyor, bekle.`)
-              : (moveSecondsLeft !== null
-                  ? `Rakibin hamlesi: ${moveSecondsLeft}sn`
-                  : "Hamle tamamlanana kadar bekle.")}
+        <section
+          className="cq-action-panel cq-action-panel--waiting"
+          data-active="false"
+          aria-label="Hamle paneli"
+        >
+          <div className="cq-action-head">
+            <span
+              className="cq-action-holder-chip cq-action-holder-chip--waiting"
+              data-color={actionHolder ? (playerColors[actionHolder.id] ?? undefined) : undefined}
+            >
+              <span className="cq-action-holder-dot" aria-hidden="true" />
+              <span className="cq-action-holder-name">
+                {actionHolder?.name ?? "Rakip"}
+              </span>
+              <span className="cq-action-holder-tag">⏳ SIRADA</span>
+            </span>
+          </div>
+          <p className="cq-action-hint cq-action-hint--waiting" role="status">
+            {moveSecondsLeft !== null
+              ? `Bekleniyor… (${moveSecondsLeft}sn)`
+              : "Bekleniyor…"}
           </p>
           {moveMsRemaining !== null && moveTotalMs !== null && moveTotalMs > 0 && (
             <div
@@ -1899,11 +2033,18 @@ export default function ConquestGame({
     </>
   );
 
+  // Turn-ownership attribute used by the dock + sheet styling. "mine" lights
+  // up the active-turn glow; "theirs" mutes the panel. Only set during the
+  // action phase — the other phases own their own visual states.
+  const turnAttr: "mine" | "theirs" | undefined =
+    phase === "action" ? (isActionHolder ? "mine" : "theirs") : undefined;
+
   // ── Desktop overlays: toasts + the legacy floating phase card + feed.
   const overlaysNode = (
     <>
       {toastsNode}
-      <div className="cq-game-phase-panel" data-phase={phase}>
+      <ConquestSignalBanner signal={activeSignal} />
+      <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
         {phasePanelContent}
       </div>
       <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
@@ -1917,10 +2058,17 @@ export default function ConquestGame({
   // wrapper here. `data-phase` is preserved so phase-specific styling
   // (e.g. duel red accent) keeps working.
   const landscapeDockNode = (
-    <div className="mcq-dock-panel" data-phase={phase}>
+    <div className="mcq-dock-panel" data-phase={phase} data-turn={turnAttr}>
       {phasePanelContent}
       <ConquestEventFeed events={eventFeedEntries} variant="landscape-dock" />
     </div>
+  );
+
+  // Signal banner is position:fixed + pointer-events:none, so it can sit
+  // alongside the rest of the mobile overlays without participating in
+  // sheet/dock layout. Same node served to both portrait and landscape.
+  const signalBannerNode = (
+    <ConquestSignalBanner signal={activeSignal} />
   );
 
   // Landscape overlays: only the transient toasts.  The phase panel
@@ -2071,6 +2219,7 @@ export default function ConquestGame({
   const mobileOverlaysNode = (
     <>
       {mobileToastsNode}
+      {signalBannerNode}
       {!mobilePeekSuppressed && (
         <ConquestEventFeed
           events={eventFeedEntries}
@@ -2134,7 +2283,12 @@ export default function ConquestGame({
           overlays={
             orientation === "portrait"
               ? mobileOverlaysNode
-              : mobileToastsNode
+              : (
+                  <>
+                    {mobileToastsNode}
+                    {signalBannerNode}
+                  </>
+                )
           }
         />
       </div>

@@ -67,15 +67,19 @@ export default function ConquestActionPanel({
   }
 
   return (
-    <section className="cq-action-panel" aria-label="Hamle paneli">
+    <section
+      className="cq-action-panel cq-action-panel--active"
+      data-active="true"
+      aria-label="Hamle paneli"
+    >
       <div className="cq-action-head">
         <span
-          className="cq-action-holder-chip"
+          className="cq-action-holder-chip cq-action-holder-chip--active"
           data-color={holderColor ?? undefined}
         >
           <span className="cq-action-holder-dot" aria-hidden="true" />
           <span className="cq-action-holder-name">{actionHolder.name}</span>
-          <span className="cq-action-holder-tag">Hamle hakkı</span>
+          <span className="cq-action-holder-tag">⚔ HAMLE SENDE</span>
         </span>
 
         {noMovesLeft ? (
