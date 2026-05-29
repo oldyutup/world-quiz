@@ -70,7 +70,7 @@ export function useConquestSignals(
   players:      ConquestPlayer[],
   playerColors: Record<string, ConquestPlayerColor>,
   myPlayerId:   string | null,
-  _mapConfig:   ConquestMapConfig | null | undefined,
+  mapConfig:    ConquestMapConfig | null | undefined,
 ): ConquestSignal | null {
   const [queue, setQueue] = useState<ConquestSignal[]>([]);
   const seenRef            = useRef<Set<string>>(new Set());
@@ -128,12 +128,17 @@ export function useConquestSignals(
       capitalFiredRef.current.add(key);
       if (seenRef.current.has(key)) continue;
       seenRef.current.add(key);
+      // Derive the title from the actual capital region so future
+      // multi-capital maps don't surface "Ankara" when another city falls.
+      const capitalRegion = mapConfig?.regions.find(r => r.id === regionId);
+      const capitalLabel  =
+        capitalRegion?.displayLabel ?? capitalRegion?.name ?? "Merkez";
       enqueue({
         id:       key,
         kind:     "capital_fell",
         tier:     "major",
         icon:     "🏛️",
-        title:    "Ankara Ele Geçirildi",
+        title:    `${capitalLabel} Ele Geçirildi`,
         subtitle: "Merkez el değiştirdi.",
         colorKey: playerColors[after] ?? null,
         at:       now,

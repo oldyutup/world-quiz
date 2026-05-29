@@ -28,7 +28,8 @@ import type {
 } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Turkey — 24 strategic conquest regions (Phase 10)
+// Turkey — 25 strategic conquest regions (Phase 10; Kars split out from
+// erzurum_kars).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TURKEY_REGIONS: ConquestRegion[] = [
@@ -83,7 +84,8 @@ const TURKEY_REGIONS: ConquestRegion[] = [
     name: "Kuzeydoğu Anadolu",
     mapId: "turkey",
     // Erzincan (in this region) borders Elazığ/Tunceli/Bingöl → malatya_elazig.
-    neighbors: ["dogu_karadeniz", "erzurum_kars", "malatya_elazig"],
+    // Ağrı (in this region) borders Kars → kars.
+    neighbors: ["dogu_karadeniz", "erzurum_kars", "malatya_elazig", "kars"],
     displayLabel: "KD Anad.",
     emoji: "🏔️",
     groupName: "Doğu Türkiye",
@@ -137,11 +139,24 @@ const TURKEY_REGIONS: ConquestRegion[] = [
   },
   {
     id: "erzurum_kars",
-    name: "Erzurum / Kars",
+    name: "Erzurum",
     mapId: "turkey",
-    neighbors: ["dogu_karadeniz", "orta_anadolu", "kuzeydogu_anadolu", "malatya_elazig", "van_hakkari"],
+    // Now covers Erzurum + Ardahan + Iğdır.  Borders kars (split out into its
+    // own region) via Ardahan/Erzurum/Iğdır.
+    neighbors: ["dogu_karadeniz", "orta_anadolu", "kuzeydogu_anadolu", "malatya_elazig", "van_hakkari", "kars"],
     displayLabel: "Erzurum",
     emoji: "❄️",
+    groupName: "Doğu Türkiye",
+  },
+  {
+    id: "kars",
+    name: "Kars",
+    mapId: "turkey",
+    // Kars borders Erzurum/Ardahan/Iğdır (all in erzurum_kars) and Ağrı
+    // (in kuzeydogu_anadolu).  No direct border with van_hakkari.
+    neighbors: ["erzurum_kars", "kuzeydogu_anadolu"],
+    displayLabel: "Kars",
+    emoji: "🐺",
     groupName: "Doğu Türkiye",
   },
 
@@ -270,7 +285,7 @@ const EUROPE_REGIONS: ConquestRegion[] = [
     id: "eu_western",
     name: "Batı Avrupa",
     mapId: "europe",
-    neighbors: ["eu_northern", "eu_central", "eu_iberian", "eu_southern"],
+    neighbors: ["eu_northern", "eu_central", "eu_iberian", "eu_southern", "eu_british"],
     displayLabel: "Batı",
     groupName: "Avrupa",
   },
@@ -341,7 +356,7 @@ const MIDDLE_EAST_REGIONS: ConquestRegion[] = [
     id: "me_levant",
     name: "Levant",
     mapId: "middle-east",
-    neighbors: ["me_anatolia", "me_mesopotamia", "me_north_africa"],
+    neighbors: ["me_anatolia", "me_mesopotamia", "me_north_africa", "me_arabian"],
     displayLabel: "Levant",
     groupName: "Orta Doğu",
   },
@@ -397,7 +412,7 @@ export const CONQUEST_MAP_CONFIGS: ConquestMapConfig[] = [
     kind:              "region-based",
     displayName:       "Türkiye Kuşatması",
     shortName:         "Türkiye",
-    description:       "Türkiye'yi 24 stratejik bölgeye bölen harita. Tüm bölgeleri ele geçir.",
+    description:       "Türkiye'yi 25 stratejik bölgeye bölen harita. Tüm bölgeleri ele geçir.",
     icon:              "🇹🇷",
     minPlayers:        2,
     maxPlayers:        4,

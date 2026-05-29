@@ -24,7 +24,7 @@ import type {
   ConquestPlayerBonusState,
   ConquestPlayerColor,
 } from "../types";
-import { REGION_BONUSES, getPlayerBonusState } from "../regionBonuses";
+import { getBonusTypePresentation, getPlayerBonusState } from "../regionBonuses";
 
 interface Props {
   players:            ConquestPlayer[];
@@ -59,24 +59,31 @@ function buildBonusChips(
   isMe:               boolean,
 ): BonusChip[] {
   const chips: BonusChip[] = [];
+  // Chip icons follow bonus *type* (canonical), not a fixed region — the
+  // dynamic round assignment may move bonuses between tiles but the
+  // accumulated player buff (open shield / time bonus / hidden op) keeps
+  // its identity.
+  const istanbulPres  = getBonusTypePresentation("istanbul_defense");
+  const karadenizPres = getBonusTypePresentation("karadeniz_extra_time");
+  const ankaraPres    = getBonusTypePresentation("ankara_hidden_shield");
   if (openShieldOwners.has(player.id)) {
     chips.push({
       key:   "ist",
-      icon:  REGION_BONUSES.istanbul_kocaeli.icon,
+      icon:  istanbulPres.icon,
       title: "Açık kalkan aktif",
     });
   }
   if (bonus.extraNextMoveMs > 0) {
     chips.push({
       key:   "kdz",
-      icon:  REGION_BONUSES.dogu_karadeniz.icon,
-      title: `${REGION_BONUSES.dogu_karadeniz.label} (+${Math.round(bonus.extraNextMoveMs / 1000)}sn)`,
+      icon:  karadenizPres.icon,
+      title: `${karadenizPres.label} (+${Math.round(bonus.extraNextMoveMs / 1000)}sn)`,
     });
   }
   if (isMe && bonus.pendingHiddenShield) {
     chips.push({
       key:   "ank-pending",
-      icon:  REGION_BONUSES.ankara_cevre.icon,
+      icon:  ankaraPres.icon,
       title: "Gizli Operasyon hazır",
     });
   }

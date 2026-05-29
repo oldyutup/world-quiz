@@ -273,6 +273,13 @@ export interface ConquestPlayerBonusState {
 export interface ConquestBonusToast {
   id:         string;
   bonusType:  ConquestRegionBonusType;
+  /**
+   * Region the bonus was attached to *for this round* — written by the
+   * dynamic per-round bonus assigner.  Optional for back-compat with pre-
+   * dynamic-bonus saves (readers fall back to the static REGION_BONUSES
+   * table or omit region-bound coordination like the capital reveal hold).
+   */
+  regionId?:  ConquestRegionId;
   /** Display icon (emoji). */
   icon:       string;
   /** Short TR title — e.g. "Ankara Bonusu". */
@@ -284,6 +291,31 @@ export interface ConquestBonusToast {
   playerName: string;
   /** Epoch ms the toast was raised. UI uses this to time the auto-dismiss. */
   at:         number;
+}
+
+/**
+ * Dynamic per-round bonus assignment.  Maps `regionId → bonus type` for the
+ * regions carrying bonuses this round.  Replaces the static REGION_BONUSES
+ * lookup at runtime — the static table is only consulted as a fallback for
+ * legacy saves and for the type catalog (icon/label/description).
+ *
+ * Always exactly one bonus per region; bonus types may repeat across rounds
+ * but rarely sit on the same region twice in a row (see anti-repeat in
+ * `buildRoundBonusAssignment`).
+ */
+export type ConquestRoundBonusAssignment = Record<ConquestRegionId, ConquestRegionBonusType>;
+
+/**
+ * Resolved bonus def — what the gameplay/UI layers consume.  Carried on the
+ * round assignment lookup result so the dynamic bonus moves with its region
+ * label, icon, and tooltip copy.
+ */
+export interface ConquestRegionBonusDef {
+  regionId:    ConquestRegionId;
+  type:        ConquestRegionBonusType;
+  icon:        string;
+  label:       string;
+  description: string;
 }
 
 // ── Match state ──────────────────────────────────────────────────────────────
@@ -585,6 +617,22 @@ export interface ConquestGameState {
    * challenge display.
    */
   gameIntroEndsAt?:   number;
+  /**
+   * Match-level bonus assignment — which region carries which bonus type
+   * for the entire match.  Picked once at match creation by
+   * `buildRoundBonusAssignment` (seeded by `startedAt` alone) and preserved
+   * verbatim across all rounds; host writes once, every client reads the
+   * same snapshot.  Absent in pre-dynamic-bonus saves — readers fall back
+   * to the static REGION_BONUSES table.  Capital cinematic (Ankara) is
+   * intentionally NOT routed through this assignment.
+   */
+  roundBonuses?:      ConquestRoundBonusAssignment;
+  /**
+   * Legacy: previous round's bonus assignment, kept only for back-compat
+   * with pre-match-stable saves.  Modern code no longer writes this — bonus
+   * picks no longer depend on round-to-round history.
+   */
+  prevRoundBonuses?:  ConquestRoundBonusAssignment;
 }
 
 /** Final result row — one per player — used by the result screen. */

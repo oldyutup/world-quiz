@@ -35,14 +35,6 @@ function regionStateById(
   return new Map(states.map(rs => [rs.regionId, rs]));
 }
 
-function regionsAdjacentTo(
-  mapConfig: ConquestMapConfig,
-  regionId:  ConquestRegionId,
-): ConquestRegionId[] {
-  const r = mapConfig.regions.find(rg => rg.id === regionId);
-  return r ? r.neighbors : [];
-}
-
 function playerName(
   players: ConquestPlayer[],
   id:      string,
@@ -55,26 +47,32 @@ function playerName(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * True if `playerId` may capture `regionId` as a neutral take.
- * Rules:
- *   - target must exist on the map and be owner-less (neutral)
- *   - player must own at least one region adjacent to the target
- *     (same adjacency rule as attack — no "anywhere on board" grabs)
+ * Canonical legal-target rule for any region-targeting action.
+ *
+ *   legal = target exists
+ *        && target.ownerId !== playerId
+ *        && some neighbor of target is owned by playerId
+ *
+ * Number of opponents bordering the target, fronts touched, or whether
+ * the target is neutral vs. enemy-owned does NOT affect legality — those
+ * only steer the action *type* (capture vs. attack vs. duel).  UI
+ * highlighting, click validation, and gameplay resolution all funnel
+ * through this predicate via canCaptureNeutral / canAttackRegion below,
+ * so the rule has a single source of truth.
  */
-export function canCaptureNeutral(
+export function isLegalTarget(
   mapConfig:    ConquestMapConfig,
   regionStates: ConquestRegionState[],
   playerId:     string,
   regionId:     ConquestRegionId,
 ): boolean {
-  if (!mapConfig.regions.some(r => r.id === regionId)) return false;
+  const region = mapConfig.regions.find(r => r.id === regionId);
+  if (!region) return false;
   const byId = regionStateById(regionStates);
-  const rs = byId.get(regionId);
-  if (!rs) return false;
-  if (rs.ownerPlayerId !== null) return false;
-
-  const neighbors = regionsAdjacentTo(mapConfig, regionId);
-  for (const nbId of neighbors) {
+  const target = byId.get(regionId);
+  if (!target) return false;
+  if (target.ownerPlayerId === playerId) return false;
+  for (const nbId of region.neighbors) {
     const nb = byId.get(nbId);
     if (nb && nb.ownerPlayerId === playerId) return true;
   }
@@ -82,12 +80,27 @@ export function canCaptureNeutral(
 }
 
 /**
+ * True if `playerId` may capture `regionId` as a neutral take.
+ * Neutral flavour of the canonical rule: target must be owner-less and
+ * legal per isLegalTarget.
+ */
+export function canCaptureNeutral(
+  mapConfig:    ConquestMapConfig,
+  regionStates: ConquestRegionState[],
+  playerId:     string,
+  regionId:     ConquestRegionId,
+): boolean {
+  const target = regionStateById(regionStates).get(regionId);
+  if (!target || target.ownerPlayerId !== null) return false;
+  return isLegalTarget(mapConfig, regionStates, playerId, regionId);
+}
+
+/**
  * True if `playerId` may attack `regionId`.
- * Rules:
- *   - target must be owned by a different player (not neutral, not self)
- *   - caller must own at least one region adjacent to the target
- *   - shielded regions are still attackable in this phase (shield is a
- *     future mechanic; we don't block on it yet to keep behaviour obvious)
+ * Opponent flavour of the canonical rule: target must be owned by
+ * someone other than playerId (not neutral) and legal per isLegalTarget.
+ * Shielded regions are still attackable here — shield consumption is
+ * handled by the gameplay layer, not the legality predicate.
  */
 export function canAttackRegion(
   mapConfig:    ConquestMapConfig,
@@ -95,18 +108,9 @@ export function canAttackRegion(
   playerId:     string,
   regionId:     ConquestRegionId,
 ): boolean {
-  const byId = regionStateById(regionStates);
-  const target = byId.get(regionId);
-  if (!target) return false;
-  if (target.ownerPlayerId === null)      return false;
-  if (target.ownerPlayerId === playerId)  return false;
-
-  const neighbors = regionsAdjacentTo(mapConfig, regionId);
-  for (const nbId of neighbors) {
-    const nb = byId.get(nbId);
-    if (nb && nb.ownerPlayerId === playerId) return true;
-  }
-  return false;
+  const target = regionStateById(regionStates).get(regionId);
+  if (!target || target.ownerPlayerId === null) return false;
+  return isLegalTarget(mapConfig, regionStates, playerId, regionId);
 }
 
 /**
@@ -203,10 +207,7 @@ export function getAllLegalTargetsForPlayer(
 ): Set<ConquestRegionId> {
   const set = new Set<ConquestRegionId>();
   for (const rs of regionStates) {
-    if (
-      canCaptureNeutral(mapConfig, regionStates, playerId, rs.regionId) ||
-      canAttackRegion (mapConfig, regionStates, playerId, rs.regionId)
-    ) {
+    if (isLegalTarget(mapConfig, regionStates, playerId, rs.regionId)) {
       set.add(rs.regionId);
     }
   }

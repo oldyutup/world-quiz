@@ -155,7 +155,12 @@ export function useConquestEventFeed(
     let suffix = "";
     if (lbt.bonusType === "cukurova_score")          suffix = " (+1)";
     else if (lbt.bonusType === "karadeniz_extra_time") suffix = " (+5sn)";
-    const text = `${name} — ${lbt.title}${suffix}`;
+    // Prefer the dynamic region the bonus actually landed on this round.
+    // Falls back to the toast's baked-in title for pre-dynamic-bonus saves.
+    const regionTitle = lbt.regionId
+      ? `${regionLabel(mapConfig, lbt.regionId)} Bonusu`
+      : lbt.title;
+    const text = `${name} — ${regionTitle}${suffix}`;
 
     setEvents(prev => prependBounded(prev, [{
       id: key,

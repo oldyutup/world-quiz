@@ -1,9 +1,9 @@
 /* eslint-disable */
 /**
- * One-shot generator: 24 merged Türkiye conquest-region SVG paths.
+ * One-shot generator: 25 merged Türkiye conquest-region SVG paths.
  *
  * Reads:  src/modes/conquest/maps/turkey-provinces.ts (81 province paths)
- * Writes: src/modes/conquest/maps/turkey-regions.ts   (24 merged paths)
+ * Writes: src/modes/conquest/maps/turkey-regions.ts   (25 merged paths)
  *
  * Why this pipeline is non-trivial
  * --------------------------------
@@ -299,12 +299,12 @@ function buildRegions(): MergedRegion[] {
 }
 
 function validate(merged: MergedRegion[]): void {
-  if (merged.length !== 24) {
-    throw new Error(`Expected 24 merged regions, got ${merged.length}`);
+  if (merged.length !== 25) {
+    throw new Error(`Expected 25 merged regions, got ${merged.length}`);
   }
   const expected = new Set(TURKEY_PROVINCES.map((p) => p.conquestRegionId));
-  if (expected.size !== 24) {
-    throw new Error(`Province source defines ${expected.size} distinct region ids, expected 24`);
+  if (expected.size !== 25) {
+    throw new Error(`Province source defines ${expected.size} distinct region ids, expected 25`);
   }
   const got = new Set(merged.map((m) => m.id));
   for (const id of expected) {
@@ -325,7 +325,7 @@ function emit(merged: MergedRegion[]): string {
   return `/**
  * AUTO-GENERATED — do not edit by hand.
  *
- * 24 merged Türkiye conquest-region SVG paths, produced by inflating each
+ * 25 merged Türkiye conquest-region SVG paths, produced by inflating each
  * province polygon, boolean-unioning the inflated shapes, and deflating
  * the result (see scripts/build-turkey-regions.ts for details).
  *

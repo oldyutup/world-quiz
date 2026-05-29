@@ -21,10 +21,11 @@ import type {
   ConquestPlayerColor,
   ConquestRegionId,
   ConquestRegionState,
+  ConquestRoundBonusAssignment,
 } from "./types";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
-import { REGION_BONUSES } from "./regionBonuses";
+import { resolveActiveBonus } from "./conquestRoundBonuses";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
 
 // Per-region offset (in SVG units) for the point badge, relative to label
@@ -147,6 +148,12 @@ interface Props {
   onRegionClick?: (id: ConquestRegionId) => void;
   flashRegionId?: ConquestRegionId | null;
   /**
+   * Active per-round bonus assignment.  When present, bonus icons + tooltips
+   * render against this map; pre-dynamic-bonus rooms (assignment undefined)
+   * fall back to the static catalog inside `resolveActiveBonus`.
+   */
+  roundBonuses?: ConquestRoundBonusAssignment;
+  /**
    * Region to dramatize as the "Attack Focus" target — pulses a red ring
    * + ⚔️ glyph until the prop is cleared.  Pure presentation; this never
    * intercepts pointer events or alters legal-target highlights.
@@ -222,6 +229,7 @@ export default function TurkeyConquestMap({
   flashRegionId,
   attackTargetRegionId = null,
   viewerIsHolder = true,
+  roundBonuses,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -403,7 +411,7 @@ export default function TurkeyConquestMap({
     const labelPos  = REGION_LABEL_POS[id] ?? { x: 0, y: 0 };
     const label     = REGION_LABELS[id]    ?? id;
     const points    = getRegionPoints(rid);
-    const bonus     = REGION_BONUSES[id] ?? null;
+    const bonus     = resolveActiveBonus(roundBonuses, rid);
     // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Boğaz Kalesi"
     // Desktop hover only; touch devices ignore the SVG <title>.
     const ownerSuffix = owner ? ` (${owner.name})` : "";
@@ -463,7 +471,7 @@ export default function TurkeyConquestMap({
 
 
         {/* ── Layer 1: region fills + borders (single path per region) ── */}
-        {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, label, tooltip }) => (
+        {regionEntries.map(({ rid, id, d, owner, isLegal, isDimmed, fill, stroke, tooltip }) => (
           <path
             key={`region-${id}`}
             d={d}
@@ -476,14 +484,7 @@ export default function TurkeyConquestMap({
               stroke,
               opacity: isDimmed ? 0.45 : 1,
             }}
-            onClick={
-  interactive
-    ? () => {
-        console.log("Tıklanan bölge:", id, "rid:", rid, "label:", label);
-        onRegionClick!(rid);
-      }
-    : undefined
-}
+            onClick={interactive ? () => onRegionClick!(rid) : undefined}
             onKeyDown={interactive ? (e) => handleKey(e, rid) : undefined}
             role={interactive ? "button" : undefined}
             tabIndex={interactive ? (isLegal ? 0 : -1) : undefined}

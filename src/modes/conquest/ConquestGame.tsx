@@ -30,6 +30,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { playSound } from "../../lib/sound";
+import { playConquestSound, unlockConquestSounds } from "./conquestSound";
+import { useConquestSound } from "./useConquestSound";
 import { useIsMobile } from "../../lib/useIsMobile";
 import {
   getThemeBackgroundStyle,
@@ -53,14 +55,15 @@ import {
 } from "./conquestState";
 import { getPlayerTotalPoints, getNeutralRegionPoints } from "./regionPoints";
 import {
-  REGION_BONUSES,
   buildHiddenOpPlacedDetail,
   getBonusToastCopyForViewer,
+  getBonusTypePresentation,
   getPlayerBonusState,
   HIDDEN_OP_PLACED_MESSAGE_PREFIX,
   HIDDEN_OP_PLACED_TITLE,
 } from "./regionBonuses";
-import { CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
+import { getActiveBonusEntries } from "./conquestRoundBonuses";
+import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
   actionHolderHasNoMoves,
   advanceToNextRound,
@@ -78,7 +81,7 @@ import {
   submitChallengeAnswer,
   submitDuelAnswer,
 } from "./conquestGameplay";
-import { inferActionFromRegionClick } from "./conquestActions";
+import { inferActionFromRegionClick, isLegalTarget } from "./conquestActions";
 import { normaliseAnswer } from "./conquestChallengeValidation";
 import ConquestBoard from "./ConquestBoard";
 import ConquestChallengePanel from "./ConquestChallengePanel";
@@ -302,6 +305,11 @@ export default function ConquestGame({
   // the flip, so we read the prior owner here, not from lastResult.
   const prevRegionOwnersRef = useRef<Record<string, string | null>>({});
   const prevPhaseForAttackRef = useRef<string | null>(null);
+  // Stable dedupe keys for the attack-focus sound — keyed by
+  // round + attacker + target so a re-render or returning client can't
+  // double-fire the cue for the same event. Distinct from duel-start
+  // so the two sounds never collide. Set is local to this client.
+  const attackFocusSoundSeenRef = useRef<Set<string>>(new Set());
   const [attackFocus, setAttackFocus] = useState<{
     regionId:     string;
     regionLabel:  string;
@@ -356,6 +364,14 @@ export default function ConquestGame({
             defenderName: defender?.name ?? "Savunan",
             at:           Date.now(),
           });
+          // Pair the toast with its audio cue. Stable key prevents a
+          // re-render of the same attack from re-firing the sound; the
+          // sound layer itself no-ops when the asset is missing.
+          const soundKey = `attack-focus:${gameState.round.roundNumber}:${attackerId}:${lr.regionId}`;
+          if (!attackFocusSoundSeenRef.current.has(soundKey)) {
+            attackFocusSoundSeenRef.current.add(soundKey);
+            playConquestSound("attack-focus");
+          }
         }
       }
     }
@@ -396,9 +412,22 @@ export default function ConquestGame({
       ) {
         const placer = gameState.players.find(p => p.id === lr.playerId);
         const placerName = placer?.name ?? "Bir oyuncu";
+        // Resolve the region currently carrying the gizli-operasyon bonus
+        // from the match-stable assignment, so the banner names the actual
+        // bonus region instead of a stale "Ankara" hardcode.
+        const opRegionId = gameState.roundBonuses
+          ? (Object.keys(gameState.roundBonuses) as ConquestRegionId[]).find(
+              rid => gameState.roundBonuses?.[rid] === "ankara_hidden_shield",
+            )
+          : null;
+        const opRegion = opRegionId
+          ? mapConfig?.regions.find(r => r.id === opRegionId) ?? null
+          : null;
+        const opRegionLabel =
+          opRegion?.displayLabel ?? opRegion?.name ?? null;
         setHiddenOpToast({
           title:  HIDDEN_OP_PLACED_TITLE,
-          detail: buildHiddenOpPlacedDetail(placerName),
+          detail: buildHiddenOpPlacedDetail(placerName, opRegionLabel),
         });
         const t = window.setTimeout(() => setHiddenOpToast(null), HIDDEN_OP_TOAST_MS);
         return () => window.clearTimeout(t);
@@ -612,6 +641,31 @@ export default function ConquestGame({
     mapConfig,
   );
 
+  // Battle-atmosphere sound FX layer.  Pure local diff against gameState
+  // — fires sounds for round-start, reveal, turn ownership, captures,
+  // bonus captures, shield breaks, and defense duels.  No-op when sound
+  // is muted or when asset files are missing.
+  useConquestSound(gameState, myPlayerId);
+
+  // Browser autoplay: first user interaction inside the game screen
+  // unlocks the conquest sound palette.  After this, subsequent
+  // background `.play()` calls (synced state transitions) are treated
+  // as user-initiated by the browser.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      unlockConquestSounds();
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+    window.addEventListener("pointerdown", handler);
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+  }, []);
+
   /* Gating flags — every interactive control consults one of these.  Kept
    * separate from the render so the rules are visible in one place. */
   const isActionHolder    = !!myPlayerId && !!gameState && gameState.round.actionHolderId === myPlayerId;
@@ -641,7 +695,7 @@ export default function ConquestGame({
     // line *after* the timer ends.  No audio/visual reveal happens here:
     // the per-submission feedback is intentionally neutral.
     setLocalFeedback(correct ? "correct" : "wrong");
-    playSound("click");
+    playConquestSound("answer-submit");
 
     // Push every successful submission so the synced answeredPlayerIds set
     // updates — that's what the host's early-reveal check watches.  The
@@ -668,7 +722,10 @@ export default function ConquestGame({
 
     setAnsweredDuelId(gameState.defenseDuel.id);
     setDuelLocalFeedback(winning ? "correct" : "wrong");
-    playSound(winning ? "correct" : "wrong");
+    // Neutral "answer submitted" cue — win/lose verdict for the duel is
+    // played by useConquestSound when the duel resolves on every client,
+    // so the per-submission sound here stays nondescript.
+    playConquestSound("answer-submit");
 
     if (winning && next !== gameState) {
       void onPushGameState(next);
@@ -876,7 +933,7 @@ export default function ConquestGame({
       const gs   = gameStateRef.current;
       const push = onPushStateRef.current;
       if (!gs || gs.phase !== "round_result") return;
-      const next = advanceToNextRound(gs);
+      const next = advanceToNextRound(gs, mapConfig ?? undefined);
       if (next !== gs) void push(next);
     }, delay);
     return () => window.clearTimeout(t);
@@ -940,10 +997,12 @@ export default function ConquestGame({
     }
 
     // Ankara: if the holder has a pending hidden shield, route own-region
-    // clicks to shield placement and neutral-region clicks to trap placement
-    // (no adjacency required for either).  Both count as the round's hamle.
-    // Enemy regions are NOT a valid target for the bonus and fall through to
-    // normal attack inference below.
+    // clicks to shield placement (no adjacency needed — it's a defensive
+    // op, not a capture) and neutral-region clicks to gizli fetih ONLY when
+    // the neutral satisfies the canonical adjacency rule.  Non-adjacent
+    // neutrals fall through to inferActionFromRegionClick below, where
+    // they're rejected as illegal — the hidden-op path must never bypass
+    // adjacency for captures.  Enemy regions always fall through.
     const targetRs   = gameState.regionStates.find(r => r.regionId === regionId);
     const holderPb   = gameState.playerBonuses?.[holderId];
     if (holderPb?.pendingHiddenShield && targetRs) {
@@ -955,7 +1014,10 @@ export default function ConquestGame({
         playSound("click");
         return;
       }
-      if (targetRs.ownerPlayerId === null) {
+      if (
+        targetRs.ownerPlayerId === null
+        && isLegalTarget(mapConfig, gameState.regionStates, holderId, regionId)
+      ) {
         const { state: nextState } = placeHiddenConquestOnNeutralRegion(
           gameState, mapConfig, holderId, regionId,
         );
@@ -1016,10 +1078,10 @@ export default function ConquestGame({
     if (!isHost) return;
     if (!gameState) return;
     playSound("click");
-    const next = advanceToNextRound(gameState);
+    const next = advanceToNextRound(gameState, mapConfig ?? undefined);
     if (next === gameState) return;
     void onPushGameState(next);
-  }, [isHost, gameState, onPushGameState]);
+  }, [isHost, gameState, mapConfig, onPushGameState]);
 
   // ── Safety fallbacks ─────────────────────────────────────────────────
   if (!mapConfig) {
@@ -1127,9 +1189,25 @@ export default function ConquestGame({
   const roundIntroCountdownNum  = showRoundIntroCountdown
     ? Math.max(1, Math.ceil(roundIntroMsRemaining / 1000))
     : 0;
-  const roundIntroSubtitle = ROUND_INTRO_SUBTITLES[
-    (gameState.round.roundNumber - 1) % ROUND_INTRO_SUBTITLES.length
-  ];
+  // Round intro subtitle.  When a dynamic bonus assignment exists, surface
+  // the bonus region labels in the order "X · Y · Z" so the player sees at
+  // a glance where this round's bonuses landed.  Falls back to the generic
+  // rotating subtitles for pre-dynamic saves or when no assignment is set.
+  const roundIntroBonusEntries = getActiveBonusEntries(gameState.roundBonuses);
+  const roundIntroBonusLabels  = mapConfig
+    ? roundIntroBonusEntries
+        .map(e => {
+          const region = mapConfig.regions.find(r => r.id === e.regionId);
+          const label  = region?.displayLabel ?? region?.name ?? e.regionId;
+          return `${e.def.icon} ${label}`;
+        })
+        .join(" · ")
+    : "";
+  const roundIntroSubtitle = roundIntroBonusLabels
+    ? `Bu tur bonuslar: ${roundIntroBonusLabels}`
+    : ROUND_INTRO_SUBTITLES[
+        (gameState.round.roundNumber - 1) % ROUND_INTRO_SUBTITLES.length
+      ];
 
   // ── Bonus toast lifecycle ────────────────────────────────────────────
   // The toast is part of synced state; we mount it for ~2s after `at` and
@@ -1163,7 +1241,14 @@ export default function ConquestGame({
       setBonusToastReadyId(null);
       return;
     }
-    if (lastBonusToast.bonusType !== "ankara_hidden_shield") {
+    // Coordinate with the capital cinematic ONLY when the bonus actually
+    // landed on the capital region for this round.  Pre-dynamic-bonus saves
+    // lack `regionId` on the toast → no hold (matches legacy behaviour for
+    // those rooms).  Static fallback: tie the hold to whichever region
+    // currently carries the legacy ankara_hidden_shield bonus.
+    const toastRegion = lastBonusToast.regionId ?? null;
+    const isCapitalToast = toastRegion !== null && CAPITAL_REGION_IDS.has(toastRegion);
+    if (!isCapitalToast) {
       setBonusToastReadyId(lastBonusToast.id);
       return;
     }
@@ -1178,7 +1263,7 @@ export default function ConquestGame({
       remaining,
     );
     return () => window.clearTimeout(t);
-  }, [lastBonusToast?.id, lastBonusToast?.at, lastBonusToast?.bonusType]);
+  }, [lastBonusToast?.id, lastBonusToast?.at, lastBonusToast?.regionId]);
   const showBonusToast =
     !!lastBonusToast
     && dismissedToastId   !== lastBonusToast.id
@@ -1313,6 +1398,7 @@ export default function ConquestGame({
         attackTargetRegionId={attackTargetRegionId}
         disabled={boardDisabled}
         viewerIsHolder={isActionHolder}
+        roundBonuses={gameState.roundBonuses}
         onRegionClick={phase === "action" ? handleRegionClick : undefined}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
@@ -1351,7 +1437,11 @@ export default function ConquestGame({
     <>
       {/* Bonus toast (transient, centered) */}
       {showBonusToast && lastBonusToast && (() => {
-        const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId);
+        const toastRegion = lastBonusToast.regionId
+          ? mapConfig?.regions.find(r => r.id === lastBonusToast.regionId) ?? null
+          : null;
+        const toastRegionLabel = toastRegion?.displayLabel ?? toastRegion?.name ?? null;
+        const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId, toastRegionLabel);
         return (
           <div
             key={lastBonusToast.id}
@@ -1387,7 +1477,7 @@ export default function ConquestGame({
         >
           <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
           <div className="cq-bonus-toast-text">
-            <div className="cq-bonus-toast-title">⚔️ Kuşatma başlıyor</div>
+            <div className="cq-bonus-toast-title">Kuşatma başlıyor</div>
             <div className="cq-bonus-toast-detail">
               Ekrana gelen sorulara ilk doğru cevabı veren oyuncu hamle yapma hakkı kazanır.<br />
               Tarafsız bölgeler direkt fethedilir; rakibe ait bölgeler için düello gerekir.<br />
@@ -1873,7 +1963,11 @@ export default function ConquestGame({
     });
   }
   if (showBonusToast && lastBonusToast) {
-    const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId);
+    const toastRegion = lastBonusToast.regionId
+      ? mapConfig?.regions.find(r => r.id === lastBonusToast.regionId) ?? null
+      : null;
+    const toastRegionLabel = toastRegion?.displayLabel ?? toastRegion?.name ?? null;
+    const copy = getBonusToastCopyForViewer(lastBonusToast, myPlayerId, toastRegionLabel);
     mobileToastSpecs.push({
       id:        `bonus:${lastBonusToast.id}`,
       kind:      "bonus",
@@ -2372,14 +2466,20 @@ export default function ConquestGame({
           //   - pendingHiddenShield (Ankara pending placement)
           //   - hidden shield currently active on the board (placed, awaiting trigger)
           const bonusChips: { key: string; icon: string; title: string }[] = [];
+          // Icons follow the bonus *type*, not a fixed region — the type is
+          // canonical (open shield / time bonus / hidden op), even when the
+          // round assignment shifts which region carries it.
+          const istanbulPres  = getBonusTypePresentation("istanbul_defense");
+          const karadenizPres = getBonusTypePresentation("karadeniz_extra_time");
+          const ankaraPres    = getBonusTypePresentation("ankara_hidden_shield");
           if (openShieldOwners.has(player.id)) {
-            bonusChips.push({ key: "ist", icon: REGION_BONUSES.istanbul_kocaeli.icon, title: "Açık kalkan aktif" });
+            bonusChips.push({ key: "ist", icon: istanbulPres.icon, title: "Açık kalkan aktif" });
           }
           if (pb.extraNextMoveMs > 0) {
-            bonusChips.push({ key: "kdz", icon: REGION_BONUSES.dogu_karadeniz.icon, title: `${REGION_BONUSES.dogu_karadeniz.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
+            bonusChips.push({ key: "kdz", icon: karadenizPres.icon, title: `${karadenizPres.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
           }
           if (isMe && pb.pendingHiddenShield) {
-            bonusChips.push({ key: "ank-pending", icon: REGION_BONUSES.ankara_cevre.icon, title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
+            bonusChips.push({ key: "ank-pending", icon: ankaraPres.icon, title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
           }
           if (isMe && hiddenShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ank-active", icon: "🕶️", title: "Gizli Operasyon aktif (rakipler bu bölgeden habersiz)" });

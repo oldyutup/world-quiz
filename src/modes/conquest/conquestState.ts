@@ -132,13 +132,16 @@ const SEEDS_PER_PLAYER: Record<number, number> = {
 };
 
 /**
- * Regions whose initial concentration should be spread across players. These
- * are the bonus-bearing tiles from REGION_BONUSES — letting one player snag
- * two of these in the opening is a known "snowball" failure mode.
+ * Strategic anchor regions whose initial concentration should be spread
+ * across players.  Historically these were the static bonus tiles
+ * (İstanbul/Ankara/Çukurova/Doğu Karadeniz).  Bonus assignment is now
+ * dynamic per round, but these tiles remain high-value strategic anchors
+ * (capital, large coastal city, fertile plain, mountain pass) so the
+ * starting-distribution fairness guard still favours spreading them.
  *
  * Kept as a local literal Set (not imported) to avoid coupling state to the
- * bonus-effect module; the *identity* of these tiles is what matters for
- * fairness, not the effect they grant.
+ * bonus-effect module — the goal here is initial spawn balance, not bonus
+ * delivery, which now happens at round start via `buildRoundBonusAssignment`.
  */
 const BONUS_REGION_IDS: ReadonlySet<ConquestRegionId> = new Set<ConquestRegionId>([
   "istanbul_kocaeli",

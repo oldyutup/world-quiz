@@ -24,9 +24,12 @@
 import type {
   ConquestBonusToast,
   ConquestPlayerBonusState,
+  ConquestRegionBonusDef,
   ConquestRegionBonusType,
   ConquestRegionId,
 } from "./types";
+
+export type { ConquestRegionBonusDef } from "./types";
 
 /**
  * Viewer-specific overrides for a bonus toast.  Today only Ankara's Gizli
@@ -35,22 +38,32 @@ import type {
  * baked-in copy.
  */
 export function getBonusToastCopyForViewer(
-  toast:    ConquestBonusToast,
-  viewerId: string | null,
+  toast:        ConquestBonusToast,
+  viewerId:     string | null,
+  /**
+   * Display label of the region the bonus actually landed on this round.
+   * When omitted (legacy saves), the copy falls back to the bonus type's
+   * original city name so pre-dynamic-bonus rooms still read sensibly.
+   */
+  regionLabel?: string | null,
 ): { title: string; detail: string; icon: string } {
   const isOwner = viewerId !== null && viewerId === toast.playerId;
+  // Choose the region phrase: explicit label wins; otherwise fall back to
+  // the bonus type's canonical home city (the legacy text).
+  const fallbackCity = LEGACY_BONUS_CITY[toast.bonusType] ?? "Bölge";
+  const where        = regionLabel || fallbackCity;
 
   if (toast.bonusType === "ankara_hidden_shield") {
     if (isOwner) {
       return {
         icon:   "🎭",
-        title:  "🎭 Ankara fethedildi: Gizli Operasyon aktif!",
+        title:  `🎭 ${where} fethedildi: Gizli Operasyon aktif!`,
         detail: "Kendi bölgeni gizlice koruyabilir veya tarafsız bir bölgeyi gizlice fethedebilirsin (komşuluk şartı yok).",
       };
     }
     return {
       icon:   "🎭",
-      title:  `🎭 Rakip Ankara'yı fethetti (${toast.playerName})`,
+      title:  `🎭 Rakip ${where} bölgesini fethetti (${toast.playerName})`,
       detail: "Haritada gizli bir operasyon yapabilir. Dikkatli saldır!",
     };
   }
@@ -59,14 +72,14 @@ export function getBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "🌾",
-        title:  "Çukurova Bonusu",
+        title:  `${where} Bonusu`,
         detail: "🌾 Bereket bonusu! +1 bonus puan kazandın.",
       };
     }
     return {
       icon:   "🌾",
-      title:  "Çukurova Ele Geçirildi",
-      detail: "🌾 Rakip Çukurova'dan güç topluyor! +1 bonus puan aldı — bu bölgeyi geri almak oyunu dengeleyebilir.",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🌾 Rakip ${where}'dan güç topluyor! +1 bonus puan aldı — bu bölgeyi geri almak oyunu dengeleyebilir.`,
     };
   }
 
@@ -74,14 +87,14 @@ export function getBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "⛰️",
-        title:  "Doğu Karadeniz Bonusu",
-        detail: "⛰️ Dağ geçitleri sende! Sıradaki hamlene +5 saniye kazandın.",
+        title:  `${where} Bonusu`,
+        detail: "⛰️ Geçit kontrolü sende! Sıradaki hamlene +5 saniye kazandın.",
       };
     }
     return {
       icon:   "⛰️",
-      title:  "Doğu Karadeniz Ele Geçirildi",
-      detail: "⛰️ Rakip dağ geçitlerini kontrol ediyor. Bir sonraki hamlesinde +5 saniye avantajı olacak.",
+      title:  `${where} Ele Geçirildi`,
+      detail: "⛰️ Rakip geçidi kontrol ediyor. Bir sonraki hamlesinde +5 saniye avantajı olacak.",
     };
   }
 
@@ -89,19 +102,28 @@ export function getBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "🛡️",
-        title:  "İstanbul Bonusu",
-        detail: "🛡️ İstanbul savunmaya geçti. Açık kalkan aktif.",
+        title:  `${where} Bonusu`,
+        detail: `🛡️ ${where} savunmaya geçti. Açık kalkan aktif.`,
       };
     }
     return {
       icon:   "🛡️",
-      title:  "İstanbul Ele Geçirildi",
-      detail: "🛡️ Rakip İstanbul'u kalkanla korumaya aldı. İlk saldırı kalkanı kıracak.",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🛡️ Rakip ${where} bölgesini kalkanla korumaya aldı. İlk saldırı kalkanı kıracak.`,
     };
   }
 
   return { icon: toast.icon, title: toast.title, detail: toast.detail };
 }
+
+/** Legacy "home city" per bonus type — used only when the toast lacks a
+ *  region label (pre-dynamic-bonus saves).  Keeps old rooms readable. */
+const LEGACY_BONUS_CITY: Record<ConquestRegionBonusType, string> = {
+  istanbul_defense:     "İstanbul",
+  ankara_hidden_shield: "Ankara",
+  cukurova_score:       "Çukurova",
+  karadeniz_extra_time: "Doğu Karadeniz",
+};
 
 /**
  * Reveal banners — same for every viewer per spec.  Two variants because
@@ -125,32 +147,33 @@ export const HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE =
 
 /**
  * Center-screen banner shown to ALL clients when a player consumes their
- * Ankara Gizli Operasyon hakkı.  By spec the banner MUST NOT leak the chosen
- * region name or whether the op was a shield (own region) or fetih (neutral
- * region) — paranoia is the feature.  Sentinel prefix on `lastResult.message`
- * also re-uses this title text so the gameplay layer can mark placements
- * without storing extra state.
+ * Gizli Operasyon hakkı.  By spec the banner MUST NOT leak the chosen
+ * target region or whether the op was a shield (own region) or fetih
+ * (neutral region) — paranoia is the feature.  Sentinel prefix on
+ * `lastResult.message` also re-uses this title text so the gameplay layer
+ * can mark placements without storing extra state.
+ *
+ * `bonusRegionLabel` is the display label of the region that currently
+ * carries the gizli-operasyon bonus this match (resolved from the dynamic
+ * `roundBonuses` assignment).  When omitted (legacy saves) the copy
+ * gracefully drops the possessive so we never lie with a stale Ankara
+ * reference if the bonus actually landed elsewhere.
  */
 export const HIDDEN_OP_PLACED_TITLE  = "🎭 Gizli Operasyon Başlatıldı";
-export function buildHiddenOpPlacedDetail(playerName: string): string {
-  return `${playerName}, Ankara'nın gizli operasyon yeteneğini kullandı. Haritada bir bölge gizlice korumaya alındı ya da ele geçirildi. Neresi olduğunu ancak saldırdığında öğreneceksin.`;
+export function buildHiddenOpPlacedDetail(
+  playerName:        string,
+  bonusRegionLabel?: string | null,
+): string {
+  const opener = bonusRegionLabel
+    ? `${playerName}, ${bonusRegionLabel} bölgesinin gizli operasyon yeteneğini kullandı.`
+    : `${playerName}, gizli operasyon yeteneğini kullandı.`;
+  return `${opener} Haritada bir bölge gizlice korumaya alındı ya da ele geçirildi. Neresi olduğunu ancak saldırdığında öğreneceksin.`;
 }
 /** Sentinel prefix on round-result message — used by UI to detect placement
  *  events and surface the center banner.  Carries the player name only. */
 export const HIDDEN_OP_PLACED_MESSAGE_PREFIX = "🎭 Gizli Operasyon kullanıldı:";
 export function buildHiddenOpPlacedMessage(playerName: string): string {
   return `${HIDDEN_OP_PLACED_MESSAGE_PREFIX} ${playerName} haritada gizli bir hamle yaptı.`;
-}
-
-export interface ConquestRegionBonusDef {
-  regionId:    ConquestRegionId;
-  type:        ConquestRegionBonusType;
-  /** Emoji shown on the map and in the player-bonus chips. */
-  icon:        string;
-  /** Short TR label (chip text / tooltip head). */
-  label:       string;
-  /** One-line TR description used as a tooltip / help line. */
-  description: string;
 }
 
 export const REGION_BONUSES: Record<string, ConquestRegionBonusDef> = {
@@ -193,6 +216,30 @@ export function getRegionBonus(
   return REGION_BONUSES[regionId] ?? null;
 }
 
+/**
+ * Icon + label per bonus type — looked up via the static catalog (since the
+ * canonical icon/copy belongs to the type, not the region).  Used by the
+ * player-bonus-chip rows in ConquestGame and MobileScoreStrip, whose chips
+ * are tied to bonus *types* the player has accumulated (e.g. extraNextMoveMs
+ * + Karadeniz icon), independent of which region carried the type this round.
+ */
+export const BONUS_TYPE_PRESENTATION: Record<
+  ConquestRegionBonusType,
+  { icon: string; label: string }
+> = (() => {
+  const out: Record<string, { icon: string; label: string }> = {};
+  for (const def of Object.values(REGION_BONUSES)) {
+    out[def.type] = { icon: def.icon, label: def.label };
+  }
+  return out as Record<ConquestRegionBonusType, { icon: string; label: string }>;
+})();
+
+export function getBonusTypePresentation(
+  type: ConquestRegionBonusType,
+): { icon: string; label: string } {
+  return BONUS_TYPE_PRESENTATION[type] ?? { icon: "⭐", label: "Bonus" };
+}
+
 export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
   return {
     pendingHiddenShield: false,
@@ -212,20 +259,26 @@ export function getPlayerBonusState(
 
 /**
  * Build a sync-friendly bonus toast.  Called by gameplay when a bonus is
- * earned (capturing a bonus region).  `at` defaults to now; callers can
- * pass an explicit timestamp when constructing inside a transition that
- * already has one.
+ * earned (capturing a bonus region).  `at` is the toast timestamp; callers
+ * pass it in so multiple transitions in the same tick share an anchor.
+ *
+ * `regionId` ties the toast to a specific tile so capital-cinematic
+ * coordination (Ankara reveal hold) can check the *region* instead of the
+ * static bonus type — required for dynamic bonus assignment where any region
+ * may carry any bonus type per round.
  */
 export function buildBonusToast(
   bonusType:  ConquestRegionBonusType,
+  regionId:   ConquestRegionId,
   playerId:   string,
   playerName: string,
   at:         number,
 ): ConquestBonusToast {
   const { icon, title, detail } = BONUS_TOAST_COPY[bonusType];
   return {
-    id: `${bonusType}-${at}-${playerId}`,
+    id: `${bonusType}-${regionId}-${at}-${playerId}`,
     bonusType,
+    regionId,
     icon,
     title,
     detail,
@@ -246,7 +299,10 @@ const BONUS_TOAST_COPY: Record<
   },
   ankara_hidden_shield: {
     icon:   "🎭",
-    title:  "Ankara: Gizli Operasyon",
+    /* Used only as a fallback for legacy saves with no toast region label
+     * (getBonusToastCopyForViewer prefers the dynamic region label when
+     * present, so live matches never display the static "Bonus" word). */
+    title:  "Gizli Operasyon",
     detail: "Kendi bölgene gizli kalkan ya da tarafsız bir bölgeye gizli fetih uygulayabilirsin (komşuluk şartı yok).",
   },
   cukurova_score: {

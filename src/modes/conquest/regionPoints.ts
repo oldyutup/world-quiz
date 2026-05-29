@@ -45,7 +45,8 @@ export const REGION_POINTS: Record<string, number> = {
 
   // Doğu
   malatya_elazig:     3,
-  erzurum_kars:       3,
+  erzurum_kars:       2,
+  kars:               1,
   kuzeydogu_anadolu:  2,
   van_hakkari:        3,
 

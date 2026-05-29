@@ -20,6 +20,7 @@ import {
   applyConquestAction,
   getAllLegalTargetsForPlayer,
   getLegalActionsForPlayer,
+  isLegalTarget,
 } from "./conquestActions";
 import {
   CONQUEST_CHALLENGE_DURATION_MS,
@@ -33,12 +34,15 @@ import {
   buildBonusToast,
   buildHiddenOpPlacedMessage,
   createEmptyPlayerBonusState,
-  getRegionBonus,
   HIDDEN_CONQUEST_REVEAL_MESSAGE,
   HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE,
   HIDDEN_SHIELD_REVEAL_MESSAGE,
   KARADENIZ_BONUS_MS,
 } from "./regionBonuses";
+import {
+  buildRoundBonusAssignment,
+  resolveActiveBonus,
+} from "./conquestRoundBonuses";
 import type {
   ConquestActionResult,
   ConquestBonusToast,
@@ -55,6 +59,7 @@ import type {
   ConquestPlayerBonusState,
   ConquestRegionId,
   ConquestRegionState,
+  ConquestRoundBonusAssignment,
   ConquestRoundState,
 } from "./types";
 
@@ -183,6 +188,12 @@ export function createInitialConquestGameState(
   const playerBonuses: Record<string, ConquestPlayerBonusState> = {};
   for (const p of players) playerBonuses[p.id] = createEmptyPlayerBonusState();
 
+  // Match-level bonus assignment — seeded from match start, fixed for
+  // every round.  Round transitions never rebuild this; new matches reseed.
+  const roundBonuses = buildRoundBonusAssignment(
+    mapConfig, regionStates, players, now,
+  );
+
   const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
 
   // Anchor the first challenge's timer to after the intro so the 20-second
@@ -210,6 +221,7 @@ export function createInitialConquestGameState(
     lastChallengeType:  challenge.type as ConquestChallengeType,
     playerBonuses,
     gameIntroEndsAt,
+    roundBonuses,
   };
 }
 
@@ -567,6 +579,7 @@ interface ApplyActionResult {
 function triggerCaptureBonus(
   regionStates:      ConquestRegionState[],
   playerBonusesIn:   Record<string, ConquestPlayerBonusState> | undefined,
+  roundBonuses:      ConquestRoundBonusAssignment | undefined,
   ownerId:           string,
   ownerName:         string,
   capturedRegionId:  ConquestRegionId,
@@ -584,37 +597,40 @@ function triggerCaptureBonus(
 
   // Step 2 — apply the captured region's own bonus, if any.  Each branch
   // also emits a public toast announcing the bonus earned (NOT the hidden
-  // placement above).
-  const bonus = getRegionBonus(capturedRegionId);
+  // placement above).  Resolve through the dynamic per-round assignment so
+  // any region carrying a bonus this round triggers; legacy static lookups
+  // fall through inside `resolveActiveBonus`.
+  const bonus = resolveActiveBonus(roundBonuses, capturedRegionId);
   if (bonus) {
     switch (bonus.type) {
       case "ankara_hidden_shield":
         // Overwrite-not-stack: already-true stays true.
         pb.pendingHiddenShield = true;
-        toast = buildBonusToast("ankara_hidden_shield", ownerId, ownerName, now);
+        toast = buildBonusToast("ankara_hidden_shield", capturedRegionId, ownerId, ownerName, now);
         break;
       case "karadeniz_extra_time":
         // Overwrite-not-stack.
         pb.extraNextMoveMs = KARADENIZ_BONUS_MS;
-        toast = buildBonusToast("karadeniz_extra_time", ownerId, ownerName, now);
+        toast = buildBonusToast("karadeniz_extra_time", capturedRegionId, ownerId, ownerName, now);
         break;
       case "cukurova_score":
         if (!pb.cukurovaClaimed) {
           pb.bonusPoints     = pb.bonusPoints + 1;
           pb.cukurovaClaimed = true;
-          toast = buildBonusToast("cukurova_score", ownerId, ownerName, now);
+          toast = buildBonusToast("cukurova_score", capturedRegionId, ownerId, ownerName, now);
         }
         break;
       case "istanbul_defense":
-        // Auto-stamp the open shield onto İstanbul itself.  Stacking is
-        // implicit: capturing flipOwnership() clears `shielded`, so a player
-        // can never accumulate more than one open shield via İstanbul.
+        // Auto-stamp the open shield onto whichever region carries the
+        // istanbul_defense bonus this round.  Stacking is implicit:
+        // capturing flipOwnership() clears `shielded`, so a player can
+        // never accumulate more than one open shield via this bonus.
         nextRegionStates = nextRegionStates.map(rs =>
           rs.regionId === capturedRegionId
             ? { ...rs, shielded: true }
             : rs,
         );
-        toast = buildBonusToast("istanbul_defense", ownerId, ownerName, now);
+        toast = buildBonusToast("istanbul_defense", capturedRegionId, ownerId, ownerName, now);
         break;
     }
   }
@@ -827,6 +843,7 @@ export function applyActionToGame(
     const bonusOut = triggerCaptureBonus(
       postRegionStates,
       postPlayerBonuses,
+      state.roundBonuses,
       action.playerId,
       actorName,
       action.regionId,
@@ -1025,8 +1042,10 @@ export function placeHiddenShieldOnOwnRegion(
 
 /**
  * Place the holder's pending Gizli Operasyon onto a NEUTRAL region as a
- * "gizli fetih" (any neutral on the map — adjacency is intentionally not
- * required).  Counts as the round's hamle.
+ * "gizli fetih".  The target must satisfy the canonical adjacency rule
+ * (border at least one region the holder owns) — gizli fetih flips
+ * ownership for real, so it cannot bypass the legal-target check.
+ * Counts as the round's hamle.
  *
  * Per the revised spec this is no longer a trap that leaves the region
  * neutral.  Instead the region is genuinely captured for the player:
@@ -1083,6 +1102,23 @@ export function placeHiddenConquestOnNeutralRegion(
         playerId,
         regionId,
         message:  "Yalnızca tarafsız bir bölgeye gizli tuzak kurabilirsin.",
+      },
+    };
+  }
+
+  // Gizli fetih is a real capture (ownership flips), so the canonical
+  // adjacency rule applies: target must border at least one region the
+  // player already owns.  Without this, the hidden-op path becomes a
+  // backdoor that lets the holder grab any neutral on the map.
+  if (!isLegalTarget(mapConfig, state.regionStates, playerId, regionId)) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   "defend_region",
+        playerId,
+        regionId,
+        message:  "Bu bölgeye hamle yapılamaz.",
       },
     };
   }
@@ -1406,12 +1442,13 @@ function resolveDuelWithWinner(
     return finishDuelIntoRoundResult(state, result);
   }
 
-  // Capture-side bonus chain (Ankara/Çukurova/Karadeniz/İstanbul).
+  // Capture-side bonus chain (resolved via dynamic round assignment).
   // A duel flip is never a neutral capture, so pendingHiddenShield is not
   // consumed here.  triggerCaptureBonus is a no-op for non-bonus regions.
   const bonusOut = triggerCaptureBonus(
     applied.regionStates,
     state.playerBonuses,
+    state.roundBonuses,
     duel.attackerId,
     attackerName,
     duel.regionId,
@@ -1528,8 +1565,16 @@ function finishDuelIntoRoundResult(
  * Advance to the next round, or finish the match if the last round just
  * completed.  Caller invokes this from the `round_result` panel ("Sonraki
  * Tur") or auto-fires it after a short delay.
+ *
+ * Bonus assignment is match-stable: `state.roundBonuses` was built once at
+ * match creation and is preserved verbatim across rounds.  `mapConfig` is
+ * retained for signature compatibility with existing callers, but is no
+ * longer used here.
  */
-export function advanceToNextRound(state: ConquestGameState): ConquestGameState {
+export function advanceToNextRound(
+  state:      ConquestGameState,
+  _mapConfig?: ConquestMapConfig,
+): ConquestGameState {
   if (state.phase !== "round_result") return state;
 
   const isLast = state.round.roundNumber >= state.round.totalRounds;
@@ -1560,6 +1605,7 @@ export function advanceToNextRound(state: ConquestGameState): ConquestGameState 
     /* Clear the bonus toast so a fresh round doesn't echo the previous
      * round's banner on late-joining clients. */
     lastBonusToast:    undefined,
+    /* roundBonuses stays as-is — bonus regions are fixed for the match. */
     round: {
       roundNumber:    nextRoundNumber,
       totalRounds:    state.round.totalRounds,
@@ -1683,12 +1729,12 @@ export function buildFinalStandings(
  * render — the underlying scan is O(regions).
  *
  * When the holder has a `pendingHiddenShield` (Ankara Gizli Operasyon),
- * every region they own AND every neutral region on the map (no adjacency
- * required) is also a legal click target — clicking own places a gizli kalkan,
- * clicking neutral places a gizli fetih.  Both count as the round's move (see
- * `placeHiddenShieldOnOwnRegion` / `placeHiddenConquestOnNeutralRegion`).
- * Enemy-owned regions are never added by the bonus path (no shielding
- * opponents' regions per spec).
+ * their OWN regions are also legal click targets so they can place a gizli
+ * kalkan (a non-capture defensive op, so the adjacency rule does not apply).
+ * Neutral regions are NOT widened by the bonus path: gizli fetih flips
+ * ownership, so it must still satisfy the canonical adjacency rule and is
+ * already covered by `getAllLegalTargetsForPlayer` above.  Enemy-owned
+ * regions are never added by the bonus path.
  */
 export function getCurrentLegalTargets(
   state:     ConquestGameState,
@@ -1706,7 +1752,7 @@ export function getCurrentLegalTargets(
   const pb = state.playerBonuses?.[holderId];
   if (pb?.pendingHiddenShield) {
     for (const rs of state.regionStates) {
-      if (rs.ownerPlayerId === holderId || rs.ownerPlayerId === null) {
+      if (rs.ownerPlayerId === holderId) {
         targets.add(rs.regionId);
       }
     }
@@ -1719,9 +1765,11 @@ export function getCurrentLegalTargets(
  * UI uses this to auto-offer / auto-trigger the skip path so the loop
  * doesn't dead-end.
  *
- * A holder with `pendingHiddenShield` is never stuck so long as the map
- * still has either at least one region they own OR at least one neutral
- * region — both are valid trap/shield placement targets.
+ * A holder with `pendingHiddenShield` is never stuck so long as they still
+ * own at least one region (gizli kalkan placement is always valid on own
+ * tiles).  Non-adjacent neutrals no longer count as an escape — gizli
+ * fetih now requires adjacency, so any neutral move it could make is
+ * already represented in the canonical legal-actions check below.
  */
 export function actionHolderHasNoMoves(
   state:     ConquestGameState,
@@ -1732,8 +1780,7 @@ export function actionHolderHasNoMoves(
   const pb = state.playerBonuses?.[holderId];
   if (pb?.pendingHiddenShield) {
     const ownsAny = state.regionStates.some(rs => rs.ownerPlayerId === holderId);
-    const anyNeutral = state.regionStates.some(rs => rs.ownerPlayerId === null);
-    if (ownsAny || anyNeutral) return false;
+    if (ownsAny) return false;
   }
   const legal = getLegalActionsForPlayer(
     mapConfig,
