@@ -103,7 +103,7 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🛡️",
         title:  `${where} Bonusu`,
-        detail: `🛡️ ${where} savunmaya geçti. Açık kalkan aktif.`,
+        detail: `🛡️ Açık kalkan kuruldu: ${where} bölgesine gelen ilk düşman saldırısı bölgeyi değil kalkanı kırar.`,
       };
     }
     return {

@@ -14,12 +14,28 @@ interface Props {
   roundNumber: number;
   totalRounds: number;
   onBack:      () => void;
+  /** Opens / closes the bonus guide overlay.  Omitted when no bonuses are
+   *  assigned for this match (legacy saves) so the slot collapses cleanly. */
+  onHelp?:        () => void;
+  helpActive?:    boolean;
 }
 
-export default function MobileHeader({ roundNumber, totalRounds, onBack }: Props) {
+export default function MobileHeader({
+  roundNumber,
+  totalRounds,
+  onBack,
+  onHelp,
+  helpActive,
+}: Props) {
   function handleBack() {
     playSound("click");
     onBack();
+  }
+
+  function handleHelp() {
+    if (!onHelp) return;
+    playSound("click");
+    onHelp();
   }
 
   return (
@@ -41,7 +57,20 @@ export default function MobileHeader({ roundNumber, totalRounds, onBack }: Props
           Tur {roundNumber} / {totalRounds}
         </span>
       </div>
-      <div className="mcq-header-spacer" aria-hidden="true" />
+      {onHelp ? (
+        <button
+          type="button"
+          className="mcq-header-help"
+          onClick={handleHelp}
+          aria-label="Bonus rehberi"
+          aria-pressed={helpActive ? true : false}
+          title="Bonus rehberi"
+        >
+          ?
+        </button>
+      ) : (
+        <div className="mcq-header-spacer" aria-hidden="true" />
+      )}
     </header>
   );
 }

@@ -101,6 +101,9 @@ import ConquestEventFeed from "./ConquestEventFeed";
 import { useConquestEventFeed } from "./useConquestEventFeed";
 import ConquestSignalBanner from "./ConquestSignalBanner";
 import { useConquestSignals } from "./useConquestSignals";
+import ConquestBonusGuide, {
+  type ConquestBonusGuideEntry,
+} from "./ConquestBonusGuide";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
@@ -1209,6 +1212,43 @@ export default function ConquestGame({
         (gameState.round.roundNumber - 1) % ROUND_INTRO_SUBTITLES.length
       ];
 
+  // ── Bonus guide (onboarding card) ────────────────────────────────────
+  // Compact card listing which bonus type lives in which region this match.
+  // Auto-opens once at the start of round 1 so first-time players see what
+  // the bonus icons on the map mean; reopenable via the "?" header button.
+  const bonusGuideEntries: ConquestBonusGuideEntry[] = mapConfig
+    ? roundIntroBonusEntries.map(e => {
+        const region = mapConfig.regions.find(r => r.id === e.regionId);
+        const label  = region?.displayLabel ?? region?.name ?? e.regionId;
+        return { regionId: e.regionId, def: e.def, regionLabel: label };
+      })
+    : [];
+  const hasBonusGuide = bonusGuideEntries.length > 0;
+  const [bonusGuideOpen, setBonusGuideOpen] = useState(false);
+  const bonusGuideAutoShownRef = useRef(false);
+  useEffect(() => {
+    if (bonusGuideAutoShownRef.current) return;
+    if (!hasBonusGuide) return;
+    // Round 1 is the only auto-open moment.  Players joining mid-match see
+    // the "?" button but no pop-up — the active question must stay readable.
+    if (gameState?.round?.roundNumber === 1) {
+      setBonusGuideOpen(true);
+      bonusGuideAutoShownRef.current = true;
+    }
+  }, [hasBonusGuide, gameState?.round?.roundNumber]);
+  const handleToggleBonusGuide = useCallback(() => {
+    setBonusGuideOpen(v => !v);
+  }, []);
+  const handleCloseBonusGuide = useCallback(() => {
+    setBonusGuideOpen(false);
+  }, []);
+  const bonusGuideNode = hasBonusGuide && bonusGuideOpen ? (
+    <ConquestBonusGuide
+      entries={bonusGuideEntries}
+      onClose={handleCloseBonusGuide}
+    />
+  ) : null;
+
   // ── Bonus toast lifecycle ────────────────────────────────────────────
   // The toast is part of synced state; we mount it for ~2s after `at` and
   // then dismiss locally.  Re-keying by `id` resets the dismiss timer when
@@ -2173,6 +2213,7 @@ export default function ConquestGame({
         {phasePanelContent}
       </div>
       <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
+      {bonusGuideNode}
     </>
   );
 
@@ -2360,6 +2401,7 @@ export default function ConquestGame({
       >
         {phasePanelContent}
       </MobileBottomSheet>
+      {bonusGuideNode}
     </>
   );
 
@@ -2385,6 +2427,8 @@ export default function ConquestGame({
               roundNumber={roundNumber}
               totalRounds={totalRounds}
               onBack={handleBack}
+              onHelp={hasBonusGuide ? handleToggleBonusGuide : undefined}
+              helpActive={bonusGuideOpen}
             />
           }
           scoreStrip={
@@ -2412,6 +2456,7 @@ export default function ConquestGame({
                   <>
                     {mobileToastsNode}
                     {signalBannerNode}
+                    {bonusGuideNode}
                   </>
                 )
           }
@@ -2447,7 +2492,20 @@ export default function ConquestGame({
           </span>
         </div>
 
-        <div style={{ width: 80 }} />
+        <div className="cq-game-header-actions">
+          {hasBonusGuide ? (
+            <button
+              type="button"
+              className="cq-help-btn"
+              onClick={handleToggleBonusGuide}
+              aria-label="Bonus rehberi"
+              aria-pressed={bonusGuideOpen}
+              title="Bonus rehberi"
+            >
+              ?
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* ── Compact player panel (top-left overlay) ─────────────── */}

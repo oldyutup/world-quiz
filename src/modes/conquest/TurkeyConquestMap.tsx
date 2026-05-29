@@ -193,6 +193,19 @@ interface ShieldBreakFxEntry {
  *  900ms) so the React node lives across the full animation. */
 const SHIELD_BREAK_FX_MS = 1000;
 
+/** One-shot gold pulse fired on every bonus region whenever the
+ *  active `roundBonuses` assignment first appears (match start) or its
+ *  region set changes.  Pure presentation; never re-fires on the
+ *  steady state.  Length must match the slowest CSS keyframe in
+ *  `cqMapBonusIntroPulse` so React unmounts after the animation is
+ *  done; reduced-motion clients get a static dim halo instead.
+ *
+ *  Tuned to ~5s so the bonus tile is legible at match start without
+ *  competing with the round-intro overlay.  The CSS keyframe holds
+ *  visibility through the bulk of that window and tapers to 0 at the
+ *  end, so the steady-state map stays calm. */
+const BONUS_INTRO_FX_MS = 10000;
+
 /** Capital "merkez" reveal FX entry — fires only when a region in
  *  CAPITAL_REGION_IDS changes hands (any non-null new owner). Renders a
  *  golden/white halo + center pulse on top of the standard capture glow
@@ -267,6 +280,16 @@ export default function TurkeyConquestMap({
   const [capitalFx, setCapitalFx] = useState<CapitalFxEntry[]>([]);
   const capitalFxTimeoutsRef = useRef<Map<string, number>>(new Map());
 
+  // ── Bonus-region intro pulse ───────────────────────────────────────
+  // Fires once whenever the active bonus assignment's region set first
+  // appears (match start) or changes.  Drives the gold region-shaped
+  // halo + chip glow that lets players spot where the round's bonuses
+  // landed at a glance.  Tracked by a join-key over the bonus region
+  // ids so identical assignments don't re-fire on every render.
+  const [bonusIntroFx, setBonusIntroFx] = useState<ConquestRegionId[]>([]);
+  const prevBonusKeyRef       = useRef<string | null>(null);
+  const bonusIntroTimeoutRef  = useRef<number | null>(null);
+
   useEffect(() => () => {
     fxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     fxTimeoutsRef.current.clear();
@@ -274,6 +297,10 @@ export default function TurkeyConquestMap({
     shieldFxTimeoutsRef.current.clear();
     capitalFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     capitalFxTimeoutsRef.current.clear();
+    if (bonusIntroTimeoutRef.current !== null) {
+      window.clearTimeout(bonusIntroTimeoutRef.current);
+      bonusIntroTimeoutRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -376,6 +403,32 @@ export default function TurkeyConquestMap({
     }
     prevShieldsRef.current = current;
   }, [regionStates]);
+
+  // Bonus-intro pulse trigger.  Watches the *set* of bonus region ids
+  // (sorted + joined) so re-renders with the same assignment never
+  // re-fire the pulse — only a true assignment change (match start, or
+  // a future per-round rotation) does.  Legacy pre-dynamic saves have
+  // no roundBonuses prop; the pulse simply stays inert for them rather
+  // than guessing region ids from the static catalog.
+  useEffect(() => {
+    const ids = roundBonuses ? Object.keys(roundBonuses).sort() : [];
+    const key = ids.join("|");
+    if (prevBonusKeyRef.current === key) return;
+    prevBonusKeyRef.current = key;
+    if (bonusIntroTimeoutRef.current !== null) {
+      window.clearTimeout(bonusIntroTimeoutRef.current);
+      bonusIntroTimeoutRef.current = null;
+    }
+    if (ids.length === 0) {
+      setBonusIntroFx([]);
+      return;
+    }
+    setBonusIntroFx(ids as ConquestRegionId[]);
+    bonusIntroTimeoutRef.current = window.setTimeout(() => {
+      setBonusIntroFx([]);
+      bonusIntroTimeoutRef.current = null;
+    }, BONUS_INTRO_FX_MS);
+  }, [roundBonuses]);
 
   const handleKey = useCallback((
     e: React.KeyboardEvent,
@@ -542,6 +595,35 @@ export default function TurkeyConquestMap({
           })}
         </g>
 
+        {/* ── Layer 3.6: bonus intro pulse (one-shot, ~2.5s) ───────────
+             Region-shaped gold halo painted on the bonus region paths
+             when the assignment first appears (match start) or its set
+             changes.  Renders below labels/badges so the halo never
+             obscures point values, and above the capture glow so a
+             match starting with already-owned regions still highlights
+             the bonus tiles cleanly. */}
+        {bonusIntroFx.length > 0 && (
+          <g
+            className="cq-map-bonus-intro-layer"
+            pointerEvents="none"
+            aria-hidden="true"
+          >
+            {bonusIntroFx.map((rid) => {
+              const entry = regionEntries.find(e => e.id === rid);
+              if (!entry) return null;
+              return (
+                <path
+                  key={`bonus-intro-${rid}`}
+                  d={entry.d}
+                  className="cq-map-bonus-intro-halo"
+                  fillRule="evenodd"
+                  fill="none"
+                />
+              );
+            })}
+          </g>
+        )}
+
         {/* ── Layer 4: region labels (always on top) ─────────────────── */}
         {regionEntries.map(({ id, owner, c, labelPos, label }) => {
           const labelY = owner ? labelPos.y - 7 : labelPos.y;
@@ -589,23 +671,30 @@ export default function TurkeyConquestMap({
             ))}
         </g>
 
-        {/* ── Layer 4b: bonus region icons (decorative; never intercepts clicks) ── */}
+        {/* ── Layer 4b: bonus region badges (decorative; never intercepts clicks) ──
+             Reads as a small strategic marker rather than a stray emoji:
+             dark disc + thin gold rim + inner ring for depth, with the
+             bonus glyph centered.  Sized so it lands clear of the value
+             badge to its left (see `+ 26` offset below).  Hover on the
+             host region path still surfaces the bonus label via the
+             native <title> on the path — no extra pointer target is
+             added here, so gameplay clicks stay untouched. */}
         <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
           {regionEntries.map(({ id, labelPos, bonus, isShielded }) => {
             if (!bonus) return null;
-            // Anchor the bonus glyph to the right of the point badge so they
-            // never overlap; identical offset behaviour as the points badge.
             const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
-            const cx  = labelPos.x + off.dx + 21;
+            const cx  = labelPos.x + off.dx + 26;
             const cy  = labelPos.y + off.dy;
+            const isIntro = bonusIntroFx.includes(id as ConquestRegionId);
             return (
               <g
                 key={`bonus-${id}`}
                 className="cq-map-bonus-chip"
                 data-shielded={isShielded ? "" : undefined}
+                data-intro={isIntro ? "" : undefined}
               >
-                {/* Backdrop disc keeps the emoji legible against terrain. */}
-                <circle cx={cx} cy={cy} r={8.5} className="cq-map-bonus-chip-bg" />
+                <circle cx={cx} cy={cy} r={10} className="cq-map-bonus-chip-bg" />
+                <circle cx={cx} cy={cy} r={6.5} className="cq-map-bonus-chip-inner" />
                 <text
                   x={cx}
                   y={cy + 0.5}

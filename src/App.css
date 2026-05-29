@@ -9917,6 +9917,235 @@ body {
   .cq-bonus-toast-detail { font-size: 11px; }
 }
 
+/* ── Bonus guide (onboarding card) ────────────────────────────────
+ * Compact, non-blocking. Desktop: pinned top-right under the header.
+ * Mobile: centered floating card, full-width with a comfortable gutter.
+ * Auto-opens on round 1; "?" in the header toggles it any time.
+ */
+.cq-help-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: border-color .15s, color .15s, background-color .15s;
+  flex-shrink: 0;
+}
+.cq-help-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.cq-help-btn[aria-pressed="true"] {
+  border-color: rgba(245, 158, 11, 0.6);
+  color: #f6c074;
+  background: rgba(245, 158, 11, 0.12);
+}
+.cq-game-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 80px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.mcq-header-help {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.16);
+  color: rgba(241,245,249,0.78);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .15s, color .15s, background-color .15s;
+  flex-shrink: 0;
+}
+.mcq-header-help:hover {
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #f6c074;
+}
+.mcq-header-help[aria-pressed="true"] {
+  border-color: rgba(245, 158, 11, 0.6);
+  color: #f6c074;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.cq-bonus-guide {
+  position: fixed;
+  top: 58px;
+  right: 12px;
+  z-index: 1500;
+  width: 290px;
+  max-width: calc(100vw - 24px);
+  background: rgba(7, 10, 18, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  box-shadow: 0 18px 38px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.35);
+  color: #f1f5f9;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+  animation: cq-bonus-guide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1.05);
+}
+.cq-bonus-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cq-bonus-guide-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f6c074;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cq-bonus-guide-close {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(241,245,249,0.75);
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .15s, color .15s, background-color .15s;
+}
+.cq-bonus-guide-close:hover {
+  border-color: rgba(255,255,255,0.35);
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+.cq-bonus-guide-hint {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(241,245,249,0.62);
+  line-height: 1.4;
+}
+.cq-bonus-guide-list {
+  list-style: none;
+  padding: 0;
+  margin: 2px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cq-bonus-guide-item {
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.025);
+  overflow: hidden;
+}
+.cq-bonus-guide-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+}
+.cq-bonus-guide-row:hover,
+.cq-bonus-guide-row:focus-visible {
+  background: rgba(245, 158, 11, 0.08);
+  outline: none;
+}
+.cq-bonus-guide-row--open {
+  background: rgba(245, 158, 11, 0.10);
+}
+.cq-bonus-guide-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35));
+}
+.cq-bonus-guide-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.cq-bonus-guide-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: 0.01em;
+}
+.cq-bonus-guide-region {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(241,245,249,0.62);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cq-bonus-guide-chev {
+  font-size: 11px;
+  color: rgba(241,245,249,0.55);
+  flex-shrink: 0;
+}
+.cq-bonus-guide-effect {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(241,245,249,0.85);
+  border-top: 1px dashed rgba(255,255,255,0.07);
+  padding-top: 8px;
+}
+@keyframes cq-bonus-guide-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* Mobile: float center-top, full responsive width.  The fixed-position
+ * card naturally sits above the map and below the header on small screens.
+ */
+@media (max-width: 720px) {
+  .cq-bonus-guide {
+    top: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: max(env(safe-area-inset-bottom), 80px);
+    width: calc(100vw - 24px);
+    max-width: 360px;
+  }
+}
+
 /* Duel overlay toast base — shared by intro overlay and result toast.
  * Intro stays until React unmounts it (no auto-fade).
  * Result toast fades out after 2880ms (3200ms total hold). */
@@ -11613,15 +11842,20 @@ body {
   user-select: none;
 }
 
-/* ── Bonus region chip (small backdrop disc + emoji) ─────────── */
+/* ── Bonus region chip (badge: dark disc + thin gold rim + inner ring + glyph) ── */
 .cq-map-bonus-chip-bg {
-  fill: rgba(8, 12, 20, 0.72);
-  stroke: rgba(255, 215, 120, 0.78);
-  stroke-width: 1.1;
-  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.5));
+  fill: rgba(8, 12, 20, 0.78);
+  stroke: rgba(255, 215, 120, 0.82);
+  stroke-width: 1.2;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+.cq-map-bonus-chip-inner {
+  fill: none;
+  stroke: rgba(255, 215, 120, 0.32);
+  stroke-width: 0.8;
 }
 .cq-map-bonus-icon {
-  font-size: 10px;
+  font-size: 12px;
   user-select: none;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
 }
@@ -11741,13 +11975,18 @@ body {
     stroke-width: 1.8px !important;
   }
   /* Bonus chip scales alongside the value badge on mobile so the special
-     marker stays paired with the number it sits next to. */
+     marker stays paired with the number it sits next to. Slightly larger
+     so the bonus reads as a distinct strategic objective at thumb scale. */
   .cq-game-screen .cq-map-bonus-icon {
-    font-size: 16px;
+    font-size: 18px;
   }
   .cq-game-screen .cq-map-bonus-chip-bg {
-    r: 12 !important;
-    stroke-width: 1.6px !important;
+    r: 14 !important;
+    stroke-width: 1.8px !important;
+  }
+  .cq-game-screen .cq-map-bonus-chip-inner {
+    r: 9.5 !important;
+    stroke-width: 1.1px !important;
   }
 }
 
@@ -11933,20 +12172,27 @@ body {
   letter-spacing: 0 !important;
 }
 
-/* Bonus chip — distinguishes "this region has a special bonus" from the
- * generic gold value badge.  Warmer amber rim + amber glow halo so a
- * glance separates the two at a glance, even at desktop scale. */
+/* Bonus chip — strategic badge that reads as "objective marker", not a
+ * stray emoji.  Dark disc + warm amber rim + faint inner ring give it
+ * a layered, minted feel that pairs cleanly with the gold value badge
+ * sitting to its left without doubling as the same shape. */
 .cq-map-bonus-chip-bg {
-  fill: rgba(20, 14, 8, 0.86) !important;
-  stroke: rgba(255, 188, 92, 0.95) !important;
-  stroke-width: 1.4px !important;
+  fill: rgba(20, 14, 8, 0.90) !important;
+  stroke: rgba(255, 196, 100, 0.98) !important;
+  stroke-width: 1.5px !important;
   filter:
     drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
     drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)) !important;
-  r: 9;
+  r: 10.5;
+}
+.cq-map-bonus-chip-inner {
+  fill: none !important;
+  stroke: rgba(255, 210, 120, 0.42) !important;
+  stroke-width: 0.9px !important;
+  r: 7;
 }
 .cq-map-bonus-icon {
-  font-size: 12px;
+  font-size: 13px;
   user-select: none;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75)) !important;
 }
@@ -11970,6 +12216,59 @@ body {
   stroke: rgba(254, 240, 138, 1) !important;
   stroke-width: 1.8px !important;
   animation: cqMapBonusChipShieldPulse 1.8s ease-in-out infinite;
+}
+
+/* ── Bonus intro pulse ─────────────────────────────────────────
+ * Two coordinated one-shot motions fired by the React layer when
+ * the bonus assignment first appears (match start) or its set
+ * changes:
+ *   · `.cq-map-bonus-intro-halo` — region-shaped gold halo that
+ *     traces the bonus tile's border, so players see *which*
+ *     region(s) got the bonus from a glance.
+ *   · `.cq-map-bonus-chip[data-intro]` — a brief brightening of
+ *     the chip itself so the badge and the region read as one
+ *     beat instead of two competing flashes.
+ * Length matches `BONUS_INTRO_FX_MS` in TurkeyConquestMap.tsx
+ * (2500 ms); React unmounts both nodes after that window so the
+ * idle map stays calm. */
+@keyframes cqMapBonusIntroHalo {
+  0%   { stroke-opacity: 0;    stroke-width: 1; filter: drop-shadow(0 0 0 rgba(255, 200, 90, 0)); }
+  8%   { stroke-opacity: 0.95; stroke-width: 4; filter: drop-shadow(0 0 14px rgba(255, 210, 100, 0.85)); }
+  70%  { stroke-opacity: 0.70; stroke-width: 3; filter: drop-shadow(0 0 10px rgba(255, 200, 100, 0.6)); }
+  100% { stroke-opacity: 0;    stroke-width: 1; filter: drop-shadow(0 0 0 rgba(255, 200, 90, 0)); }
+}
+.cq-map-bonus-intro-halo {
+  stroke: rgba(255, 210, 110, 0.95);
+  fill: none;
+  pointer-events: none;
+  animation: cqMapBonusIntroHalo 4900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cqMapBonusChipIntro {
+  0%   { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)); }
+  12%  { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 12px rgba(255, 220, 130, 1)); }
+  70%  { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 8px rgba(255, 205, 110, 0.85)); }
+  100% { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)); }
+}
+.cq-map-bonus-chip[data-intro] .cq-map-bonus-chip-bg {
+  animation: cqMapBonusChipIntro 4900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Replace the pulse with a static dim halo so reduced-motion users
+   * still get the "this region has a bonus" cue without the motion. */
+  .cq-map-bonus-intro-halo {
+    animation: none;
+    stroke-opacity: 0.55;
+    stroke-width: 2.2;
+    filter: none;
+  }
+  .cq-map-bonus-chip[data-intro] .cq-map-bonus-chip-bg {
+    animation: none;
+  }
+  .cq-map-bonus-chip[data-shielded] .cq-map-bonus-chip-bg {
+    animation: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
