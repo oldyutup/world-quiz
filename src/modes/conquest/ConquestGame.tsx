@@ -98,6 +98,7 @@ import MobileToastSlot, {
   type MobileToastSpec,
 } from "./mobile/MobileToastSlot";
 import ConquestEventFeed from "./ConquestEventFeed";
+import ConquestVolumeControl from "./ConquestVolumeControl";
 import { useConquestEventFeed } from "./useConquestEventFeed";
 import ConquestSignalBanner from "./ConquestSignalBanner";
 import { useConquestSignals } from "./useConquestSignals";
@@ -2493,6 +2494,7 @@ export default function ConquestGame({
         </div>
 
         <div className="cq-game-header-actions">
+          <ConquestVolumeControl variant="desktop" />
           {hasBonusGuide ? (
             <button
               type="button"

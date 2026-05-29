@@ -9,6 +9,7 @@
  */
 
 import { playSound } from "../../../lib/sound";
+import ConquestVolumeControl from "../ConquestVolumeControl";
 
 interface Props {
   roundNumber: number;
@@ -57,20 +58,21 @@ export default function MobileHeader({
           Tur {roundNumber} / {totalRounds}
         </span>
       </div>
-      {onHelp ? (
-        <button
-          type="button"
-          className="mcq-header-help"
-          onClick={handleHelp}
-          aria-label="Bonus rehberi"
-          aria-pressed={helpActive ? true : false}
-          title="Bonus rehberi"
-        >
-          ?
-        </button>
-      ) : (
-        <div className="mcq-header-spacer" aria-hidden="true" />
-      )}
+      <div className="mcq-header-actions">
+        <ConquestVolumeControl variant="mobile" />
+        {onHelp ? (
+          <button
+            type="button"
+            className="mcq-header-help"
+            onClick={handleHelp}
+            aria-label="Bonus rehberi"
+            aria-pressed={helpActive ? true : false}
+            title="Bonus rehberi"
+          >
+            ?
+          </button>
+        ) : null}
+      </div>
     </header>
   );
 }

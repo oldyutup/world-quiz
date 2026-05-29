@@ -9985,6 +9985,165 @@ body {
   background: rgba(245, 158, 11, 0.14);
 }
 
+/* ── Conquest-only volume control ─────────────────────────────────
+ * Compact button in the Kuşatma header that toggles a popover slider
+ * (0–100%) scaling only conquest sounds. Persisted to localStorage by
+ * conquestSound.ts; the global mute switch still overrides it.
+ */
+.cq-volume-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.cq-volume-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .15s, color .15s, background-color .15s;
+  flex-shrink: 0;
+}
+.cq-volume-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.cq-volume-btn[aria-pressed="true"] {
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.12);
+}
+.mcq-header-volume {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid rgba(255,255,255,0.16);
+  color: rgba(241,245,249,0.78);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .15s, color .15s, background-color .15s;
+  flex-shrink: 0;
+}
+.mcq-header-volume:hover {
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #93c5fd;
+}
+.mcq-header-volume[aria-pressed="true"] {
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.14);
+}
+.mcq-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.cq-volume-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1600;
+  width: 220px;
+  padding: 12px 14px;
+  background: var(--surface, #0f172a);
+  border: 1.5px solid var(--border, rgba(255,255,255,0.14));
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cq-volume-popover-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cq-volume-popover-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(241,245,249,0.7));
+}
+.cq-volume-popover-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #93c5fd;
+}
+.cq-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+.cq-volume-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.14);
+}
+.cq-volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.14);
+}
+.cq-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: #93c5fd;
+  border: 2px solid #0f172a;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.cq-volume-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #93c5fd;
+  border: 2px solid #0f172a;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.cq-volume-slider:focus-visible {
+  outline: none;
+}
+.cq-volume-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.35);
+}
+.cq-volume-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.35);
+}
+.cq-volume-popover-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted, rgba(241,245,249,0.6));
+}
+@media (max-width: 480px) {
+  .cq-volume-popover {
+    width: 240px;
+    right: -4px;
+  }
+}
+
 .cq-bonus-guide {
   position: fixed;
   top: 58px;
@@ -13218,6 +13377,8 @@ body {
 .mcq-shell--landscape .mcq-header-back  { width: 34px; height: 34px; font-size: 18px; }
 .mcq-shell--landscape .mcq-header-spacer{ width: 34px; height: 34px; }
 .mcq-shell--landscape .mcq-header-round { font-size: 12px; padding: 3px 10px; }
+.mcq-shell--landscape .mcq-header-volume,
+.mcq-shell--landscape .mcq-header-help   { width: 28px; height: 28px; font-size: 13px; }
 
 /* ── Dock chrome ─────────────────────────────────────────────
    The dock is glass — a slightly cooler surface than the map area,

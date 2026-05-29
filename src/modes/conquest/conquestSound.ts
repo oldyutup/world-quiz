@@ -90,6 +90,63 @@ const SOUND_VOLUME: Record<ConquestSoundName, number> = {
  *  duplicate React effects re-firing the same trigger within a tick. */
 const MIN_REPLAY_GAP_MS = 120;
 
+/** localStorage key for the user-tunable Kuşatma-only master volume. */
+const CONQUEST_VOLUME_KEY = "torble.conquestSoundVolume";
+
+/** Default master multiplier — preserves the original per-sound volumes. */
+const DEFAULT_MASTER_VOLUME = 1.0;
+
+/** In-memory mirror of the persisted master so playConquestSound stays sync. */
+let conquestMasterVolume = readStoredMasterVolume();
+
+/** Subscribers notified when the master changes (UI sliders stay in sync). */
+const volumeListeners = new Set<(v: number) => void>();
+
+function clampVolume(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MASTER_VOLUME;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function readStoredMasterVolume(): number {
+  if (typeof window === "undefined") return DEFAULT_MASTER_VOLUME;
+  try {
+    const raw = window.localStorage.getItem(CONQUEST_VOLUME_KEY);
+    if (raw === null) return DEFAULT_MASTER_VOLUME;
+    const parsed = Number.parseFloat(raw);
+    if (Number.isNaN(parsed)) return DEFAULT_MASTER_VOLUME;
+    return clampVolume(parsed);
+  } catch {
+    return DEFAULT_MASTER_VOLUME;
+  }
+}
+
+export function getConquestMasterVolume(): number {
+  return conquestMasterVolume;
+}
+
+export function setConquestMasterVolume(value: number): number {
+  const next = clampVolume(value);
+  conquestMasterVolume = next;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(CONQUEST_VOLUME_KEY, String(next));
+    } catch {
+      // Storage may be unavailable (private mode, quota) — keep the in-memory value.
+    }
+  }
+  volumeListeners.forEach(fn => {
+    try { fn(next); } catch { /* listener errors must not break audio */ }
+  });
+  return next;
+}
+
+export function subscribeConquestMasterVolume(fn: (v: number) => void): () => void {
+  volumeListeners.add(fn);
+  return () => { volumeListeners.delete(fn); };
+}
+
 /** Sounds known to be missing on disk — skipped silently after the first
  *  failed load to avoid console spam. */
 const missingSounds = new Set<ConquestSoundName>();
@@ -163,7 +220,7 @@ export function playConquestSound(name: ConquestSoundName): void {
     // Build a fresh Audio per fire so overlapping triggers (capture +
     // shield-break in the same tick) don't cut each other off.
     const audio = new Audio(SOUND_PATHS[name]);
-    audio.volume  = SOUND_VOLUME[name];
+    audio.volume  = clampVolume(SOUND_VOLUME[name] * conquestMasterVolume);
     audio.preload = "auto";
 
     const onError = () => {
