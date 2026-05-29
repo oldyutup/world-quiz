@@ -232,14 +232,42 @@ export interface ConquestMapConfig {
 // ── Region bonuses ───────────────────────────────────────────────────────────
 
 /**
- * Catalog of region-bonus families.  Definitions live in regionBonuses.ts;
- * gameplay wiring lives in conquestGameplay.ts.  Order is documentation only.
+ * Catalog of region-bonus families.  Definitions live in regionBonuses.ts
+ * (legacy static catalog, still authoritative for the currently-assigned set)
+ * and bonusPool.ts (forward-looking 12-type catalog grouped by category).
+ * Gameplay wiring lives in conquestGameplay.ts.
+ *
+ * Two sub-groups are mixed in this union:
+ *   1. Active types — picked by `buildRoundBonusAssignment` today via
+ *      ROTATING_BONUS_TYPES (istanbul_defense, ankara_hidden_shield,
+ *      cukurova_score, karadeniz_extra_time).  Each has a wired effect.
+ *   2. Pool-only types — defined in bonusPool.ts, currently `implemented:false`.
+ *      They appear in the union for type safety but `buildRoundBonusAssignment`
+ *      never assigns them, so no UI surface ever renders them.  When their
+ *      gameplay effects are wired in a future PR, the implemented flag flips
+ *      and the pool-driven selector swaps in.
  */
 export type ConquestRegionBonusType =
+  // ── Currently wired (legacy ROTATING_BONUS_TYPES set) ──────────────────────
   | "istanbul_defense"        // passive marker while owned (UI/altyapı only)
   | "ankara_hidden_shield"    // grant pending shield, placed on next capture
   | "cukurova_score"          // one-shot +1 bonus point on capture
-  | "karadeniz_extra_time";   // one-shot +5s to bonused player's next move
+  | "karadeniz_extra_time"    // one-shot +5s to bonused player's next move
+  // ── Bonus pool — defined but not yet assignable (see bonusPool.ts) ────────
+  // Savunma
+  | "mevzi_bekcisi"
+  | "direnis"
+  // Saldırı
+  | "kocbasi"
+  | "gecit"
+  | "kiskac_harekati"
+  // Bilgi
+  | "eleme_yetkisi"
+  | "kahin"
+  | "atlas"
+  // Ekonomi
+  | "liman"
+  | "ganimet";
 
 /**
  * Per-player bonus state.  Persisted in ConquestGameState.playerBonuses.

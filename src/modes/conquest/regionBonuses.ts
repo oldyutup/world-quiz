@@ -117,8 +117,13 @@ export function getBonusToastCopyForViewer(
 }
 
 /** Legacy "home city" per bonus type — used only when the toast lacks a
- *  region label (pre-dynamic-bonus saves).  Keeps old rooms readable. */
-const LEGACY_BONUS_CITY: Record<ConquestRegionBonusType, string> = {
+ *  region label (pre-dynamic-bonus saves).  Keeps old rooms readable.
+ *
+ *  `Partial` because the bonus type union also carries pool-only entries
+ *  (see bonusPool.ts) that are never assigned today and therefore never
+ *  raise a toast.  Lookups fall back to a generic city string at the call
+ *  site so missing keys are safe. */
+const LEGACY_BONUS_CITY: Partial<Record<ConquestRegionBonusType, string>> = {
   istanbul_defense:     "İstanbul",
   ankara_hidden_shield: "Ankara",
   cukurova_score:       "Çukurova",
@@ -274,7 +279,14 @@ export function buildBonusToast(
   playerName: string,
   at:         number,
 ): ConquestBonusToast {
-  const { icon, title, detail } = BONUS_TOAST_COPY[bonusType];
+  // Fallback covers pool-only types from bonusPool.ts that have no
+  // BONUS_TOAST_COPY entry; in practice they're never assigned to a region
+  // today, so this branch is defensive — it never runs in the current build.
+  const { icon, title, detail } = BONUS_TOAST_COPY[bonusType] ?? {
+    icon:   "⭐",
+    title:  "Bonus",
+    detail: "",
+  };
   return {
     id: `${bonusType}-${regionId}-${at}-${playerId}`,
     bonusType,
@@ -288,10 +300,16 @@ export function buildBonusToast(
   };
 }
 
-const BONUS_TOAST_COPY: Record<
+/**
+ * Per-type toast copy.  `Partial` because the bonus type union also carries
+ * pool-only entries (see bonusPool.ts) that have no wired effect today and
+ * therefore never raise a toast.  `buildBonusToast` resolves missing keys
+ * via a generic fallback at runtime.
+ */
+const BONUS_TOAST_COPY: Partial<Record<
   ConquestRegionBonusType,
   { icon: string; title: string; detail: string }
-> = {
+>> = {
   istanbul_defense: {
     icon:   "🛡️",
     title:  "İstanbul Bonusu",

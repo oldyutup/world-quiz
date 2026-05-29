@@ -22,8 +22,13 @@ import type {
  * REGION_BONUSES descriptions still mention a specific city ("İstanbul'u
  * tutan oyuncuya…") which lies when the dynamic assignment moves the bonus
  * elsewhere.  This map describes what the bonus DOES, not where it lives.
+ *
+ * `Partial` because the bonus type union also carries pool-only entries
+ * (see bonusPool.ts) that are not currently assigned by
+ * `buildRoundBonusAssignment` and therefore never reach this guide.  The
+ * lookup below falls back to `def.description` for any missing key.
  */
-const TYPE_EFFECT_COPY: Record<ConquestRegionBonusType, string> = {
+const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
   istanbul_defense:
     "Bu bölgeyi fetheden oyuncu açık kalkan kazanır. Bölgeye gelen ilk düşman saldırısı, bölgeyi değil kalkanı kırar.",
   ankara_hidden_shield:
