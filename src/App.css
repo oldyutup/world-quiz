@@ -11369,6 +11369,23 @@ body {
   color: #d8b4fe;
   letter-spacing: 0.02em;
 }
+/* Mevzi Bekçisi — defender +3s chip surfaced on the duel intro overlay
+ * and inside the duel panel.  Same shape as the eliminator chip; orange
+ * palette to read as a defender-leaning advantage. */
+.cq-duel-mevzi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  margin: 4px 0 6px;
+  border-radius: 999px;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.40);
+  color: #fdba74;
+  letter-spacing: 0.02em;
+}
 
 .cq-challenge-feedback {
   margin: 4px 0 0;

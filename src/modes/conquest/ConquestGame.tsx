@@ -1240,9 +1240,22 @@ export default function ConquestGame({
   const boardDisabled = phase !== "action";
 
   // Duel countdown (mirrors challenge countdown).  Null when not in duel.
+  //
+  // Mevzi Bekçisi: when the target region carries the bonus, `duel.endsAt`
+  // is the defender's deadline (= base + 3s).  Attackers see a clock capped
+  // at the base window so the timer doesn't promise time they can't use —
+  // their submissions are also rejected past the cap (see submitDuelAnswer).
+  // Defenders and spectators see the full extended clock so the +3s
+  // advantage is honestly displayed.
   const duel = gameState.defenseDuel ?? null;
+  const duelDefenderBonusMs = duel?.defenderTimeBonusMs ?? 0;
+  const duelEndsAtForViewer = duel
+    ? (myPlayerId === duel.attackerId
+        ? duel.endsAt - duelDefenderBonusMs
+        : duel.endsAt)
+    : 0;
   const duelMsRemaining = phase === "defense_duel" && duel
-    ? Math.max(0, duel.endsAt - now)
+    ? Math.max(0, duelEndsAtForViewer - now)
     : 0;
   const duelRegionLabel = duel
     ? (mapConfig.regions.find(r => r.id === duel.regionId)?.displayLabel
@@ -1694,6 +1707,15 @@ export default function ConquestGame({
               saldırıyor. Bölgenin kaderi savunma düellosunda belirlenecek —
               ilk doğru cevaplayan kazanır.
             </div>
+            {duelDefenderBonusMs > 0 && (
+              <div
+                className="cq-duel-mevzi-chip"
+                role="note"
+                aria-label="Mevzi Bekçisi avantajı"
+              >
+                🏰 Mevzi Bekçisi: Savunmacıya +{Math.round(duelDefenderBonusMs / 1000)} sn
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2225,6 +2247,8 @@ export default function ConquestGame({
             answeredDuelId === duel.id ? duelLocalFeedback : null
           }
           msRemaining={duelMsRemaining}
+          effectiveEndsAt={duelEndsAtForViewer}
+          defenderTimeBonusMs={duelDefenderBonusMs}
           onSubmitAnswer={handleSubmitDuelAnswer}
         />
       )}

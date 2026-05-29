@@ -195,6 +195,14 @@ export interface ConquestRegionState {
    * Absent when no hidden shield is stamped.
    */
   hiddenShieldKind?: "conquest" | "shield" | "neutral_trap";
+  /**
+   * Mevzi Bekçisi 🏰 anti-farm log.  Player ids who have ALREADY redeemed
+   * the protection bonus on this region during this match — they preserved
+   * the region's point value when they lost it.  Repeat losses by a name
+   * already in this list never grant the protection again.  New owners are
+   * eligible on their own first loss.  Absent / empty in pre-mevzi saves.
+   */
+  mevziProtectionClaimedBy?: string[];
 }
 
 /**
@@ -278,8 +286,10 @@ export type ConquestRegionBonusType =
  *   - extraNextMoveMs      — re-capturing Karadeniz overwrites; never sums.
  *   - cukurovaClaimed      — flips to true on the first Çukurova capture in
  *                            the match and never resets.
- *   - bonusPoints          — only Çukurova writes here today; counted in
- *                            scoring once.
+ *   - bonusPoints          — written by Çukurova (one-shot per match) and by
+ *                            Mevzi Bekçisi (per-region-per-tenure protection
+ *                            payout on a mevzi region loss).  Counted in
+ *                            scoring directly (see regionPoints.ts).
  *
  * istanbul_defense is intentionally NOT mirrored here — it is a passive
  * "while owning" marker derived from current region ownership.
@@ -327,6 +337,15 @@ export interface ConquestBonusToast {
   playerName: string;
   /** Epoch ms the toast was raised. UI uses this to time the auto-dismiss. */
   at:         number;
+  /**
+   * Mevzi Bekçisi 🏰 — point value preserved by the previous owner when a
+   * mevzi region changed hands.  When set, viewer-aware copy switches to the
+   * loss-flavour banner ("Mevzi direndi: X puan korundu.").  `playerId` /
+   * `playerName` on this toast refer to the previous owner (who keeps the
+   * points); `previousOwnerId` mirrors `playerId` for clarity.
+   */
+  pointsPreserved?: number;
+  previousOwnerId?: string;
 }
 
 /**
@@ -572,6 +591,17 @@ export interface ConquestDefenseDuelState {
    *  The 8-second duel timer starts from this point.  Optional for back-compat
    *  with pre-intro rooms; absent → question visible immediately from startedAt. */
   questionVisibleAt?: number;
+  /**
+   * Extra milliseconds granted to the defender on top of the base
+   * `DEFENSE_DUEL_MS` window — currently set when the target region carries
+   * the Mevzi Bekçisi 🏰 bonus (and the defender is the current owner of
+   * that region).  `endsAt` is the *defender's* deadline (= the moment the
+   * duel finally times out and the defender wins by default).  The attacker
+   * is capped at `endsAt - defenderTimeBonusMs`; submissions after that
+   * point are rejected by `submitDuelAnswer`.  Optional / 0 → symmetric
+   * timer (legacy behaviour).
+   */
+  defenderTimeBonusMs?: number;
   endsAt:           number;
   status:           ConquestDuelStatus;
   winnerId:         string | null;

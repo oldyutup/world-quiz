@@ -62,6 +62,7 @@ const ROTATING_BONUS_TYPES: ConquestRegionBonusType[] = [
   "cukurova_score",
   "karadeniz_extra_time",
   "eleme_yetkisi",
+  "mevzi_bekcisi",
 ];
 
 /** Static bonus-type metadata (icon/label/description), reused so the UI

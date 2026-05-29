@@ -29,10 +29,11 @@ import {
 } from "./conquestChallenges";
 import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
 import { createInitialRegionStates } from "./conquestState";
-import { getPlayerTotalPoints } from "./regionPoints";
+import { getPlayerTotalPoints, getRegionPoints } from "./regionPoints";
 import {
   buildBonusToast,
   buildHiddenOpPlacedMessage,
+  buildMevziLossToast,
   createEmptyPlayerBonusState,
   HIDDEN_CONQUEST_REVEAL_MESSAGE,
   HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE,
@@ -665,12 +666,102 @@ function triggerCaptureBonus(
         pb.eliminatorCharges = 1;
         toast = buildBonusToast("eleme_yetkisi", capturedRegionId, ownerId, ownerName, now);
         break;
+      case "mevzi_bekcisi":
+        // Pure region/owner-tied effect: as long as the current owner
+        // controls this region, defending it in a duel earns them +3s.
+        // No per-player state to mutate — the check is done at duel-start
+        // time against `roundBonuses` + region ownership.  Capture just
+        // emits the toast so the player sees they unlocked the bonus.
+        toast = buildBonusToast("mevzi_bekcisi", capturedRegionId, ownerId, ownerName, now);
+        break;
     }
   }
 
   return {
     regionStates:  nextRegionStates,
     playerBonuses: { ...current, [ownerId]: pb },
+    toast,
+  };
+}
+
+/**
+ * Mevzi Bekçisi 🏰 — economic-defense payout applied when the bonus region
+ * just changed hands.  The previous owner preserves the region's full point
+ * value as `bonusPoints` (added to total score via getPlayerTotalPoints),
+ * even though region ownership flips to the new owner.
+ *
+ * Anti-farm:
+ *   - `mevziProtectionClaimedBy` on the region tracks which players have
+ *     ALREADY received this payout from this region during the match.
+ *   - A player only ever collects the protection ONCE per region — repeat
+ *     losses from the same region grant nothing, even if a different owner
+ *     held it in between.
+ *   - A NEW owner who later loses the same region remains eligible (their
+ *     id is appended only on their own first payout).
+ *
+ * Pure: returns new arrays / maps; never mutates inputs.  Returns the input
+ * snapshots verbatim (plus `toast: undefined`) when the region does not
+ * carry the mevzi bonus or the previous owner is already in the claim log.
+ */
+function applyMevziProtectionOnLoss(
+  regionStates:      ConquestRegionState[],
+  playerBonusesIn:   Record<string, ConquestPlayerBonusState> | undefined,
+  roundBonuses:      ConquestRoundBonusAssignment | undefined,
+  previousOwnerId:   string,
+  previousOwnerName: string,
+  regionId:          ConquestRegionId,
+  now:               number,
+): {
+  regionStates:  ConquestRegionState[];
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+  toast?:        ConquestBonusToast;
+} {
+  const current = playerBonusesIn ?? {};
+  const bonus = resolveActiveBonus(roundBonuses, regionId);
+  if (!bonus || bonus.type !== "mevzi_bekcisi") {
+    return { regionStates, playerBonuses: current };
+  }
+
+  const target = regionStates.find(rs => rs.regionId === regionId);
+  if (!target) return { regionStates, playerBonuses: current };
+
+  const alreadyClaimed = target.mevziProtectionClaimedBy ?? [];
+  if (alreadyClaimed.includes(previousOwnerId)) {
+    // Anti-farm: this player has already redeemed mevzi on this region in
+    // this match.  No payout, no toast.
+    return { regionStates, playerBonuses: current };
+  }
+
+  const points = getRegionPoints(regionId);
+  if (points <= 0) {
+    return { regionStates, playerBonuses: current };
+  }
+
+  const nextRegionStates = regionStates.map(rs =>
+    rs.regionId === regionId
+      ? {
+          ...rs,
+          mevziProtectionClaimedBy: [...alreadyClaimed, previousOwnerId],
+        }
+      : rs,
+  );
+
+  const prevPb = current[previousOwnerId] ?? createEmptyPlayerBonusState();
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...current,
+    [previousOwnerId]: {
+      ...prevPb,
+      bonusPoints: prevPb.bonusPoints + points,
+    },
+  };
+
+  const toast = buildMevziLossToast(
+    regionId, previousOwnerId, previousOwnerName, points, now,
+  );
+
+  return {
+    regionStates:  nextRegionStates,
+    playerBonuses: nextPlayerBonuses,
     toast,
   };
 }
@@ -1332,6 +1423,13 @@ function startDefenseDuel(
     eligiblePlayerIds: [attackerId, defenderId],
   };
 
+  // Mevzi Bekçisi 🏰 — bonus repurposed to an economic-defense payout
+  // (preserve region points on loss, applied in `resolveDuelWithWinner`).
+  // No defender time bonus is granted; the asymmetric-clock infrastructure
+  // (`defenderTimeBonusMs`, attacker submission cap in `submitDuelAnswer`,
+  // viewer-aware `effectiveEndsAt`) is left in place for future bonuses.
+  const defenderTimeBonusMs = 0;
+
   const questionVisibleAt = now + DEFENSE_DUEL_INTRO_MS;
   const duel: ConquestDefenseDuelState = {
     id:               `duel-${state.round.roundNumber}-${now}`,
@@ -1342,7 +1440,8 @@ function startDefenseDuel(
     challenge,
     startedAt:        now,
     questionVisibleAt,
-    endsAt:           questionVisibleAt + DEFENSE_DUEL_MS,
+    defenderTimeBonusMs,
+    endsAt:           questionVisibleAt + DEFENSE_DUEL_MS + defenderTimeBonusMs,
     status:           "active",
     winnerId:         null,
     submittedAnswers: [],
@@ -1389,6 +1488,19 @@ export function submitDuelAnswer(
   }
   if (submitterId !== duel.attackerId && submitterId !== duel.defenderId) {
     return { ok: false, winning: false, state };
+  }
+
+  // Mevzi Bekçisi attacker-cap.  When the defender holds the bonus, their
+  // deadline (`endsAt`) is later than the attacker's by `defenderTimeBonusMs`.
+  // Reject attacker submissions landing after that cap so the +3s extension
+  // stays defender-exclusive.  Defender submissions are bounded by `endsAt`
+  // via the existing host-side `expireDuel`.
+  const defenderBonus = duel.defenderTimeBonusMs ?? 0;
+  if (defenderBonus > 0 && submitterId === duel.attackerId) {
+    const attackerEndsAt = duel.endsAt - defenderBonus;
+    if (Date.now() >= attackerEndsAt) {
+      return { ok: false, winning: false, state };
+    }
   }
 
   const correct = isChallengeAnswerCorrect(duel.challenge, rawAnswer);
@@ -1489,6 +1601,24 @@ function resolveDuelWithWinner(
     false,
   );
 
+  // Mevzi Bekçisi 🏰 — if the lost region carried the bonus, the previous
+  // owner (the defender) keeps the region's point value as a `bonusPoints`
+  // payout.  Applied AFTER the capture-side bonus chain so the per-region
+  // claim log and the attacker's regional updates layer cleanly.  Loss-
+  // flavoured toast takes priority over the capture-flavoured one (which
+  // for mevzi is purely descriptive — the new owner gains the same future
+  // protection, but the immediate news beat is the points preserved).
+  const mevziOut = applyMevziProtectionOnLoss(
+    bonusOut.regionStates,
+    bonusOut.playerBonuses,
+    state.roundBonuses,
+    duel.defenderId,
+    defenderName,
+    duel.regionId,
+    now,
+  );
+  const postBonusToast = mevziOut.toast ?? bonusOut.toast;
+
   const flipResult: ConquestActionResult = {
     ok:       true,
     action:   "attack_region",
@@ -1500,7 +1630,7 @@ function resolveDuelWithWinner(
   const base = finishDuelIntoRoundResult(state, flipResult);
 
   // Domination check — attacker may have just captured the last enemy region.
-  const dominatorId = getPlayerOwningAllRegions(bonusOut.regionStates, mapConfig);
+  const dominatorId = getPlayerOwningAllRegions(mevziOut.regionStates, mapConfig);
   if (dominatorId !== null) {
     const dominator = state.players.find(p => p.id === dominatorId);
     const domResult: ConquestActionResult = {
@@ -1514,9 +1644,9 @@ function resolveDuelWithWinner(
       ...base,
       phase:          "finished",
       finishedAt:     now,
-      regionStates:   bonusOut.regionStates,
-      playerBonuses:  bonusOut.playerBonuses,
-      lastBonusToast: bonusOut.toast ?? state.lastBonusToast,
+      regionStates:   mevziOut.regionStates,
+      playerBonuses:  mevziOut.playerBonuses,
+      lastBonusToast: postBonusToast ?? state.lastBonusToast,
       round: {
         ...base.round,
         lastResult: domResult,
@@ -1534,9 +1664,9 @@ function resolveDuelWithWinner(
 
   return {
     ...base,
-    regionStates:   bonusOut.regionStates,
-    playerBonuses:  bonusOut.playerBonuses,
-    lastBonusToast: bonusOut.toast ?? state.lastBonusToast,
+    regionStates:   mevziOut.regionStates,
+    playerBonuses:  mevziOut.playerBonuses,
+    lastBonusToast: postBonusToast ?? state.lastBonusToast,
   };
 }
 

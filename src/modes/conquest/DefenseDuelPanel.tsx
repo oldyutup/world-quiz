@@ -36,6 +36,18 @@ interface Props {
   alreadyAnswered:   boolean;
   lastLocalFeedback: "correct" | "wrong" | null;
   msRemaining:       number;
+  /**
+   * Viewer-aware deadline for the countdown.  Attackers see a clock capped
+   * to the base duel window when the defender holds a time bonus (Mevzi
+   * Bekçisi); defenders and spectators see the full extended deadline.
+   * Falls back to `duel.endsAt` when absent (legacy/no-bonus path).
+   */
+  effectiveEndsAt?:  number;
+  /**
+   * Extra ms the defender gets vs. the attacker.  When > 0 the panel shows
+   * the Mevzi Bekçisi chip explaining the asymmetric clock.
+   */
+  defenderTimeBonusMs?: number;
   onSubmitAnswer:    (rawAnswer: string) => void;
 }
 
@@ -48,6 +60,8 @@ export default function DefenseDuelPanel({
   alreadyAnswered,
   lastLocalFeedback,
   msRemaining,
+  effectiveEndsAt,
+  defenderTimeBonusMs,
   onSubmitAnswer,
 }: Props) {
   const { challenge, attackerId, defenderId, shieldActive, startedAt, endsAt } = duel;
@@ -77,9 +91,16 @@ export default function DefenseDuelPanel({
 
   const secondsLeft  = Math.max(0, Math.ceil(msRemaining / 1000));
   const questionStart = duel.questionVisibleAt ?? startedAt;
-  const totalMs      = Math.max(1, endsAt - questionStart);
+  // Viewer-aware deadline: defaults to the duel's full `endsAt` (defender's
+  // deadline) but attackers receive a capped value via `effectiveEndsAt`
+  // when the defender holds a time bonus (Mevzi Bekçisi).  totalMs / pct
+  // follow the viewer's clock so the progress bar tracks the displayed
+  // `msRemaining`.
+  const viewerEndsAt = effectiveEndsAt ?? endsAt;
+  const totalMs      = Math.max(1, viewerEndsAt - questionStart);
   const totalSeconds = Math.max(1, Math.round(totalMs / 1000));
   const pct          = Math.max(0, Math.min(100, (msRemaining / totalMs) * 100));
+  const defenderBonusSec = Math.round((defenderTimeBonusMs ?? 0) / 1000);
 
   function submit(value: string) {
     const trimmed = value.trim();
@@ -132,6 +153,16 @@ export default function DefenseDuelPanel({
           <span className="cq-duel-shield-note"> · 🛡️ Açık kalkan aktif (kazansan bile sadece kalkan kırılır)</span>
         )}
       </p>
+
+      {defenderBonusSec > 0 && (
+        <p
+          className="cq-duel-mevzi-chip"
+          role="note"
+          aria-label="Mevzi Bekçisi avantajı"
+        >
+          🏰 Mevzi Bekçisi: Savunmacıya +{defenderBonusSec} sn
+        </p>
+      )}
 
       <h3 className="cq-challenge-title">
         {meta.icon} {challenge.title}

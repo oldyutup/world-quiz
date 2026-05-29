@@ -84,8 +84,8 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     category:    "savunma",
     icon:        "🏰",
     label:       "Mevzi Bekçisi",
-    description: "Savunma hattını güçlendiren bir bonus.",
-    implemented: false,
+    description: "Bu bölgeyi kaybetsen bile puanını korursun.",
+    implemented: true,
   },
   {
     type:        "direnis",

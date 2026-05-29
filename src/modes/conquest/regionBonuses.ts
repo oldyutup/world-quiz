@@ -114,6 +114,41 @@ export function getBonusToastCopyForViewer(
     };
   }
 
+  if (toast.bonusType === "mevzi_bekcisi") {
+    // Loss-flavour banner: emitted when a mevzi region changed hands.  The
+    // previous owner keeps the region's point value as a "mevzi" protection
+    // payout; `toast.playerId` is that previous owner.
+    if (toast.pointsPreserved !== undefined) {
+      const pts = toast.pointsPreserved;
+      if (isOwner) {
+        return {
+          icon:   "🏰",
+          title:  `🏰 Mevzi direndi: ${pts} puan korundu.`,
+          detail: `${where} bölgesini kaybettin ama mevzi puanın hâlâ sende — toplam skoruna sayılır.`,
+        };
+      }
+      return {
+        icon:   "🏰",
+        title:  `🏰 ${where} mevzi direndi`,
+        detail: `${toast.playerName} ${where} bölgesini kaybetti ama ${pts} puanını mevzi koruması olarak kurtardı.`,
+      };
+    }
+    // Capture-flavour banner: someone just took the mevzi region.  No prior
+    // owner to pay out (initial capture from neutral) — describe the bonus.
+    if (isOwner) {
+      return {
+        icon:   "🏰",
+        title:  `${where} Bonusu`,
+        detail: `🏰 Mevzi Bekçisi: ${where} bölgesini kaybetsen bile puanını korursun.`,
+      };
+    }
+    return {
+      icon:   "🏰",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🏰 Rakip ${where} bölgesinde Mevzi Bekçisi avantajı kazandı: bu bölgeyi kaybetse bile puanını korur.`,
+    };
+  }
+
   return { icon: toast.icon, title: toast.title, detail: toast.detail };
 }
 
@@ -311,6 +346,37 @@ export function buildBonusToast(
 }
 
 /**
+ * Build a Mevzi Bekçisi loss-flavour toast — fired when the bonus region
+ * changes hands.  Carries `pointsPreserved` + `previousOwnerId` so the viewer
+ * copy switches to "Mevzi direndi: X puan korundu." for the player who keeps
+ * the points, and shows an informational variant to everyone else.
+ *
+ * `playerId` / `playerName` on the toast are the PREVIOUS owner (the one who
+ * just kept the points).  This drives toast colour and viewer-aware copy.
+ */
+export function buildMevziLossToast(
+  regionId:         ConquestRegionId,
+  previousOwnerId:  string,
+  previousOwnerName: string,
+  pointsPreserved:  number,
+  at:               number,
+): ConquestBonusToast {
+  return {
+    id: `mevzi_loss-${regionId}-${at}-${previousOwnerId}`,
+    bonusType:        "mevzi_bekcisi",
+    regionId,
+    icon:             "🏰",
+    title:            "🏰 Mevzi Direndi",
+    detail:           `${pointsPreserved} puan korundu.`,
+    playerId:         previousOwnerId,
+    playerName:       previousOwnerName,
+    at,
+    pointsPreserved,
+    previousOwnerId,
+  };
+}
+
+/**
  * Per-type toast copy.  `Partial` because the bonus type union also carries
  * pool-only entries (see bonusPool.ts) that have no wired effect today and
  * therefore never raise a toast.  `buildBonusToast` resolves missing keys
@@ -347,5 +413,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "🃏",
     title:  "Eleme Yetkisi Bonusu",
     detail: "Sonraki test sorunda 1 yanlış şık silinir.",
+  },
+  mevzi_bekcisi: {
+    icon:   "🏰",
+    title:  "Mevzi Bekçisi Bonusu",
+    detail: "Bu bölgeyi kaybetsen bile puanını korursun.",
   },
 };
