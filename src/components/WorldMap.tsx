@@ -1134,9 +1134,16 @@ export interface DuelMapProps {
   showLabels?: boolean;
   region?:     string;
   activeIds?:  Set<string>;
+  /**
+   * Optional topoId → hex fill color map. When provided, claimed countries are
+   * painted with the given color via inline `fill` instead of the default
+   * .duel-mine / .duel-opp class colors (used by Duel Group multiplayer to give
+   * each player their own tint).
+   */
+  claimColors?: Record<string, string>;
 }
 
-export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region, activeIds }: DuelMapProps) {
+export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region, activeIds, claimColors }: DuelMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const rawRef3      = useRef<Feature<Geometry>[]>([]);
@@ -1355,8 +1362,16 @@ export function DuelMapView({ myTopoIds, oppTopoIds, showLabels = false, region,
             const isMine = myTopoIds.has(cf.id);
             const isOpp  = oppTopoIds.has(cf.id);
             const isSecondary3 = cf.area < (maxAreaById3.get(cf.id) ?? cf.area);
-            const cls = ["country-path", isMine ? "duel-mine" : isOpp ? "duel-opp" : "", isSecondary3 ? "merged-secondary" : ""].filter(Boolean).join(" ");
-            return <path key={cf.id+cf.d.slice(1,8)} d={cf.d} className={cls}/>;
+            const customFill = claimColors?.[cf.id];
+            const cls = [
+              "country-path",
+              customFill ? "duel-owned" : (isMine ? "duel-mine" : isOpp ? "duel-opp" : ""),
+              isSecondary3 ? "merged-secondary" : "",
+            ].filter(Boolean).join(" ");
+            const style = customFill
+              ? { fill: customFill, opacity: 0.85 } as React.CSSProperties
+              : undefined;
+            return <path key={cf.id+cf.d.slice(1,8)} d={cf.d} className={cls} style={style}/>;
           })}
         </g>
 

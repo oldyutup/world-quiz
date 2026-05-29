@@ -130,6 +130,60 @@ export function buildConquestChallengeId(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Seeded shuffle — used to randomise quiz choice order per challenge
+//
+// Why seeded:  the shuffle has to be stable per ConquestChallenge instance so
+// every client that deserialises the same gameplay_state row renders the same
+// option order.  Sync isn't broken by Math.random on the host (the result is
+// persisted into challenge.choices), but a seeded shuffle keyed by the id
+// makes the behaviour debuggable and test-friendly (same id → same order,
+// different id → different order).
+//
+// Answer validation never touches indices — `isChallengeAnswerCorrect`
+// compares the raw text against `challenge.acceptedAnswers`, so a shuffled
+// `choices` array is always safe.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** FNV-1a 32-bit hash of a string. */
+function seedFromString(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Mulberry32 PRNG — short, fast, good enough for shuffles. */
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return function () {
+    t = (t + 0x6D2B79F5) | 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Stable Fisher–Yates shuffle.  Same `seed` → same permutation; different
+ * seeds → different permutations (with very high probability for small N).
+ *
+ * Exported for the dev distribution test in scripts/.
+ */
+export function shuffleWithSeed<T>(items: readonly T[], seed: string): T[] {
+  const out = items.slice();
+  const rng = mulberry32(seedFromString(seed));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Factories — one per real challenge family
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -142,14 +196,23 @@ function buildQuizChallenge(
   players:     ConquestPlayer[],
   entry:       QuizBankEntry,
 ): ConquestChallenge {
+  const id = buildConquestChallengeId(roundNumber, "quiz");
+  // Bank entries list the correct answer first by convention.  Shuffle the
+  // visible order per challenge instance so A/B/C/D positions are randomised;
+  // the seed is the challenge id, which is stable in the persisted gameplay
+  // state, so every client renders the same order.  Answer validation runs
+  // against `acceptedAnswers` (see conquestChallengeValidation), never index.
+  const choices = entry.choices && entry.choices.length > 0
+    ? shuffleWithSeed(entry.choices, `${id}|${entry.id}`)
+    : undefined;
   return {
-    id:                buildConquestChallengeId(roundNumber, "quiz"),
+    id,
     type:              "quiz",
     roundNumber,
     title:             "Bilgi Sorusu",
     prompt:            entry.prompt,
     eligiblePlayerIds: eligibleIds(players),
-    choices:           entry.choices,
+    choices,
     acceptedAnswers:   entry.acceptedAnswers,
   };
 }

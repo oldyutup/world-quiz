@@ -78,6 +78,15 @@ import {
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import {
+  DUEL_GROUP_COLORS,
+  DUEL_GROUP_COLOR_LABEL,
+  DUEL_GROUP_COLOR_HEX,
+  DUEL_GROUP_FALLBACK_HEX,
+  hexForDuelGroupColor,
+  resolveDuelGroupColors,
+  type DuelGroupColor,
+} from "../lib/duelGroupColors";
 
 /* ─── Lokal type'lar (lib/supabase.ts'i kirletmemek için) ─── */
 interface GroupRoom {
@@ -99,6 +108,7 @@ interface GroupPlayer {
   joined_at:    string;
   last_seen_at: string;
   status: "waiting" | "playing" | "finished";
+  color_key:    string | null;
 }
 interface GroupClaim {
   id:           number;
@@ -258,6 +268,8 @@ function describeDuelGroupRpcError(err: DuelGroupRpcError | null | undefined): s
   if (m.includes("cannot_kick_self"))         return "Kendini odadan çıkaramazsın.";
   if (m.includes("unauthorized"))             return "Bu işlem için yetkin yok.";
   if (m.includes("room_unavailable"))         return "Oda kullanılamıyor.";
+  if (m.includes("color_taken"))              return "Bu renk başkası tarafından seçilmiş.";
+  if (m.includes("color_invalid"))            return "Geçersiz renk.";
   if (err.code === "42501")                   return "Veritabanı izin hatası.";
   return err.message || "İşlem başarısız.";
 }
@@ -316,6 +328,7 @@ export default function DuelGroupGame({
   const [dggChatOpen, setDggChatOpen] = useState(false);
   const [dggPlayersOpen, setDggPlayersOpen] = useState(false);
   const [newHostNoticeOpen, setNewHostNoticeOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
   /* viewport breakpoint (desktop ≥ 900px) — for end-screen 2-card layout */
   const [isWideViewport, setIsWideViewport] = useState<boolean>(() =>
@@ -413,8 +426,22 @@ useEffect(() => {
     if (phase !== "waiting") {
       setDggChatOpen(false);
       setDggPlayersOpen(false);
+      setColorPickerOpen(false);
     }
   }, [phase]);
+
+  /* renk seçici dışında bir yere tıklanırsa kapansın */
+  useEffect(() => {
+    if (!colorPickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-dgg-color-picker]")) return;
+      setColorPickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [colorPickerOpen]);
 
   /* sync refs */
   phaseRef.current  = phase;
@@ -461,6 +488,25 @@ useEffect(() => {
     () => new Set(claims.filter(c => c.player_id !== myId).map(c => c.country_code)),
     [claims, myId],
   );
+
+  /* renk haritası: her oyuncu → renk anahtarı (resolved + fallback) */
+  const colorByPlayerId = useMemo(
+    () => resolveDuelGroupColors(
+      [...players].sort((a, b) => (a.joined_at ?? "").localeCompare(b.joined_at ?? "")),
+    ),
+    [players],
+  );
+
+  /* harita: ülke kodu → hex renk (claim sahibinin rengi) */
+  const claimColorMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    claims.forEach(c => {
+      const color = colorByPlayerId[c.player_id];
+      m[c.country_code] = color ? DUEL_GROUP_COLOR_HEX[color] : DUEL_GROUP_FALLBACK_HEX;
+    });
+    return m;
+  }, [claims, colorByPlayerId]);
+
 
   const shareLink = room ? `${location.origin}${location.pathname}?duelGroup=${room.code}` : "";
   const timerPct  = gameDuration > 0 ? (timeLeft / gameDuration) * 100 : 0;
@@ -1060,6 +1106,37 @@ if (!code) {
   },
   [room, phase, waitingPlayers.length]
 );
+  /* ── SET PLAYER COLOR (her oyuncu kendi rengini değiştirebilir) ── */
+  const setPlayerColor = useCallback(
+    async (color: DuelGroupColor) => {
+      if (!room || phase !== "waiting") return;
+      if (!myIdRef.current || !claimTokenRef.current) return;
+
+      // Optimistic update — realtime echo kalıcılaştıracak
+      const prevColor = (players.find(p => p.id === myIdRef.current)?.color_key ?? null);
+      setPlayers(prev => prev.map(p =>
+        p.id === myIdRef.current ? { ...p, color_key: color } : p,
+      ));
+
+      const { error } = await supabase.rpc("duel_group_set_player_color", {
+        p_player_id:   myIdRef.current,
+        p_claim_token: claimTokenRef.current,
+        p_color:       color,
+      });
+
+      if (error) {
+        dbgErr("duel_group_set_player_color failed", error);
+        // Rollback optimistic update
+        setPlayers(prev => prev.map(p =>
+          p.id === myIdRef.current ? { ...p, color_key: prevColor } : p,
+        ));
+        setErrorMsg(describeDuelGroupRpcError(error));
+        setTimeout(() => setErrorMsg(null), 2400);
+      }
+    },
+    [room, phase, players],
+  );
+
   /* ── START GAME (sadece host) ── */
   const startGame = async () => {
     if (!room || !isHost) return;
@@ -1446,16 +1523,30 @@ const returnToRoom = useCallback(async () => {
       {phase === "waiting" && room && (() => {
         const canStart = waitingPlayers.length >= MIN_PLAYERS;
         const totalSlots = Math.max(MAX_PLAYERS, waitingPlayers.length);
+        const colorsTakenByOthers = new Set<string>(
+          players
+            .filter(p => p.id !== myId && p.color_key)
+            .map(p => p.color_key as string),
+        );
         const renderPlayerRow = (p: GroupPlayer) => {
           const isMe = p.id === myId;
+          const pColorKey = colorByPlayerId[p.id];
+          const pColorHex = hexForDuelGroupColor(pColorKey);
           return (
             <div
               key={p.id}
               className={"duel-player-chip" + (isMe ? " mine" : "")}
-              style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0, position: "relative" }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                <span className="duel-player-dot" style={{ flexShrink: 0 }} />
+                <span
+                  className="duel-player-dot"
+                  style={{
+                    flexShrink: 0,
+                    background: pColorHex,
+                    boxShadow: `0 0 0 2px ${pColorHex}33`,
+                  }}
+                />
                 <span style={{
                   fontSize: 13, fontWeight: 600, minWidth: 0,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -1465,6 +1556,98 @@ const returnToRoom = useCallback(async () => {
                 {isMe     && <span className="duel-tag"      style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                 {p.is_host && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
               </div>
+              {isMe && (
+                <div data-dgg-color-picker style={{ position: "relative", flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    aria-label="Rengini seç"
+                    title={pColorKey ? `Rengin: ${DUEL_GROUP_COLOR_LABEL[pColorKey]}` : "Rengini seç"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playSound("click");
+                      setColorPickerOpen(v => !v);
+                    }}
+                    style={{
+                      width: 22, height: 22, borderRadius: "50%",
+                      background: pColorHex,
+                      border: "2px solid rgba(255,255,255,0.85)",
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.35)",
+                      cursor: "pointer", padding: 0,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      transition: "transform 120ms ease",
+                    }}
+                  />
+                  {colorPickerOpen && (
+                    <div
+                      role="dialog"
+                      aria-label="Renk paleti"
+                      style={{
+                        position: "absolute", top: "calc(100% + 6px)", right: 0,
+                        zIndex: 30, padding: 10, borderRadius: 12,
+                        background: "rgba(15,18,28,0.96)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        boxShadow: "0 12px 30px rgba(0,0,0,0.55)",
+                        backdropFilter: "blur(10px)",
+                        WebkitBackdropFilter: "blur(10px)",
+                        display: "grid",
+                        gridTemplateColumns: "repeat(5, 22px)",
+                        gap: 8,
+                        minWidth: 158,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {DUEL_GROUP_COLORS.map(c => {
+                        const hex = DUEL_GROUP_COLOR_HEX[c];
+                        const taken = c !== pColorKey && colorsTakenByOthers.has(c);
+                        const selected = c === pColorKey;
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            disabled={taken}
+                            aria-label={DUEL_GROUP_COLOR_LABEL[c]}
+                            title={taken
+                              ? `${DUEL_GROUP_COLOR_LABEL[c]} (alındı)`
+                              : DUEL_GROUP_COLOR_LABEL[c]}
+                            onClick={() => {
+                              if (taken || selected) {
+                                if (selected) setColorPickerOpen(false);
+                                return;
+                              }
+                              setPlayerColor(c);
+                              setColorPickerOpen(false);
+                            }}
+                            style={{
+                              width: 22, height: 22, borderRadius: "50%",
+                              background: hex,
+                              border: selected
+                                ? "2px solid #fff"
+                                : "2px solid rgba(255,255,255,0.25)",
+                              boxShadow: selected
+                                ? `0 0 0 2px ${hex}, 0 0 0 3px rgba(255,255,255,0.6)`
+                                : "0 1px 2px rgba(0,0,0,0.4)",
+                              cursor: taken ? "not-allowed" : "pointer",
+                              opacity: taken ? 0.28 : 1,
+                              padding: 0,
+                              position: "relative",
+                              transition: "transform 120ms ease",
+                            }}
+                          >
+                            {selected && (
+                              <span style={{
+                                position: "absolute", inset: 0,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                color: "#fff", fontSize: 11, fontWeight: 900,
+                                textShadow: "0 1px 2px rgba(0,0,0,0.7)",
+                              }}>✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {isHost && !p.is_host && p.id !== myId && (
                 <button
                   type="button"
@@ -1782,20 +1965,27 @@ const returnToRoom = useCallback(async () => {
 
           {/* Live leaderboard */}
           <div className="dgg-leaderboard">
-            {leaderboard.map((entry, idx) => (
-              <div
-                key={entry.playerId}
-                className={"dgg-lb-row" + (entry.isMe ? " mine" : "")}
-              >
-                <span className="dgg-lb-rank">#{idx + 1}</span>
-                <span className="dgg-lb-name">
-                  {entry.name}
-                  {entry.isHost && <span className="dgg-lb-host"> 👑</span>}
-                  {entry.isMe   && <span className="dgg-lb-you"> (Sen)</span>}
-                </span>
-                <span className="dgg-lb-score">{entry.score}</span>
-              </div>
-            ))}
+            {leaderboard.map((entry, idx) => {
+              const colorHex = hexForDuelGroupColor(colorByPlayerId[entry.playerId]);
+              return (
+                <div
+                  key={entry.playerId}
+                  className={"dgg-lb-row" + (entry.isMe ? " mine" : "")}
+                >
+                  <span className="dgg-lb-rank">#{idx + 1}</span>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: "50%", background: colorHex,
+                    flexShrink: 0, boxShadow: `0 0 0 1px ${colorHex}55`,
+                  }} />
+                  <span className="dgg-lb-name">
+                    {entry.name}
+                    {entry.isHost && <span className="dgg-lb-host"> 👑</span>}
+                    {entry.isMe   && <span className="dgg-lb-you"> (Sen)</span>}
+                  </span>
+                  <span className="dgg-lb-score">{entry.score}</span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Map */}
@@ -1806,6 +1996,7 @@ const returnToRoom = useCallback(async () => {
               showLabels={showLabels}
               region={denormalizeRegion(gameRegion)}
               activeIds={allowedIds ?? undefined}
+              claimColors={claimColorMap}
             />
           </div>
 
@@ -2098,6 +2289,7 @@ const returnToRoom = useCallback(async () => {
                     {podium.map((entry, idx) => {
                       const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
                       const isMe = entry.playerId === myIdRef.current;
+                      const colorHex = hexForDuelGroupColor(colorByPlayerId[entry.playerId]);
                       return (
                         <div
                           key={entry.playerId}
@@ -2108,6 +2300,11 @@ const returnToRoom = useCallback(async () => {
                           }
                         >
                           <span className="dgg-final-rank">{medal}</span>
+                          <span style={{
+                            width: 9, height: 9, borderRadius: "50%", background: colorHex,
+                            flexShrink: 0, boxShadow: `0 0 0 1px ${colorHex}55`,
+                            display: "inline-block",
+                          }} />
                           <span className="dgg-final-name">
                             {entry.name}
                             {isMe && <span className="dgg-lb-you"> (Sen)</span>}
