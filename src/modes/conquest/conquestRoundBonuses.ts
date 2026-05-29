@@ -30,6 +30,7 @@
  * the same bonus map when reading the same snapshot.
  */
 
+import { BONUS_POOL } from "./bonusPool";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
 import { REGION_BONUSES } from "./regionBonuses";
 import type {
@@ -48,24 +49,40 @@ import type {
 export type { ConquestRegionBonusDef } from "./types";
 
 /** Bonus types eligible for rotation.  Order is the canonical catalog;
- *  per-round randomisation shuffles before assigning. */
+ *  per-round randomisation shuffles before assigning.
+ *
+ *  `eleme_yetkisi` is the first pool-driven bonus to graduate into the
+ *  rotation.  The rest of the bonus pool stays `implemented:false` and is
+ *  excluded — see bonusPool.ts.  The per-match bonus count is still decided
+ *  by `pickBonusCountForRound(regionCount)`, so adding a fifth type doesn't
+ *  change how many bonus regions appear; it just widens the draw set. */
 const ROTATING_BONUS_TYPES: ConquestRegionBonusType[] = [
   "istanbul_defense",
   "ankara_hidden_shield",
   "cukurova_score",
   "karadeniz_extra_time",
+  "eleme_yetkisi",
 ];
 
 /** Static bonus-type metadata (icon/label/description), reused so the UI
- *  surfaces don't lose the existing copy when a bonus moves region. */
+ *  surfaces don't lose the existing copy when a bonus moves region.
+ *
+ *  Seeded from BONUS_POOL first (so pool-resident types like eleme_yetkisi
+ *  get their canonical icon/label/description) and then overwritten by
+ *  REGION_BONUSES for the legacy region-tied entries so existing copy stays
+ *  byte-identical for istanbul/ankara/çukurova/karadeniz. */
 const BONUS_TYPE_META: Record<
   ConquestRegionBonusType,
   { icon: string; label: string; description: string }
 > = (() => {
-  // Seed from the original four definitions so future bonus types only need
-  // a single entry here.  Anything not in the canonical table falls back to a
-  // generic icon at runtime.
   const out: Record<string, { icon: string; label: string; description: string }> = {};
+  for (const entry of BONUS_POOL) {
+    out[entry.type] = {
+      icon:        entry.icon,
+      label:       entry.label,
+      description: entry.description,
+    };
+  }
   for (const def of Object.values(REGION_BONUSES)) {
     out[def.type] = {
       icon:        def.icon,

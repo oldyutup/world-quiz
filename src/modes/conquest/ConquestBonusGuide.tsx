@@ -37,6 +37,8 @@ const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
     "Bu bölgeyi maçta ilk fetheden oyuncuya tek seferlik +1 puan verilir.",
   karadeniz_extra_time:
     "Fetheden oyuncunun sıradaki hamle süresine +5 saniye eklenir (tek kullanım).",
+  eleme_yetkisi:
+    "Sonraki test sorunda 1 yanlış şık silinir.",
 };
 
 export interface ConquestBonusGuideEntry {

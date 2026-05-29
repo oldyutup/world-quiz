@@ -11342,6 +11342,33 @@ body {
   background: rgba(168, 85, 247, 0.18);
   box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.35) inset;
 }
+/* Eleme Yetkisi — local-viewer-only: a single wrong choice rendered as
+ * struck through and unclickable.  Pure visual; the button is also
+ * `disabled` so clicks/keyboard activation are blocked.  Bonus-owner
+ * sees this; other clients see the choice grid unchanged. */
+.cq-challenge-choice-btn[data-eliminated="true"] {
+  opacity: 0.35;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(248, 113, 113, 0.85);
+  cursor: not-allowed;
+  background: rgba(248, 113, 113, 0.04);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+.cq-challenge-eliminator-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  margin: 0 0 6px;
+  border-radius: 999px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.40);
+  color: #d8b4fe;
+  letter-spacing: 0.02em;
+}
 
 .cq-challenge-feedback {
   margin: 4px 0 0;

@@ -289,6 +289,14 @@ export interface ConquestPlayerBonusState {
   extraNextMoveMs:     number;
   cukurovaClaimed:     boolean;
   bonusPoints:         number;
+  /**
+   * Eleme Yetkisi 🃏 — number of pending wrong-choice eliminations.  Granted
+   * by capturing an eleme_yetkisi bonus region (overwrite-not-stack: max 1).
+   * Consumed on the next *multiple-choice* challenge submission only — flag/
+   * type-write challenges leave the charge intact for later use.  Optional
+   * for back-compat with pre-eliminator saves; readers default to 0.
+   */
+  eliminatorCharges?:  number;
 }
 
 /**

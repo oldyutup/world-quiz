@@ -28,6 +28,7 @@ import type {
   ConquestRegionBonusType,
   ConquestRegionId,
 } from "./types";
+import { BONUS_POOL } from "./bonusPool";
 
 export type { ConquestRegionBonusDef } from "./types";
 
@@ -227,12 +228,20 @@ export function getRegionBonus(
  * player-bonus-chip rows in ConquestGame and MobileScoreStrip, whose chips
  * are tied to bonus *types* the player has accumulated (e.g. extraNextMoveMs
  * + Karadeniz icon), independent of which region carried the type this round.
+ *
+ * Seeded from REGION_BONUSES first (legacy region-tied entries: istanbul,
+ * ankara, çukurova, karadeniz) and then filled in from BONUS_POOL for any
+ * pool-resident type not yet covered (e.g. eleme_yetkisi).  REGION_BONUSES
+ * wins on overlap so legacy region-flavoured labels stay verbatim.
  */
 export const BONUS_TYPE_PRESENTATION: Record<
   ConquestRegionBonusType,
   { icon: string; label: string }
 > = (() => {
   const out: Record<string, { icon: string; label: string }> = {};
+  for (const entry of BONUS_POOL) {
+    out[entry.type] = { icon: entry.icon, label: entry.label };
+  }
   for (const def of Object.values(REGION_BONUSES)) {
     out[def.type] = { icon: def.icon, label: def.label };
   }
@@ -251,6 +260,7 @@ export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
     extraNextMoveMs:     0,
     cukurovaClaimed:     false,
     bonusPoints:         0,
+    eliminatorCharges:   0,
   };
 }
 
@@ -332,5 +342,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "⛰️",
     title:  "Doğu Karadeniz Bonusu",
     detail: "Sıradaki hamlene +5 saniye.",
+  },
+  eleme_yetkisi: {
+    icon:   "🃏",
+    title:  "Eleme Yetkisi Bonusu",
+    detail: "Sonraki test sorunda 1 yanlış şık silinir.",
   },
 };

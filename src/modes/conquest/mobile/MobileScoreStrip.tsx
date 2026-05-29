@@ -63,9 +63,10 @@ function buildBonusChips(
   // dynamic round assignment may move bonuses between tiles but the
   // accumulated player buff (open shield / time bonus / hidden op) keeps
   // its identity.
-  const istanbulPres  = getBonusTypePresentation("istanbul_defense");
-  const karadenizPres = getBonusTypePresentation("karadeniz_extra_time");
-  const ankaraPres    = getBonusTypePresentation("ankara_hidden_shield");
+  const istanbulPres   = getBonusTypePresentation("istanbul_defense");
+  const karadenizPres  = getBonusTypePresentation("karadeniz_extra_time");
+  const ankaraPres     = getBonusTypePresentation("ankara_hidden_shield");
+  const eliminatorPres = getBonusTypePresentation("eleme_yetkisi");
   if (openShieldOwners.has(player.id)) {
     chips.push({
       key:   "ist",
@@ -92,6 +93,13 @@ function buildBonusChips(
       key:   "ank-active",
       icon:  "🕶️",
       title: "Gizli Operasyon aktif",
+    });
+  }
+  if (isMe && (bonus.eliminatorCharges ?? 0) > 0) {
+    chips.push({
+      key:   "elem",
+      icon:  eliminatorPres.icon,
+      title: "Eleme Yetkisi hazır",
     });
   }
   return chips;

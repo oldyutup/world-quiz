@@ -42,6 +42,16 @@ interface Props {
   msRemaining:     number;
   /** Fired with the raw text the user typed/clicked.  Parent validates. */
   onSubmitAnswer:  (rawAnswer: string) => void;
+  /**
+   * Eleme Yetkisi bonus — exact choice string to render as struck-through
+   * and disabled for the *local* viewer only.  Parent computes this
+   * deterministically (seeded by challengeId + viewerId) and snapshots it
+   * for the challenge's lifetime so the option stays eliminated even after
+   * the synced charge is consumed.  Null/undefined → no elimination.
+   * Always falls within `challenge.choices` and is guaranteed by the
+   * parent to NOT match the correct answer.
+   */
+  eliminatedChoice?: string | null;
 }
 
 export default function ConquestChallengePanel({
@@ -52,6 +62,7 @@ export default function ConquestChallengePanel({
   alreadyAnswered,
   msRemaining,
   onSubmitAnswer,
+  eliminatedChoice,
 }: Props) {
   const { challenge, status, winnerPlayerId, endsAt, startedAt } = challengeState;
   const meta     = CONQUEST_CHALLENGE_META[challenge.type];
@@ -157,6 +168,20 @@ export default function ConquestChallengePanel({
         </div>
       )}
 
+      {/* Eleme Yetkisi — owner-only chip announcing the eliminated choice.
+       *  Rendered above the choice grid so the player sees the cause of
+       *  the struck-through option without colour-coding by correctness. */}
+      {isActive && showChoices && eliminatedChoice && (
+        <p
+          className="cq-challenge-eliminator-chip"
+          role="status"
+          aria-label="Eleme Yetkisi: bir yanlış şık silindi"
+        >
+          <span aria-hidden="true">🃏</span>
+          <span>1 yanlış şık elendi</span>
+        </p>
+      )}
+
       {/* Quiz with choices → button grid */}
       {isActive && showChoices && (
         <div
@@ -165,15 +190,18 @@ export default function ConquestChallengePanel({
           aria-label="Cevap seçenekleri"
         >
           {challenge.choices!.map(choice => {
-            const isPicked = pickedChoice === choice;
+            const isPicked     = pickedChoice === choice;
+            const isEliminated = eliminatedChoice === choice;
             return (
               <button
                 key={choice}
                 type="button"
                 className="cq-challenge-choice-btn"
                 data-picked={isPicked ? "true" : undefined}
+                data-eliminated={isEliminated ? "true" : undefined}
                 aria-pressed={isPicked || undefined}
-                disabled={!canSubmit}
+                aria-disabled={isEliminated || undefined}
+                disabled={!canSubmit || isEliminated}
                 onClick={() => handleChoice(choice)}
               >
                 {choice}

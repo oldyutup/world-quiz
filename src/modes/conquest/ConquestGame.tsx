@@ -41,6 +41,7 @@ import {
 import {
   mapIcon,
   type ConquestActionResult,
+  type ConquestChallenge,
   type ConquestGameState,
   type ConquestPendingAction,
   type ConquestPlayer,
@@ -178,6 +179,59 @@ function getRoundResultCardData(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Eleme Yetkisi — local elimination helper
+//
+// Pure, deterministic, and viewer-local.  Given a challenge + viewer id,
+// returns the exact `choices` string to render as struck-through.  Seeding
+// by `challengeId + viewerId` keeps the choice stable across refreshes
+// (same viewer always sees the same option eliminated) without leaking to
+// other clients (each viewer's seed is unique).  Only one player holds the
+// charge per match (the bonus is grant-on-capture, max 1 stack), so the
+// "leak between viewers" surface is theoretical — but the seed shape is
+// already future-safe.
+//
+// Correctness is enforced via the challenge's `acceptedAnswers` list — the
+// same path used by `isChallengeAnswerCorrect`.  Any choice whose
+// normalised form matches an accepted answer is excluded from the wrong
+// pool, so the correct option is guaranteed to never be eliminated.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function djb2Hash(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h * 33) + s.charCodeAt(i)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function eliminatorRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return function () {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickEliminatedWrongChoice(
+  challenge: ConquestChallenge,
+  viewerId:  string,
+): string | null {
+  const choices = challenge.choices ?? [];
+  if (choices.length === 0) return null;
+  const accepted = (challenge.acceptedAnswers ?? []).map(normaliseAnswer);
+  if (accepted.length === 0) return null;
+  const wrongChoices = choices.filter(
+    c => !accepted.includes(normaliseAnswer(c)),
+  );
+  if (wrongChoices.length === 0) return null;
+  const rng = eliminatorRng(djb2Hash(`${challenge.id}:${viewerId}`));
+  return wrongChoices[Math.floor(rng() * wrongChoices.length)];
+}
+
 export default function ConquestGame({
   roomCode: _roomCode,
   settings,
@@ -251,6 +305,19 @@ export default function ConquestGame({
     setAnsweredChallengeId(null);
     setLocalFeedback(null);
   }, [challengeId]);
+
+  // Eleme Yetkisi — latched per-challenge eliminated choice for the local
+  // viewer.  The ref is the source of truth so the eliminated option stays
+  // visually struck through for the full challenge lifetime, even after
+  // `submitChallengeAnswer` decrements the synced `eliminatorCharges` to 0.
+  // We decide on the first render of each new challenge id (read charges
+  // from the synced state at that moment); subsequent renders read the
+  // latch.  Idempotent ref-during-render — same challenge id always yields
+  // the same outcome.
+  const eliminationLatchRef = useRef<{
+    challengeId:      string;
+    eliminatedChoice: string | null;
+  } | null>(null);
 
   // ── Duel-local state (per-duel, NOT synced) ──────────────────────────
   // Mirrors the challenge-local "already answered" flag: a wrong submission
@@ -1140,6 +1207,35 @@ export default function ConquestGame({
   const challengeState = gameState.round.challenge;
   const lastResult     = gameState.round.lastResult;
   const rrcData        = getRoundResultCardData(lastResult);
+
+  // Eleme Yetkisi — decide once per challenge whether to render an
+  // elimination for the local viewer, then latch the answer.  Decision
+  // gates: (1) phase is the normal challenge phase (defense duels route
+  // through a separate panel and intentionally don't get the bonus), (2)
+  // the challenge has multiple-choice options, (3) the local viewer is
+  // eligible to answer, and (4) the viewer holds at least one eliminator
+  // charge at the moment the challenge first renders here.  Once latched,
+  // the eliminated choice stays stable for the rest of this challenge's
+  // lifetime so consumption via `submitChallengeAnswer` (charges → 0)
+  // doesn't make the struck-through option pop back as plain disabled.
+  let localEliminatedChoice: string | null = null;
+  if (phase === "challenge" && myPlayerId) {
+    const cid = challengeState.challenge.id;
+    const latch = eliminationLatchRef.current;
+    if (latch && latch.challengeId === cid) {
+      localEliminatedChoice = latch.eliminatedChoice;
+    } else {
+      const ch          = challengeState.challenge;
+      const hasChoices  = !!ch.choices && ch.choices.length > 0;
+      const eligible    = ch.eligiblePlayerIds.includes(myPlayerId);
+      const chargesNow  = playerBonuses?.[myPlayerId]?.eliminatorCharges ?? 0;
+      const chosen      = (hasChoices && eligible && chargesNow > 0)
+        ? pickEliminatedWrongChoice(ch, myPlayerId)
+        : null;
+      eliminationLatchRef.current = { challengeId: cid, eliminatedChoice: chosen };
+      localEliminatedChoice = chosen;
+    }
+  }
 
   const boardDisabled = phase !== "action";
 
@@ -2051,6 +2147,7 @@ export default function ConquestGame({
           }
           msRemaining={Math.max(0, challengeState.endsAt - now)}
           onSubmitAnswer={handleSubmitAnswer}
+          eliminatedChoice={localEliminatedChoice}
         />
       )}
 
@@ -2529,9 +2626,10 @@ export default function ConquestGame({
           // Icons follow the bonus *type*, not a fixed region — the type is
           // canonical (open shield / time bonus / hidden op), even when the
           // round assignment shifts which region carries it.
-          const istanbulPres  = getBonusTypePresentation("istanbul_defense");
-          const karadenizPres = getBonusTypePresentation("karadeniz_extra_time");
-          const ankaraPres    = getBonusTypePresentation("ankara_hidden_shield");
+          const istanbulPres   = getBonusTypePresentation("istanbul_defense");
+          const karadenizPres  = getBonusTypePresentation("karadeniz_extra_time");
+          const ankaraPres     = getBonusTypePresentation("ankara_hidden_shield");
+          const eliminatorPres = getBonusTypePresentation("eleme_yetkisi");
           if (openShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ist", icon: istanbulPres.icon, title: "Açık kalkan aktif" });
           }
@@ -2543,6 +2641,13 @@ export default function ConquestGame({
           }
           if (isMe && hiddenShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ank-active", icon: "🕶️", title: "Gizli Operasyon aktif (rakipler bu bölgeden habersiz)" });
+          }
+          if (isMe && (pb.eliminatorCharges ?? 0) > 0) {
+            bonusChips.push({
+              key:   "elem",
+              icon:  eliminatorPres.icon,
+              title: "Eleme Yetkisi hazır: sonraki test sorunda 1 yanlış şık silinir",
+            });
           }
 
           return (

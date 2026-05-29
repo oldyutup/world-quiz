@@ -373,11 +373,35 @@ export function submitChallengeAnswer(
     answeredPlayerIds,
   };
 
+  // Eleme Yetkisi consumption.  The bonus only applies to multiple-choice
+  // challenges (those with a non-empty `choices` array); flag-guess and
+  // type-race challenges leave the charge intact for a later MC question.
+  // We consume on submission — any answer (correct or wrong) counts as a
+  // formal use of the eliminated-option help.  Timeouts preserve the
+  // charge by design (no submit = no benefit committed).  Defense duels
+  // never reach this path (they route through `submitDuelAnswer`), so the
+  // charge survives a duel turn too.
+  const submitterPb     = state.playerBonuses?.[submitterId];
+  const consumeOnSubmit =
+    !!challenge.choices
+    && challenge.choices.length > 0
+    && (submitterPb?.eliminatorCharges ?? 0) > 0;
+  const playerBonusesAfter = consumeOnSubmit
+    ? {
+        ...(state.playerBonuses ?? {}),
+        [submitterId]: {
+          ...(submitterPb ?? createEmptyPlayerBonusState()),
+          eliminatorCharges: 0,
+        },
+      }
+    : state.playerBonuses;
+
   if (!correct) {
     // Wrong answer: record participation only.  Push lets the host see
     // every active player has weighed in, enabling early reveal.
     const next: ConquestGameState = {
       ...state,
+      playerBonuses: playerBonusesAfter,
       round: {
         ...state.round,
         challenge: baseChallengeUpdate,
@@ -392,6 +416,7 @@ export function submitChallengeAnswer(
   if (state.round.challenge.firstCorrectPlayerId) {
     const next: ConquestGameState = {
       ...state,
+      playerBonuses: playerBonusesAfter,
       round: {
         ...state.round,
         challenge: baseChallengeUpdate,
@@ -415,6 +440,7 @@ export function submitChallengeAnswer(
   // client gets to attempt the question.
   const next: ConquestGameState = {
     ...state,
+    playerBonuses: playerBonusesAfter,
     round: {
       ...state.round,
       challenge: {
@@ -631,6 +657,13 @@ function triggerCaptureBonus(
             : rs,
         );
         toast = buildBonusToast("istanbul_defense", capturedRegionId, ownerId, ownerName, now);
+        break;
+      case "eleme_yetkisi":
+        // Overwrite-not-stack: cap at 1 pending elimination.  Consumed on
+        // the owner's next multiple-choice challenge submission only (see
+        // submitChallengeAnswer); non-MC challenges leave the charge intact.
+        pb.eliminatorCharges = 1;
+        toast = buildBonusToast("eleme_yetkisi", capturedRegionId, ownerId, ownerName, now);
         break;
     }
   }

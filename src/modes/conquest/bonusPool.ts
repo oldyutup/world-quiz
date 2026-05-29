@@ -126,8 +126,8 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     category:    "bilgi",
     icon:        "🃏",
     label:       "Eleme Yetkisi",
-    description: "Soruda seçenek elemenize izin veren bir bonus.",
-    implemented: false,
+    description: "Sonraki test sorunda 1 yanlış şık silinir.",
+    implemented: true,
   },
   {
     type:        "kahin",
