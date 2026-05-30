@@ -304,6 +304,43 @@ export function pickRandomConquestChallenge(
 }
 
 /**
+ * Single source of truth for the short Turkish question-type label used by
+ * the Kâhin Büyüsü 🔮 preview (and any other surface that needs to describe
+ * an upcoming question without leaking its content).
+ *
+ * The label is derived strictly from the supplied `ConquestChallenge`
+ * object — the same object that is actually mounted on screen.  This
+ * guarantees the preview can never disagree with the question the player
+ * sees: caller passes `gameState.round.challenge.challenge` (the active
+ * round's challenge), so the preview reflects the current round, not the
+ * pre-picked one-ahead `nextChallenge`.
+ *
+ * No prompt, answer, or option content is returned — only the type label.
+ * If a quiz entry later grows a `category` field, callers can compose
+ * "Test — <category>" externally; this helper stays purely type-driven so
+ * one bug fix covers every callsite.
+ *
+ *   "quiz"       → "Test"
+ *   "flag_guess" → "Bayrak"
+ *   "type_race"  → "Ülke İsmi Yazma"
+ *   anything else → the type's canonical label from CONQUEST_CHALLENGE_META
+ */
+export function getQuestionPreviewLabel(challenge: ConquestChallenge): string {
+  switch (challenge.type) {
+    case "quiz":       return "Test";
+    case "flag_guess": return "Bayrak";
+    case "type_race":  return "Ülke İsmi Yazma";
+    default:           return CONQUEST_CHALLENGE_META[challenge.type]?.label ?? "Mücadele";
+  }
+}
+
+/**
+ * @deprecated Use {@link getQuestionPreviewLabel} — kept as a thin alias so
+ * no caller can accidentally hand-roll a "predicted type" string elsewhere.
+ */
+export const buildKahinPreviewLabel = getQuestionPreviewLabel;
+
+/**
  * Legacy placeholder challenge — retained for any future debug surface.
  * Not used by the live loop as of Phase 9A.
  */

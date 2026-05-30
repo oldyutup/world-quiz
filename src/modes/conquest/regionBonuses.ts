@@ -17,7 +17,12 @@
  *     Two flavours: kind="shield" (cloak on own region) or kind="conquest"
  *     (gizli fetih on a neutral region; ownership flips for real but is
  *     masked from opponents until the first attack triggers a reveal).
- *   - Çukurova's +1 score is one-shot per match (cukurovaClaimed flag).
+ *   - Bereketli Ova (cukurova_score) pays the new owner +2 bonus points on
+ *     every capture and a one-shot +4 harvest payout the first time the same
+ *     owner has held the region for 3 round-ends in a row.  The held-tenure
+ *     counter (`bereketHarvestTurns`) is parked at the interval value after
+ *     the harvest fires and resets to 0 on every ownership change, so a long
+ *     uninterrupted tenure pays the +4 exactly once.
  *   - Doğu Karadeniz adds +5s to the bonused player's *next* move phase only.
  */
 
@@ -70,17 +75,23 @@ export function getBonusToastCopyForViewer(
   }
 
   if (toast.bonusType === "cukurova_score") {
+    // Harvest-flavour toast (id prefix `bereket_harvest-`) carries its own
+    // owner-specific copy already; pass it through verbatim so every viewer
+    // reads the same "Hasat" line and points value.
+    if (toast.id.startsWith("bereket_harvest-")) {
+      return { icon: toast.icon, title: toast.title, detail: toast.detail };
+    }
     if (isOwner) {
       return {
         icon:   "🌾",
         title:  `${where} Bonusu`,
-        detail: "🌾 Bereket bonusu! +1 bonus puan kazandın.",
+        detail: "🌾 Bereketli Ova fethedildi: +2 bonus puan kazandın. 3 tur elinde tutarsan bir kereye mahsus +4 puanlık hasat bonusu alırsın.",
       };
     }
     return {
       icon:   "🌾",
       title:  `${where} Ele Geçirildi`,
-      detail: `🌾 Rakip ${where}'dan güç topluyor! +1 bonus puan aldı — bu bölgeyi geri almak oyunu dengeleyebilir.`,
+      detail: `🌾 Rakip ${where}'dan +2 bonus puan aldı. 3 tur boyunca elinde tutarsa bir kereye mahsus +4 hasat bonusu kazanır — geri almak dengeleyebilir.`,
     };
   }
 
@@ -156,6 +167,21 @@ export function getBonusToastCopyForViewer(
       icon:   "⚓",
       title:  `${where} Ele Geçirildi`,
       detail: `⚓ Rakip Liman'ı eline geçirdi. Her tur sonunda gelir kazanacak — geri almak ekonomiyi dengeler.`,
+    };
+  }
+
+  if (toast.bonusType === "kahin") {
+    if (isOwner) {
+      return {
+        icon:   "🔮",
+        title:  `${where} Bonusu`,
+        detail: "🔮 Kâhin Büyüsü sende! Sıradaki sorunun türünü önceden görüyorsun. Bölgeyi elinde tuttuğun sürece görü devam eder.",
+      };
+    }
+    return {
+      icon:   "🔮",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🔮 Rakip Kâhin Büyüsü'nü eline geçirdi. Sıradaki soruların türünü önden görüyor — bölgeyi geri almak bilgi avantajını sıfırlar.`,
     };
   }
 
@@ -282,7 +308,7 @@ export const REGION_BONUSES: Record<string, ConquestRegionBonusDef> = {
     type:        "cukurova_score",
     icon:        "🌾",
     label:       "Bereketli Ova",
-    description: "Çukurova’yı maçta ilk fetheden oyuncuya tek seferlik +1 puan.",
+    description: "Bu bölgeyi fetheden oyuncuya anında +2 bonus puan. Aynı oyuncu 3 tur boyunca elinde tutarsa bir kereye mahsus +4 puanlık hasat bonusu kazanır; aynı sahipte kaldıkça tekrar hasat verilmez. Bölge el değiştirince sayaç sıfırlanır.",
   },
   dogu_karadeniz: {
     regionId:    "dogu_karadeniz",
@@ -476,8 +502,8 @@ const BONUS_TOAST_COPY: Partial<Record<
   },
   cukurova_score: {
     icon:   "🌾",
-    title:  "Çukurova Bonusu",
-    detail: "+1 puan kazandın.",
+    title:  "Bereketli Ova Bonusu",
+    detail: "+2 puan kazandın. 3 tur elinde tutarsan bir kereye mahsus +4 puanlık hasat bonusu alırsın.",
   },
   karadeniz_extra_time: {
     icon:   "⛰️",
@@ -503,5 +529,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "⚓",
     title:  "Liman Bonusu",
     detail: "Her tur sonunda +1 puan ve +5 Gold (en fazla 10 kez).",
+  },
+  kahin: {
+    icon:   "🔮",
+    title:  "Kâhin Büyüsü Bonusu",
+    detail: "Sıradaki sorunun türünü önceden görürsün.",
   },
 };

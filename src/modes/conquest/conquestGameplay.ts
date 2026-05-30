@@ -211,6 +211,19 @@ export function createInitialConquestGameState(
     lastResult:     null,
   };
 
+  // Kâhin Büyüsü 🔮 — pre-pick the round-2 challenge so the Kâhin region's
+  // owner can peek at the upcoming question's type during round 1.  Skipped
+  // when the match is only 1 round long (no future round to preview).
+  let nextChallenge: ConquestGameState["nextChallenge"];
+  let usedChallengeKeys = [bankId];
+  if (safeRounds >= 2) {
+    const next = pickRandomConquestChallenge(
+      2, players, usedChallengeKeys, challenge.type as ConquestChallengeType,
+    );
+    nextChallenge = { challenge: next.challenge, bankId: next.bankId };
+    usedChallengeKeys = [...usedChallengeKeys, next.bankId];
+  }
+
   return {
     mapId:              mapConfig.id,
     players,
@@ -220,11 +233,12 @@ export function createInitialConquestGameState(
     history:            [],
     startedAt:          now,
     finishedAt:         null,
-    usedChallengeKeys:  [bankId],
+    usedChallengeKeys,
     lastChallengeType:  challenge.type as ConquestChallengeType,
     playerBonuses,
     gameIntroEndsAt,
     roundBonuses,
+    nextChallenge,
   };
 }
 
@@ -643,11 +657,15 @@ function triggerCaptureBonus(
         toast = buildBonusToast("karadeniz_extra_time", capturedRegionId, ownerId, ownerName, now);
         break;
       case "cukurova_score":
-        if (!pb.cukurovaClaimed) {
-          pb.bonusPoints     = pb.bonusPoints + 1;
-          pb.cukurovaClaimed = true;
-          toast = buildBonusToast("cukurova_score", capturedRegionId, ownerId, ownerName, now);
-        }
+        // Bereketli Ova 🌾 — every capture of the bereket region pays the
+        // new owner +BEREKET_CAPTURE_POINTS on top of the region's own
+        // points.  The harvest counter is reset to 0 by the flipOwnership
+        // path (see conquestActions.ts) so the new owner has to hold the
+        // region for BEREKET_HARVEST_INTERVAL rounds before the next +4
+        // harvest fires.  The legacy `cukurovaClaimed` flag is left
+        // untouched here — it's no longer consulted for gating.
+        pb.bonusPoints = pb.bonusPoints + BEREKET_CAPTURE_POINTS;
+        toast = buildBonusToast("cukurova_score", capturedRegionId, ownerId, ownerName, now);
         break;
       case "istanbul_defense":
         // Auto-stamp the open shield onto whichever region carries the
@@ -1371,6 +1389,8 @@ export function placeHiddenConquestOnNeutralRegion(
         shielded:            false,
         /* Liman ⚓ counter reset on ownership change — same as flipOwnership. */
         limanIncomeTicks:    0,
+        /* Bereketli Ova 🌾 counter reset on ownership change — same as flipOwnership. */
+        bereketHarvestTurns: 0,
         hiddenShieldOwnerId: playerId,
         hiddenShieldKind:    "conquest" as const,
       };
@@ -1864,47 +1884,176 @@ export function advanceToNextRound(
   // is part of the round-end resolution; the next-round mount is purely a
   // setup step that should never absorb the payout.
   const limanApplied = applyLimanRoundIncome(state);
+  // Bereketli Ova 🌾 — tick the held-tenure harvest counter on the bereket
+  // region's owner.  Layered after Liman so a harvest toast (which is more
+  // headline-worthy) wins the `lastBonusToast` slot when both fire in the
+  // same round-end.
+  const bereketApplied = applyBereketRoundHarvest(limanApplied);
 
-  const isLast = limanApplied.round.roundNumber >= limanApplied.round.totalRounds;
+  const isLast = bereketApplied.round.roundNumber >= bereketApplied.round.totalRounds;
   if (isLast) {
     return {
-      ...limanApplied,
+      ...bereketApplied,
       phase:      "finished",
       finishedAt: Date.now(),
     };
   }
 
-  const nextRoundNumber = limanApplied.round.roundNumber + 1;
-  const usedSoFar  = limanApplied.usedChallengeKeys ?? [];
-  const lastType   = limanApplied.lastChallengeType;
-  const { challenge, bankId } = pickRandomConquestChallenge(
-    nextRoundNumber,
-    limanApplied.players,
-    usedSoFar,
-    lastType,
-  );
+  const nextRoundNumber = bereketApplied.round.roundNumber + 1;
+  const usedSoFar  = bereketApplied.usedChallengeKeys ?? [];
+  const lastType   = bereketApplied.lastChallengeType;
+  // Kâhin Büyüsü 🔮 — consume the pre-picked next challenge when present
+  // (so the round actually delivers the question type Kâhin previewed).
+  // Falls back to picking fresh for legacy saves with no `nextChallenge`.
+  const { challenge, bankId } = bereketApplied.nextChallenge
+    ? bereketApplied.nextChallenge
+    : pickRandomConquestChallenge(
+        nextRoundNumber,
+        bereketApplied.players,
+        usedSoFar,
+        lastType,
+      );
   const now = Date.now();
 
+  // Refresh the Kâhin preview for the round AFTER the one we're about to
+  // mount, unless this transition completes the match.  Skipped when the
+  // next round is the last — there's no future round to peek at.
+  const totalRounds = bereketApplied.round.totalRounds;
+  const usedAfterMount = bereketApplied.nextChallenge
+    ? usedSoFar  // already includes bankId from the pre-pick
+    : [...usedSoFar, bankId];
+  let nextChallenge: ConquestGameState["nextChallenge"];
+  if (nextRoundNumber < totalRounds) {
+    const peek = pickRandomConquestChallenge(
+      nextRoundNumber + 1,
+      bereketApplied.players,
+      usedAfterMount,
+      challenge.type as ConquestChallengeType,
+    );
+    nextChallenge = { challenge: peek.challenge, bankId: peek.bankId };
+  }
+  const finalUsedKeys = nextChallenge
+    ? [...usedAfterMount, nextChallenge.bankId]
+    : usedAfterMount;
+
+  // Preserve the round-end income / harvest toast so the next round still
+  // renders it once on every client before the challenge mounts.  Both
+  // Liman ⚓ income and Bereketli Ova 🌾 harvest qualify; everything else is
+  // cleared so stale capture toasts don't echo on late joiners.
+  const pendingToast      = bereketApplied.lastBonusToast;
+  const carryToastForward =
+    !!pendingToast && (
+      (pendingToast.bonusType === "liman"          && pendingToast.id.startsWith("liman_income-")) ||
+      (pendingToast.bonusType === "cukurova_score" && pendingToast.id.startsWith("bereket_harvest-"))
+    );
+
   return {
-    ...limanApplied,
+    ...bereketApplied,
     phase:             "challenge",
-    usedChallengeKeys: [...usedSoFar, bankId],
+    usedChallengeKeys: finalUsedKeys,
     lastChallengeType: challenge.type as ConquestChallengeType,
-    /* roundBonuses stays as-is — bonus regions are fixed for the match.
-     * lastBonusToast is preserved when a Liman income toast was just raised
-     * so every client renders it once before the next challenge mounts;
-     * otherwise it's cleared so stale toasts don't echo on late joiners. */
-    lastBonusToast:    limanApplied.lastBonusToast?.bonusType === "liman"
-                         && limanApplied.lastBonusToast.id.startsWith("liman_income-")
-                       ? limanApplied.lastBonusToast
-                       : undefined,
+    /* roundBonuses stays as-is — bonus regions are fixed for the match. */
+    lastBonusToast:    carryToastForward ? pendingToast : undefined,
+    nextChallenge,
     round: {
       roundNumber:    nextRoundNumber,
-      totalRounds:    limanApplied.round.totalRounds,
+      totalRounds:    bereketApplied.round.totalRounds,
       challenge:      buildActiveChallengeState(challenge, now + ROUND_INTRO_PACING_MS),
       actionHolderId: null,
       lastResult:     null,
     },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bereketli Ova 🌾 — capture bonus + held-tenure harvest
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Bonus points awarded immediately on every capture of the Bereketli Ova
+ *  region (in addition to the region's own point value). */
+export const BEREKET_CAPTURE_POINTS    = 2;
+/** Number of round-end ticks the same owner must hold the Bereketli Ova
+ *  region before the one-shot harvest payout fires.  After firing, no more
+ *  harvests are produced under the same owner — the counter stays >= this
+ *  value as a "harvested" sentinel until ownership flips and resets it. */
+export const BEREKET_HARVEST_INTERVAL  = 3;
+/** Bonus points awarded when the harvest counter completes (once per owner
+ *  tenure on the bereket region). */
+export const BEREKET_HARVEST_POINTS    = 4;
+
+/**
+ * Apply one round-end Bereketli Ova tick.  Once per owner tenure: when the
+ * counter first crosses BEREKET_HARVEST_INTERVAL, pay +BEREKET_HARVEST_POINTS
+ * to that owner's bonusPoints (counted by getPlayerTotalPoints so the
+ * top-left scoreboard updates immediately).  After that the counter stays at
+ * the interval value and ticks are no-ops until ownership flips and resets
+ * the counter to 0 (handled in flipOwnership / placeHiddenConquestOnNeutralRegion).
+ *
+ * No-ops when:
+ *   - No region carries the cukurova_score bonus this match.
+ *   - The bereket region is neutral (no owner to credit).
+ *   - The current owner has already collected this tenure's harvest
+ *     (bereketHarvestTurns >= BEREKET_HARVEST_INTERVAL).
+ */
+export function applyBereketRoundHarvest(
+  state: ConquestGameState,
+): ConquestGameState {
+  const bereketRegionId = findRegionIdForBonusType(state.roundBonuses, "cukurova_score");
+  if (!bereketRegionId) return state;
+
+  const regionState = state.regionStates.find(rs => rs.regionId === bereketRegionId);
+  if (!regionState) return state;
+  const ownerId = regionState.ownerPlayerId;
+  if (!ownerId) return state;
+
+  const currentTurns = regionState.bereketHarvestTurns ?? 0;
+  // Already harvested under this owner — no more payouts until ownership
+  // flips (which resets the counter to 0).  This is the gate that stops
+  // the +4 from repeating every round.
+  if (currentTurns >= BEREKET_HARVEST_INTERVAL) return state;
+
+  const nextTurns    = currentTurns + 1;
+  const harvestFires = nextTurns >= BEREKET_HARVEST_INTERVAL;
+
+  const nextRegionStates = state.regionStates.map(rs =>
+    rs.regionId === bereketRegionId
+      ? { ...rs, bereketHarvestTurns: nextTurns }
+      : rs,
+  );
+
+  if (!harvestFires) {
+    return { ...state, regionStates: nextRegionStates };
+  }
+
+  const currentBonuses = state.playerBonuses ?? {};
+  const ownerBonus     = currentBonuses[ownerId] ?? createEmptyPlayerBonusState();
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...currentBonuses,
+    [ownerId]: {
+      ...ownerBonus,
+      bonusPoints: ownerBonus.bonusPoints + BEREKET_HARVEST_POINTS,
+    },
+  };
+
+  const ownerName = state.players.find(p => p.id === ownerId)?.name ?? "Oyuncu";
+  const now       = Date.now();
+  const toast: ConquestBonusToast = {
+    id:         `bereket_harvest-${bereketRegionId}-${now}-${ownerId}`,
+    bonusType:  "cukurova_score",
+    regionId:   bereketRegionId,
+    icon:       "🌾",
+    title:      `🌾 Hasat Tamamlandı`,
+    detail:     `${ownerName} bölgeyi ${BEREKET_HARVEST_INTERVAL} tur elinde tuttu, +${BEREKET_HARVEST_POINTS} hasat puanı kazandı. (Bu tenürde tekrar hasat verilmeyecek.)`,
+    playerId:   ownerId,
+    playerName: ownerName,
+    at:         now,
+  };
+
+  return {
+    ...state,
+    regionStates:   nextRegionStates,
+    playerBonuses:  nextPlayerBonuses,
+    lastBonusToast: toast,
   };
 }
 

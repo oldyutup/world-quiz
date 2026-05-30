@@ -9844,6 +9844,51 @@ body {
   color: oklch(0.52 0.006 220);
 }
 
+/* Kâhin Büyüsü 🔮 — owner-only "Sıradaki soru" preview banner.  Rendered
+ * inside .cq-players-panel only when the local viewer holds the Kâhin
+ * region (gated in ConquestGame.tsx).  Visual mirrors the player-row
+ * spacing so it nests naturally; purple accent ties it to the bilgi
+ * category and signals "private info — only you see this". */
+.cq-kahin-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 4px 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.32);
+  box-shadow: 0 0 10px -4px rgba(168, 85, 247, 0.55);
+  pointer-events: auto;
+}
+.cq-kahin-preview-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+}
+.cq-kahin-preview-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.cq-kahin-preview-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.70 0.10 300);
+}
+.cq-kahin-preview-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: oklch(0.92 0.04 300);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Bonus toast — center-screen transient banner. Auto-dismissed in TSX
  * after BONUS_TOAST_MS; animation duration matches that window so the
  * fade-out lines up with React un-mounting the node. */
@@ -12998,6 +13043,22 @@ body {
 .mcq-strip__pill--neutral .mcq-strip__pill-dot { background: oklch(0.5 0.005 220); }
 .mcq-strip__pill--neutral .mcq-strip__pill-name   { color: oklch(0.62 0.005 220); }
 .mcq-strip__pill--neutral .mcq-strip__pill-points { color: oklch(0.66 0.005 220); }
+
+/* Kâhin Büyüsü 🔮 — owner-only preview pill on the mobile score strip.
+ * Rendered (gated in ConquestGame.tsx) only when the local viewer holds
+ * the Kâhin region; purple accent ties it to the bilgi bonus category. */
+.mcq-strip__pill--kahin {
+  background: rgba(168, 85, 247, 0.16);
+  border-color: rgba(168, 85, 247, 0.42);
+  box-shadow: 0 0 12px -4px rgba(168, 85, 247, 0.55);
+}
+.mcq-strip__pill--kahin .mcq-strip__pill-dot {
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+}
+.mcq-strip__pill--kahin .mcq-strip__pill-name   { color: oklch(0.70 0.10 300); }
+.mcq-strip__pill--kahin .mcq-strip__pill-points { color: oklch(0.92 0.04 300); }
 
 /* Player colour tokens (mirror .cq-players-panel-row palette) */
 .mcq-strip__pill[data-color="red"]    { --mcq-color: #ef4444; }

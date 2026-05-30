@@ -133,9 +133,9 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     type:        "kahin",
     category:    "bilgi",
     icon:        "🔮",
-    label:       "Kahin",
-    description: "Sonraki tur hakkında öngörü sağlayan bir bonus.",
-    implemented: false,
+    label:       "Kâhin Büyüsü",
+    description: "Bu bölgeyi elinde tutan oyuncu sıradaki sorunun türünü önceden görür. Bölge el değiştirirse avantaj da el değiştirir.",
+    implemented: true,
   },
   {
     type:        "atlas",
@@ -151,7 +151,7 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     category:    "ekonomi",
     icon:        "🌾",
     label:       "Bereketli Ova",
-    description: "Bu bölgeyi maçta ilk fetheden oyuncuya tek seferlik +1 puan verilir.",
+    description: "Bu bölgeyi fetheden oyuncuya anında +2 bonus puan. Aynı oyuncu 3 tur boyunca elinde tutarsa bir kereye mahsus +4 puanlık hasat bonusu kazanır; bölge el değiştirmeden tekrar hasat verilmez. El değiştirince sayaç sıfırlanır.",
     implemented: true,
   },
   {

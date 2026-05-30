@@ -26,6 +26,7 @@ import type {
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
 import { resolveActiveBonus } from "./conquestRoundBonuses";
+import { BEREKET_HARVEST_INTERVAL } from "./conquestGameplay";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
 
 // Per-region offset (in SVG units) for the point badge, relative to label
@@ -534,13 +535,25 @@ export default function TurkeyConquestMap({
     // every viewer sees the region producing value.  null when this region
     // doesn't carry Liman, so the badge stays off.
     const limanTicks = bonus?.type === "liman" ? (rs?.limanIncomeTicks ?? 0) : null;
+    // Bereketli Ova 🌾: surface the held-tenure counter (N/3) on the badge,
+    // matching the Liman pattern.  Once the harvest has fired the counter is
+    // parked at INTERVAL, so we surface that as a "harvested" sentinel
+    // (rendered as "✓") to make it clear no more +4 is coming until the
+    // region changes hands.  null when this region doesn't carry Bereket.
+    const bereketTurns    = bonus?.type === "cukurova_score" ? (rs?.bereketHarvestTurns ?? 0) : null;
+    const bereketHarvested = bereketTurns !== null && bereketTurns >= BEREKET_HARVEST_INTERVAL;
     // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Kale Surları"
     // Desktop hover only; touch devices ignore the SVG <title>.
     const ownerSuffix = owner ? ` (${owner.name})` : "";
     const limanSuffix = limanTicks !== null ? ` (${limanTicks}/10)` : "";
-    const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}${limanSuffix}` : "";
+    const bereketSuffix = bereketTurns !== null
+      ? (bereketHarvested
+          ? ` (Hasat tamamlandı)`
+          : ` (Hasat ${bereketTurns}/${BEREKET_HARVEST_INTERVAL})`)
+      : "";
+    const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}${limanSuffix}${bereketSuffix}` : "";
     const tooltip   = `${label}${ownerSuffix} — ${points} puan${bonusSuffix}`;
-    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, limanTicks, tooltip };
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, limanTicks, bereketTurns, bereketHarvested, tooltip };
   });
 
   return (
@@ -777,7 +790,7 @@ export default function TurkeyConquestMap({
              native <title> on the path — no extra pointer target is
              added here, so gameplay clicks stay untouched. */}
         <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
-          {regionEntries.map(({ id, labelPos, bonus, isShielded, limanTicks }) => {
+          {regionEntries.map(({ id, labelPos, bonus, isShielded, limanTicks, bereketTurns, bereketHarvested }) => {
             if (!bonus) return null;
             const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
             const cx  = labelPos.x + off.dx + 26;
@@ -820,6 +833,31 @@ export default function TurkeyConquestMap({
                       className="cq-map-liman-counter-text"
                     >
                       {`${limanTicks}/10`}
+                    </text>
+                  </g>
+                )}
+                {bereketTurns !== null && (
+                  <g
+                    className="cq-map-liman-counter cq-map-bereket-counter"
+                    data-harvested={bereketHarvested ? "" : undefined}
+                  >
+                    <rect
+                      x={cx - 11}
+                      y={cy + 8}
+                      width={22}
+                      height={9}
+                      rx={4.5}
+                      ry={4.5}
+                      className="cq-map-liman-counter-bg"
+                    />
+                    <text
+                      x={cx}
+                      y={cy + 12.6}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="cq-map-liman-counter-text"
+                    >
+                      {bereketHarvested ? "✓" : `${bereketTurns}/${BEREKET_HARVEST_INTERVAL}`}
                     </text>
                   </g>
                 )}

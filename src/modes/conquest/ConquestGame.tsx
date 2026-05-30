@@ -64,7 +64,12 @@ import {
   HIDDEN_OP_PLACED_MESSAGE_PREFIX,
   HIDDEN_OP_PLACED_TITLE,
 } from "./regionBonuses";
-import { getActiveBonusEntries, resolveActiveBonus } from "./conquestRoundBonuses";
+import {
+  findRegionIdForBonusType,
+  getActiveBonusEntries,
+  resolveActiveBonus,
+} from "./conquestRoundBonuses";
+import { getQuestionPreviewLabel } from "./conquestChallenges";
 import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
   actionHolderHasNoMoves,
@@ -669,6 +674,34 @@ export default function ConquestGame({
     () => getNeutralRegionPoints(visibleRegionStates),
     [visibleRegionStates],
   );
+
+  // Kâhin Büyüsü 🔮 — preview of the *current* round's challenge type, shown
+  // only to the player who currently holds the Kâhin region.
+  //
+  // Correctness contract: the label is derived strictly from the same
+  // ConquestChallenge object that is mounted on screen for this round
+  // (`gameState.round.challenge.challenge`).  No independent type-prediction,
+  // no Math.random pick, no inference from `lastChallengeType` or
+  // `nextChallenge` (which is the round-after-this pre-pick) — the preview
+  // and the on-screen question share one source object, so they can never
+  // disagree and the preview is never a round ahead.
+  //
+  // Anti-leak: the label intentionally never carries prompt/answer content;
+  // we resolve the region owner from real (unprojected) regionStates so the
+  // chip doesn't accidentally surface on a viewer projection that masks the
+  // true owner.  Returns null when no challenge is mounted yet, no region
+  // carries the bonus, or the local viewer is not the bonus holder (lost
+  // the region → no more vision).
+  const kahinPreview = useMemo(() => {
+    const current = gameState?.round.challenge?.challenge;
+    if (!current) return null;
+    if (!myPlayerId) return null;
+    const kahinRegionId = findRegionIdForBonusType(gameState?.roundBonuses, "kahin");
+    if (!kahinRegionId) return null;
+    const rs = gameState?.regionStates.find(r => r.regionId === kahinRegionId);
+    if (!rs || rs.ownerPlayerId !== myPlayerId) return null;
+    return getQuestionPreviewLabel(current);
+  }, [gameState?.round.challenge, gameState?.roundBonuses, gameState?.regionStates, myPlayerId]);
 
   // Legal-target highlights are computed against the *holder's* projected
   // view of the board so they can target hidden-conquest regions as if they
@@ -1579,9 +1612,140 @@ export default function ConquestGame({
     };
   }, [lastResult, gameState.roundBonuses, gameState.regionStates, players, myPlayerId]);
 
-  const rrcIcon     = kaleSurlariCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? rrcData.icon;
-  const rrcTitle    = kaleSurlariCaptureCard?.title    ?? limanCaptureCard?.title    ?? rrcData.title;
-  const rrcSubtitle = kaleSurlariCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
+  // ── Bereketli Ova 🌾 capture-card override ─────────────────────────────
+  // Mirrors `limanCaptureCard` for the cukurova_score bonus.  Five viewer
+  // scenarios on capture; the harvest-payout banner is handled separately
+  // via the major bonus notice path (harvest fires at round-end, not in
+  // round_result phase).  Detection by bonus TYPE so it works whichever
+  // region carries the bereket bonus this match.
+  const bereketCaptureCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok || !lastResult.regionId) return null;
+    if (lastResult.action !== "capture_neutral" && lastResult.action !== "attack_region") {
+      return null;
+    }
+    const bonus = resolveActiveBonus(gameState.roundBonuses, lastResult.regionId);
+    if (!bonus || bonus.type !== "cukurova_score") return null;
+
+    const attackerId   = lastResult.playerId;
+    const attackerName = players.find(p => p.id === attackerId)?.name ?? "Oyuncu";
+
+    // Neutral first-capture: cases 1 & 2.
+    if (lastResult.action === "capture_neutral") {
+      if (myPlayerId === attackerId) {
+        return {
+          icon:     "🌾",
+          title:    "🌾 Bereketli Ova Ele Geçirildi!",
+          subtitle: "Bu bölge sana anında +2 puan kazandırdı. Elinde 3 tur tutarsan +4 puanlık Hasat alacaksın.",
+        };
+      }
+      return {
+        icon:     "🌾",
+        title:    "🌾 Rakip Bereketli Ova’yı Aldı!",
+        subtitle: "Rakibin anında +2 puan kazandı. Bölgeyi 3 tur elinde tutarsa +4 puanlık Hasat alacak.",
+      };
+    }
+
+    // attack_region — needs a previous owner to read as a true takeover.
+    const previousOwnerId = lastResult.previousOwnerId ?? null;
+    if (!previousOwnerId) return null;
+    const previousOwnerName = players.find(p => p.id === previousOwnerId)?.name ?? "Eski sahip";
+
+    // Case 3 — attacker (me) took the bereket region from an opponent.
+    if (myPlayerId === attackerId) {
+      return {
+        icon:     "🌾",
+        title:    "🌾 Hasat Kontrolü Sana Geçti!",
+        subtitle: "Bereketli Ova artık senin kontrolünde. Anında +2 puan kazandın; bölgeyi 3 tur elinde tutarsan +4 puanlık Hasat alacaksın.",
+      };
+    }
+    // Case 4 — defender (me) lost the bereket region.
+    if (myPlayerId === previousOwnerId) {
+      return {
+        icon:     "🔥",
+        title:    "🔥 Bereketli Ova Kaybedildi!",
+        subtitle: "Rakip Bereketli Ova’nın kontrolünü ele geçirdi. Anında +2 puan kazandı; bölgeyi 3 tur elinde tutarsa +4 puanlık Hasat alacak.",
+      };
+    }
+    // Case 5 — spectator view, bereket changed hands.
+    return {
+      icon:     "🌾",
+      title:    "🌾 Bereketli Ova El Değiştirdi!",
+      subtitle: `${attackerName}, ${previousOwnerName} oyuncusunun Bereketli Ova bölgesini ele geçirdi. Anında +2 puan kazandı; bölgeyi 3 tur elinde tutarsa +4 puanlık Hasat alacak.`,
+    };
+  }, [lastResult, gameState.roundBonuses, players, myPlayerId]);
+
+  // ── Kâhin Büyüsü 🔮 capture-card override ──────────────────────────────
+  // Mirrors `bereketCaptureCard` for the kahin bonus.  Five viewer-aware
+  // scenarios: neutral take by me / by opponent, opponent flip to me,
+  // my loss, and spectator-side flip.  Detection by bonus TYPE so it
+  // works whichever region carries the kahin bonus this match.
+  const kahinCaptureCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok || !lastResult.regionId) return null;
+    if (lastResult.action !== "capture_neutral" && lastResult.action !== "attack_region") {
+      return null;
+    }
+    const bonus = resolveActiveBonus(gameState.roundBonuses, lastResult.regionId);
+    if (!bonus || bonus.type !== "kahin") return null;
+
+    const attackerId   = lastResult.playerId;
+
+    // Neutral first-capture: cases 1 & 2.
+    if (lastResult.action === "capture_neutral") {
+      if (myPlayerId === attackerId) {
+        return {
+          icon:     "🔮",
+          title:    "🔮 Kâhin Büyüsü Kazanıldı!",
+          subtitle: "Bu bölge artık senin kontrolünde. Elinde tuttuğun sürece sıradaki sorunun türünü önceden görebileceksin.",
+        };
+      }
+      return {
+        icon:     "🔮",
+        title:    "🔮 Rakip Kâhin Büyüsü Kazandı!",
+        subtitle: "Rakibin Kâhin bölgesini kontrol altına aldı. Bu bölgeyi elinde tuttuğu sürece sıradaki sorunun türünü önceden görebilecek.",
+      };
+    }
+
+    // attack_region — needs a previous owner to read as a true takeover.
+    const previousOwnerId = lastResult.previousOwnerId ?? null;
+    if (!previousOwnerId) return null;
+    const attackerName      = players.find(p => p.id === attackerId)?.name      ?? "Saldıran";
+    const previousOwnerName = players.find(p => p.id === previousOwnerId)?.name ?? "Eski sahip";
+
+    // Case 3 — attacker (me) took the kahin region from an opponent.
+    if (myPlayerId === attackerId) {
+      return {
+        icon:     "🔮",
+        title:    "🔮 Görü Gücü Sana Geçti!",
+        subtitle: "Kâhin Büyüsü artık senin kontrolünde. Bölge sende kaldığı sürece sıradaki sorunun türünü önceden göreceksin.",
+      };
+    }
+    // Case 4 — defender (me) lost the kahin region.
+    if (myPlayerId === previousOwnerId) {
+      return {
+        icon:     "🔥",
+        title:    "🔥 Kâhin Büyüsü Kaybedildi!",
+        subtitle: "Kâhin bölgesindeki kontrolünü kaybettin. Artık sıradaki soru türünü önceden göremeyeceksin.",
+      };
+    }
+    // Case 5 — spectator view, kahin changed hands.
+    return {
+      icon:     "🔮",
+      title:    "🔮 Kâhin Büyüsü El Değiştirdi!",
+      subtitle: `${attackerName}, ${previousOwnerName} oyuncusunun Kâhin bölgesini ele geçirdi. Görü avantajı artık yeni sahibinde.`,
+    };
+  }, [lastResult, gameState.roundBonuses, players, myPlayerId]);
+
+  const rrcIcon     = kaleSurlariCaptureCard?.icon     ?? bereketCaptureCard?.icon     ?? kahinCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? rrcData.icon;
+  const rrcTitle    = kaleSurlariCaptureCard?.title    ?? bereketCaptureCard?.title    ?? kahinCaptureCard?.title    ?? limanCaptureCard?.title    ?? rrcData.title;
+  const rrcSubtitle = kaleSurlariCaptureCard?.subtitle ?? bereketCaptureCard?.subtitle ?? kahinCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
 
   // Eleme Yetkisi — decide once per challenge whether to render an
   // elimination for the local viewer, then latch the answer.  Decision
@@ -1902,6 +2066,42 @@ export default function ConquestGame({
     playerColors,
   ]);
 
+  // Bereketli Ova 🌾 harvest — round-end +4 payout is delivered through
+  // `lastBonusToast` (id prefix `bereket_harvest-`) and carries forward
+  // to the next round's challenge phase.  Promote it to the same major
+  // notice slot so the moment reads as a headline event, and suppress
+  // the duplicate small toast.
+  useEffect(() => {
+    if (!lastBonusToast) return;
+    if (lastBonusToast.bonusType !== "cukurova_score") return;
+    if (!lastBonusToast.id.startsWith("bereket_harvest-")) return;
+    if (majorBonusHandledIdRef.current === lastBonusToast.id) return;
+    if (Date.now() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
+    majorBonusHandledIdRef.current = lastBonusToast.id;
+
+    const notice = {
+      id:    lastBonusToast.id,
+      icon:  "🌾",
+      title: "🌾 Hasat Zamanı!",
+      body:  `Bereketli Ova 3 tur boyunca elde tutuldu. ${lastBonusToast.playerName} +4 puanlık Hasat kazandı.`,
+      color: playerColors[lastBonusToast.playerId] ?? null,
+    };
+    setMajorBonusNotice(notice);
+    setDismissedToastId(lastBonusToast.id);
+
+    const t = window.setTimeout(() => {
+      setMajorBonusNotice(cur => (cur && cur.id === notice.id ? null : cur));
+    }, MAJOR_BONUS_NOTICE_MS);
+    return () => window.clearTimeout(t);
+  }, [
+    lastBonusToast?.id,
+    lastBonusToast?.bonusType,
+    lastBonusToast?.playerId,
+    lastBonusToast?.playerName,
+    lastBonusToast?.at,
+    playerColors,
+  ]);
+
   // Move-phase timer values (null when the round predates the timer feature
   // or the phase isn't action).  Shared by both holder and spectator views.
   const moveTotalMs =
@@ -2069,7 +2269,7 @@ export default function ConquestGame({
   // suppress the small red bonus toast for the same event — it would just
   // restate what the big card already says.
   const hasMajorCaptureCard =
-    (phase === "round_result" && (!!kaleSurlariCaptureCard || !!limanCaptureCard))
+    (phase === "round_result" && (!!kaleSurlariCaptureCard || !!limanCaptureCard || !!bereketCaptureCard || !!kahinCaptureCard))
     || !!majorBonusNotice;
 
   const toastsNode = (
@@ -3106,6 +3306,7 @@ export default function ConquestGame({
               neutralCount={neutralCount}
               neutralPoints={neutralPoints}
               pointDeltas={pointDeltas}
+              kahinPreview={kahinPreview}
             />
           }
           map={mapNode}
@@ -3286,6 +3487,20 @@ export default function ConquestGame({
             <span className="cq-players-panel-score" aria-hidden="true">
               <span className="cq-players-panel-points">{neutralPoints}</span>
               <span className="cq-players-panel-regions">{neutralCount} bölge</span>
+            </span>
+          </div>
+        )}
+        {kahinPreview && (
+          <div
+            className="cq-kahin-preview"
+            role="status"
+            aria-label={`Kâhin görüsü: sıradaki soru ${kahinPreview}`}
+            title="Kâhin Büyüsü — Kâhin bölgesini elinde tuttuğun sürece bu görü senin için açık kalır."
+          >
+            <span className="cq-kahin-preview-icon" aria-hidden="true">🔮</span>
+            <span className="cq-kahin-preview-text">
+              <span className="cq-kahin-preview-label">Kâhin Görüsü</span>
+              <span className="cq-kahin-preview-value">Sıradaki soru: {kahinPreview}</span>
             </span>
           </div>
         )}

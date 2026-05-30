@@ -34,7 +34,7 @@ const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
   ankara_hidden_shield:
     "Fetheden oyuncu Gizli Operasyon hakkı kazanır: kendi bir bölgesine gizli kalkan ya da tarafsız bir bölgeye gizli fetih kurabilir. Komşuluk şartı yoktur.",
   cukurova_score:
-    "Bu bölgeyi maçta ilk fetheden oyuncuya tek seferlik +1 puan verilir.",
+    "Bu bölgeyi fetheden oyuncuya anında +2 bonus puan verilir. Aynı oyuncu 3 tur boyunca elinde tutarsa bir kereye mahsus +4 puanlık 'Hasat' bonusu kazanır; bölge aynı sahipte kaldığı sürece tekrar hasat üretmez. Bölge el değiştirirse hasat sayacı sıfırlanır ve yeni sahip için 0/3'ten yeniden başlar.",
   karadeniz_extra_time:
     "Fetheden oyuncunun sıradaki hamle süresine +5 saniye eklenir (tek kullanım).",
   eleme_yetkisi:

@@ -43,6 +43,9 @@ interface Props {
    *  +N/-N badge floating above the score number.  Lifetime is owned by
    *  the parent (ConquestGame); the strip only renders what it's given. */
   pointDeltas?:       Record<string, { value: number; epoch: number }>;
+  /** Kâhin Büyüsü 🔮 preview label.  Owner-only — parent passes null when
+   *  the local viewer doesn't hold the Kâhin region. */
+  kahinPreview?:      string | null;
 }
 
 interface BonusChip {
@@ -118,9 +121,25 @@ export default function MobileScoreStrip({
   neutralCount,
   neutralPoints,
   pointDeltas,
+  kahinPreview,
 }: Props) {
   return (
     <div className="mcq-strip" role="list" aria-label="Oyuncu skorları">
+      {kahinPreview && (
+        <div
+          className="mcq-strip__pill mcq-strip__pill--kahin"
+          role="listitem"
+          aria-label={`Kâhin görüsü: sıradaki soru ${kahinPreview}`}
+        >
+          <div className="mcq-strip__pill-top">
+            <span className="mcq-strip__pill-dot" aria-hidden="true">🔮</span>
+            <span className="mcq-strip__pill-name">Sıradaki soru</span>
+          </div>
+          <div className="mcq-strip__pill-stats" aria-hidden="true">
+            <span className="mcq-strip__pill-points">{kahinPreview}</span>
+          </div>
+        </div>
+      )}
       {players.map(player => {
         const color    = playerColors[player.id];
         const isHolder = actionHolderId === player.id;

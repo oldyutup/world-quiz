@@ -355,6 +355,10 @@ function flipOwnership(
        * change so a fresh owner starts at 0/10.  Harmless on non-liman
        * regions (field stays unread for them). */
       limanIncomeTicks: 0,
+      /* Bereketli Ova 🌾: per-tenure hold counter resets so the new owner
+       * has to hold the region for BEREKET_HARVEST_INTERVAL fresh rounds
+       * before the next harvest fires.  Harmless on non-bereket regions. */
+      bereketHarvestTurns: 0,
     };
   });
   return {

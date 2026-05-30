@@ -212,6 +212,18 @@ export interface ConquestRegionState {
    * owner.  Optional for back-compat with pre-Liman saves.
    */
   limanIncomeTicks?: number;
+  /**
+   * Bereketli Ova 🌾 per-tenure hold counter.  Counts how many consecutive
+   * round-end ticks the *current owner* has held this region (0..INTERVAL).
+   * The harvest payout fires exactly ONCE per tenure — when the counter
+   * first reaches BEREKET_HARVEST_INTERVAL (3) — and the counter then stays
+   * at that value as a "harvested" sentinel so subsequent ticks are no-ops.
+   * Reset to 0 on every ownership change so a new owner restarts fresh and
+   * has to hold the region for 3 fresh rounds to earn their own harvest.
+   * Absent / 0 when the region has never ticked under the current owner.
+   * Optional for back-compat with pre-bereket-harvest saves.
+   */
+  bereketHarvestTurns?: number;
 }
 
 /**
@@ -268,7 +280,7 @@ export type ConquestRegionBonusType =
   // ── Currently wired (legacy ROTATING_BONUS_TYPES set) ──────────────────────
   | "istanbul_defense"        // passive marker while owned (UI/altyapı only)
   | "ankara_hidden_shield"    // grant pending shield, placed on next capture
-  | "cukurova_score"          // one-shot +1 bonus point on capture
+  | "cukurova_score"          // Bereketli Ova: +2 on every capture, one-shot +4 harvest after 3 held rounds (per tenure)
   | "karadeniz_extra_time"    // one-shot +5s to bonused player's next move
   // ── Bonus pool — defined but not yet assignable (see bonusPool.ts) ────────
   // Savunma
@@ -293,12 +305,18 @@ export type ConquestRegionBonusType =
  *   - pendingHiddenShield  — re-capturing Ankara keeps the flag at true; never
  *                            grants more than one slot.
  *   - extraNextMoveMs      — re-capturing Karadeniz overwrites; never sums.
- *   - cukurovaClaimed      — flips to true on the first Çukurova capture in
- *                            the match and never resets.
- *   - bonusPoints          — written by Çukurova (one-shot per match) and by
- *                            Mevzi Bekçisi (per-region-per-tenure protection
- *                            payout on a mevzi region loss).  Counted in
- *                            scoring directly (see regionPoints.ts).
+ *   - cukurovaClaimed      — LEGACY one-shot lock; no longer gates the
+ *                            Bereketli Ova payout (every capture pays +2 now)
+ *                            but the field stays in the type so old saves
+ *                            round-trip cleanly through serialisation.
+ *   - bonusPoints          — written by Bereketli Ova (capture +2, one-shot
+ *                            +4 harvest after 3 held rounds per tenure),
+ *                            Liman (per-tick income),
+ *                            Koçbaşı (enemy capture +1), and Mevzi Bekçisi
+ *                            (per-region-per-tenure protection payout on a
+ *                            mevzi region loss).  Counted in scoring directly
+ *                            (see regionPoints.ts) and reflected on the
+ *                            top-left scoreboard via getPlayerTotalPoints.
  *
  * istanbul_defense is intentionally NOT mirrored here — it is a passive
  * "while owning" marker derived from current region ownership.
@@ -742,6 +760,20 @@ export interface ConquestGameState {
    * picks no longer depend on round-to-round history.
    */
   prevRoundBonuses?:  ConquestRoundBonusAssignment;
+  /**
+   * Kâhin Büyüsü 🔮 — pre-picked challenge for the *next* round.  The host
+   * resolves a full ConquestChallenge ahead of time so the Kâhin region's
+   * current owner can peek at the upcoming question's type (only the type
+   * label is rendered — never the prompt or answer; opponents never see the
+   * chip).  `advanceToNextRound` consumes this entry verbatim as the actual
+   * next-round challenge and immediately re-picks a fresh one for the round
+   * after.  Absent on the final round (no future round to preview) and on
+   * pre-Kâhin saves — readers must treat missing as "no preview".
+   */
+  nextChallenge?: {
+    challenge: ConquestChallenge;
+    bankId:    string;
+  };
 }
 
 /** Final result row — one per player — used by the result screen. */

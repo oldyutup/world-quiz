@@ -153,13 +153,24 @@ export function useConquestEventFeed(
     const isMine = myPlayerId === lbt.playerId;
     const name   = lbt.playerName || "Bir oyuncu";
     let suffix = "";
-    if (lbt.bonusType === "cukurova_score")          suffix = " (+1)";
+    if (lbt.bonusType === "cukurova_score") {
+      // Bereketli Ova ships two toast flavours: capture (+2 on every capture)
+      // and harvest (one-shot +4 after 3 held rounds per owner tenure).
+      // Distinguish by toast id prefix so the feed reflects the right delta.
+      suffix = lbt.id.startsWith("bereket_harvest-") ? " (+4)" : " (+2)";
+    }
     else if (lbt.bonusType === "karadeniz_extra_time") suffix = " (+5sn)";
     // Prefer the dynamic region the bonus actually landed on this round.
     // Falls back to the toast's baked-in title for pre-dynamic-bonus saves.
-    const regionTitle = lbt.regionId
-      ? `${regionLabel(mapConfig, lbt.regionId)} Bonusu`
-      : lbt.title;
+    // Bereketli Ova harvest gets a dedicated label so the feed reads as the
+    // 3-turn payout, not a fresh capture.
+    const isBereketHarvest = lbt.bonusType === "cukurova_score"
+      && lbt.id.startsWith("bereket_harvest-");
+    const regionTitle = isBereketHarvest
+      ? (lbt.regionId ? `${regionLabel(mapConfig, lbt.regionId)} Hasat` : "Hasat Zamanı")
+      : lbt.regionId
+        ? `${regionLabel(mapConfig, lbt.regionId)} Bonusu`
+        : lbt.title;
     const text = `${name} — ${regionTitle}${suffix}`;
 
     setEvents(prev => prependBounded(prev, [{
