@@ -69,6 +69,7 @@ import {
   getActiveBonusEntries,
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
+import { getHiddenBonusToastCopyForViewer } from "./conquestHiddenBonuses";
 import { getQuestionPreviewLabel } from "./conquestChallenges";
 import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
@@ -2072,6 +2073,37 @@ export default function ConquestGame({
     !!lastBonusToast
     && dismissedToastId   !== lastBonusToast.id
     && bonusToastReadyId  === lastBonusToast.id;
+
+  // Hidden bonus claim toast (viewer-aware).  Lives on a separate state
+  // channel (`gameState.lastHiddenBonusToast`) so it never collides with the
+  // open bonus toast above.  The claimer sees the real bonus name; everyone
+  // else sees a generic "rakip gizli bonus keşfetti" message — the renderer
+  // picks copy from `getHiddenBonusToastCopyForViewer` based on viewerId.
+  const HIDDEN_BONUS_TOAST_MS = 6000;
+  const lastHiddenBonusToast = gameState.lastHiddenBonusToast ?? null;
+  const [dismissedHiddenToastId, setDismissedHiddenToastId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lastHiddenBonusToast) return;
+    if (dismissedHiddenToastId === lastHiddenBonusToast.id) return;
+    const remaining = lastHiddenBonusToast.at + HIDDEN_BONUS_TOAST_MS - Date.now();
+    if (remaining <= 0) {
+      setDismissedHiddenToastId(lastHiddenBonusToast.id);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setDismissedHiddenToastId(lastHiddenBonusToast.id);
+    }, remaining);
+    return () => window.clearTimeout(t);
+  }, [lastHiddenBonusToast?.id, lastHiddenBonusToast?.at, dismissedHiddenToastId]);
+  const showHiddenBonusToast =
+    !!lastHiddenBonusToast
+    && dismissedHiddenToastId !== lastHiddenBonusToast.id;
+  const hiddenToastPlayerColor = lastHiddenBonusToast
+    ? (playerColors[lastHiddenBonusToast.claimerId] ?? null)
+    : null;
+  const hiddenBonusToastCopy = lastHiddenBonusToast
+    ? getHiddenBonusToastCopyForViewer(lastHiddenBonusToast, myPlayerId)
+    : null;
   const toastPlayerColor = lastBonusToast
     ? (playerColors[lastBonusToast.playerId] ?? null)
     : null;
@@ -2427,6 +2459,36 @@ export default function ConquestGame({
           </div>
         );
       })()}
+
+      {/* Hidden bonus claim toast (viewer-aware).  Separate state channel
+       *  from `lastBonusToast` so it never gets suppressed by major-bonus
+       *  card logic — hidden bonuses are a parallel surface.  The renderer
+       *  picks copy locally:
+       *    - claimer sees the real bonus name + "envantere eklendi" detail
+       *    - everyone else sees the generic "rakip gizli bonus keşfetti" copy
+       *  The toast payload contains a `regionId` for future use, but the
+       *  copy here deliberately never names it — paranoia is the feature. */}
+      {showHiddenBonusToast && lastHiddenBonusToast && hiddenBonusToastCopy && (
+        <div
+          key={lastHiddenBonusToast.id}
+          className="cq-bonus-toast"
+          data-color={hiddenToastPlayerColor ?? undefined}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">
+            {hiddenBonusToastCopy.icon}
+          </span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              {hiddenBonusToastCopy.title}
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {hiddenBonusToastCopy.detail}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Major bonus notice — premium first-capture banner.  Currently wired
        *  for Liman ⚓ only; suppresses the small bonus toast for the same

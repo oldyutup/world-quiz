@@ -46,6 +46,10 @@ import {
   findRegionIdForBonusType,
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
+import {
+  buildHiddenBonusPlacements,
+  tryClaimHiddenBonus,
+} from "./conquestHiddenBonuses";
 import type {
   ConquestActionResult,
   ConquestBonusToast,
@@ -60,6 +64,7 @@ import type {
   ConquestPendingAction,
   ConquestPlayer,
   ConquestPlayerBonusState,
+  ConquestPlayerHiddenBonus,
   ConquestRegionId,
   ConquestRegionState,
   ConquestRoundBonusAssignment,
@@ -197,6 +202,22 @@ export function createInitialConquestGameState(
     mapConfig, regionStates, players, now,
   );
 
+  // Hidden bonus placements — computed AFTER the open bonus assignment so
+  // open-bonus regions can be excluded by id.  Independently seeded stream
+  // off the same `now` match seed; may legitimately be empty (no roll hit).
+  const hiddenBonusPlacements = buildHiddenBonusPlacements({
+    mapConfig,
+    regionStates,
+    roundBonuses,
+    playerCount: players.length,
+    matchSeed:   now,
+  });
+  // Seed empty hidden-bonus inventory for every player.  Hidden bonuses only
+  // enter the inventory via region capture; starting ownership grants nothing
+  // (and starting regions are excluded from the candidate pool anyway).
+  const playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]> = {};
+  for (const p of players) playerHiddenBonuses[p.id] = [];
+
   const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
 
   // Anchor the first challenge's timer to after the intro so the 20-second
@@ -225,20 +246,22 @@ export function createInitialConquestGameState(
   }
 
   return {
-    mapId:              mapConfig.id,
+    mapId:                  mapConfig.id,
     players,
-    phase:              "challenge",
+    phase:                  "challenge",
     round,
     regionStates,
-    history:            [],
-    startedAt:          now,
-    finishedAt:         null,
+    history:                [],
+    startedAt:              now,
+    finishedAt:             null,
     usedChallengeKeys,
-    lastChallengeType:  challenge.type as ConquestChallengeType,
+    lastChallengeType:      challenge.type as ConquestChallengeType,
     playerBonuses,
     gameIntroEndsAt,
     roundBonuses,
     nextChallenge,
+    hiddenBonusPlacements,
+    playerHiddenBonuses,
   };
 }
 
@@ -1125,6 +1148,9 @@ export function applyActionToGame(
     ? consumeMancinikCharge(state.playerBonuses, action.playerId)
     : state.playerBonuses;
   let postToast: ConquestBonusToast | undefined;
+  let postHiddenPlacements = state.hiddenBonusPlacements;
+  let postPlayerHidden     = state.playerHiddenBonuses;
+  let postHiddenToast      = state.lastHiddenBonusToast;
   if (action.type === "capture_neutral" || action.type === "attack_region") {
     const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
     const now = Date.now();
@@ -1159,6 +1185,24 @@ export function applyActionToGame(
     );
     postPlayerBonuses = kocbasiOut.playerBonuses;
     if (kocbasiOut.toast) postToast = kocbasiOut.toast;
+
+    // Hidden bonus claim — runs AFTER the open-bonus chain because hidden
+    // bonuses live on a separate state channel.  No-op when this region
+    // never carried a hidden bonus or it was already claimed.
+    const hb = tryClaimHiddenBonus(
+      postHiddenPlacements,
+      postPlayerHidden,
+      action.regionId,
+      action.playerId,
+      actorName,
+      state.round.roundNumber,
+      now,
+    );
+    if (hb) {
+      postHiddenPlacements = hb.hiddenBonusPlacements;
+      postPlayerHidden     = hb.playerHiddenBonuses;
+      postHiddenToast      = hb.lastHiddenBonusToast;
+    }
   }
 
   const historyEntry = {
@@ -1185,11 +1229,14 @@ export function applyActionToGame(
     return {
       state: {
         ...state,
-        phase:          "finished",
-        finishedAt:     Date.now(),
-        regionStates:   postRegionStates,
-        playerBonuses:  postPlayerBonuses,
-        lastBonusToast: postToast ?? state.lastBonusToast,
+        phase:                 "finished",
+        finishedAt:            Date.now(),
+        regionStates:          postRegionStates,
+        playerBonuses:         postPlayerBonuses,
+        lastBonusToast:        postToast ?? state.lastBonusToast,
+        hiddenBonusPlacements: postHiddenPlacements,
+        playerHiddenBonuses:   postPlayerHidden,
+        lastHiddenBonusToast:  postHiddenToast,
         round: {
           ...state.round,
           lastResult: domResult,
@@ -1203,10 +1250,13 @@ export function applyActionToGame(
   return {
     state: {
       ...state,
-      phase:          "round_result",
-      regionStates:   postRegionStates,
-      playerBonuses:  postPlayerBonuses,
-      lastBonusToast: postToast ?? state.lastBonusToast,
+      phase:                 "round_result",
+      regionStates:          postRegionStates,
+      playerBonuses:         postPlayerBonuses,
+      lastBonusToast:        postToast ?? state.lastBonusToast,
+      hiddenBonusPlacements: postHiddenPlacements,
+      playerHiddenBonuses:   postPlayerHidden,
+      lastHiddenBonusToast:  postHiddenToast,
       round: {
         ...state.round,
         lastResult: applied.result,
@@ -1492,6 +1542,24 @@ export function placeHiddenConquestOnNeutralRegion(
     result:            baseResult,
   };
 
+  // Hidden bonus claim — gizli fetih flips ownership for real, so a hidden
+  // bonus on this region is collected by the placer just like any other
+  // first-capture.  Opponent-facing toast copy never names the region, so
+  // the cloak is not undermined by the toast itself.
+  const nowForHb = Date.now();
+  const hb = tryClaimHiddenBonus(
+    state.hiddenBonusPlacements,
+    state.playerHiddenBonuses,
+    regionId,
+    playerId,
+    playerName,
+    state.round.roundNumber,
+    nowForHb,
+  );
+  const postHiddenPlacements = hb ? hb.hiddenBonusPlacements : state.hiddenBonusPlacements;
+  const postPlayerHidden     = hb ? hb.playerHiddenBonuses   : state.playerHiddenBonuses;
+  const postHiddenToast      = hb ? hb.lastHiddenBonusToast  : state.lastHiddenBonusToast;
+
   // Early finish: a gizli fetih on the last neutral region while the player
   // owns every other tile would complete domination.  Mirrors the post-capture
   // check in applyActionToGame so the secret path can't accidentally bypass
@@ -1506,10 +1574,13 @@ export function placeHiddenConquestOnNeutralRegion(
     return {
       state: {
         ...state,
-        phase:         "finished",
-        finishedAt:    Date.now(),
-        regionStates:  nextRegionStates,
-        playerBonuses: nextPlayerBonuses,
+        phase:                 "finished",
+        finishedAt:            Date.now(),
+        regionStates:          nextRegionStates,
+        playerBonuses:         nextPlayerBonuses,
+        hiddenBonusPlacements: postHiddenPlacements,
+        playerHiddenBonuses:   postPlayerHidden,
+        lastHiddenBonusToast:  postHiddenToast,
         round: {
           ...state.round,
           lastResult: domResult,
@@ -1523,9 +1594,12 @@ export function placeHiddenConquestOnNeutralRegion(
   return {
     state: {
       ...state,
-      phase:         "round_result",
-      regionStates:  nextRegionStates,
-      playerBonuses: nextPlayerBonuses,
+      phase:                 "round_result",
+      regionStates:          nextRegionStates,
+      playerBonuses:         nextPlayerBonuses,
+      hiddenBonusPlacements: postHiddenPlacements,
+      playerHiddenBonuses:   postPlayerHidden,
+      lastHiddenBonusToast:  postHiddenToast,
       round: {
         ...state.round,
         lastResult: baseResult,
@@ -1828,6 +1902,23 @@ function resolveDuelWithWinner(
   );
   const postBonusToast = kocbasiOut.toast ?? mevziOut.toast ?? bonusOut.toast;
 
+  // Hidden bonus claim — a duel flip is a fetih, so the attacker collects
+  // any unclaimed hidden bonus on the captured region.  Layered after the
+  // open-bonus chain; lives on a separate state channel so it never affects
+  // points or `lastBonusToast`.
+  const hb = tryClaimHiddenBonus(
+    state.hiddenBonusPlacements,
+    state.playerHiddenBonuses,
+    duel.regionId,
+    duel.attackerId,
+    attackerName,
+    state.round.roundNumber,
+    now,
+  );
+  const postHiddenPlacements = hb ? hb.hiddenBonusPlacements : state.hiddenBonusPlacements;
+  const postPlayerHidden     = hb ? hb.playerHiddenBonuses   : state.playerHiddenBonuses;
+  const postHiddenToast      = hb ? hb.lastHiddenBonusToast  : state.lastHiddenBonusToast;
+
   const flipResult: ConquestActionResult = {
     ok:                  true,
     action:              "attack_region",
@@ -1855,11 +1946,14 @@ function resolveDuelWithWinner(
     };
     return {
       ...base,
-      phase:          "finished",
-      finishedAt:     now,
-      regionStates:   mevziOut.regionStates,
-      playerBonuses:  kocbasiOut.playerBonuses,
-      lastBonusToast: postBonusToast ?? state.lastBonusToast,
+      phase:                 "finished",
+      finishedAt:            now,
+      regionStates:          mevziOut.regionStates,
+      playerBonuses:         kocbasiOut.playerBonuses,
+      lastBonusToast:        postBonusToast ?? state.lastBonusToast,
+      hiddenBonusPlacements: postHiddenPlacements,
+      playerHiddenBonuses:   postPlayerHidden,
+      lastHiddenBonusToast:  postHiddenToast,
       round: {
         ...base.round,
         lastResult: domResult,
@@ -1877,9 +1971,12 @@ function resolveDuelWithWinner(
 
   return {
     ...base,
-    regionStates:   mevziOut.regionStates,
-    playerBonuses:  kocbasiOut.playerBonuses,
-    lastBonusToast: postBonusToast ?? state.lastBonusToast,
+    regionStates:          mevziOut.regionStates,
+    playerBonuses:         kocbasiOut.playerBonuses,
+    lastBonusToast:        postBonusToast ?? state.lastBonusToast,
+    hiddenBonusPlacements: postHiddenPlacements,
+    playerHiddenBonuses:   postPlayerHidden,
+    lastHiddenBonusToast:  postHiddenToast,
   };
 }
 
@@ -2029,6 +2126,9 @@ export function advanceToNextRound(
     lastChallengeType: challenge.type as ConquestChallengeType,
     /* roundBonuses stays as-is — bonus regions are fixed for the match. */
     lastBonusToast:    carryToastForward ? pendingToast : undefined,
+    /* Hidden bonus claim toasts are one-shot: clear on round advance so a
+     * stale claim doesn't echo to late joiners or replay on next-round mount. */
+    lastHiddenBonusToast: undefined,
     nextChallenge,
     round: {
       roundNumber:    nextRoundNumber,

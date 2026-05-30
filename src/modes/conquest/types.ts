@@ -394,6 +394,71 @@ export interface ConquestBonusToast {
   previousOwnerId?: string;
 }
 
+// ── Hidden bonuses ───────────────────────────────────────────────────────────
+
+/**
+ * Catalog of hidden bonus types.  These are kept on a SEPARATE channel from
+ * the open `ConquestRegionBonusType` rotation: they never render an icon on
+ * the map, they may not spawn at all on a given match, and they are claimed
+ * one-shot via region capture (the placement disappears the moment a region
+ * with a hidden bonus first changes hands).
+ *
+ * The real gameplay effects are wired in a follow-up — this revision only
+ * delivers the infrastructure (spawn, claim, inventory, viewer-aware toast).
+ */
+export type ConquestHiddenBonusType =
+  | "lanet_muhru"
+  | "pusu"
+  | "suikast";
+
+/**
+ * Per-region hidden bonus placement.  Authoritative source of truth for
+ * "this region carries a hidden bonus of this type, claimed or not".  Lives
+ * on `ConquestGameState.hiddenBonusPlacements` (regionId → placement).
+ *
+ * `claimedByPlayerId` flips from undefined to the claimer's id on the FIRST
+ * ownership change of this region during the match.  Once set, the region
+ * never grants another hidden bonus — subsequent owners get nothing here.
+ */
+export interface ConquestHiddenBonusPlacement {
+  type:               ConquestHiddenBonusType;
+  claimedByPlayerId?: string;
+  claimedAtRound?:    number;
+}
+
+/**
+ * One-shot hidden bonus charge held in a player's inventory.  Appended to
+ * `ConquestGameState.playerHiddenBonuses[playerId]` when the player captures
+ * a region carrying an unclaimed hidden bonus.
+ *
+ * `used` is reserved for the next revision (the actual effect/consume flow).
+ * This revision only ever sets it to `false`.
+ */
+export interface ConquestPlayerHiddenBonus {
+  id:               string;
+  type:             ConquestHiddenBonusType;
+  used:             boolean;
+  claimedRegionId:  ConquestRegionId;
+  claimedRound:     number;
+}
+
+/**
+ * Viewer-aware toast announced on a hidden bonus claim.  Synced through
+ * `ConquestGameState.lastHiddenBonusToast` so every client renders the same
+ * notification at the same moment.  The renderer chooses which copy to show
+ * based on the local viewer id — the claimer sees the real bonus type; every
+ * other player sees a generic "rakip gizli bonus keşfetti" message that
+ * deliberately hides the type, the region, and the effect.
+ */
+export interface ConquestHiddenBonusToast {
+  id:           string;
+  type:         ConquestHiddenBonusType;
+  claimerId:    string;
+  claimerName:  string;
+  regionId:     ConquestRegionId;
+  at:           number;
+}
+
 /**
  * Dynamic per-round bonus assignment.  Maps `regionId → bonus type` for the
  * regions carrying bonuses this round.  Replaces the static REGION_BONUSES
@@ -802,6 +867,33 @@ export interface ConquestGameState {
     challenge: ConquestChallenge;
     bankId:    string;
   };
+  /**
+   * Hidden bonus placements for this match.  Picked once at match creation
+   * by `buildHiddenBonusPlacements` and persisted as a `regionId → placement`
+   * map.  Hidden bonuses are intentionally separate from `roundBonuses`:
+   *   - They may not spawn at all (per-match probability gate).
+   *   - They never render an icon on the map.
+   *   - They are claimed one-shot on the FIRST capture of the region.
+   * Absent (or empty) when no hidden bonus was placed this match, or in
+   * legacy saves predating the hidden bonus system.
+   */
+  hiddenBonusPlacements?: Record<ConquestRegionId, ConquestHiddenBonusPlacement>;
+  /**
+   * Per-player hidden bonus inventory.  Appended to whenever a player claims
+   * a hidden bonus by capturing its region for the first time.  Each entry
+   * represents one one-shot charge; the consume flow (real effects) is wired
+   * in a follow-up.  Absent in pre-hidden-bonus saves; readers must default
+   * a missing player entry to an empty array.
+   */
+  playerHiddenBonuses?: Record<string, ConquestPlayerHiddenBonus[]>;
+  /**
+   * Most recent hidden-bonus claim toast.  Persisted on game state so every
+   * client renders the SAME viewer-aware notification (claimer sees the real
+   * bonus name; everyone else sees the generic "rakip gizli bonus keşfetti"
+   * copy).  Cleared on round advance so a stale claim doesn't echo to late
+   * joiners.
+   */
+  lastHiddenBonusToast?: ConquestHiddenBonusToast;
 }
 
 /** Final result row — one per player — used by the result screen. */
