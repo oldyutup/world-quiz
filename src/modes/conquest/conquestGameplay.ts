@@ -1735,11 +1735,12 @@ function resolveDuelWithWinner(
   const postBonusToast = kocbasiOut.toast ?? mevziOut.toast ?? bonusOut.toast;
 
   const flipResult: ConquestActionResult = {
-    ok:       true,
-    action:   "attack_region",
-    playerId: duel.attackerId,
-    regionId: duel.regionId,
-    message:  `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
+    ok:              true,
+    action:          "attack_region",
+    playerId:        duel.attackerId,
+    regionId:        duel.regionId,
+    message:         `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
+    previousOwnerId: duel.defenderId,
   };
 
   const base = finishDuelIntoRoundResult(state, flipResult);
@@ -1749,11 +1750,12 @@ function resolveDuelWithWinner(
   if (dominatorId !== null) {
     const dominator = state.players.find(p => p.id === dominatorId);
     const domResult: ConquestActionResult = {
-      ok:       true,
-      action:   "attack_region",
-      playerId: duel.attackerId,
-      regionId: duel.regionId,
-      message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+      ok:              true,
+      action:          "attack_region",
+      playerId:        duel.attackerId,
+      regionId:        duel.regionId,
+      message:         `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+      previousOwnerId: duel.defenderId,
     };
     return {
       ...base,

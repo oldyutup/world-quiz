@@ -10456,6 +10456,89 @@ body {
   margin-top: 4px;
 }
 
+/* ── Major bonus notice ──────────────────────────────────────────
+ * Premium first-capture banner.  Wired today for Liman ⚓ only;
+ * other bonuses can graduate to the same banner by adding a branch
+ * in the effect that drives `majorBonusNotice` in ConquestGame.
+ *
+ * Sits above the regular bonus toast (suppressed for the same event),
+ * uses a warm amber accent so it never reads as a duel cue or a round
+ * cue.  Holds for ~3.8s then auto-fades. */
+.cq-major-bonus-notice {
+  position: fixed;
+  top: 32%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 26px;
+  background:
+    linear-gradient(180deg, rgba(28, 22, 14, 0.96) 0%, rgba(14, 10, 6, 0.96) 100%);
+  border: 1.5px solid rgba(251, 191, 36, 0.65);
+  border-radius: 18px;
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 0 36px rgba(251, 191, 36, 0.24);
+  color: #f8fafc;
+  z-index: 2002;
+  width: min(520px, 92vw);
+  max-width: 92vw;
+  box-sizing: border-box;
+  pointer-events: none;
+  animation:
+    cq-bonus-toast-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1.05),
+    cq-bonus-toast-out 360ms ease-in 3440ms forwards;
+}
+.cq-major-bonus-notice[data-color="red"]    { --cq-major-color: #ef4444; }
+.cq-major-bonus-notice[data-color="blue"]   { --cq-major-color: #3b82f6; }
+.cq-major-bonus-notice[data-color="green"]  { --cq-major-color: #22c55e; }
+.cq-major-bonus-notice[data-color="yellow"] { --cq-major-color: #eab308; }
+.cq-major-bonus-notice[data-color="purple"] { --cq-major-color: #a855f7; }
+.cq-major-bonus-notice[data-color="orange"] { --cq-major-color: #f97316; }
+.cq-major-bonus-notice[data-color="pink"]   { --cq-major-color: #ec4899; }
+.cq-major-bonus-notice[data-color="cyan"]   { --cq-major-color: #06b6d4; }
+.cq-major-bonus-notice-icon {
+  font-size: 40px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+.cq-major-bonus-notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.cq-major-bonus-notice-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fef3c7;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.cq-major-bonus-notice-body {
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(241, 245, 249, 0.92);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .cq-major-bonus-notice {
+    top: 28%;
+    padding: 16px 18px;
+    gap: 12px;
+    width: 92vw;
+    border-radius: 14px;
+  }
+  .cq-major-bonus-notice-icon { font-size: 32px; }
+  .cq-major-bonus-notice-title { font-size: 15px; }
+  .cq-major-bonus-notice-body  { font-size: 12.5px; line-height: 1.4; }
+}
+
 /* Attack Focus framing — applied to both the duel-intro card (during
  * the 4s pre-question window) and the standalone non-duel banner.  Red
  * accent border + slightly larger title keeps "⚔️ Hedef: X" readable on
@@ -11868,6 +11951,30 @@ body {
   color: var(--muted);
   margin-top: 2px;
   letter-spacing: 0.01em;
+}
+/* Liman ⚓ capture variant: warm amber accent + extra info line.
+ * Only added on first capture of a Liman bonus region; subsequent captures
+ * fall back to the base styling (no data-variant). */
+.cq-round-result-panel[data-variant="liman"] .cq-rrc-title {
+  color: #fef3c7;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.cq-rrc-liman-info {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(254, 243, 199, 0.88);
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 2px 0 0;
+  max-width: 320px;
+  letter-spacing: 0.01em;
+}
+.mcq-sheet-body .cq-rrc-liman-info {
+  font-size: 11.5px;
+  padding: 6px 10px;
+  max-width: none;
 }
 /* Legacy selectors kept as no-ops so old CSS refs don't break */
 .cq-round-result-line { display: contents; }

@@ -64,7 +64,7 @@ import {
   HIDDEN_OP_PLACED_MESSAGE_PREFIX,
   HIDDEN_OP_PLACED_TITLE,
 } from "./regionBonuses";
-import { getActiveBonusEntries } from "./conquestRoundBonuses";
+import { getActiveBonusEntries, resolveActiveBonus } from "./conquestRoundBonuses";
 import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
   actionHolderHasNoMoves,
@@ -147,6 +147,26 @@ const HIDDEN_OP_TOAST_MS = 8500;
  *  longer than HIDDEN_OP_TOAST_MS so the toast clears before the next
  *  challenge (and its timer) starts. */
 const HIDDEN_OP_AUTO_ADVANCE_MS = 9000;
+
+/** Liman ⚓ capture-card flavour copy, keyed by region id and grouped by
+ *  the coast that region sits on.  Used by the round_result card override
+ *  (see `limanCaptureCard`) to replace the generic "Bölge Fethedildi"
+ *  subtitle with a sea-flavoured line on the first capture of a Liman
+ *  bonus region.  Adding a new Liman region = add its id here. */
+const LIMAN_COAST_FLAVOR: Record<string, string> = {
+  // Akdeniz
+  bati_akdeniz:     "sıcak denizlere indi!",
+  cukurova:         "sıcak denizlere indi!",
+  // Ege
+  guney_marmara:    "Ege Denizi'ne açılıyor!",
+  kuzey_ege:        "Ege Denizi'ne açılıyor!",
+  guney_ege:        "Ege Denizi'ne açılıyor!",
+  // Karadeniz
+  istanbul_kocaeli: "Karadeniz'in hırçın sularına açılıyor!",
+  bati_karadeniz:   "Karadeniz'in hırçın sularına açılıyor!",
+  orta_karadeniz:   "Karadeniz'in hırçın sularına açılıyor!",
+  dogu_karadeniz:   "Karadeniz'in hırçın sularına açılıyor!",
+};
 
 /** Subtitles rotated under the "Tur N Başlıyor" intro card; copy stays
  *  generic on purpose so it never lies about gameplay state. */
@@ -1367,6 +1387,86 @@ export default function ConquestGame({
   const lastResult     = gameState.round.lastResult;
   const rrcData        = getRoundResultCardData(lastResult);
 
+  // ── Liman ⚓ capture card override ───────────────────────────────────
+  // When the round_result card is showing because someone just captured /
+  // flipped a region that *currently carries the liman bonus*, swap the
+  // generic copy for a sea-flavoured liman card.  Detection is by bonus
+  // TYPE (resolveActiveBonus), never by region id — so the override fires
+  // for whichever coastal region holds the liman bonus this match and
+  // never fires on non-liman regions.
+  //
+  //   - capture_neutral (first take of an unowned liman): "Limanı Alındı"
+  //     card with the existing coastal-flavour subtitle.
+  //   - attack_region (rakipten ele geçirme): viewer-aware control-flip
+  //     copy — three perspectives for attacker / previous owner / spectator.
+  //
+  // Liman *income* never triggers round_result, so the existing small
+  // income toast + log is untouched.
+  const limanCaptureCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+    extra?:   string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok || !lastResult.regionId) return null;
+    if (lastResult.action !== "capture_neutral" && lastResult.action !== "attack_region") {
+      return null;
+    }
+    const bonus = resolveActiveBonus(gameState.roundBonuses, lastResult.regionId);
+    if (!bonus || bonus.type !== "liman") return null;
+
+    const attacker     = players.find(p => p.id === lastResult.playerId) ?? null;
+    const attackerName = attacker?.name ?? "Oyuncu";
+
+    // Control-flip path: rakipten ele geçirme.  Requires a previous owner
+    // to address them by name in the loss / spectator variants.
+    if (lastResult.action === "attack_region" && lastResult.previousOwnerId) {
+      const previousOwner     = players.find(p => p.id === lastResult.previousOwnerId) ?? null;
+      const previousOwnerName = previousOwner?.name ?? "Eski sahip";
+
+      if (myPlayerId === lastResult.playerId) {
+        return {
+          icon:     "⚔️",
+          title:    "Kontrol Ele Geçirildi!",
+          subtitle: "Liman bölgesi artık senin kontrolünde. Elinde tuttuğun her tur +1 puan ve +5 Gold kazanacaksın. Düşman saldırılarına dikkat et!",
+        };
+      }
+      if (myPlayerId === lastResult.previousOwnerId) {
+        return {
+          icon:     "🔥",
+          title:    "Liman Bölgesi Düştü!",
+          subtitle: "Liman bölgesindeki kontrolün saldırılar sonucu kayboldu. Tekrar ele geçirmek için karşı saldırı başlatabilirsin!",
+        };
+      }
+      return {
+        icon:     "⚔️",
+        title:    `${attackerName}, ${previousOwnerName}’nun Liman Bölgesini Ele Geçirdi!`,
+        subtitle: `Liman bölgesini ele geçiren ${attackerName}, bölgeyi elinde tuttuğu her tur +1 puan ve +5 Gold kazanacak.`,
+      };
+    }
+
+    // Empty-liman first-capture path: keep the original sea-flavoured card.
+    if (lastResult.action === "capture_neutral") {
+      const rs = gameState.regionStates.find(r => r.regionId === lastResult.regionId);
+      if (!rs || (rs.captureCount ?? 0) !== 1) return null;
+      const region      = mapConfig?.regions.find(r => r.id === lastResult.regionId) ?? null;
+      const regionLabel = region?.displayLabel ?? region?.name ?? lastResult.regionId;
+      const flavor      = LIMAN_COAST_FLAVOR[lastResult.regionId] ?? "limanı bayrağına ekledi!";
+      return {
+        icon:     "⚓",
+        title:    `${regionLabel} Limanı Alındı!`,
+        subtitle: `${attackerName} ${flavor}`,
+        extra:    "Bu liman her tur sahibine +1 puan ve +5 Gold geliri kazandıracak.",
+      };
+    }
+
+    return null;
+  }, [lastResult, gameState.regionStates, gameState.roundBonuses, mapConfig, players, myPlayerId]);
+
+  const rrcIcon     = limanCaptureCard?.icon     ?? rrcData.icon;
+  const rrcTitle    = limanCaptureCard?.title    ?? rrcData.title;
+  const rrcSubtitle = limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
+
   // Eleme Yetkisi — decide once per challenge whether to render an
   // elimination for the local viewer, then latch the answer.  Decision
   // gates: (1) phase is the normal challenge phase (defense duels route
@@ -1606,6 +1706,86 @@ export default function ConquestGame({
     }
   }, [lastBonusToast?.id, lastBonusToast?.bonusType, lastBonusToast?.playerId, myPlayerId]);
 
+  // ── Major bonus notice (premium first-capture banner) ────────────────
+  // Liman ⚓ — the first time the region carrying this bonus is captured in
+  // the match, suppress the standard small bonus toast and render a larger
+  // premium notice instead.  Subsequent captures + per-round income payouts
+  // continue to use the existing small toast + log path unchanged.
+  //
+  // Structure is generic (kind/title/body/playerColor) so other bonuses can
+  // graduate to the same banner later by adding a branch in the effect below.
+  const MAJOR_BONUS_NOTICE_MS = 3800;
+  const MAJOR_BONUS_NOTICE_FRESH_MS = 5000;
+  const majorBonusHandledIdRef = useRef<string | null>(null);
+  const [majorBonusNotice, setMajorBonusNotice] = useState<{
+    id:    string;
+    icon:  string;
+    title: string;
+    body:  string;
+    color: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!lastBonusToast) return;
+    if (lastBonusToast.bonusType !== "liman") return;
+    // Income ticks share the bonus toast channel but must never trigger the
+    // major notice — they keep the existing small message.
+    if (lastBonusToast.id.startsWith("liman_income-")) return;
+    if (majorBonusHandledIdRef.current === lastBonusToast.id) return;
+
+    // First capture in this match only.  `captureCount` on the region state
+    // is incremented before the bonus toast is written, so the first capture
+    // resolves to 1.  Subsequent re-captures fall through to the small toast.
+    const regionId = lastBonusToast.regionId;
+    if (!regionId) return;
+    const regionState = gameState.regionStates.find(r => r.regionId === regionId);
+    if (!regionState || (regionState.captureCount ?? 0) !== 1) return;
+
+    // Guard against stale toasts replayed on mount (e.g. rejoining a match
+    // after the first capture already happened): ignore anything that is no
+    // longer fresh enough to be the live capture event.
+    if (Date.now() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
+
+    majorBonusHandledIdRef.current = lastBonusToast.id;
+
+    const region = mapConfig?.regions.find(r => r.id === regionId) ?? null;
+    const regionLabel = region?.displayLabel ?? region?.name ?? "Liman";
+    const isMine = lastBonusToast.playerId === myPlayerId;
+    const notice = isMine
+      ? {
+          id:    lastBonusToast.id,
+          icon:  "⚓",
+          title: "Liman Ele Geçirildi!",
+          body:  `${regionLabel} artık senin kontrolünde. Her tur +1 puan ve +5 Gold geliri kazanacaksın.`,
+          color: playerColors[lastBonusToast.playerId] ?? null,
+        }
+      : {
+          id:    lastBonusToast.id,
+          icon:  "⚓",
+          title: "Rakip Limanı Ele Geçirdi!",
+          body:  `${lastBonusToast.playerName}, ${regionLabel} limanını aldı. Bu bölge artık her tur sahibine +1 puan ve +5 Gold kazandıracak.`,
+          color: playerColors[lastBonusToast.playerId] ?? null,
+        };
+    setMajorBonusNotice(notice);
+    // Suppress the duplicate small toast for this exact capture event.
+    setDismissedToastId(lastBonusToast.id);
+
+    const t = window.setTimeout(() => {
+      setMajorBonusNotice(cur => (cur && cur.id === notice.id ? null : cur));
+    }, MAJOR_BONUS_NOTICE_MS);
+    return () => window.clearTimeout(t);
+  }, [
+    lastBonusToast?.id,
+    lastBonusToast?.bonusType,
+    lastBonusToast?.regionId,
+    lastBonusToast?.playerId,
+    lastBonusToast?.playerName,
+    lastBonusToast?.at,
+    gameState.regionStates,
+    mapConfig,
+    myPlayerId,
+    playerColors,
+  ]);
+
   // Move-phase timer values (null when the round predates the timer feature
   // or the phase isn't action).  Shared by both holder and spectator views.
   const moveTotalMs =
@@ -1798,6 +1978,32 @@ export default function ConquestGame({
           </div>
         );
       })()}
+
+      {/* Major bonus notice — premium first-capture banner.  Currently wired
+       *  for Liman ⚓ only; suppresses the small bonus toast for the same
+       *  capture event.  Subsequent captures + income ticks fall through to
+       *  the existing small toast path. */}
+      {majorBonusNotice && (
+        <div
+          key={majorBonusNotice.id}
+          className="cq-major-bonus-notice"
+          data-color={majorBonusNotice.color ?? undefined}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-major-bonus-notice-icon" aria-hidden="true">
+            {majorBonusNotice.icon}
+          </span>
+          <div className="cq-major-bonus-notice-text">
+            <div className="cq-major-bonus-notice-title">
+              {majorBonusNotice.title}
+            </div>
+            <div className="cq-major-bonus-notice-body">
+              {majorBonusNotice.body}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Game-start intro: info card (3s) → 3-2-1 countdown (3s).
        *  Only fires at the very start of a fresh match; never repeats.
@@ -2448,10 +2654,17 @@ export default function ConquestGame({
       )}
 
       {phase === "round_result" && (
-        <section className="cq-round-result-panel" aria-label="Tur sonucu">
-          <div className="cq-rrc-icon" aria-hidden="true">{rrcData.icon}</div>
-          <div className="cq-rrc-title">{rrcData.title}</div>
-          <p className="cq-rrc-subtitle">{lastResult?.message ?? "Tur tamamlandı."}</p>
+        <section
+          className="cq-round-result-panel"
+          data-variant={limanCaptureCard ? "liman" : undefined}
+          aria-label="Tur sonucu"
+        >
+          <div className="cq-rrc-icon" aria-hidden="true">{rrcIcon}</div>
+          <div className="cq-rrc-title">{rrcTitle}</div>
+          <p className="cq-rrc-subtitle">{rrcSubtitle}</p>
+          {limanCaptureCard?.extra && (
+            <p className="cq-rrc-liman-info">{limanCaptureCard.extra}</p>
+          )}
           <p className="cq-rrc-hint" role="status">
             {roundNumber >= totalRounds
               ? "Sonuçlar hazırlanıyor…"
@@ -2681,7 +2894,7 @@ export default function ConquestGame({
     mobileSheetDismissible = true;
     mobileSheetHandle = (
       <span className="mcq-sheet-handle-title">
-        {rrcData.icon} {rrcData.title}
+        {rrcIcon} {rrcTitle}
       </span>
     );
   } else if (phase === "finished") {

@@ -434,6 +434,14 @@ export interface ConquestActionResult {
   regionId:  ConquestRegionId | null;
   /** Localised (TR) message describing the outcome. */
   message:   string;
+  /**
+   * Owner of `regionId` immediately BEFORE this action committed.  Populated
+   * for ownership-changing outcomes (currently the duel-flip success path)
+   * so viewer-aware round_result cards (e.g. the liman control-flip variant)
+   * can name the previous holder without re-deriving it from history.
+   * Absent on actions that don't flip ownership or on legacy snapshots.
+   */
+  previousOwnerId?: string;
 }
 
 /** Complete snapshot of an active or recently-finished Kuşatma match. */
