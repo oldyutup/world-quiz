@@ -82,7 +82,12 @@ import {
   submitChallengeAnswer,
   submitDuelAnswer,
 } from "./conquestGameplay";
-import { inferActionFromRegionClick, isLegalTarget } from "./conquestActions";
+import {
+  canAttackRegion,
+  canCaptureNeutral,
+  inferActionFromRegionClick,
+  isLegalTarget,
+} from "./conquestActions";
 import { normaliseAnswer } from "./conquestChallengeValidation";
 import ConquestBoard from "./ConquestBoard";
 import ConquestChallengePanel from "./ConquestChallengePanel";
@@ -1060,6 +1065,142 @@ export default function ConquestGame({
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
 
+    // DEV-only diagnostic snapshot: surface every input the legality decision
+    // depends on so a sporadic "yellow region, illegal click" repro can be
+    // root-caused from a single console group.  Computed against the same
+    // holder-projected board the highlight memo uses, so the parity checks
+    // below mirror the user-visible affordance.  Guarded by import.meta.env.DEV
+    // — stripped from production bundles by Vite's dead-code elimination.
+    if (import.meta.env.DEV) {
+      const holderViewForDebug = projectRegionStatesForViewer(
+        gameState.regionStates, holderId,
+      );
+      const clickedRegionDef = mapConfig.regions.find(r => r.id === regionId) ?? null;
+      const clickedRegionRealRs = gameState.regionStates.find(r => r.regionId === regionId) ?? null;
+      const clickedRegionHolderRs = holderViewForDebug.find(r => r.regionId === regionId) ?? null;
+      const viewerOwnedIds = (myPlayerId
+        ? gameState.regionStates.filter(r => r.ownerPlayerId === myPlayerId).map(r => r.regionId)
+        : []);
+      const holderOwnedIds = gameState.regionStates
+        .filter(r => r.ownerPlayerId === holderId)
+        .map(r => r.regionId);
+      const declaredNeighbors = clickedRegionDef?.neighbors ?? [];
+      const holderAdjacency = declaredNeighbors.filter(nbId =>
+        holderOwnedIds.includes(nbId),
+      );
+      const reverseAdjacency = holderOwnedIds.filter(ownedId => {
+        const ownedDef = mapConfig.regions.find(r => r.id === ownedId);
+        return !!ownedDef && ownedDef.neighbors.includes(regionId);
+      });
+      const orphanReverseAdjacency = reverseAdjacency.filter(
+        id => !declaredNeighbors.includes(id),
+      );
+      const inferAgainstHolderView = inferActionFromRegionClick(
+        mapConfig, holderViewForDebug, holderId, regionId,
+      );
+      const inferAgainstRealState = inferActionFromRegionClick(
+        mapConfig, gameState.regionStates, holderId, regionId,
+      );
+      const canCaptureNeutralHolderView = canCaptureNeutral(
+        mapConfig, holderViewForDebug, holderId, regionId,
+      );
+      const canAttackHolderView = canAttackRegion(
+        mapConfig, holderViewForDebug, holderId, regionId,
+      );
+      const isLegalHolderView = isLegalTarget(
+        mapConfig, holderViewForDebug, holderId, regionId,
+      );
+      const isLegalRealState = isLegalTarget(
+        mapConfig, gameState.regionStates, holderId, regionId,
+      );
+      const inHighlightSet = legalTargets.has(regionId);
+      const holderPbDbg = gameState.playerBonuses?.[holderId];
+      const roundBonuses = gameState.roundBonuses ?? null;
+      const activeBonusEntries = roundBonuses
+        ? Object.entries(roundBonuses).map(([rid, type]) => {
+            const rs = gameState.regionStates.find(r => r.regionId === rid);
+            return { regionId: rid, type, ownerPlayerId: rs?.ownerPlayerId ?? null };
+          })
+        : [];
+      const istanbulShieldOpenOnHolder = gameState.regionStates.some(
+        r => r.ownerPlayerId === holderId && r.shielded,
+      );
+
+      // eslint-disable-next-line no-console
+      console.groupCollapsed(
+        `[CQ click] region=${regionId} viewer=${myPlayerId ?? "—"} holder=${holderId} phase=${gameState.phase}`,
+      );
+      // eslint-disable-next-line no-console
+      console.log({
+        viewerPlayerId:           myPlayerId,
+        actionHolderId:           holderId,
+        viewerIsHolder:           myPlayerId === holderId,
+        phase:                    gameState.phase,
+        roundNumber:              gameState.round.roundNumber,
+        actionStartedAt:          gameState.round.actionStartedAt ?? null,
+        actionEndsAt:             gameState.round.actionEndsAt ?? null,
+        clickedRegionId:          regionId,
+        clickedRegionName:        clickedRegionDef?.name ?? null,
+        clickedRegionOwner_real:        clickedRegionRealRs?.ownerPlayerId ?? null,
+        clickedRegionOwner_holderView:  clickedRegionHolderRs?.ownerPlayerId ?? null,
+        clickedRegionShielded:    clickedRegionRealRs?.shielded ?? null,
+        hiddenShieldOwnerId:      clickedRegionRealRs?.hiddenShieldOwnerId ?? null,
+        hiddenShieldKind:         clickedRegionRealRs?.hiddenShieldKind ?? null,
+        legalTargetIds:           Array.from(legalTargets),
+        inHighlightSet,
+        inferAction_holderView:   inferAgainstHolderView,
+        inferAction_realState:    inferAgainstRealState,
+        canCaptureNeutral_holderView: canCaptureNeutralHolderView,
+        canAttackRegion_holderView:   canAttackHolderView,
+        isLegalTarget_holderView:     isLegalHolderView,
+        isLegalTarget_realState:      isLegalRealState,
+        declaredNeighbors,
+        viewerOwnedRegionIds:     viewerOwnedIds,
+        holderOwnedRegionIds:     holderOwnedIds,
+        holderAdjacencyToClicked: holderAdjacency,
+        reverseAdjacency_holderOwnedListingClicked: reverseAdjacency,
+        canActOnRegion,
+        pendingHiddenShield:      !!holderPbDbg?.pendingHiddenShield,
+        holderEliminatorCharges:  holderPbDbg?.eliminatorCharges ?? 0,
+        holderBonusPoints:        holderPbDbg?.bonusPoints ?? 0,
+        holderExtraNextMoveMs:    holderPbDbg?.extraNextMoveMs ?? 0,
+        holderCukurovaClaimed:    !!holderPbDbg?.cukurovaClaimed,
+        istanbulShieldOpenOnHolder,
+        activeBonusEntries,
+      });
+
+      if (inHighlightSet && inferAgainstRealState === null && !holderPbDbg?.pendingHiddenShield) {
+        // Region rendered as a legal target but the action inference rejected
+        // it.  This is the bug the user is hunting — the gameplay layer and
+        // the highlight memo disagree on legality for the SAME holder + state.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[CQ click] LEGAL PARITY MISMATCH — region is in legalTargetIds but inferActionFromRegionClick returned null",
+          { regionId, holderId, isLegalRealState, isLegalHolderView },
+        );
+      }
+      if (inHighlightSet && !canActOnRegion) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[CQ click] highlighted region clicked by a non-holder viewer",
+          { regionId, viewerPlayerId: myPlayerId, actionHolderId: holderId },
+        );
+      }
+      if (orphanReverseAdjacency.length > 0) {
+        // A region the holder owns lists the clicked region as a neighbor,
+        // but the clicked region's own neighbor array does not list it back
+        // — asymmetric adjacency in the map config.  Logs the offending ids
+        // so the topology can be fixed.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[CQ click] ADJACENCY ASYMMETRY — holder-owned regions list clicked region as neighbor but reverse list is missing",
+          { clickedRegionId: regionId, asymmetricFrom: orphanReverseAdjacency },
+        );
+      }
+      // eslint-disable-next-line no-console
+      console.groupEnd();
+    }
+
     // Only the action holder can mutate region state.  Non-holders get a
     // local flash so the click feels acknowledged but never commits.
     if (!canActOnRegion) {
@@ -1103,6 +1244,17 @@ export default function ConquestGame({
     );
 
     if (!inferredAction) {
+      if (import.meta.env.DEV && legalTargets.has(regionId)) {
+        // The user clicked something the board rendered as a legal yellow
+        // target but the gameplay layer rejected it — this is the exact bug
+        // surface.  The detailed snapshot above already logged the inputs;
+        // this warn ties the failure to the failed click for easy scrolling.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[CQ click] HIGHLIGHTED BUT ILLEGAL — region was in highlight set but inferAction returned null at commit time",
+          { regionId, holderId, viewerPlayerId: myPlayerId },
+        );
+      }
       // Illegal target: surface failure to the holder by writing the failure
       // result into lastResult.  Pushing the same gameState shape (only
       // round.lastResult mutated) keeps the wire payload minimal.
@@ -1130,7 +1282,7 @@ export default function ConquestGame({
     const { state: nextState } = applyActionToGame(gameState, mapConfig, pending);
     void onPushGameState(nextState);
     playSound("click");
-  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState]);
+  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId]);
 
   const handleSkipAction = useCallback(() => {
     if (!gameState || !mapConfig) return;
@@ -1716,6 +1868,15 @@ export default function ConquestGame({
                 🏰 Mevzi Bekçisi: Savunmacıya +{Math.round(duelDefenderBonusMs / 1000)} sn
               </div>
             )}
+            {duel?.kocbasiBypass && (
+              <div
+                className="cq-duel-mevzi-chip"
+                role="note"
+                aria-label="Koçbaşı avantajı"
+              >
+                🪵 Koçbaşı: Kalkan aşılır
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2249,6 +2410,7 @@ export default function ConquestGame({
           msRemaining={duelMsRemaining}
           effectiveEndsAt={duelEndsAtForViewer}
           defenderTimeBonusMs={duelDefenderBonusMs}
+          kocbasiBypass={duel.kocbasiBypass === true}
           onSubmitAnswer={handleSubmitDuelAnswer}
         />
       )}

@@ -606,6 +606,15 @@ export interface ConquestDefenseDuelState {
   status:           ConquestDuelStatus;
   winnerId:         string | null;
   submittedAnswers: ConquestChallengeAnswer[];
+  /**
+   * Koçbaşı 🪵 — true when the attacker owns the kocbasi bonus region AND
+   * the target carried an open shield at duel start.  In that case the duel
+   * stores `shieldActive: false` so resolution flips ownership directly
+   * (single-step capture); this flag records that the shield was actually
+   * present and bypassed, so UI can show the bypass chip and the post-flip
+   * toast can announce "kalkanı aştı".  Absent / false in normal duels.
+   */
+  kocbasiBypass?:   boolean;
 }
 
 /** Snapshot of an in-progress round. */

@@ -48,6 +48,12 @@ interface Props {
    * the Mevzi Bekçisi chip explaining the asymmetric clock.
    */
   defenderTimeBonusMs?: number;
+  /**
+   * Koçbaşı 🪵 — true when the attacker is bypassing an active shield this
+   * duel.  Drives the bypass chip in place of the standard "kalkan kırılır"
+   * note (which would mislead — kocbasi wins flip ownership, not just break).
+   */
+  kocbasiBypass?:    boolean;
   onSubmitAnswer:    (rawAnswer: string) => void;
 }
 
@@ -62,6 +68,7 @@ export default function DefenseDuelPanel({
   msRemaining,
   effectiveEndsAt,
   defenderTimeBonusMs,
+  kocbasiBypass,
   onSubmitAnswer,
 }: Props) {
   const { challenge, attackerId, defenderId, shieldActive, startedAt, endsAt } = duel;
@@ -151,6 +158,9 @@ export default function DefenseDuelPanel({
         🎯 Hedef: <strong>{regionLabel}</strong>
         {shieldActive && (
           <span className="cq-duel-shield-note"> · 🛡️ Açık kalkan aktif (kazansan bile sadece kalkan kırılır)</span>
+        )}
+        {kocbasiBypass && (
+          <span className="cq-duel-shield-note"> · 🪵 Koçbaşı: Kalkan aşılır</span>
         )}
       </p>
 

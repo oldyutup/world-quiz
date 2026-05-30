@@ -33,6 +33,7 @@ import { getPlayerTotalPoints, getRegionPoints } from "./regionPoints";
 import {
   buildBonusToast,
   buildHiddenOpPlacedMessage,
+  buildKocbasiCaptureToast,
   buildMevziLossToast,
   createEmptyPlayerBonusState,
   HIDDEN_CONQUEST_REVEAL_MESSAGE,
@@ -42,6 +43,7 @@ import {
 } from "./regionBonuses";
 import {
   buildRoundBonusAssignment,
+  findRegionIdForBonusType,
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
 import type {
@@ -674,6 +676,13 @@ function triggerCaptureBonus(
         // emits the toast so the player sees they unlocked the bonus.
         toast = buildBonusToast("mevzi_bekcisi", capturedRegionId, ownerId, ownerName, now);
         break;
+      case "kocbasi":
+        // Region/owner-tied effect (shield bypass + +1 on enemy capture).
+        // No per-player state to mutate — both effects gate on current
+        // ownership of this region (see `attackerHasKocbasiAdvantage`).
+        // Capture just announces the unlock.
+        toast = buildBonusToast("kocbasi", capturedRegionId, ownerId, ownerName, now);
+        break;
     }
   }
 
@@ -764,6 +773,63 @@ function applyMevziProtectionOnLoss(
     playerBonuses: nextPlayerBonuses,
     toast,
   };
+}
+
+/**
+ * Koçbaşı 🪵 — true when `attackerId` currently owns the region carrying the
+ * kocbasi bonus in this match's assignment.  The bonus is region-tied: as
+ * soon as the attacker loses that region, this returns false.
+ */
+function attackerHasKocbasiAdvantage(
+  regionStates:  ConquestRegionState[],
+  roundBonuses:  ConquestRoundBonusAssignment | undefined,
+  attackerId:    string,
+): boolean {
+  const rid = findRegionIdForBonusType(roundBonuses, "kocbasi");
+  if (!rid) return false;
+  const rs = regionStates.find(r => r.regionId === rid);
+  return !!rs && rs.ownerPlayerId === attackerId;
+}
+
+/**
+ * Koçbaşı 🪵 — economic-offense payout: when the kocbasi-holder fethes an
+ * enemy region (not a neutral capture), they earn +1 bonus point.  Toast
+ * differentiates whether the capture also bypassed an open shield.
+ *
+ * Pure: returns new playerBonuses; never mutates inputs.  Returns the input
+ * snapshot verbatim (plus `toast: undefined`) when the attacker does not hold
+ * the kocbasi advantage, the capture was a neutral region, or the captured
+ * region was itself the kocbasi region (defensive — can't happen since the
+ * attacker would already own it).
+ */
+function applyKocbasiOnEnemyCapture(
+  regionStates:      ConquestRegionState[],
+  playerBonusesIn:   Record<string, ConquestPlayerBonusState> | undefined,
+  roundBonuses:      ConquestRoundBonusAssignment | undefined,
+  attackerId:        string,
+  attackerName:      string,
+  capturedRegionId:  ConquestRegionId,
+  wasNeutralCapture: boolean,
+  shieldBypassed:    boolean,
+  now:               number,
+): {
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+  toast?:        ConquestBonusToast;
+} {
+  const current = playerBonusesIn ?? {};
+  if (wasNeutralCapture) return { playerBonuses: current };
+  if (!attackerHasKocbasiAdvantage(regionStates, roundBonuses, attackerId)) {
+    return { playerBonuses: current };
+  }
+  const pb = current[attackerId] ?? createEmptyPlayerBonusState();
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...current,
+    [attackerId]: { ...pb, bonusPoints: pb.bonusPoints + 1 },
+  };
+  const toast = buildKocbasiCaptureToast(
+    capturedRegionId, attackerId, attackerName, shieldBypassed, now,
+  );
+  return { playerBonuses: nextPlayerBonuses, toast };
 }
 
 /**
@@ -914,12 +980,22 @@ export function applyActionToGame(
       && target.ownerPlayerId
       && target.ownerPlayerId !== action.playerId
     ) {
+      // Koçbaşı 🪵 — bypass an active shield in a single step.  When the
+      // attacker owns the kocbasi region and the target is shielded, the
+      // duel is tagged `shieldActive: false` so attacker-win flips ownership
+      // (instead of just breaking the shield); `kocbasiBypass` records the
+      // bypass for UI chips and the post-flip toast.
+      const targetShielded = target.shielded === true;
+      const kocbasiBypass = targetShielded && attackerHasKocbasiAdvantage(
+        state.regionStates, state.roundBonuses, action.playerId,
+      );
       const duelState = startDefenseDuel(
         state,
         action.playerId,
         target.ownerPlayerId,
         action.regionId,
-        target.shielded === true,
+        targetShielded && !kocbasiBypass,
+        kocbasiBypass,
       );
       const startResult: ConquestActionResult = {
         ok:       true,
@@ -964,6 +1040,7 @@ export function applyActionToGame(
   let postToast: ConquestBonusToast | undefined;
   if (action.type === "capture_neutral" || action.type === "attack_region") {
     const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
+    const now = Date.now();
     const bonusOut = triggerCaptureBonus(
       postRegionStates,
       postPlayerBonuses,
@@ -971,12 +1048,30 @@ export function applyActionToGame(
       action.playerId,
       actorName,
       action.regionId,
-      Date.now(),
+      now,
       action.type === "capture_neutral",
     );
     postRegionStates  = bonusOut.regionStates;
     postPlayerBonuses = bonusOut.playerBonuses;
     postToast         = bonusOut.toast;
+
+    // Koçbaşı 🪵 — +1 bonus point on enemy region capture (no-op for neutral
+    // captures).  All enemy attacks route through duels today, so this branch
+    // only realistically fires for capture_neutral — but call it defensively
+    // so any future direct enemy-capture path picks the payout up too.
+    const kocbasiOut = applyKocbasiOnEnemyCapture(
+      postRegionStates,
+      postPlayerBonuses,
+      state.roundBonuses,
+      action.playerId,
+      actorName,
+      action.regionId,
+      action.type === "capture_neutral",
+      false,
+      now,
+    );
+    postPlayerBonuses = kocbasiOut.playerBonuses;
+    if (kocbasiOut.toast) postToast = kocbasiOut.toast;
   }
 
   const historyEntry = {
@@ -1402,11 +1497,12 @@ export function expireActionPhase(
  * Pure: returns a new ConquestGameState; never mutates inputs.
  */
 function startDefenseDuel(
-  state:        ConquestGameState,
-  attackerId:   string,
-  defenderId:   string,
-  regionId:     ConquestRegionId,
-  shieldActive: boolean,
+  state:         ConquestGameState,
+  attackerId:    string,
+  defenderId:    string,
+  regionId:      ConquestRegionId,
+  shieldActive:  boolean,
+  kocbasiBypass: boolean = false,
 ): ConquestGameState {
   const now = Date.now();
   const usedSoFar = state.usedChallengeKeys ?? [];
@@ -1445,6 +1541,7 @@ function startDefenseDuel(
     status:           "active",
     winnerId:         null,
     submittedAnswers: [],
+    kocbasiBypass:    kocbasiBypass || undefined,
   };
 
   return {
@@ -1617,7 +1714,23 @@ function resolveDuelWithWinner(
     duel.regionId,
     now,
   );
-  const postBonusToast = mevziOut.toast ?? bonusOut.toast;
+
+  // Koçbaşı 🪵 — duel flip always means an enemy region was fethed, so the
+  // +1 payout applies whenever the attacker still owns the kocbasi region.
+  // `kocbasiBypass` (snapshotted at duel start) decides whether the toast
+  // also announces the shield bypass.
+  const kocbasiOut = applyKocbasiOnEnemyCapture(
+    mevziOut.regionStates,
+    mevziOut.playerBonuses,
+    state.roundBonuses,
+    duel.attackerId,
+    attackerName,
+    duel.regionId,
+    false,
+    duel.kocbasiBypass === true,
+    now,
+  );
+  const postBonusToast = kocbasiOut.toast ?? mevziOut.toast ?? bonusOut.toast;
 
   const flipResult: ConquestActionResult = {
     ok:       true,
@@ -1645,7 +1758,7 @@ function resolveDuelWithWinner(
       phase:          "finished",
       finishedAt:     now,
       regionStates:   mevziOut.regionStates,
-      playerBonuses:  mevziOut.playerBonuses,
+      playerBonuses:  kocbasiOut.playerBonuses,
       lastBonusToast: postBonusToast ?? state.lastBonusToast,
       round: {
         ...base.round,
@@ -1665,7 +1778,7 @@ function resolveDuelWithWinner(
   return {
     ...base,
     regionStates:   mevziOut.regionStates,
-    playerBonuses:  mevziOut.playerBonuses,
+    playerBonuses:  kocbasiOut.playerBonuses,
     lastBonusToast: postBonusToast ?? state.lastBonusToast,
   };
 }

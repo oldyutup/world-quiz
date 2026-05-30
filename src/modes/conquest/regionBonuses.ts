@@ -114,6 +114,28 @@ export function getBonusToastCopyForViewer(
     };
   }
 
+  if (toast.bonusType === "kocbasi") {
+    // Capture-of-enemy variant: toast id prefix `kocbasi_capture-` is
+    // emitted by `buildKocbasiCaptureToast` (see conquestGameplay.applyKocbasi…),
+    // signalling that the +1 payout fired.  Keep that toast's own title /
+    // detail so the "kalkanı aştı" copy comes through.
+    if (toast.id.startsWith("kocbasi_capture-")) {
+      return { icon: toast.icon, title: toast.title, detail: toast.detail };
+    }
+    if (isOwner) {
+      return {
+        icon:   "🪵",
+        title:  `${where} Bonusu`,
+        detail: "🪵 Koçbaşı sende! Kalkanları aşar, rakip bölge fethedince +1 puan kazandırır.",
+      };
+    }
+    return {
+      icon:   "🪵",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🪵 Rakip Koçbaşı'nı eline geçirdi. Saldırırken kalkanlar yetersiz kalabilir, dikkat et.`,
+    };
+  }
+
   if (toast.bonusType === "mevzi_bekcisi") {
     // Loss-flavour banner: emitted when a mevzi region changed hands.  The
     // previous owner keeps the region's point value as a "mevzi" protection
@@ -346,6 +368,35 @@ export function buildBonusToast(
 }
 
 /**
+ * Build a Koçbaşı 🪵 capture-flavour toast — fired when the bonus holder
+ * fethes an enemy region and earns the +1 bonus point.  Title switches to
+ * the "kalkanı aştı" copy when the capture also bypassed an open shield.
+ */
+export function buildKocbasiCaptureToast(
+  regionId:        ConquestRegionId,
+  attackerId:      string,
+  attackerName:    string,
+  shieldBypassed:  boolean,
+  at:              number,
+): ConquestBonusToast {
+  return {
+    id: `kocbasi_capture-${regionId}-${at}-${attackerId}`,
+    bonusType:        "kocbasi",
+    regionId,
+    icon:             "🪵",
+    title:            shieldBypassed
+      ? "🪵 Koçbaşı kalkanı aştı: +1 puan"
+      : "🪵 Koçbaşı: +1 puan",
+    detail:           shieldBypassed
+      ? "Kalkan aşıldı ve rakip bölgesi fethedildi. +1 bonus puan kazandın."
+      : "Rakip bölgesi fethedildi. +1 bonus puan kazandın.",
+    playerId:         attackerId,
+    playerName:       attackerName,
+    at,
+  };
+}
+
+/**
  * Build a Mevzi Bekçisi loss-flavour toast — fired when the bonus region
  * changes hands.  Carries `pointsPreserved` + `previousOwnerId` so the viewer
  * copy switches to "Mevzi direndi: X puan korundu." for the player who keeps
@@ -418,5 +469,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "🏰",
     title:  "Mevzi Bekçisi Bonusu",
     detail: "Bu bölgeyi kaybetsen bile puanını korursun.",
+  },
+  kocbasi: {
+    icon:   "🪵",
+    title:  "Koçbaşı Bonusu",
+    detail: "Kalkanları aşar. Rakip bölge fethedince +1 puan kazandırır.",
   },
 };

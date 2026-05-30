@@ -101,8 +101,8 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     category:    "saldiri",
     icon:        "🪵",
     label:       "Koçbaşı",
-    description: "Saldırı gücünü artıran bir bonus.",
-    implemented: false,
+    description: "Kalkanları aşar. Rakip bölge fethedince +1 puan kazandırır.",
+    implemented: true,
   },
   {
     type:        "gecit",

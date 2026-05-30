@@ -41,6 +41,8 @@ const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
     "Sonraki test sorunda 1 yanlış şık silinir.",
   mevzi_bekcisi:
     "Bu bölgeyi kaybetsen bile bölgenin puanı sende kalır. Ownership rakibe geçer, sen ise puanı mevzi koruma puanı olarak korursun.",
+  kocbasi:
+    "Kalkanları aşar: kalkanlı rakip bölgeye düelloyu kazanırsan bölge tek seferde fethedilir. Rakibe ait her bölge fethinde +1 bonus puan kazandırır.",
 };
 
 export interface ConquestBonusGuideEntry {

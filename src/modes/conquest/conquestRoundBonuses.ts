@@ -63,6 +63,7 @@ const ROTATING_BONUS_TYPES: ConquestRegionBonusType[] = [
   "karadeniz_extra_time",
   "eleme_yetkisi",
   "mevzi_bekcisi",
+  "kocbasi",
 ];
 
 /** Static bonus-type metadata (icon/label/description), reused so the UI
@@ -375,6 +376,21 @@ export function getActiveBonusRegionIds(
 ): ConquestRegionId[] {
   if (roundBonuses) return Object.keys(roundBonuses);
   return Object.keys(REGION_BONUSES);
+}
+
+/**
+ * Find the regionId currently carrying the given bonus type in the match's
+ * assignment.  Returns null when no region carries the type this match.
+ */
+export function findRegionIdForBonusType(
+  roundBonuses: ConquestRoundBonusAssignment | undefined,
+  type:         ConquestRegionBonusType,
+): ConquestRegionId | null {
+  if (!roundBonuses) return null;
+  for (const rid of Object.keys(roundBonuses)) {
+    if (roundBonuses[rid] === type) return rid;
+  }
+  return null;
 }
 
 /**

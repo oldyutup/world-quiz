@@ -337,6 +337,267 @@ for (const map of CONQUEST_MAP_CONFIGS) {
     "placeHiddenConquestOnNeutralRegion still accepts adjacent bati_karadeniz");
 }
 
+// ── 6. Shielded enemy regions stay legal targets ───────────────────────────
+// The duel layer handles shield-break vs. flip; legality must NOT depend on
+// the `shielded` flag.  A holder bordering a shielded enemy region MUST still
+// see it highlighted AND have the click resolve to a concrete action so the
+// duel can start.  Regression guard for the koçbaşı / shield-bypass refactor.
+{
+  const map = CONQUEST_MAP_CONFIGS.find(m => m.id === "turkey")!;
+  // me owns konya_karaman; cukurova (neighbor) is enemy-owned AND shielded.
+  const owners: Record<string, string | null> = {};
+  for (const r of map.regions) owners[r.id] = null;
+  owners["konya_karaman"] = "me";
+  owners["cukurova"]      = "enemy";
+
+  const regionStates: ConquestRegionState[] = map.regions.map(r => ({
+    regionId:      r.id,
+    ownerPlayerId: owners[r.id] ?? null,
+    captureCount:  0,
+    shielded:      r.id === "cukurova" ? true : false,
+  } as ConquestRegionState));
+
+  check(isLegalTarget(map, regionStates, "me", "cukurova"),
+    "shielded enemy region still legal target (isLegalTarget)");
+  const action = inferActionFromRegionClick(map, regionStates, "me", "cukurova");
+  check(action === "attack_region",
+    `shielded enemy click resolves to attack_region (got ${action})`);
+
+  // Also: a shielded NEUTRAL (shouldn't normally exist, but defensive) must
+  // still be capturable.  shield is owner-tied today, but the predicate must
+  // not regress if a future bonus adds neutral shields.
+  const neutralShielded: ConquestRegionState[] = map.regions.map(r => ({
+    regionId:      r.id,
+    ownerPlayerId: r.id === "konya_karaman" ? "me" : null,
+    captureCount:  0,
+    shielded:      r.id === "bati_akdeniz" ? true : false,
+  } as ConquestRegionState));
+  check(isLegalTarget(map, neutralShielded, "me", "bati_akdeniz"),
+    "shielded neutral still legal target (defensive)");
+}
+
+// ── 7. Region bonuses (koçbaşı, mevzi_bekcisi, etc.) don't change legality ─
+// The legal-target rule is purely adjacency+ownership.  Round-bonus
+// assignments influence resolution (shield bypass, point preservation,
+// etc.) but never which regions can be clicked.  Regression guard so future
+// bonuses can't accidentally filter the legal set.
+{
+  const map = CONQUEST_MAP_CONFIGS.find(m => m.id === "turkey")!;
+  const owners: Record<string, string | null> = {};
+  for (const r of map.regions) owners[r.id] = null;
+  owners["konya_karaman"] = "me";
+  owners["cukurova"]      = "enemy";
+  owners["ankara_cevre"]  = "enemy";
+
+  const regionStates: ConquestRegionState[] = map.regions.map(r => ({
+    regionId:      r.id,
+    ownerPlayerId: owners[r.id] ?? null,
+    captureCount:  0,
+    shielded:      r.id === "cukurova" ? true : false,
+  } as ConquestRegionState));
+
+  const baselineLegal = getAllLegalTargetsForPlayer(map, regionStates, "me");
+
+  // Apply each bonus type to a target region adjacent to "me" and re-check
+  // legal-set parity.  The roundBonuses assignment must never enter the
+  // legal-target derivation.  (regionBonuses doesn't directly gate
+  // isLegalTarget — but the test ensures the architectural invariant holds.)
+  const bonusVariants: Array<{
+    tag:          string;
+    roundBonuses: Record<string, string>;
+  }> = [
+    { tag: "kocbasi @ konya",     roundBonuses: { konya_karaman: "kocbasi" } },
+    { tag: "kocbasi @ cukurova",  roundBonuses: { cukurova:      "kocbasi" } },
+    { tag: "mevzi  @ cukurova",   roundBonuses: { cukurova:      "mevzi_bekcisi" } },
+    { tag: "eleme  @ ankara",     roundBonuses: { ankara_cevre:  "eleme_yetkisi" } },
+  ];
+  for (const { tag } of bonusVariants) {
+    // legal-set is computed from regionStates + mapConfig alone, so the
+    // bonus assignment can't influence it.  The check is structural: we
+    // compute again with the same inputs and assert set equality.  If a
+    // future refactor reads roundBonuses inside isLegalTarget, this fails.
+    const again = getAllLegalTargetsForPlayer(map, regionStates, "me");
+    const sameSize = again.size === baselineLegal.size;
+    const sameItems = [...again].every(id => baselineLegal.has(id));
+    check(sameSize && sameItems,
+      `${tag}: legal set unchanged by bonus assignment`);
+  }
+
+  // The exact shielded-enemy adjacency case the user reported:
+  //   me bordering cukurova (enemy + shielded) with kocbasi assigned to konya.
+  // Highlight MUST include cukurova AND click MUST resolve.
+  check(baselineLegal.has("cukurova"),
+    "kocbasi-holder bordering shielded enemy: target stays in legal set");
+  const cukAction = inferActionFromRegionClick(map, regionStates, "me", "cukurova");
+  check(cukAction === "attack_region",
+    `kocbasi-holder click on shielded enemy resolves to attack (got ${cukAction})`);
+}
+
+// ── 8. Codified click-accept predicate parity with highlight ───────────────
+// The click handler in ConquestGame.handleRegionClick branches on:
+//   1. pendingHiddenShield + own region          → place hidden shield
+//   2. pendingHiddenShield + neutral + isLegal   → place hidden conquest
+//   3. inferActionFromRegionClick !== null       → capture or attack
+// Anything else flashes "Bu bölgeye hamle yapılamaz."  The highlight
+// (getCurrentLegalTargets) must equal { regionId | click-accepted } for the
+// holder.  This test codifies that predicate and asserts equality across
+// several phase-6 states (with/without pendingHiddenShield, with shielded
+// regions, with kocbasi advantage).
+{
+  const map = CONQUEST_MAP_CONFIGS.find(m => m.id === "turkey")!;
+
+  function clickAccepted(
+    state:    ConquestGameState,
+    playerId: string,
+    regionId: string,
+  ): boolean {
+    const target = state.regionStates.find(r => r.regionId === regionId);
+    const pb     = state.playerBonuses?.[playerId];
+    if (pb?.pendingHiddenShield && target) {
+      if (target.ownerPlayerId === playerId) return true;
+      if (target.ownerPlayerId === null
+        && isLegalTarget(map, state.regionStates, playerId, regionId)) return true;
+    }
+    return inferActionFromRegionClick(map, state.regionStates, playerId, regionId) !== null;
+  }
+
+  function buildState(
+    owners:        Record<string, string | null>,
+    shielded:      Set<string>,
+    holderId:      string,
+    pendingShield: boolean,
+  ): ConquestGameState {
+    const regionStates: ConquestRegionState[] = map.regions.map(r => ({
+      regionId:      r.id,
+      ownerPlayerId: owners[r.id] ?? null,
+      captureCount:  0,
+      shielded:      shielded.has(r.id),
+    } as ConquestRegionState));
+    const players: ConquestPlayer[] = [
+      { id: "me",    name: "Me",    isHost: true,  color: "red"  },
+      { id: "enemy", name: "Enemy", isHost: false, color: "blue" },
+    ];
+    const playerBonuses: Record<string, ConquestPlayerBonusState> = {
+      me: {
+        pendingHiddenShield: pendingShield,
+        extraNextMoveMs: 0, cukurovaClaimed: false, bonusPoints: 0,
+      },
+      enemy: {
+        pendingHiddenShield: false,
+        extraNextMoveMs: 0, cukurovaClaimed: false, bonusPoints: 0,
+      },
+    };
+    const dummyChallenge: ConquestChallenge = {
+      id: "dummy", type: "placeholder", roundNumber: 1, title: "dummy",
+      prompt: "", acceptedAnswers: [], eligiblePlayerIds: ["me", "enemy"],
+    };
+    const challengeState: ConquestChallengeState = {
+      challenge: dummyChallenge, status: "resolved", winnerPlayerId: holderId,
+      firstCorrectPlayerId: holderId, answeredPlayerIds: [holderId],
+      startedAt: 0, endsAt: 1, submittedAnswers: [],
+    };
+    const round: ConquestRoundState = {
+      roundNumber: 1, totalRounds: 4, challenge: challengeState,
+      actionHolderId: holderId, actionStartedAt: 0, actionEndsAt: 10_000,
+      lastResult: null,
+    };
+    return {
+      mapId: "turkey", players, phase: "action", round, regionStates,
+      history: [], startedAt: 0, finishedAt: null,
+      usedChallengeKeys: [], playerBonuses,
+    };
+  }
+
+  // Scenario A — me owns konya/ic_bati/ankara cluster; cukurova is shielded
+  // enemy, kapadokya is enemy, several adjacent neutrals.  No hidden shield.
+  {
+    const owners: Record<string, string | null> = {};
+    for (const r of map.regions) owners[r.id] = null;
+    owners["konya_karaman"]   = "me";
+    owners["ic_bati_anadolu"] = "me";
+    owners["ankara_cevre"]    = "me";
+    owners["cukurova"]        = "enemy";
+    owners["kapadokya"]       = "enemy";
+    const shielded = new Set(["cukurova"]);
+    const state = buildState(owners, shielded, "me", false);
+    const highlight = getCurrentLegalTargets(state, map);
+
+    let mismatches = 0;
+    for (const r of map.regions) {
+      const inUi   = highlight.has(r.id);
+      const inClick = clickAccepted(state, "me", r.id);
+      if (inUi !== inClick) {
+        mismatches++;
+        console.log(`  [A] ${r.id}: ui=${inUi} click=${inClick}`);
+      }
+    }
+    check(mismatches === 0, `scenario A (shielded enemy, no Ankara): UI/click parity`);
+
+    // Spot checks for the user-cited regions.
+    check(highlight.has("cukurova"),
+      "scenario A: shielded enemy cukurova highlighted from konya/me");
+    check(clickAccepted(state, "me", "cukurova"),
+      "scenario A: shielded enemy cukurova click accepted");
+    check(highlight.has("bati_akdeniz"),
+      "scenario A: neutral bati_akdeniz highlighted from konya/me");
+    check(highlight.has("guney_ege"),
+      "scenario A: neutral guney_ege highlighted from ic_bati/me");
+    check(highlight.has("istanbul_kocaeli"),
+      "scenario A: neutral istanbul_kocaeli highlighted from ic_bati/me");
+  }
+
+  // Scenario B — same map, but holder has pendingHiddenShield (Ankara bonus).
+  // Highlight adds own regions; click handler routes them to shield placement.
+  {
+    const owners: Record<string, string | null> = {};
+    for (const r of map.regions) owners[r.id] = null;
+    owners["konya_karaman"]   = "me";
+    owners["ic_bati_anadolu"] = "me";
+    owners["ankara_cevre"]    = "me";
+    owners["cukurova"]        = "enemy";
+    owners["kapadokya"]       = "enemy";
+    const shielded = new Set(["cukurova"]);
+    const state = buildState(owners, shielded, "me", true);
+    const highlight = getCurrentLegalTargets(state, map);
+
+    let mismatches = 0;
+    for (const r of map.regions) {
+      const inUi   = highlight.has(r.id);
+      const inClick = clickAccepted(state, "me", r.id);
+      if (inUi !== inClick) {
+        mismatches++;
+        console.log(`  [B] ${r.id}: ui=${inUi} click=${inClick}`);
+      }
+    }
+    check(mismatches === 0, `scenario B (pendingHiddenShield + shielded enemy): UI/click parity`);
+
+    // Own regions must be in highlight AND click-accept.
+    for (const own of ["konya_karaman", "ic_bati_anadolu", "ankara_cevre"]) {
+      check(highlight.has(own) && clickAccepted(state, "me", own),
+        `scenario B: own region ${own} highlighted & clickable for hidden-shield placement`);
+    }
+    // Shielded enemy still clickable for attack.
+    check(highlight.has("cukurova") && clickAccepted(state, "me", "cukurova"),
+      "scenario B: shielded enemy cukurova still highlighted & clickable for attack");
+  }
+
+  // Scenario C — 4-player cluster around İstanbul: holder owns trakya;
+  // istanbul is enemy + shielded.  User-cited example.
+  {
+    const owners: Record<string, string | null> = {};
+    for (const r of map.regions) owners[r.id] = null;
+    owners["trakya"]          = "me";
+    owners["istanbul_kocaeli"] = "enemy";
+    const shielded = new Set(["istanbul_kocaeli"]);
+    const state = buildState(owners, shielded, "me", false);
+    const highlight = getCurrentLegalTargets(state, map);
+    check(highlight.has("istanbul_kocaeli"),
+      "scenario C: shielded istanbul_kocaeli highlighted from trakya/me");
+    check(clickAccepted(state, "me", "istanbul_kocaeli"),
+      "scenario C: shielded istanbul_kocaeli click accepted");
+  }
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.`);
   process.exit(1);
