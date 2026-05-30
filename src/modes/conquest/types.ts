@@ -290,6 +290,7 @@ export type ConquestRegionBonusType =
   | "kocbasi"
   | "gecit"
   | "kiskac_harekati"
+  | "mancinik"
   // Bilgi
   | "eleme_yetkisi"
   | "kahin"
@@ -334,6 +335,16 @@ export interface ConquestPlayerBonusState {
    * for back-compat with pre-eliminator saves; readers default to 0.
    */
   eliminatorCharges?:  number;
+  /**
+   * Mancınık 🎯 — number of pending long-range attack charges.  Granted
+   * (overwrite-not-stack, max 1) by capturing the mancinik bonus region.
+   * While > 0, the holder's next attack/capture ignores the adjacency rule
+   * and may target ANY region on the map.  Consumed exactly once when the
+   * holder commits an action whose target was not otherwise adjacency-legal
+   * (i.e., the bypass was actually used).  Optional for back-compat with
+   * pre-mancinik saves; readers default to 0.
+   */
+  mancinikCharges?:    number;
   /**
    * Liman 🪙 — total Gold this player has earned via Liman round-end income
    * for the current match.  Synced in gameplay state so every client can see
@@ -469,6 +480,15 @@ export interface ConquestActionResult {
    * non-bypass flips and legacy snapshots.
    */
   kocbasiShieldBypass?: boolean;
+  /**
+   * Mancınık 🎯 — true when the attacker consumed a Mancınık charge to launch
+   * this action (i.e., the target was not adjacency-legal without the
+   * bypass).  Forwarded onto the action result so the UI can render the
+   * "Mancınık Ateşlendi!" big card and, when combined with
+   * `kocbasiShieldBypass`, the "Kuşatma Darbesi!" combo card.  Absent on
+   * non-bypass actions and legacy snapshots.
+   */
+  mancinikBypassUsed?: boolean;
 }
 
 /** Complete snapshot of an active or recently-finished Kuşatma match. */
@@ -667,6 +687,14 @@ export interface ConquestDefenseDuelState {
    * toast can announce "kalkanı aştı".  Absent / false in normal duels.
    */
   kocbasiBypass?:   boolean;
+  /**
+   * Mancınık 🎯 — true when the attacker used a Mancınık charge to launch
+   * this attack (i.e., the target region was not adjacency-legal without the
+   * bypass).  Snapshotted at duel start so `resolveDuelWithWinner` can
+   * forward the bypass into `applyConquestAction`'s adjacency check on the
+   * attacker-wins-flip path.  Absent on normal duels.
+   */
+  mancinikBypass?:  boolean;
 }
 
 /** Snapshot of an in-progress round. */

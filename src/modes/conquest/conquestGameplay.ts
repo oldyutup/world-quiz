@@ -701,6 +701,14 @@ function triggerCaptureBonus(
         // Capture just announces the unlock.
         toast = buildBonusToast("kocbasi", capturedRegionId, ownerId, ownerName, now);
         break;
+      case "mancinik":
+        // Overwrite-not-stack: cap at 1 pending uzak-saldırı charge.
+        // Consumed exactly once when the owner commits an attack/capture
+        // whose target wasn't otherwise adjacency-legal (see
+        // `applyActionToGame` and `resolveDuelWithWinner`).
+        pb.mancinikCharges = 1;
+        toast = buildBonusToast("mancinik", capturedRegionId, ownerId, ownerName, now);
+        break;
     }
   }
 
@@ -790,6 +798,25 @@ function applyMevziProtectionOnLoss(
     regionStates:  nextRegionStates,
     playerBonuses: nextPlayerBonuses,
     toast,
+  };
+}
+
+/**
+ * Mancınık 🎯 — return a new playerBonuses map with `playerId`'s charge
+ * decremented by 1 (clamped at 0).  Returns the input map verbatim when the
+ * player has no charge.  Pure: never mutates inputs.
+ */
+function consumeMancinikCharge(
+  playerBonusesIn: Record<string, ConquestPlayerBonusState> | undefined,
+  playerId:        string,
+): Record<string, ConquestPlayerBonusState> | undefined {
+  if (!playerBonusesIn) return playerBonusesIn;
+  const pb = playerBonusesIn[playerId];
+  const current = pb?.mancinikCharges ?? 0;
+  if (current <= 0) return playerBonusesIn;
+  return {
+    ...playerBonusesIn,
+    [playerId]: { ...(pb ?? createEmptyPlayerBonusState()), mancinikCharges: 0 },
   };
 }
 
@@ -937,6 +964,18 @@ export function applyActionToGame(
     };
   }
 
+  // ── Mancınık 🎯 — long-range attack bypass decision ───────────────────
+  // The bypass is "used" iff the holder has a charge AND the target was NOT
+  // adjacency-legal without it.  Pre-computed here so the same answer drives
+  // duel routing, action validation, and post-success consumption.  A
+  // regular adjacent move while the charge is active does NOT consume it.
+  const actingPb     = state.playerBonuses?.[action.playerId];
+  const hasMancinik  = (actingPb?.mancinikCharges ?? 0) > 0;
+  const mancinikBypassUsed =
+    hasMancinik
+    && (action.type === "attack_region" || action.type === "capture_neutral")
+    && !isLegalTarget(mapConfig, state.regionStates, action.playerId, action.regionId);
+
   // ── Ankara hidden-shield interception ──────────────────────────────────
   // Triggered BEFORE applyConquestAction so a shielded attack/capture never
   // flips ownership.  Shield is consumed on trigger and the round resolves
@@ -951,17 +990,24 @@ export function applyActionToGame(
         shieldTrigger.kind === "neutral_trap" ? HIDDEN_NEUTRAL_TRAP_REVEAL_MESSAGE :
         /* conquest (legacy) */                 HIDDEN_CONQUEST_REVEAL_MESSAGE;
       const blockResult: ConquestActionResult = {
-        ok:       true,
-        action:   action.type,
-        playerId: action.playerId,
-        regionId: action.regionId,
-        message:  blockMessage,
+        ok:                 true,
+        action:             action.type,
+        playerId:           action.playerId,
+        regionId:           action.regionId,
+        message:            blockMessage,
+        mancinikBypassUsed: mancinikBypassUsed || undefined,
       };
+      // Mancınık is still consumed even when the shot lands on a hidden
+      // shield — the attack was launched.
+      const playerBonusesAfterShield = mancinikBypassUsed
+        ? consumeMancinikCharge(state.playerBonuses, action.playerId)
+        : state.playerBonuses;
       return {
         state: {
           ...state,
-          phase:        "round_result",
-          regionStates: shieldTrigger.regionStates,
+          phase:         "round_result",
+          regionStates:  shieldTrigger.regionStates,
+          playerBonuses: playerBonusesAfterShield,
           round: {
             ...state.round,
             lastResult: blockResult,
@@ -1007,13 +1053,21 @@ export function applyActionToGame(
       const kocbasiBypass = targetShielded && attackerHasKocbasiAdvantage(
         state.regionStates, state.roundBonuses, action.playerId,
       );
+      // Mancınık 🎯 — consume the charge at duel start so opponents see
+      // the chip drop the instant the shot leaves the silo.  Routed through
+      // the duel state's `mancinikBypass` flag so the eventual attacker-win
+      // flip can forward the adjacency bypass into `applyConquestAction`.
+      const stateForDuel = mancinikBypassUsed
+        ? { ...state, playerBonuses: consumeMancinikCharge(state.playerBonuses, action.playerId) }
+        : state;
       const duelState = startDefenseDuel(
-        state,
+        stateForDuel,
         action.playerId,
         target.ownerPlayerId,
         action.regionId,
         targetShielded && !kocbasiBypass,
         kocbasiBypass,
+        mancinikBypassUsed,
       );
       const startResult: ConquestActionResult = {
         ok:       true,
@@ -1029,13 +1083,22 @@ export function applyActionToGame(
     }
   }
 
-  const applied = applyConquestAction(
+  const appliedRaw = applyConquestAction(
     mapConfig,
     state.regionStates,
     state.players,
     state.round.roundNumber,
     action,
+    mancinikBypassUsed,
   );
+  // Forward the bypass-used flag onto the action result so the UI's big
+  // card (and small-toast suppression) can react to the consumption.
+  const applied = mancinikBypassUsed && appliedRaw.result.ok
+    ? {
+        ...appliedRaw,
+        result: { ...appliedRaw.result, mancinikBypassUsed: true },
+      }
+    : appliedRaw;
 
   if (!applied.result.ok) {
     return {
@@ -1054,7 +1117,13 @@ export function applyActionToGame(
   // Runs ONLY for capture-style actions whose ownership flip succeeded; skip
   // and defend leave bonuses untouched.
   let postRegionStates  = applied.regionStates;
-  let postPlayerBonuses = state.playerBonuses;
+  // Mancınık 🎯 — consume the bypass charge before triggerCaptureBonus runs
+  // so the post-action snapshot reflects the spent shot.  Triggered captures
+  // (e.g. landing on the mancinik region itself) will then re-grant a fresh
+  // charge if applicable.
+  let postPlayerBonuses = mancinikBypassUsed
+    ? consumeMancinikCharge(state.playerBonuses, action.playerId)
+    : state.playerBonuses;
   let postToast: ConquestBonusToast | undefined;
   if (action.type === "capture_neutral" || action.type === "attack_region") {
     const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
@@ -1519,12 +1588,13 @@ export function expireActionPhase(
  * Pure: returns a new ConquestGameState; never mutates inputs.
  */
 function startDefenseDuel(
-  state:         ConquestGameState,
-  attackerId:    string,
-  defenderId:    string,
-  regionId:      ConquestRegionId,
-  shieldActive:  boolean,
-  kocbasiBypass: boolean = false,
+  state:          ConquestGameState,
+  attackerId:     string,
+  defenderId:     string,
+  regionId:       ConquestRegionId,
+  shieldActive:   boolean,
+  kocbasiBypass:  boolean = false,
+  mancinikBypass: boolean = false,
 ): ConquestGameState {
   const now = Date.now();
   const usedSoFar = state.usedChallengeKeys ?? [];
@@ -1564,6 +1634,7 @@ function startDefenseDuel(
     winnerId:         null,
     submittedAnswers: [],
     kocbasiBypass:    kocbasiBypass || undefined,
+    mancinikBypass:   mancinikBypass || undefined,
   };
 
   return {
@@ -1686,12 +1757,15 @@ function resolveDuelWithWinner(
   }
 
   // Attacker wins, no shield → flip ownership and trigger capture bonuses.
+  // Mancınık 🎯 — forward the duel-start bypass snapshot so the adjacency
+  // check inside `applyConquestAction` doesn't reject a long-range attack.
   const applied = applyConquestAction(
     mapConfig,
     state.regionStates,
     state.players,
     state.round.roundNumber,
     { type: "attack_region", playerId: duel.attackerId, regionId: duel.regionId },
+    duel.mancinikBypass === true,
   );
   if (!applied.result.ok) {
     // Shouldn't happen — adjacency was valid when the duel started — but stay
@@ -1762,6 +1836,7 @@ function resolveDuelWithWinner(
     message:             `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
     previousOwnerId:     duel.defenderId,
     kocbasiShieldBypass: duel.kocbasiBypass === true,
+    mancinikBypassUsed:  duel.mancinikBypass === true || undefined,
   };
 
   const base = finishDuelIntoRoundResult(state, flipResult);
@@ -2277,12 +2352,18 @@ export function getCurrentLegalTargets(
     return new Set();
   }
   const holderId = state.round.actionHolderId;
+  const pb = state.playerBonuses?.[holderId];
+  // Mancınık 🎯 — while the holder has an active charge, every non-self
+  // region becomes a legal click target.  The charge itself is consumed
+  // when the move actually commits (see `applyActionToGame` /
+  // `resolveDuelWithWinner`) — never by highlighting alone.
+  const mancinikActive = (pb?.mancinikCharges ?? 0) > 0;
   const targets = getAllLegalTargetsForPlayer(
     mapConfig,
     state.regionStates,
     holderId,
+    mancinikActive,
   );
-  const pb = state.playerBonuses?.[holderId];
   if (pb?.pendingHiddenShield) {
     for (const rs of state.regionStates) {
       if (rs.ownerPlayerId === holderId) {
@@ -2315,10 +2396,14 @@ export function actionHolderHasNoMoves(
     const ownsAny = state.regionStates.some(rs => rs.ownerPlayerId === holderId);
     if (ownsAny) return false;
   }
+  // Mancınık 🎯: with the bypass active, any non-self region counts as a
+  // legal target, so the holder is virtually never stuck.
+  const mancinikActive = (pb?.mancinikCharges ?? 0) > 0;
   const legal = getLegalActionsForPlayer(
     mapConfig,
     state.regionStates,
     holderId,
+    mancinikActive,
   );
   // skip is always present; "no moves" means skip is the only legal action.
   return legal.length === 1 && legal[0] === "skip";

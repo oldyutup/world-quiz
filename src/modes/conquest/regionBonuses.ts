@@ -125,6 +125,21 @@ export function getBonusToastCopyForViewer(
     };
   }
 
+  if (toast.bonusType === "mancinik") {
+    if (isOwner) {
+      return {
+        icon:   "🎯",
+        title:  `${where} Bonusu`,
+        detail: "🎯 Mancınık hazır! Bir sonraki saldırında komşuluk şartı olmadan haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı yok saymaz.",
+      };
+    }
+    return {
+      icon:   "🎯",
+      title:  `${where} Ele Geçirildi`,
+      detail: `🎯 Rakip Mancınık'ı eline geçirdi. Bir sonraki saldırısında uzak bir bölgeni vurabilir — dikkatli ol.`,
+    };
+  }
+
   if (toast.bonusType === "kocbasi") {
     // Capture-of-enemy variant: toast id prefix `kocbasi_capture-` is
     // emitted by `buildKocbasiCaptureToast` (see conquestGameplay.applyKocbasi…),
@@ -367,6 +382,7 @@ export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
     cukurovaClaimed:     false,
     bonusPoints:         0,
     eliminatorCharges:   0,
+    mancinikCharges:     0,
     matchGoldEarned:     0,
   };
 }
@@ -524,6 +540,11 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "🪵",
     title:  "Koçbaşı Bonusu",
     detail: "Kalkanları aşar. Rakip bölge fethedince +1 puan kazandırır.",
+  },
+  mancinik: {
+    icon:   "🎯",
+    title:  "Mancınık Bonusu",
+    detail: "Bir sonraki saldırı komşuluk şartı olmadan haritadaki herhangi bir bölgeyi hedefleyebilir.",
   },
   liman: {
     icon:   "⚓",

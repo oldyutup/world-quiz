@@ -1229,7 +1229,12 @@ export default function ConquestGame({
         activeBonusEntries,
       });
 
-      if (inHighlightSet && inferAgainstRealState === null && !holderPbDbg?.pendingHiddenShield) {
+      if (
+        inHighlightSet
+        && inferAgainstRealState === null
+        && !holderPbDbg?.pendingHiddenShield
+        && (holderPbDbg?.mancinikCharges ?? 0) === 0
+      ) {
         // Region rendered as a legal target but the action inference rejected
         // it.  This is the bug the user is hunting — the gameplay layer and
         // the highlight memo disagree on legality for the SAME holder + state.
@@ -1299,8 +1304,10 @@ export default function ConquestGame({
       }
     }
 
+    const holderPbForInfer = gameState.playerBonuses?.[holderId];
+    const inferBypass = (holderPbForInfer?.mancinikCharges ?? 0) > 0;
     const inferredAction = inferActionFromRegionClick(
-      mapConfig, gameState.regionStates, holderId, regionId,
+      mapConfig, gameState.regionStates, holderId, regionId, inferBypass,
     );
 
     if (!inferredAction) {
@@ -1743,9 +1750,116 @@ export default function ConquestGame({
     };
   }, [lastResult, gameState.roundBonuses, players, myPlayerId]);
 
-  const rrcIcon     = kaleSurlariCaptureCard?.icon     ?? bereketCaptureCard?.icon     ?? kahinCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? rrcData.icon;
-  const rrcTitle    = kaleSurlariCaptureCard?.title    ?? bereketCaptureCard?.title    ?? kahinCaptureCard?.title    ?? limanCaptureCard?.title    ?? rrcData.title;
-  const rrcSubtitle = kaleSurlariCaptureCard?.subtitle ?? bereketCaptureCard?.subtitle ?? kahinCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
+  // ── Mancınık 🎯 capture-card override ──────────────────────────────────
+  // Mirrors the Liman / Bereket / Kâhin capture cards for the mancinik
+  // bonus.  Five viewer-aware scenarios on capture/flip:
+  //   1: I take a neutral mancinik region    → "🎯 Mancınık Hazır!"
+  //   2: An opponent takes the neutral one   → "🎯 Rakip Mancınık Kurdu!"
+  //   3: I take a mancinik from an opponent  → "🎯 Mancınık Kontrolü Sana Geçti!"
+  //   4: An opponent takes mine              → "🔥 Mancınık Kaybedildi!"
+  //   5: Spectator view, mancinik flipped    → "🎯 Mancınık El Değiştirdi!"
+  const mancinikCaptureCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok || !lastResult.regionId) return null;
+    if (lastResult.action !== "capture_neutral" && lastResult.action !== "attack_region") {
+      return null;
+    }
+    const bonus = resolveActiveBonus(gameState.roundBonuses, lastResult.regionId);
+    if (!bonus || bonus.type !== "mancinik") return null;
+
+    const attackerId   = lastResult.playerId;
+    const attackerName = players.find(p => p.id === attackerId)?.name ?? "Oyuncu";
+
+    // Cards 1 & 2 — neutral first capture (or re-capture from neutral).
+    if (lastResult.action === "capture_neutral") {
+      if (myPlayerId === attackerId) {
+        return {
+          icon:     "🎯",
+          title:    "🎯 Mancınık Hazır!",
+          subtitle: "Tek kullanımlık uzak saldırı hakkı kazandın. Bir sonraki saldırında komşuluk sınırı olmadan haritadaki herhangi bir bölgeyi hedef alabilirsin.",
+        };
+      }
+      return {
+        icon:     "🎯",
+        title:    "🎯 Rakip Mancınık Kurdu!",
+        subtitle: "Rakibin tek kullanımlık uzak saldırı hakkı kazandı. Bir sonraki saldırısında haritadaki herhangi bir bölgeyi hedef alabilir.",
+      };
+    }
+
+    // attack_region — needs a previous owner to read as a true takeover.
+    const previousOwnerId = lastResult.previousOwnerId ?? null;
+    if (!previousOwnerId) return null;
+    const previousOwnerName = players.find(p => p.id === previousOwnerId)?.name ?? "Eski sahip";
+
+    // Card 3 — attacker (me) took the mancinik region from an opponent.
+    if (myPlayerId === attackerId) {
+      return {
+        icon:     "🎯",
+        title:    "🎯 Mancınık Kontrolü Sana Geçti!",
+        subtitle: "Mancınık bölgesini ele geçirdin ve tek kullanımlık uzak saldırı hakkı kazandın. Bir sonraki saldırında haritanın herhangi bir noktasını hedef alabilirsin.",
+      };
+    }
+    // Card 4 — defender (me) lost the mancinik region.
+    if (myPlayerId === previousOwnerId) {
+      return {
+        icon:     "🔥",
+        title:    "🔥 Mancınık Kaybedildi!",
+        subtitle: "Rakip Mancınık bölgesini ele geçirdi ve tek kullanımlık uzak saldırı hakkı kazandı. Bir sonraki saldırısında haritadaki herhangi bir bölgeyi hedef alabilir.",
+      };
+    }
+    // Card 5 — spectator view, mancinik changed hands.
+    return {
+      icon:     "🎯",
+      title:    "🎯 Mancınık El Değiştirdi!",
+      subtitle: `${attackerName}, ${previousOwnerName} oyuncusunun Mancınık bölgesini ele geçirdi. Artık tek kullanımlık uzak saldırı hakkına sahip.`,
+    };
+  }, [lastResult, gameState.roundBonuses, players, myPlayerId]);
+
+  // ── Mancınık 🎯 combo / fired card ─────────────────────────────────────
+  // Two flavours, gated on `lastResult.mancinikBypassUsed` set by gameplay
+  // when the charge is actually consumed:
+  //   - Card 7 (combo): also `kocbasiShieldBypass` → "🎯🪵 Kuşatma Darbesi!".
+  //     Wins over the Kale Surları card so the headline reads the combo move.
+  //   - Card 6 (solo):  bypass used but no kocbasi combo → "🎯 Mancınık
+  //     Ateşlendi!".  Used as a fallback after the dedicated region cards
+  //     (Liman / Bereket / Kâhin / Kale Surları / mancinik-region) so those
+  //     stay intact when mancinik happens to target their region.
+  const mancinikComboCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok) return null;
+    if (lastResult.mancinikBypassUsed !== true) return null;
+    if (lastResult.kocbasiShieldBypass !== true) return null;
+    return {
+      icon:     "🎯",
+      title:    "🎯🪵 Kuşatma Darbesi!",
+      subtitle: "Mancınık uzak hedefi açtı, Koçbaşı ise Kale Surları'nı aşmaya hazır. Başarılı saldırı kaleyi doğrudan düşürebilir.",
+    };
+  }, [lastResult]);
+
+  const mancinikUsedCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok) return null;
+    if (lastResult.mancinikBypassUsed !== true) return null;
+    if (lastResult.kocbasiShieldBypass === true) return null;
+    return {
+      icon:     "🎯",
+      title:    "🎯 Mancınık Ateşlendi!",
+      subtitle: "Komşuluk sınırı aşıldı. Uzak bölgeye saldırı başlatıldı; Mancınık hakkı kullanıldı.",
+    };
+  }, [lastResult]);
+
+  const rrcIcon     = mancinikComboCard?.icon     ?? kaleSurlariCaptureCard?.icon     ?? bereketCaptureCard?.icon     ?? kahinCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? mancinikCaptureCard?.icon     ?? mancinikUsedCard?.icon     ?? rrcData.icon;
+  const rrcTitle    = mancinikComboCard?.title    ?? kaleSurlariCaptureCard?.title    ?? bereketCaptureCard?.title    ?? kahinCaptureCard?.title    ?? limanCaptureCard?.title    ?? mancinikCaptureCard?.title    ?? mancinikUsedCard?.title    ?? rrcData.title;
+  const rrcSubtitle = mancinikComboCard?.subtitle ?? kaleSurlariCaptureCard?.subtitle ?? bereketCaptureCard?.subtitle ?? kahinCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? mancinikCaptureCard?.subtitle ?? mancinikUsedCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
 
   // Eleme Yetkisi — decide once per challenge whether to render an
   // elimination for the local viewer, then latch the answer.  Decision
@@ -2269,7 +2383,15 @@ export default function ConquestGame({
   // suppress the small red bonus toast for the same event — it would just
   // restate what the big card already says.
   const hasMajorCaptureCard =
-    (phase === "round_result" && (!!kaleSurlariCaptureCard || !!limanCaptureCard || !!bereketCaptureCard || !!kahinCaptureCard))
+    (phase === "round_result" && (
+      !!kaleSurlariCaptureCard
+      || !!limanCaptureCard
+      || !!bereketCaptureCard
+      || !!kahinCaptureCard
+      || !!mancinikCaptureCard
+      || !!mancinikComboCard
+      || !!mancinikUsedCard
+    ))
     || !!majorBonusNotice;
 
   const toastsNode = (
@@ -2918,6 +3040,10 @@ export default function ConquestGame({
             !!actionHolder
             && !!gameState.playerBonuses?.[actionHolder.id]?.pendingHiddenShield
           }
+          hasMancinikCharge={
+            !!actionHolder
+            && (gameState.playerBonuses?.[actionHolder.id]?.mancinikCharges ?? 0) > 0
+          }
           onSkip={handleSkipAction}
         />
       )}
@@ -3406,6 +3532,7 @@ export default function ConquestGame({
           const karadenizPres  = getBonusTypePresentation("karadeniz_extra_time");
           const ankaraPres     = getBonusTypePresentation("ankara_hidden_shield");
           const eliminatorPres = getBonusTypePresentation("eleme_yetkisi");
+          const mancinikPres   = getBonusTypePresentation("mancinik");
           if (openShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ist", icon: istanbulPres.icon, title: "Açık kalkan aktif" });
           }
@@ -3423,6 +3550,15 @@ export default function ConquestGame({
               key:   "elem",
               icon:  eliminatorPres.icon,
               title: "Eleme Yetkisi hazır: sonraki test sorunda 1 yanlış şık silinir",
+            });
+          }
+          if ((pb.mancinikCharges ?? 0) > 0) {
+            bonusChips.push({
+              key:   "mancinik",
+              icon:  mancinikPres.icon,
+              title: isMe
+                ? "Mancınık hazır: bir sonraki saldırın komşuluk şartı olmadan haritadaki herhangi bir bölgeyi vurabilir"
+                : `${player.name} Mancınık hakkına sahip: bir sonraki saldırısı uzak bir bölgeye gelebilir`,
             });
           }
 

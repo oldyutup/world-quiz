@@ -120,6 +120,14 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     description: "Çoklu cephede saldırı imkânı tanıyan bir bonus.",
     implemented: false,
   },
+  {
+    type:        "mancinik",
+    category:    "saldiri",
+    icon:        "🎯",
+    label:       "Mancınık",
+    description: "Bu bölgeyi fetheden oyuncu tek kullanımlık uzak saldırı hakkı kazanır. Bir sonraki saldırıda komşuluk sınırı olmadan haritadaki herhangi bir bölge hedeflenebilir. Kullanılınca biter. Kale Surları'nı yok saymaz.",
+    implemented: true,
+  },
   // ── Bilgi ──────────────────────────────────────────────────────────────────
   {
     type:        "eleme_yetkisi",

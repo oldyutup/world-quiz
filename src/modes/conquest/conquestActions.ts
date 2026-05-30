@@ -59,12 +59,18 @@ function playerName(
  * highlighting, click validation, and gameplay resolution all funnel
  * through this predicate via canCaptureNeutral / canAttackRegion below,
  * so the rule has a single source of truth.
+ *
+ * `bypassAdjacency` (Mancınık 🎯): when true, the adjacency requirement is
+ * dropped and ANY non-self region becomes a legal target.  Callers gate this
+ * on the player owning an active mancınık charge — the predicate itself does
+ * not know about player-bonus state.
  */
 export function isLegalTarget(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
-  regionId:     ConquestRegionId,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  regionId:         ConquestRegionId,
+  bypassAdjacency:  boolean = false,
 ): boolean {
   const region = mapConfig.regions.find(r => r.id === regionId);
   if (!region) return false;
@@ -72,6 +78,7 @@ export function isLegalTarget(
   const target = byId.get(regionId);
   if (!target) return false;
   if (target.ownerPlayerId === playerId) return false;
+  if (bypassAdjacency) return true;
   for (const nbId of region.neighbors) {
     const nb = byId.get(nbId);
     if (nb && nb.ownerPlayerId === playerId) return true;
@@ -85,14 +92,15 @@ export function isLegalTarget(
  * legal per isLegalTarget.
  */
 export function canCaptureNeutral(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
-  regionId:     ConquestRegionId,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  regionId:         ConquestRegionId,
+  bypassAdjacency:  boolean = false,
 ): boolean {
   const target = regionStateById(regionStates).get(regionId);
   if (!target || target.ownerPlayerId !== null) return false;
-  return isLegalTarget(mapConfig, regionStates, playerId, regionId);
+  return isLegalTarget(mapConfig, regionStates, playerId, regionId, bypassAdjacency);
 }
 
 /**
@@ -103,14 +111,15 @@ export function canCaptureNeutral(
  * handled by the gameplay layer, not the legality predicate.
  */
 export function canAttackRegion(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
-  regionId:     ConquestRegionId,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  regionId:         ConquestRegionId,
+  bypassAdjacency:  boolean = false,
 ): boolean {
   const target = regionStateById(regionStates).get(regionId);
   if (!target || target.ownerPlayerId === null) return false;
-  return isLegalTarget(mapConfig, regionStates, playerId, regionId);
+  return isLegalTarget(mapConfig, regionStates, playerId, regionId, bypassAdjacency);
 }
 
 /**
@@ -143,19 +152,20 @@ export function canDefendRegion(
  * `getLegalTargetsForAction` for the per-action target set.
  */
 export function getLegalActionsForPlayer(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  bypassAdjacency:  boolean = false,
 ): ConquestActionType[] {
   const out: ConquestActionType[] = [];
 
   const hasNeutral = regionStates.some(
-    rs => canCaptureNeutral(mapConfig, regionStates, playerId, rs.regionId),
+    rs => canCaptureNeutral(mapConfig, regionStates, playerId, rs.regionId, bypassAdjacency),
   );
   if (hasNeutral) out.push("capture_neutral");
 
   const hasAttack = regionStates.some(
-    rs => canAttackRegion(mapConfig, regionStates, playerId, rs.regionId),
+    rs => canAttackRegion(mapConfig, regionStates, playerId, rs.regionId, bypassAdjacency),
   );
   if (hasAttack) out.push("attack_region");
 
@@ -172,19 +182,20 @@ export function getLegalActionsForPlayer(
  * sanity-check the chosen region before mutation.
  */
 export function getLegalTargetsForAction(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
-  action:       ConquestActionType,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  action:           ConquestActionType,
+  bypassAdjacency:  boolean = false,
 ): ConquestRegionId[] {
   switch (action) {
     case "capture_neutral":
       return regionStates
-        .filter(rs => canCaptureNeutral(mapConfig, regionStates, playerId, rs.regionId))
+        .filter(rs => canCaptureNeutral(mapConfig, regionStates, playerId, rs.regionId, bypassAdjacency))
         .map(rs => rs.regionId);
     case "attack_region":
       return regionStates
-        .filter(rs => canAttackRegion(mapConfig, regionStates, playerId, rs.regionId))
+        .filter(rs => canAttackRegion(mapConfig, regionStates, playerId, rs.regionId, bypassAdjacency))
         .map(rs => rs.regionId);
     case "defend_region":
       return regionStates
@@ -201,13 +212,14 @@ export function getLegalTargetsForAction(
  * me" affordance without committing to a specific action type.
  */
 export function getAllLegalTargetsForPlayer(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  bypassAdjacency:  boolean = false,
 ): Set<ConquestRegionId> {
   const set = new Set<ConquestRegionId>();
   for (const rs of regionStates) {
-    if (isLegalTarget(mapConfig, regionStates, playerId, rs.regionId)) {
+    if (isLegalTarget(mapConfig, regionStates, playerId, rs.regionId, bypassAdjacency)) {
       set.add(rs.regionId);
     }
   }
@@ -223,15 +235,16 @@ export function getAllLegalTargetsForPlayer(
  * so the order is just a defensive default.
  */
 export function inferActionFromRegionClick(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  playerId:     string,
-  regionId:     ConquestRegionId,
+  mapConfig:        ConquestMapConfig,
+  regionStates:     ConquestRegionState[],
+  playerId:         string,
+  regionId:         ConquestRegionId,
+  bypassAdjacency:  boolean = false,
 ): ConquestActionType | null {
-  if (canCaptureNeutral(mapConfig, regionStates, playerId, regionId)) {
+  if (canCaptureNeutral(mapConfig, regionStates, playerId, regionId, bypassAdjacency)) {
     return "capture_neutral";
   }
-  if (canAttackRegion(mapConfig, regionStates, playerId, regionId)) {
+  if (canAttackRegion(mapConfig, regionStates, playerId, regionId, bypassAdjacency)) {
     return "attack_region";
   }
   return null;
@@ -254,11 +267,12 @@ interface ApplyResult {
  * `currentRound` is recorded on the touched region for later replay.
  */
 export function applyConquestAction(
-  mapConfig:    ConquestMapConfig,
-  regionStates: ConquestRegionState[],
-  players:      ConquestPlayer[],
-  currentRound: number,
-  action:       ConquestPendingAction,
+  mapConfig:       ConquestMapConfig,
+  regionStates:    ConquestRegionState[],
+  players:         ConquestPlayer[],
+  currentRound:    number,
+  action:          ConquestPendingAction,
+  bypassAdjacency: boolean = false,
 ): ApplyResult {
   switch (action.type) {
     case "skip":
@@ -274,7 +288,7 @@ export function applyConquestAction(
       };
 
     case "capture_neutral": {
-      if (!canCaptureNeutral(mapConfig, regionStates, action.playerId, action.regionId)) {
+      if (!canCaptureNeutral(mapConfig, regionStates, action.playerId, action.regionId, bypassAdjacency)) {
         return {
           regionStates,
           result: illegal(action, "Bu bölgeye hamle yapılamaz."),
@@ -289,7 +303,7 @@ export function applyConquestAction(
     }
 
     case "attack_region": {
-      if (!canAttackRegion(mapConfig, regionStates, action.playerId, action.regionId)) {
+      if (!canAttackRegion(mapConfig, regionStates, action.playerId, action.regionId, bypassAdjacency)) {
         return {
           regionStates,
           result: illegal(action, "Bu bölgeye hamle yapılamaz."),

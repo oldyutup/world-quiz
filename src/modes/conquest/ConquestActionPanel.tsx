@@ -33,6 +33,8 @@ interface Props {
   totalMs:        number | null;
   /** Ankara: holder has an unspent Gizli Operasyon — show the placement hint. */
   hasPendingHiddenShield?: boolean;
+  /** Mancınık: holder has an unspent uzak-saldırı charge — show the range hint. */
+  hasMancinikCharge?: boolean;
   onSkip:         () => void;
 }
 
@@ -44,6 +46,7 @@ export default function ConquestActionPanel({
   msRemaining,
   totalMs,
   hasPendingHiddenShield,
+  hasMancinikCharge,
   onSkip,
 }: Props) {
   const showTimer    = msRemaining !== null && totalMs !== null && totalMs > 0;
@@ -122,6 +125,14 @@ export default function ConquestActionPanel({
         <p className="cq-action-hint cq-action-hint--bonus" role="status">
           🎭 Gizli Operasyon hazır — kendi bölgene tıklarsan gizli kalkan,
           tarafsız bir bölgeye tıklarsan gizli fetih kurulur.
+        </p>
+      )}
+
+      {hasMancinikCharge && (
+        <p className="cq-action-hint cq-action-hint--bonus" role="status">
+          🎯 Mancınık hazır — bir sonraki saldırında komşuluk şartı olmadan
+          haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı
+          yok saymaz.
         </p>
       )}
 

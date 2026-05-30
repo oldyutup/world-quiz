@@ -65,6 +65,7 @@ const ROTATING_BONUS_TYPES: ConquestRegionBonusType[] = [
   "eleme_yetkisi",
   "mevzi_bekcisi",
   "kocbasi",
+  "mancinik",
   "liman",
   "kahin",
 ];
