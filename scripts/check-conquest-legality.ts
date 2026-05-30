@@ -598,6 +598,59 @@ for (const map of CONQUEST_MAP_CONFIGS) {
   }
 }
 
+// ── 9. Orta Anadolu adjacency (user-reported bug: KD Anadolu + Doğu Karadeniz)
+// On the conquest map, Orta Anadolu's polygon visually touches both Doğu
+// Karadeniz and Kuzeydoğu Anadolu, but the gameplay adjacency table was
+// missing those edges — so the holder of Orta Anadolu couldn't attack either
+// region even though they appeared as neighbors.  Symmetric guards.
+{
+  const map = CONQUEST_MAP_CONFIGS.find(m => m.id === "turkey")!;
+  const owners: Record<string, string | null> = {};
+  for (const r of map.regions) owners[r.id] = null;
+  owners["orta_anadolu"] = "me";
+
+  const regionStates: ConquestRegionState[] = map.regions.map(r => ({
+    regionId:      r.id,
+    ownerPlayerId: owners[r.id] ?? null,
+    captureCount:  0,
+  } as ConquestRegionState));
+
+  const legal = getAllLegalTargetsForPlayer(map, regionStates, "me");
+  check(legal.has("dogu_karadeniz"),
+    "orta_anadolu holder can target dogu_karadeniz (neutral, visual border)");
+  check(legal.has("kuzeydogu_anadolu"),
+    "orta_anadolu holder can target kuzeydogu_anadolu (neutral, visual border)");
+
+  // Reverse direction: a holder of either border region must also be able to
+  // target Orta Anadolu — symmetry guard so a future asymmetric drift fails.
+  {
+    const ownersBack: Record<string, string | null> = {};
+    for (const r of map.regions) ownersBack[r.id] = null;
+    ownersBack["dogu_karadeniz"] = "me";
+    const rs: ConquestRegionState[] = map.regions.map(r => ({
+      regionId:      r.id,
+      ownerPlayerId: ownersBack[r.id] ?? null,
+      captureCount:  0,
+    } as ConquestRegionState));
+    const legalBack = getAllLegalTargetsForPlayer(map, rs, "me");
+    check(legalBack.has("orta_anadolu"),
+      "dogu_karadeniz holder can target orta_anadolu (reverse symmetry)");
+  }
+  {
+    const ownersBack: Record<string, string | null> = {};
+    for (const r of map.regions) ownersBack[r.id] = null;
+    ownersBack["kuzeydogu_anadolu"] = "me";
+    const rs: ConquestRegionState[] = map.regions.map(r => ({
+      regionId:      r.id,
+      ownerPlayerId: ownersBack[r.id] ?? null,
+      captureCount:  0,
+    } as ConquestRegionState));
+    const legalBack = getAllLegalTargetsForPlayer(map, rs, "me");
+    check(legalBack.has("orta_anadolu"),
+      "kuzeydogu_anadolu holder can target orta_anadolu (reverse symmetry)");
+  }
+}
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.`);
   process.exit(1);

@@ -20,6 +20,10 @@ import {
 interface Props {
   /** Visual variant — desktop header (round chip) vs mobile header (matches help "?"). */
   variant?: "desktop" | "mobile";
+  /** Increment this value to force-close the popover from outside. */
+  closeKey?: number;
+  /** Called when the popover opens. Use to close sibling panels. */
+  onOpen?: () => void;
 }
 
 function volumeIcon(v: number): string {
@@ -29,13 +33,23 @@ function volumeIcon(v: number): string {
   return "🔊";
 }
 
-export default function ConquestVolumeControl({ variant = "desktop" }: Props) {
+export default function ConquestVolumeControl({ variant = "desktop", closeKey, onOpen }: Props) {
   const [open,   setOpen]   = useState(false);
   const [volume, setVolume] = useState<number>(() => getConquestMasterVolume());
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   // Keep local state in sync if another component changes the master.
   useEffect(() => subscribeConquestMasterVolume(setVolume), []);
+
+  // Force-close when parent increments closeKey.
+  const prevCloseKey = useRef(closeKey);
+  useEffect(() => {
+    if (closeKey === undefined) return;
+    if (closeKey !== prevCloseKey.current) {
+      prevCloseKey.current = closeKey;
+      setOpen(false);
+    }
+  }, [closeKey]);
 
   // Click-outside / Escape closes the popover.
   useEffect(() => {
@@ -72,7 +86,10 @@ export default function ConquestVolumeControl({ variant = "desktop" }: Props) {
       <button
         type="button"
         className={buttonCls}
-        onClick={() => setOpen(prev => !prev)}
+        onClick={() => setOpen(prev => {
+          if (!prev) onOpen?.();
+          return !prev;
+        })}
         aria-label={`Kuşatma sesi: %${pct}`}
         aria-pressed={open}
         aria-expanded={open}

@@ -74,7 +74,7 @@ const TURKEY_REGIONS: ConquestRegion[] = [
     id: "dogu_karadeniz",
     name: "Doğu Karadeniz",
     mapId: "turkey",
-    neighbors: ["orta_karadeniz", "kuzeydogu_anadolu", "erzurum_kars"],
+    neighbors: ["orta_karadeniz", "kuzeydogu_anadolu", "erzurum_kars", "orta_anadolu"],
     displayLabel: "Doğu Kara.",
     emoji: "⛵",
     groupName: "Karadeniz",
@@ -85,7 +85,9 @@ const TURKEY_REGIONS: ConquestRegion[] = [
     mapId: "turkey",
     // Erzincan (in this region) borders Elazığ/Tunceli/Bingöl → malatya_elazig.
     // Ağrı (in this region) borders Kars → kars.
-    neighbors: ["dogu_karadeniz", "erzurum_kars", "malatya_elazig", "kars"],
+    // Erzincan also touches the orta_anadolu polygon (Sivas) along the
+    // visual border on the conquest map — treat as adjacent for gameplay.
+    neighbors: ["dogu_karadeniz", "erzurum_kars", "malatya_elazig", "kars", "orta_anadolu"],
     displayLabel: "KD Anad.",
     emoji: "🏔️",
     groupName: "Doğu Türkiye",
@@ -132,7 +134,7 @@ const TURKEY_REGIONS: ConquestRegion[] = [
     id: "orta_anadolu",
     name: "Orta Anadolu",
     mapId: "turkey",
-    neighbors: ["orta_karadeniz", "ankara_cevre", "kapadokya", "erzurum_kars", "malatya_elazig"],
+    neighbors: ["orta_karadeniz", "ankara_cevre", "kapadokya", "erzurum_kars", "malatya_elazig", "dogu_karadeniz", "kuzeydogu_anadolu"],
     displayLabel: "Orta Anad.",
     emoji: "⛰️",
     groupName: "Orta Türkiye",

@@ -9820,7 +9820,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: oklch(0.80 0.006 220);
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9956,6 +9956,92 @@ body {
   min-width: 80px;
   justify-content: flex-end;
   flex-shrink: 0;
+}
+
+/* Gold chip — small account-Gold badge that lives next to the volume /
+ * help controls in both the desktop header and the mobile header.
+ * Intentionally quiet: monochrome surface, faint border, no animation.
+ * Liman income causes addGold() to fire; useGold() re-renders this chip
+ * automatically. */
+.cq-gold-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1.5px solid rgba(245, 158, 11, 0.32);
+  color: #f6c074;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cq-gold-chip-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.78;
+}
+.cq-gold-chip-value {
+  font-variant-numeric: tabular-nums;
+}
+.cq-gold-chip-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+.cq-gold-chip--mobile {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+.cq-gold-chip--mobile .cq-gold-chip-icon {
+  font-size: 10px;
+}
+@media (max-width: 600px) {
+  .cq-gold-chip {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+  .cq-gold-chip-label {
+    display: none;
+  }
+}
+
+/* Per-player match-Gold earned chip — rendered between the name and the
+ * score column in the top-left player list.  Always present (defaults to
+ * 0g) and visible to every viewer so opponents can see who is profiting
+ * from Liman this match. */
+.cq-players-panel-gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #d8a55a;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.cq-players-panel-gold-amount {
+  font-variant-numeric: tabular-nums;
+}
+.mcq-strip__pill-gold {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #d8a55a;
+  line-height: 1;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .cq-players-panel-gold {
+    font-size: 9px;
+    gap: 2px;
+  }
 }
 
 .mcq-header-help {
@@ -10627,6 +10713,7 @@ body {
   line-height: 1;
   gap: 1px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 .cq-players-panel-points {
   font-size: 13px;
@@ -12061,6 +12148,24 @@ body {
   font-size: 12px;
   user-select: none;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+}
+
+/* ── Liman ⚓ per-tenure income counter (sits below the bonus chip) ── */
+.cq-map-liman-counter-bg {
+  fill: rgba(8, 12, 20, 0.86);
+  stroke: rgba(255, 215, 120, 0.78);
+  stroke-width: 0.8;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+.cq-map-liman-counter-text {
+  font-size: 6.4px;
+  font-weight: 700;
+  fill: rgba(255, 246, 200, 1);
+  paint-order: stroke fill;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.4px;
+  user-select: none;
+  letter-spacing: 0.2px;
 }
 
 /* ── Legal target pulse ring ─────────────────────────────────── */

@@ -31,6 +31,7 @@ export type ConquestSoundName =
   | "turn-theirs"
   | "capture"
   | "bonus-capture"
+  | "harbor-capture"
   | "shield-break"
   | "duel-start"
   | "duel-win"
@@ -53,6 +54,7 @@ const SOUND_PATHS: Record<ConquestSoundName, string> = {
   "turn-theirs":    `${SOUND_BASE}/turn-theirs.mp3`,
   "capture":        `${SOUND_BASE}/capture.mp3`,
   "bonus-capture":  `${SOUND_BASE}/bonus-capture.mp3`,
+  "harbor-capture": `${SOUND_BASE}/harbor-capture.mp3`,
   "shield-break":   `${SOUND_BASE}/shield-break.mp3`,
   "duel-start":     `${SOUND_BASE}/duel-start.mp3`,
   "duel-win":       `${SOUND_BASE}/duel-win.mp3`,
@@ -74,6 +76,7 @@ const SOUND_VOLUME: Record<ConquestSoundName, number> = {
   "turn-theirs":    0.32,
   "capture":        0.55,
   "bonus-capture":  0.65,
+  "harbor-capture": 0.65,
   "shield-break":   0.55,
   "duel-start":     0.55,
   "duel-win":       0.60,

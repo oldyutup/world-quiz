@@ -32,6 +32,7 @@
 
 import { BONUS_POOL } from "./bonusPool";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
+import { COASTAL_REGION_IDS } from "./coastalRegions";
 import { REGION_BONUSES } from "./regionBonuses";
 import type {
   ConquestMapConfig,
@@ -64,6 +65,7 @@ const ROTATING_BONUS_TYPES: ConquestRegionBonusType[] = [
   "eleme_yetkisi",
   "mevzi_bekcisi",
   "kocbasi",
+  "liman",
 ];
 
 /** Static bonus-type metadata (icon/label/description), reused so the UI
@@ -180,11 +182,28 @@ export function buildRoundBonusAssignment(
 
   const assignment: ConquestRoundBonusAssignment = {};
 
+  // Liman ⚓ only spawns on coastal regions — single source of truth lives in
+  // coastalRegions.ts.  Other bonus types use the full pool unchanged.
+  const coastalSet = COASTAL_REGION_IDS[mapConfig.id] ?? new Set();
+
   for (let i = 0; i < bonusTypes.length; i++) {
+    const currentType   = bonusTypes[i];
+    const restrictPool  = currentType === "liman"
+      ? pool.filter(r => coastalSet.has(r.id))
+      : pool;
+    if (restrictPool.length === 0 && currentType === "liman") {
+      // Safe fallback: no coastal candidate available (map has no coastal
+      // regions or they're all picked).  Skip the Liman slot rather than
+      // breaking the contract by placing it inland.  Total bonus count for
+      // this match drops by one; remaining types are unaffected.
+      // eslint-disable-next-line no-console
+      console.warn("[conquest] Liman atlandi: kiyi adayi bulunamadi", { mapId: mapConfig.id });
+      continue;
+    }
     let bestScore = -Infinity;
     let bestPicks: ConquestRegion[] = [];
 
-    for (const r of pool) {
+    for (const r of restrictPool) {
       if (r.id in assignment) continue;
       const score = scoreCandidate({
         candidate:    r,
@@ -204,12 +223,22 @@ export function buildRoundBonusAssignment(
       }
     }
 
-    if (bestPicks.length === 0) break;
+    if (bestPicks.length === 0) {
+      // Liman-specific safe fallback: coastal regions exist but are all
+      // already carrying a bonus this match.  Skip the Liman slot and
+      // continue placing remaining types instead of aborting the rest.
+      if (currentType === "liman") {
+        // eslint-disable-next-line no-console
+        console.warn("[conquest] Liman atlandi: tum kiyi adaylari dolu", { mapId: mapConfig.id });
+        continue;
+      }
+      break;
+    }
 
     // Tie break: random pick within the top tier — keeps variety high when
     // many regions are roughly equally good (typical mid-match scenario).
     const chosen = bestPicks[Math.floor(rng() * bestPicks.length)];
-    assignment[chosen.id] = bonusTypes[i];
+    assignment[chosen.id] = currentType;
 
     picked.push(chosen.id);
     if (chosen.groupName) pickedGroups.add(chosen.groupName);

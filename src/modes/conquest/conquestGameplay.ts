@@ -1369,6 +1369,8 @@ export function placeHiddenConquestOnNeutralRegion(
         captureCount:        (rs.captureCount ?? 0) + 1,
         /* Capture clears any open shield — matches flipOwnership semantics. */
         shielded:            false,
+        /* Liman ⚓ counter reset on ownership change — same as flipOwnership. */
+        limanIncomeTicks:    0,
         hiddenShieldOwnerId: playerId,
         hiddenShieldKind:    "conquest" as const,
       };
@@ -1853,42 +1855,145 @@ export function advanceToNextRound(
 ): ConquestGameState {
   if (state.phase !== "round_result") return state;
 
-  const isLast = state.round.roundNumber >= state.round.totalRounds;
+  // Liman ⚓ — pay the current owner's round-end income before transitioning.
+  // Applies to BOTH the final round (where we jump to "finished" right after)
+  // and intermediate rounds (where we mount the next challenge).  The income
+  // is part of the round-end resolution; the next-round mount is purely a
+  // setup step that should never absorb the payout.
+  const limanApplied = applyLimanRoundIncome(state);
+
+  const isLast = limanApplied.round.roundNumber >= limanApplied.round.totalRounds;
   if (isLast) {
     return {
-      ...state,
+      ...limanApplied,
       phase:      "finished",
       finishedAt: Date.now(),
     };
   }
 
-  const nextRoundNumber = state.round.roundNumber + 1;
-  const usedSoFar  = state.usedChallengeKeys ?? [];
-  const lastType   = state.lastChallengeType;
+  const nextRoundNumber = limanApplied.round.roundNumber + 1;
+  const usedSoFar  = limanApplied.usedChallengeKeys ?? [];
+  const lastType   = limanApplied.lastChallengeType;
   const { challenge, bankId } = pickRandomConquestChallenge(
     nextRoundNumber,
-    state.players,
+    limanApplied.players,
     usedSoFar,
     lastType,
   );
   const now = Date.now();
 
   return {
-    ...state,
+    ...limanApplied,
     phase:             "challenge",
     usedChallengeKeys: [...usedSoFar, bankId],
     lastChallengeType: challenge.type as ConquestChallengeType,
-    /* Clear the bonus toast so a fresh round doesn't echo the previous
-     * round's banner on late-joining clients. */
-    lastBonusToast:    undefined,
-    /* roundBonuses stays as-is — bonus regions are fixed for the match. */
+    /* roundBonuses stays as-is — bonus regions are fixed for the match.
+     * lastBonusToast is preserved when a Liman income toast was just raised
+     * so every client renders it once before the next challenge mounts;
+     * otherwise it's cleared so stale toasts don't echo on late joiners. */
+    lastBonusToast:    limanApplied.lastBonusToast?.bonusType === "liman"
+                         && limanApplied.lastBonusToast.id.startsWith("liman_income-")
+                       ? limanApplied.lastBonusToast
+                       : undefined,
     round: {
       roundNumber:    nextRoundNumber,
-      totalRounds:    state.round.totalRounds,
+      totalRounds:    limanApplied.round.totalRounds,
       challenge:      buildActiveChallengeState(challenge, now + ROUND_INTRO_PACING_MS),
       actionHolderId: null,
       lastResult:     null,
     },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Liman ⚓ — round-end income
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Maximum number of income payouts per owner tenure on a Liman region. */
+export const LIMAN_MAX_INCOME_TICKS = 10;
+/** Bonus points awarded per Liman income tick. */
+export const LIMAN_INCOME_POINTS    = 1;
+/** Gold awarded per Liman income tick (written by the local owner only). */
+export const LIMAN_INCOME_GOLD      = 5;
+
+/**
+ * Apply one round-end income payout for the Liman bonus, if any region carries
+ * it and the current owner hasn't hit the per-tenure cap yet.  Pure function.
+ *
+ * Effects:
+ *   - Increments the region's `limanIncomeTicks` (1..LIMAN_MAX_INCOME_TICKS).
+ *   - Adds LIMAN_INCOME_POINTS to the owner's `bonusPoints` (counted by the
+ *     standard scoring pipeline; visible on the leaderboard immediately).
+ *   - Emits a `lastBonusToast` with id prefixed `liman_income-` so every
+ *     client renders the income notification.  The local owner client
+ *     additionally writes +LIMAN_INCOME_GOLD to its own profile.gold when it
+ *     consumes the toast (see ConquestGame.tsx).
+ *
+ * No-ops when:
+ *   - No region carries the Liman bonus this match.
+ *   - The Liman region is neutral (no owner to pay).
+ *   - The current owner already received the cap (10) of payouts this tenure.
+ *     Tenure resets on every ownership flip (see flipOwnership /
+ *     placeHiddenConquestOnNeutralRegion).
+ */
+export function applyLimanRoundIncome(
+  state: ConquestGameState,
+): ConquestGameState {
+  const limanRegionId = findRegionIdForBonusType(state.roundBonuses, "liman");
+  if (!limanRegionId) return state;
+
+  const regionState = state.regionStates.find(rs => rs.regionId === limanRegionId);
+  if (!regionState) return state;
+  const ownerId = regionState.ownerPlayerId;
+  if (!ownerId) return state;
+
+  const currentTicks = regionState.limanIncomeTicks ?? 0;
+  if (currentTicks >= LIMAN_MAX_INCOME_TICKS) return state;
+
+  const nextTicks = currentTicks + 1;
+
+  const nextRegionStates = state.regionStates.map(rs =>
+    rs.regionId === limanRegionId
+      ? { ...rs, limanIncomeTicks: nextTicks }
+      : rs,
+  );
+
+  // Bonus state mutation: increment bonusPoints (counted directly by
+  // getPlayerTotalPoints so the scoreboard reflects the +1 immediately on
+  // every client) AND matchGoldEarned (synced so every viewer can see how
+  // much in-match Gold each player has accumulated via Liman).  Account-
+  // level Gold is credited *only* by the local owner client — never written
+  // here, never mirrored to other players.
+  const currentBonuses = state.playerBonuses ?? {};
+  const ownerBonus     = currentBonuses[ownerId] ?? createEmptyPlayerBonusState();
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...currentBonuses,
+    [ownerId]: {
+      ...ownerBonus,
+      bonusPoints:     ownerBonus.bonusPoints + LIMAN_INCOME_POINTS,
+      matchGoldEarned: (ownerBonus.matchGoldEarned ?? 0) + LIMAN_INCOME_GOLD,
+    },
+  };
+
+  const ownerName = state.players.find(p => p.id === ownerId)?.name ?? "Oyuncu";
+  const now       = Date.now();
+  const toast: ConquestBonusToast = {
+    id:         `liman_income-${limanRegionId}-${nextTicks}-${ownerId}`,
+    bonusType:  "liman",
+    regionId:   limanRegionId,
+    icon:       "⚓",
+    title:      `⚓ Liman Geliri (${nextTicks}/${LIMAN_MAX_INCOME_TICKS})`,
+    detail:     `${ownerName} +${LIMAN_INCOME_POINTS} puan, +${LIMAN_INCOME_GOLD} Gold kazandı.`,
+    playerId:   ownerId,
+    playerName: ownerName,
+    at:         now,
+  };
+
+  return {
+    ...state,
+    regionStates:   nextRegionStates,
+    playerBonuses:  nextPlayerBonuses,
+    lastBonusToast: toast,
   };
 }
 

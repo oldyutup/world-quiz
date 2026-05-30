@@ -34,14 +34,30 @@ import { CAPITAL_REGION_IDS } from "./conquestCapital";
 const REGION_BADGE_OFFSET: Record<string, { dx: number; dy: number }> = {
   trakya:           { dx: -2, dy: -26 },
   istanbul_kocaeli: { dx: 34,  dy: -1 },
-  kuzeydogu_anadolu:{ dx: 0,   dy: -14 },
+  kuzeydogu_anadolu:{ dx: 0,   dy: -23 },
   guney_marmara: { dx: 0, dy: -24 },
   kuzey_ege: { dx: 0, dy: -24 },
-  dogu_karadeniz: { dx: 0, dy: -24 },
-  orta_karadeniz: { dx: 0, dy: -24 },
+  dogu_karadeniz: { dx: 0, dy: -22 },
+  orta_karadeniz: { dx: 0, dy: -22 },
   bati_karadeniz: { dx: 0, dy: -24 },
-  ic_bati_anadolu: { dx: 0, dy: -18 },
-  ankara_cevre: { dx: 0, dy: -18 },
+  ic_bati_anadolu: { dx: 0, dy: -30 },
+  ankara_cevre: { dx: 0, dy: -30 },
+  van_hakkari: { dx: 28, dy: -2 },
+  mardin: { dx: -10, dy: -8 },
+  dicle: { dx: 26, dy: 0 },
+  dicle_hatti: { dx: 31, dy: -8 },
+  mardin_sirnak: { dx: -39, dy: -7 },
+  kars: { dx: 0, dy: -29 },
+  erzurum_kars: { dx: 0, dy: -19 },
+  guney_ege: { dx: 0, dy: -28 },
+  bati_akdeniz: { dx: 0, dy: -28 },
+  orta_anadolu: { dx: 0, dy: -21 },
+  kapadokya: { dx: 0, dy: -21 },
+  hatay_osmaniye: { dx: 0, dy: -24 },
+  konya_karaman: { dx: 0, dy: -24 },
+  cukurova: { dx: 0, dy: -24 },
+  antep_kilis: { dx: 0, dy: -18 },
+  malatya_elazig: { dx: 0, dy: -21 },
 };
 const DEFAULT_BADGE_OFFSET = { dx: 0, dy: -14 };
 
@@ -94,12 +110,12 @@ const REGION_LABEL_POS: Record<string, { x: number; y: number }> = {
   bati_karadeniz:     { x: 378, y:  68 },
   orta_karadeniz:     { x: 508, y: 110 },
   dogu_karadeniz:     { x: 720, y: 132 },
-  kuzeydogu_anadolu:  { x: 710, y: 186 },
-  kars:               { x: 915, y: 176 },
+  kuzeydogu_anadolu:  { x: 710, y: 195 },
+  kars:               { x: 915, y: 188 },
   kuzey_ege:          { x: 112, y: 243 },
   guney_ege:          { x: 132, y: 320 },
   bati_akdeniz:       { x: 235, y: 345 },
-  cukurova:           { x: 462, y: 362 },
+  cukurova:           { x: 462, y: 374 },
   ic_bati_anadolu:    { x: 255, y: 205 },
   ankara_cevre:       { x: 380, y: 165 },
   konya_karaman:      { x: 352, y: 298 },
@@ -110,9 +126,9 @@ const REGION_LABEL_POS: Record<string, { x: number; y: number }> = {
   malatya_elazig:     { x: 678, y: 268 },
   firat_hatti:        { x: 648, y: 320 },
   dicle_hatti:        { x: 785, y: 285 },
-  antep_kilis:        { x: 610, y: 362 },
+  antep_kilis:        { x: 610, y: 368 },
   hatay_osmaniye:     { x: 552, y: 386 },
-  mardin_sirnak:      { x: 840, y: 330 },
+  mardin_sirnak:      { x: 837, y: 339 },
 };
 
 // ─── Colour palette ───────────────────────────────────────────────────────────
@@ -290,6 +306,15 @@ export default function TurkeyConquestMap({
   const prevBonusKeyRef       = useRef<string | null>(null);
   const bonusIntroTimeoutRef  = useRef<number | null>(null);
 
+  // Liman ⚓ income pulse — short re-fire of the bonus halo whenever a
+  // region's `limanIncomeTicks` increments.  Watches per-region tick counts
+  // so we re-pulse for each income tick on top of the steady-state badge.
+  // Kept separate from bonusIntroFx so the per-match intro halo's 10s
+  // window doesn't interact with the per-tick 1.4s pulse.
+  const [limanIncomeFx, setLimanIncomeFx]     = useState<ConquestRegionId[]>([]);
+  const prevLimanTicksRef                     = useRef<Map<ConquestRegionId, number>>(new Map());
+  const limanFxTimeoutsRef                    = useRef<Map<string, number>>(new Map());
+
   useEffect(() => () => {
     fxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     fxTimeoutsRef.current.clear();
@@ -297,11 +322,51 @@ export default function TurkeyConquestMap({
     shieldFxTimeoutsRef.current.clear();
     capitalFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
     capitalFxTimeoutsRef.current.clear();
+    limanFxTimeoutsRef.current.forEach(h => window.clearTimeout(h));
+    limanFxTimeoutsRef.current.clear();
     if (bonusIntroTimeoutRef.current !== null) {
       window.clearTimeout(bonusIntroTimeoutRef.current);
       bonusIntroTimeoutRef.current = null;
     }
   }, []);
+
+  // Liman income tick → short halo pulse on the producing region.
+  // Diff regionStates' `limanIncomeTicks`; any region whose tick count rose
+  // since the last snapshot gets pushed into `limanIncomeFx` for the FX
+  // duration.  Initial mount seeds prev counts without firing FX (we only
+  // celebrate true increments, not catch-up reads).
+  useEffect(() => {
+    const prev = prevLimanTicksRef.current;
+    const next = new Map<ConquestRegionId, number>();
+    const toPulse: ConquestRegionId[] = [];
+    for (const rs of regionStates) {
+      const ticks = rs.limanIncomeTicks ?? 0;
+      next.set(rs.regionId, ticks);
+      if (prev.size > 0 && (prev.get(rs.regionId) ?? 0) < ticks) {
+        toPulse.push(rs.regionId);
+      }
+    }
+    prevLimanTicksRef.current = next;
+    if (toPulse.length === 0) return;
+    setLimanIncomeFx(p => [...p, ...toPulse]);
+    const stamp = Date.now();
+    toPulse.forEach((rid, i) => {
+      const key = `liman-fx-${rid}-${stamp}-${i}`;
+      const h   = window.setTimeout(() => {
+        setLimanIncomeFx(p => {
+          // Drop only one occurrence of rid so overlapping pulses don't all
+          // clear at once on the first timeout firing.
+          const idx = p.indexOf(rid);
+          if (idx < 0) return p;
+          const out = p.slice();
+          out.splice(idx, 1);
+          return out;
+        });
+        limanFxTimeoutsRef.current.delete(key);
+      }, OWNERSHIP_FX_MS);
+      limanFxTimeoutsRef.current.set(key, h);
+    });
+  }, [regionStates]);
 
   useEffect(() => {
     const current: Record<string, string | null> = {};
@@ -465,12 +530,17 @@ export default function TurkeyConquestMap({
     const label     = REGION_LABELS[id]    ?? id;
     const points    = getRegionPoints(rid);
     const bonus     = resolveActiveBonus(roundBonuses, rid);
+    // Liman ⚓: surface the per-tenure income counter (N/10) on the badge so
+    // every viewer sees the region producing value.  null when this region
+    // doesn't carry Liman, so the badge stays off.
+    const limanTicks = bonus?.type === "liman" ? (rs?.limanIncomeTicks ?? 0) : null;
     // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Boğaz Kalesi"
     // Desktop hover only; touch devices ignore the SVG <title>.
     const ownerSuffix = owner ? ` (${owner.name})` : "";
-    const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}` : "";
+    const limanSuffix = limanTicks !== null ? ` (${limanTicks}/10)` : "";
+    const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}${limanSuffix}` : "";
     const tooltip   = `${label}${ownerSuffix} — ${points} puan${bonusSuffix}`;
-    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, tooltip };
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, limanTicks, tooltip };
   });
 
   return (
@@ -624,6 +694,33 @@ export default function TurkeyConquestMap({
           </g>
         )}
 
+        {/* ── Layer 3.7: Liman ⚓ income pulse (per-tick, ~1.4s) ────────
+             Re-fires the bonus halo on the Liman region every time the
+             current owner earns an income tick.  Uses the same visual
+             treatment as the bonus-intro halo so players read "this is
+             the bonus region producing value" without learning a new FX. */}
+        {limanIncomeFx.length > 0 && (
+          <g
+            className="cq-map-liman-income-layer"
+            pointerEvents="none"
+            aria-hidden="true"
+          >
+            {limanIncomeFx.map((rid, i) => {
+              const entry = regionEntries.find(e => e.id === rid);
+              if (!entry) return null;
+              return (
+                <path
+                  key={`liman-fx-${rid}-${i}`}
+                  d={entry.d}
+                  className="cq-map-bonus-intro-halo"
+                  fillRule="evenodd"
+                  fill="none"
+                />
+              );
+            })}
+          </g>
+        )}
+
         {/* ── Layer 4: region labels (always on top) ─────────────────── */}
         {regionEntries.map(({ id, owner, c, labelPos, label }) => {
           const labelY = owner ? labelPos.y - 7 : labelPos.y;
@@ -680,7 +777,7 @@ export default function TurkeyConquestMap({
              native <title> on the path — no extra pointer target is
              added here, so gameplay clicks stay untouched. */}
         <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
-          {regionEntries.map(({ id, labelPos, bonus, isShielded }) => {
+          {regionEntries.map(({ id, labelPos, bonus, isShielded, limanTicks }) => {
             if (!bonus) return null;
             const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
             const cx  = labelPos.x + off.dx + 26;
@@ -704,6 +801,28 @@ export default function TurkeyConquestMap({
                 >
                   {bonus.icon}
                 </text>
+                {limanTicks !== null && (
+                  <g className="cq-map-liman-counter">
+                    <rect
+                      x={cx - 11}
+                      y={cy + 8}
+                      width={22}
+                      height={9}
+                      rx={4.5}
+                      ry={4.5}
+                      className="cq-map-liman-counter-bg"
+                    />
+                    <text
+                      x={cx}
+                      y={cy + 12.6}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="cq-map-liman-counter-text"
+                    >
+                      {`${limanTicks}/10`}
+                    </text>
+                  </g>
+                )}
               </g>
             );
           })}

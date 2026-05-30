@@ -29,6 +29,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { addGold, useGold } from "../../lib/gold";
 import { playSound } from "../../lib/sound";
 import { playConquestSound, unlockConquestSounds } from "./conquestSound";
 import { useConquestSound } from "./useConquestSound";
@@ -76,6 +77,7 @@ import {
   finalizeReveal,
   getCurrentLegalTargets,
   getPlayerOwningAllRegions,
+  LIMAN_INCOME_GOLD,
   placeHiddenConquestOnNeutralRegion,
   placeHiddenShieldOnOwnRegion,
   ROUND_COUNTDOWN_MS,
@@ -265,6 +267,11 @@ export default function ConquestGame({
     () => assignConquestPlayerColors(players),
     [players],
   );
+
+  // Account-level Gold (own profile) — surfaced as a small chip in the
+  // header.  Updates live when Liman income credits the local owner via
+  // addGold(); read-only here.  Not synced into gameplay state.
+  const accountGold = useGold();
 
   // Region id currently flashing red after a *local* illegal click.  Stored
   // locally only — illegal clicks are not committed to gameplay_state.
@@ -1487,6 +1494,7 @@ export default function ConquestGame({
     : [];
   const hasBonusGuide = bonusGuideEntries.length > 0;
   const [bonusGuideOpen, setBonusGuideOpen] = useState(false);
+  const [desktopVolumeCloseKey, setDesktopVolumeCloseKey] = useState(0);
   const bonusGuideAutoShownRef = useRef(false);
   useEffect(() => {
     if (bonusGuideAutoShownRef.current) return;
@@ -1573,6 +1581,30 @@ export default function ConquestGame({
   const toastPlayerColor = lastBonusToast
     ? (playerColors[lastBonusToast.playerId] ?? null)
     : null;
+
+  // Liman ⚓ — local owner credits its own gold when an income toast lands.
+  // We never write another player's gold from this client (RLS would refuse
+  // anyway).  Idempotent per toast id: the synced toast id encodes the tick
+  // number, so a re-render or realtime echo of the same toast does not
+  // double-credit.  Errors inside addGold log silently — gameplay state is
+  // never affected by a gold write failure.
+  const limanCreditedToastIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lastBonusToast) return;
+    if (lastBonusToast.bonusType !== "liman") return;
+    if (!lastBonusToast.id.startsWith("liman_income-")) return;
+    if (lastBonusToast.playerId !== myPlayerId) return;
+    if (limanCreditedToastIdRef.current === lastBonusToast.id) return;
+    limanCreditedToastIdRef.current = lastBonusToast.id;
+    try {
+      addGold(LIMAN_INCOME_GOLD);
+    } catch (e) {
+      // gold.ts already swallows Supabase failures; this guard covers any
+      // pre-write throw so a corrupted gold layer never breaks the match.
+      // eslint-disable-next-line no-console
+      console.error("[conquest] Liman gold credit failed:", e);
+    }
+  }, [lastBonusToast?.id, lastBonusToast?.bonusType, lastBonusToast?.playerId, myPlayerId]);
 
   // Move-phase timer values (null when the round predates the timer feature
   // or the phase isn't action).  Shared by both holder and spectator views.
@@ -2713,6 +2745,8 @@ export default function ConquestGame({
               onBack={handleBack}
               onHelp={hasBonusGuide ? handleToggleBonusGuide : undefined}
               helpActive={bonusGuideOpen}
+              onVolumeOpen={() => setBonusGuideOpen(false)}
+              accountGold={accountGold}
             />
           }
           scoreStrip={
@@ -2777,12 +2811,24 @@ export default function ConquestGame({
         </div>
 
         <div className="cq-game-header-actions">
-          <ConquestVolumeControl variant="desktop" />
+          <span
+            className="cq-gold-chip"
+            title="Hesap Gold bakiyen"
+            aria-label={`Hesap Gold: ${accountGold}`}
+          >
+            <span className="cq-gold-chip-icon" aria-hidden="true">🟡</span>
+            <span className="cq-gold-chip-value">{accountGold}g</span>
+          </span>
+          <ConquestVolumeControl
+            variant="desktop"
+            closeKey={desktopVolumeCloseKey}
+            onOpen={() => setBonusGuideOpen(false)}
+          />
           {hasBonusGuide ? (
             <button
               type="button"
               className="cq-help-btn"
-              onClick={handleToggleBonusGuide}
+              onClick={() => { setDesktopVolumeCloseKey(k => k + 1); handleToggleBonusGuide(); }}
               aria-label="Bonus rehberi"
               aria-pressed={bonusGuideOpen}
               title="Bonus rehberi"
@@ -2846,6 +2892,14 @@ export default function ConquestGame({
             >
               <span className="cq-players-panel-dot" aria-hidden="true" />
               <span className="cq-players-panel-name">{player.name}</span>
+              <span
+                className="cq-players-panel-gold"
+                title={`Bu maçta kazanılan Gold: ${pb.matchGoldEarned ?? 0}g`}
+                aria-label={`Bu maçta ${pb.matchGoldEarned ?? 0} Gold`}
+              >
+                <span aria-hidden="true">🟡</span>
+                <span className="cq-players-panel-gold-amount">{pb.matchGoldEarned ?? 0}g</span>
+              </span>
               {bonusChips.length > 0 && (
                 <span className="cq-player-bonus-chips" aria-hidden="true">
                   {bonusChips.map(c => (

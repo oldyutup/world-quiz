@@ -8,6 +8,7 @@
  * give back to the board.
  */
 
+import { useState } from "react";
 import { playSound } from "../../../lib/sound";
 import ConquestVolumeControl from "../ConquestVolumeControl";
 
@@ -19,6 +20,11 @@ interface Props {
    *  assigned for this match (legacy saves) so the slot collapses cleanly. */
   onHelp?:        () => void;
   helpActive?:    boolean;
+  /** Called when the volume popover opens — use to close bonus guide. */
+  onVolumeOpen?:  () => void;
+  /** Account-level Gold balance (own profile).  Rendered as a tiny chip;
+   *  omitted when undefined so legacy callers stay byte-identical. */
+  accountGold?:   number;
 }
 
 export default function MobileHeader({
@@ -27,7 +33,11 @@ export default function MobileHeader({
   onBack,
   onHelp,
   helpActive,
+  onVolumeOpen,
+  accountGold,
 }: Props) {
+  const [closeVolumeKey, setCloseVolumeKey] = useState(0);
+
   function handleBack() {
     playSound("click");
     onBack();
@@ -36,6 +46,7 @@ export default function MobileHeader({
   function handleHelp() {
     if (!onHelp) return;
     playSound("click");
+    setCloseVolumeKey(k => k + 1);
     onHelp();
   }
 
@@ -59,7 +70,17 @@ export default function MobileHeader({
         </span>
       </div>
       <div className="mcq-header-actions">
-        <ConquestVolumeControl variant="mobile" />
+        {accountGold !== undefined && (
+          <span
+            className="cq-gold-chip cq-gold-chip--mobile"
+            title="Hesap Gold bakiyen"
+            aria-label={`Hesap Gold: ${accountGold}`}
+          >
+            <span className="cq-gold-chip-icon" aria-hidden="true">🟡</span>
+            <span className="cq-gold-chip-value">{accountGold}g</span>
+          </span>
+        )}
+        <ConquestVolumeControl variant="mobile" closeKey={closeVolumeKey} onOpen={onVolumeOpen} />
         {onHelp ? (
           <button
             type="button"

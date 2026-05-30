@@ -79,6 +79,7 @@ function pickCaptureSound(
 ): ConquestSoundName {
   const type = bonusTypeForRegion(roundBonuses, regionId);
   if (type === HIDDEN_OP_BONUS_TYPE) return "hidden-operation";
+  if (type === "liman")              return "harbor-capture";
   if (type)                          return "bonus-capture";
   return "capture";
 }

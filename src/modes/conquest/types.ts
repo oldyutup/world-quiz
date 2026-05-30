@@ -203,6 +203,15 @@ export interface ConquestRegionState {
    * eligible on their own first loss.  Absent / empty in pre-mevzi saves.
    */
   mevziProtectionClaimedBy?: string[];
+  /**
+   * Liman ⚓ per-tenure income counter.  Counts how many round-end income
+   * payouts the *current owner* has already received on this region.  Reset
+   * to 0 on every ownership change so a fresh owner restarts at 0/10 and
+   * can earn up to 10 more payouts.  Cap = 10 (LIMAN_MAX_INCOME_TICKS).
+   * Absent / 0 when the region has never produced income under the current
+   * owner.  Optional for back-compat with pre-Liman saves.
+   */
+  limanIncomeTicks?: number;
 }
 
 /**
@@ -307,6 +316,14 @@ export interface ConquestPlayerBonusState {
    * for back-compat with pre-eliminator saves; readers default to 0.
    */
   eliminatorCharges?:  number;
+  /**
+   * Liman 🪙 — total Gold this player has earned via Liman round-end income
+   * for the current match.  Synced in gameplay state so every client can see
+   * each player's in-match earnings (account-level gold is NEVER mirrored
+   * here — only what was won inside this match).  Optional for back-compat
+   * with pre-liman saves; readers default to 0.
+   */
+  matchGoldEarned?:    number;
 }
 
 /**

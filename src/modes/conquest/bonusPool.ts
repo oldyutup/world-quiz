@@ -159,8 +159,8 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     category:    "ekonomi",
     icon:        "⚓",
     label:       "Liman",
-    description: "Kaynak akışını hızlandıran bir bonus.",
-    implemented: false,
+    description: "Sadece kıyı bölgelerinde çıkar. Sahibi her tur sonunda +1 puan ve +5 Gold kazanır (en fazla 10 kez). Sahip değişirse sayaç sıfırlanır.",
+    implemented: true,
   },
   {
     type:        "ganimet",

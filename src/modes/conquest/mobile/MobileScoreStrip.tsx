@@ -158,6 +158,14 @@ export default function MobileScoreStrip({
                 {points}
               </span>
               <span className="mcq-strip__pill-regions">{regions}b</span>
+              {(bonus.matchGoldEarned ?? 0) > 0 && (
+                <span
+                  className="mcq-strip__pill-gold"
+                  title={`Bu maçta +${bonus.matchGoldEarned ?? 0} 🪙`}
+                >
+                  +{bonus.matchGoldEarned ?? 0}🪙
+                </span>
+              )}
               {delta && (
                 <span
                   key={delta.epoch}

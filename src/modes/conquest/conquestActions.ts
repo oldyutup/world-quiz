@@ -351,6 +351,10 @@ function flipOwnership(
       /* Capture clears any shield on the region — sensible default for the
        * future shield mechanic, harmless today. */
       shielded:       false,
+      /* Liman ⚓: per-tenure income counter resets on every ownership
+       * change so a fresh owner starts at 0/10.  Harmless on non-liman
+       * regions (field stays unread for them). */
+      limanIncomeTicks: 0,
     };
   });
   return {

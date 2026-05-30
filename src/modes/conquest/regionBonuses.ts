@@ -136,6 +136,29 @@ export function getBonusToastCopyForViewer(
     };
   }
 
+  if (toast.bonusType === "liman") {
+    // Income-tick toasts carry their own player-specific text (name + N/10 +
+    // gold/points).  Keep verbatim so opponents and owner both read the same
+    // public-event line — visibility is part of the feature.
+    if (toast.id.startsWith("liman_income-")) {
+      return { icon: toast.icon, title: toast.title, detail: toast.detail };
+    }
+    // Capture-flavour banner: someone just took the Liman region.  Describe
+    // the bonus itself so the moment reads as a meaningful pick-up.
+    if (isOwner) {
+      return {
+        icon:   "⚓",
+        title:  `${where} Bonusu`,
+        detail: `⚓ Liman sende! Her tur sonunda +1 puan ve +5 Gold kazanırsın (en fazla 10 kez).`,
+      };
+    }
+    return {
+      icon:   "⚓",
+      title:  `${where} Ele Geçirildi`,
+      detail: `⚓ Rakip Liman'ı eline geçirdi. Her tur sonunda gelir kazanacak — geri almak ekonomiyi dengeler.`,
+    };
+  }
+
   if (toast.bonusType === "mevzi_bekcisi") {
     // Loss-flavour banner: emitted when a mevzi region changed hands.  The
     // previous owner keeps the region's point value as a "mevzi" protection
@@ -318,6 +341,7 @@ export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
     cukurovaClaimed:     false,
     bonusPoints:         0,
     eliminatorCharges:   0,
+    matchGoldEarned:     0,
   };
 }
 
@@ -474,5 +498,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "🪵",
     title:  "Koçbaşı Bonusu",
     detail: "Kalkanları aşar. Rakip bölge fethedince +1 puan kazandırır.",
+  },
+  liman: {
+    icon:   "⚓",
+    title:  "Liman Bonusu",
+    detail: "Her tur sonunda +1 puan ve +5 Gold (en fazla 10 kez).",
   },
 };
