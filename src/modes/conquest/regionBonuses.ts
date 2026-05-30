@@ -267,8 +267,8 @@ export const REGION_BONUSES: Record<string, ConquestRegionBonusDef> = {
     regionId:    "istanbul_kocaeli",
     type:        "istanbul_defense",
     icon:        "🛡️",
-    label:       "Boğaz Kalesi",
-    description: "İstanbul’u tutan oyuncuya pasif savunma avantajı (altyapı).",
+    label:       "Kale Surları",
+    description: "Bu bölgeyi fetheden oyuncu Kale Surları kazanır. Bölgeye gelen ilk başarılı düşman saldırısı bölgeyi değil surları yıkar.",
   },
   ankara_cevre: {
     regionId:    "ankara_cevre",

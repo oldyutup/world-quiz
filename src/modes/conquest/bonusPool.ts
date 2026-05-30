@@ -75,8 +75,8 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     type:        "istanbul_defense",
     category:    "savunma",
     icon:        "🛡️",
-    label:       "Boğaz Kalesi",
-    description: "Bu bölgeyi fetheden oyuncu açık kalkan kazanır. Bölgeye gelen ilk düşman saldırısı, bölgeyi değil kalkanı kırar.",
+    label:       "Kale Surları",
+    description: "Bu bölgeyi fetheden oyuncu Kale Surları kazanır. Bölgeye gelen ilk başarılı düşman saldırısı bölgeyi değil surları yıkar.",
     implemented: true,
   },
   {

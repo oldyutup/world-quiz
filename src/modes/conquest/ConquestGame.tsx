@@ -1463,9 +1463,125 @@ export default function ConquestGame({
     return null;
   }, [lastResult, gameState.regionStates, gameState.roundBonuses, mapConfig, players, myPlayerId]);
 
-  const rrcIcon     = limanCaptureCard?.icon     ?? rrcData.icon;
-  const rrcTitle    = limanCaptureCard?.title    ?? rrcData.title;
-  const rrcSubtitle = limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
+  // ── Kale Surları 🛡️ capture-card override ──────────────────────────────
+  // Mirrors `limanCaptureCard` for the istanbul_defense (Kale Surları) bonus.
+  // Always returns non-null for an attack/capture against a Kale Surları
+  // region so the matching small bonus toast (suppressed via
+  // `hasMajorCaptureCard`) never doubles up on the same beat.
+  //
+  // Variants:
+  //   - First neutral capture: bespoke "kale ele geçirildi" card.
+  //   - Region fell (attack flipped ownership): scenarios 1/2/3 — viewer-aware
+  //     attacker / previous-owner / spectator copy.  When the flip rode on a
+  //     Koçbaşı bypass (`kocbasiShieldBypass`), prepend a 🪵 note so the
+  //     bypass shows up in the big card text.
+  //   - Walls broken only (region survived): scenarios 4/5/6 — viewer-aware
+  //     copy.  Detected via the absence of `previousOwnerId` on the
+  //     attack_region result (shield-active path leaves ownership untouched).
+  const kaleSurlariCaptureCard = useMemo<{
+    icon:     string;
+    title:    string;
+    subtitle: string;
+  } | null>(() => {
+    if (!lastResult || !lastResult.ok || !lastResult.regionId) return null;
+    if (lastResult.action !== "attack_region" && lastResult.action !== "capture_neutral") return null;
+    const bonus = resolveActiveBonus(gameState.roundBonuses, lastResult.regionId);
+    if (!bonus || bonus.type !== "istanbul_defense") return null;
+
+    // First take of an unowned Kale Surları region.  captureCount is bumped
+    // before this card resolves, so the very first capture reads as 1; any
+    // later neutral re-takes fall through to the generic capture card.
+    if (lastResult.action === "capture_neutral") {
+      const rs = gameState.regionStates.find(r => r.regionId === lastResult.regionId);
+      if (!rs || (rs.captureCount ?? 0) !== 1) return null;
+      const attackerName = players.find(p => p.id === lastResult.playerId)?.name ?? "Oyuncu";
+      if (myPlayerId === lastResult.playerId) {
+        return {
+          icon:     "🏰",
+          title:    "🏰 Kale Ele Geçirildi, Surlar Aktif!",
+          subtitle: "Bu bölge artık senin kontrolünde. Kale Surları ilk başarılı saldırıyı durduracak; surlar yıkılsa bile bölge bir saldırı daha dayanacak.",
+        };
+      }
+      return {
+        icon:     "🏰",
+        title:    "🏰 Rakip Kaleyi Ele Geçirdi! Surlar Aktif!",
+        subtitle: `${attackerName}, Kale Surları bulunan bölgeyi kontrol altına aldı. Bu bölgeye yapılacak ilk başarılı saldırı önce surları yıkacak.`,
+      };
+    }
+
+    // attack_region from here on.
+    const attackerId      = lastResult.playerId;
+    const attackerName    = players.find(p => p.id === attackerId)?.name ?? "Saldıran";
+    const previousOwnerId = lastResult.previousOwnerId ?? null;
+    const regionFell      = previousOwnerId !== null;
+    const isKocbasiBypass = lastResult.kocbasiShieldBypass === true;
+
+    if (regionFell) {
+      const previousOwnerName = players.find(p => p.id === previousOwnerId)?.name ?? "Eski sahip";
+
+      // Scenario 1 — attacker (me) captured the kale region.
+      if (myPlayerId === attackerId) {
+        const base = "⚔️ Kale Surları aktif! Eğer rakibinde Koçbaşı bonusu yoksa kaleye gelen ilk saldırı bölgeyi değil kalkanı kırar.";
+        return {
+          icon:     "🏰",
+          title:    "🏰 Kaleyi Ele Geçirdin!",
+          subtitle: isKocbasiBypass
+            ? `🪵 Koçbaşı gücün surları yararak bölgeyi tek hamlede ele geçirdi. ${base}`
+            : base,
+        };
+      }
+      // Scenario 2 — defender (me) lost the kale region.
+      if (myPlayerId === previousOwnerId) {
+        const base = "Düşman kalenin içine kadar sızdı ve ele geçirdi! Kaleyi daha hızlı geri kazanmak için oyunda varsa Koçbaşı bonusuyla saldırabilirsin.";
+        return {
+          icon:     "🔥",
+          title:    "🔥 Düşman Kaleyi Ele Geçirdi!",
+          subtitle: isKocbasiBypass
+            ? `🪵 Rakibin Koçbaşı bonusu Kale Surları'nı yok sayıp kaleyi tek hamlede aldı. ${base}`
+            : base,
+        };
+      }
+      // Scenario 3 — spectator view, kale changed hands.
+      const base = `⚔️ ${attackerName}, ${previousOwnerName} oyuncusunun Kale Surları bulunan bölgesini ele geçirdi! Daha kolay fethetmek için varsa Koçbaşı bonusu iyi fikir.`;
+      return {
+        icon:     "🔥",
+        title:    "🔥 Kale El Değiştirdi!",
+        subtitle: isKocbasiBypass
+          ? `🪵 ${attackerName} Koçbaşı bonusuyla surları aşıp bölgeyi tek hamlede ele geçirdi. ${base}`
+          : base,
+      };
+    }
+
+    // Walls broken, region survived.  Defender is still the current owner.
+    const defenderId = gameState.regionStates.find(r => r.regionId === lastResult.regionId)?.ownerPlayerId ?? null;
+
+    // Scenario 4 — attacker (me) broke the walls but the region didn't fall.
+    if (myPlayerId === attackerId) {
+      return {
+        icon:     "🏰",
+        title:    "🏰 Surlar Aşıldı!",
+        subtitle: "🔥 Rakibin surlarını yıktın! Bir sonraki başarılı saldırı bölgeyi düşürecek.",
+      };
+    }
+    // Scenario 5 — defender (me), walls broken but region kept.
+    if (defenderId && myPlayerId === defenderId) {
+      return {
+        icon:     "🏰",
+        title:    "🏰 Düşman Surları Aştı!",
+        subtitle: "🔥 Düşman surları yıktı! Bir sonraki başarılı saldırısı kaleyi kaybetmeme neden olacak, dikkat et!",
+      };
+    }
+    // Scenario 6 — spectator view, walls broken only.
+    return {
+      icon:     "🏰",
+      title:    "🏰 Surlar Aşıldı!",
+      subtitle: "🔥 Kale Surları aşıldı! Bölgeye yapılan bir sonraki başarılı saldırı kaleyi düşürecek. İlk saldırıyı sen yaparsan bölge senin kontrolüne geçecek!",
+    };
+  }, [lastResult, gameState.roundBonuses, gameState.regionStates, players, myPlayerId]);
+
+  const rrcIcon     = kaleSurlariCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? rrcData.icon;
+  const rrcTitle    = kaleSurlariCaptureCard?.title    ?? limanCaptureCard?.title    ?? rrcData.title;
+  const rrcSubtitle = kaleSurlariCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
 
   // Eleme Yetkisi — decide once per challenge whether to render an
   // elimination for the local viewer, then latch the answer.  Decision
@@ -1947,10 +2063,21 @@ export default function ConquestGame({
   // ── Toasts (shared across desktop and mobile) ──────────────────────
   // Stay `position: fixed` for both branches; the mobile shell will get
   // a queued toast slot in a later step.
+  //
+  // True while a premium bonus/capture card (Kale Surları, Liman) owns the
+  // moment via the round_result overlay or the major-bonus notice.  Used to
+  // suppress the small red bonus toast for the same event — it would just
+  // restate what the big card already says.
+  const hasMajorCaptureCard =
+    (phase === "round_result" && (!!kaleSurlariCaptureCard || !!limanCaptureCard))
+    || !!majorBonusNotice;
+
   const toastsNode = (
     <>
-      {/* Bonus toast (transient, centered) */}
-      {showBonusToast && lastBonusToast && (() => {
+      {/* Bonus toast (transient, centered).  Suppressed while a major
+       *  capture card (Kale Surları, Liman, or the Liman major-bonus
+       *  notice) owns the moment so the same event isn't restated twice. */}
+      {showBonusToast && lastBonusToast && !hasMajorCaptureCard && (() => {
         const toastRegion = lastBonusToast.regionId
           ? mapConfig?.regions.find(r => r.id === lastBonusToast.regionId) ?? null
           : null;
@@ -2520,7 +2647,10 @@ export default function ConquestGame({
       ),
     });
   }
-  if (showBonusToast && lastBonusToast) {
+  // Mirror the desktop suppression: skip the small bonus toast when a
+  // major capture card (Kale Surları, Liman, or the Liman major-bonus
+  // notice) already covers the same event.
+  if (showBonusToast && lastBonusToast && !hasMajorCaptureCard) {
     const toastRegion = lastBonusToast.regionId
       ? mapConfig?.regions.find(r => r.id === lastBonusToast.regionId) ?? null
       : null;

@@ -534,7 +534,7 @@ export default function TurkeyConquestMap({
     // every viewer sees the region producing value.  null when this region
     // doesn't carry Liman, so the badge stays off.
     const limanTicks = bonus?.type === "liman" ? (rs?.limanIncomeTicks ?? 0) : null;
-    // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Boğaz Kalesi"
+    // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Kale Surları"
     // Desktop hover only; touch devices ignore the SVG <title>.
     const ownerSuffix = owner ? ` (${owner.name})` : "";
     const limanSuffix = limanTicks !== null ? ` (${limanTicks}/10)` : "";

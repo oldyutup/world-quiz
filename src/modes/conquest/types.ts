@@ -442,6 +442,15 @@ export interface ConquestActionResult {
    * Absent on actions that don't flip ownership or on legacy snapshots.
    */
   previousOwnerId?: string;
+  /**
+   * Koçbaşı 🪵 shield-bypass marker.  Set to `true` on the duel-flip success
+   * path when the duel snapshot recorded `kocbasiBypass` — i.e. the attacker
+   * single-stepped through an open shield (Kale Surları) instead of just
+   * breaking it.  Used by the round_result card to render the "Koçbaşı
+   * Surları Parçaladı!" variant for the Kale Surları bonus.  Absent on
+   * non-bypass flips and legacy snapshots.
+   */
+  kocbasiShieldBypass?: boolean;
 }
 
 /** Complete snapshot of an active or recently-finished Kuşatma match. */

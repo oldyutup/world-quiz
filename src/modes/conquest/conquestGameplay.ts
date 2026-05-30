@@ -1735,12 +1735,13 @@ function resolveDuelWithWinner(
   const postBonusToast = kocbasiOut.toast ?? mevziOut.toast ?? bonusOut.toast;
 
   const flipResult: ConquestActionResult = {
-    ok:              true,
-    action:          "attack_region",
-    playerId:        duel.attackerId,
-    regionId:        duel.regionId,
-    message:         `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
-    previousOwnerId: duel.defenderId,
+    ok:                  true,
+    action:              "attack_region",
+    playerId:            duel.attackerId,
+    regionId:            duel.regionId,
+    message:             `⚔️ ${attackerName}, düelloda ${regionLabel} bölgesini fethetti.`,
+    previousOwnerId:     duel.defenderId,
+    kocbasiShieldBypass: duel.kocbasiBypass === true,
   };
 
   const base = finishDuelIntoRoundResult(state, flipResult);
