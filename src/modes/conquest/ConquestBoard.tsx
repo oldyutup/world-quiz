@@ -43,6 +43,12 @@ interface Props {
    * phase. Defaults to true so display-only uses (lobby) stay vivid.
    */
   viewerIsHolder?: boolean;
+  /**
+   * Region ids the LOCAL viewer has armed with a Pusu 🕳️ hidden bonus.
+   * Rendered as a small owner-only chip on each card; opponents must pass
+   * an empty / undefined set so the chip never appears for them.
+   */
+  myAmbushRegionIds?: Set<ConquestRegionId>;
 }
 
 export default function ConquestBoard({
@@ -55,6 +61,7 @@ export default function ConquestBoard({
   flashRegionId,
   disabled = false,
   viewerIsHolder = true,
+  myAmbushRegionIds,
 }: Props) {
   const playerById = Object.fromEntries(players.map(p => [p.id, p]));
   const stateById  = Object.fromEntries(regionStates.map(rs => [rs.regionId, rs]));
@@ -95,6 +102,7 @@ export default function ConquestBoard({
             legal={isLegal}
             illegalFlash={isFlash}
             disabled={disabled}
+            myAmbushHere={myAmbushRegionIds?.has(region.id) ?? false}
           />
         );
       })}

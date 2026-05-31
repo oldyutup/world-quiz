@@ -9938,6 +9938,66 @@ body {
   flex: 1 1 auto;
   text-align: left;
 }
+.cq-hidden-inventory-btn[data-active] {
+  background: rgba(245, 158, 11, 0.34);
+  border-color: rgba(245, 158, 11, 0.75);
+  color: oklch(0.97 0.06 70);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4) inset;
+}
+.cq-hidden-inventory-cancel {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+/* Pusu 🕳️ — owner-only placement-mode hint banner. Floats above the map
+ *  while the local viewer is choosing a region to ambush. Opponents never
+ *  render this; the placement state is owner-local until trigger. */
+.cq-pusu-placement-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: oklch(0.94 0.05 70);
+  font-size: 13px;
+  max-width: 720px;
+}
+.cq-pusu-placement-banner-text {
+  flex: 1 1 auto;
+}
+.cq-pusu-placement-banner-cancel {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* Pusu 🕳️ — owner-only region marker on the SVG map. */
+.cq-map-ambush-owner-chip-bg {
+  fill: rgba(7, 10, 18, 0.88);
+  stroke: rgba(245, 158, 11, 0.78);
+  stroke-width: 1.4;
+}
+.cq-map-ambush-owner-chip-inner {
+  fill: none;
+  stroke: rgba(245, 158, 11, 0.35);
+  stroke-width: 1;
+}
+.cq-map-ambush-owner-icon {
+  font-size: 11px;
+  fill: oklch(0.97 0.06 70);
+}
+
+/* Pusu 🕳️ — owner-only chip on the card grid fallback. */
+.cq-region-ambush {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  margin-left: 4px;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6));
+}
 
 /* Suikast target picker — modal overlay (single-step). */
 .cq-suikast-picker-backdrop {

@@ -79,6 +79,7 @@ import {
   advanceToNextRound,
   applyActionToGame,
   applyLanetMuhruHiddenBonus,
+  applyPusuHiddenBonus,
   applySuikastHiddenBonus,
   buildFinalStandings,
   expireActionPhase,
@@ -195,6 +196,10 @@ function getRoundResultCardData(
 ): { icon: string; title: string } {
   if (!lastResult || !lastResult.ok) return { icon: "⏭️", title: "Tur tamamlandı" };
   const msg = lastResult.message ?? "";
+  // Pusu 🕳️ trigger short-circuit — fires before any action-specific copy.
+  // Public message is the same across action types ("Gizli pusu nedeniyle…")
+  // so a single check covers attack/capture/gizli-fetih paths.
+  if (msg.startsWith("🕳️")) return { icon: "🕳️", title: "Pusu Ortaya Çıktı" };
   switch (lastResult.action) {
     case "capture_neutral":
       return { icon: "🏰", title: "Bölge Fethedildi" };
@@ -307,6 +312,10 @@ export default function ConquestGame({
   // locally only — illegal clicks are not committed to gameplay_state.
   const [flashRegionId, setFlashRegionId] = useState<ConquestRegionId | null>(null);
   const flashTimerRef = useRef<number | null>(null);
+  /** Forward-reference ref to `flashIllegal` so handlers declared earlier in
+   *  the component (e.g. Pusu placement) can fire the same flash effect
+   *  without depending on the callback's identity in a closure. */
+  const flashIllegalRef = useRef<((id: ConquestRegionId) => void) | null>(null);
 
   // Stable refs so timeout callbacks always see the latest values without
   // needing to be in the dependency arrays (avoids restarting timers on every
@@ -705,6 +714,78 @@ export default function ConquestGame({
     setLanetPickerEntryId(null);
     void onPushGameState(next);
   }, [gameState, myPlayerId, onPushGameState]);
+
+  // ── Hidden bonuses — Pusu placement mode ───────────────────────────
+  // Pusu chooses a REGION (not a player target) so the UI flow is a
+  // "placement mode" toggle instead of a modal picker.  While the mode
+  // is active, the map's legal-affordance set is replaced with the
+  // owner's ambush-eligible regions; tapping one of them commits.
+  // Eligibility rules (mirrored exactly by the pure helper
+  // `usePusuHiddenBonus`): owner-self or neutral; never enemy; never a
+  // capital; never a region that already carries an active ambush.
+  const myUnusedPusuEntries = useMemo(() => {
+    if (!myPlayerId) return [];
+    const bag = gameState?.playerHiddenBonuses?.[myPlayerId] ?? [];
+    return bag.filter(e => !e.used && e.type === "pusu");
+  }, [gameState?.playerHiddenBonuses, myPlayerId]);
+  const [pusuPlacementEntryId, setPusuPlacementEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pusuPlacementEntryId) return;
+    const stillPresent = myUnusedPusuEntries.some(e => e.id === pusuPlacementEntryId);
+    if (!stillPresent) setPusuPlacementEntryId(null);
+  }, [pusuPlacementEntryId, myUnusedPusuEntries]);
+  // Auto-exit placement mode if the match finishes or the viewer changes.
+  useEffect(() => {
+    if (!pusuPlacementEntryId) return;
+    if (gameState?.phase === "finished") setPusuPlacementEntryId(null);
+  }, [pusuPlacementEntryId, gameState?.phase]);
+
+  /** Region ids the local viewer can legally place a Pusu on RIGHT NOW.
+   *  Owner-self or neutral (truly null owner), never capital, never
+   *  already-ambushed.  Derived from REAL regionStates so projection
+   *  never leaks (the viewer is the owner anyway, so they see truth). */
+  const pusuPlacementCandidates = useMemo(() => {
+    if (!gameState || !myPlayerId) return new Set<ConquestRegionId>();
+    const existingAmbushes = gameState.activeHiddenEffects?.ambushes ?? {};
+    const out = new Set<ConquestRegionId>();
+    for (const rs of gameState.regionStates) {
+      if (CAPITAL_REGION_IDS.has(rs.regionId)) continue;
+      if (existingAmbushes[rs.regionId])       continue;
+      if (rs.ownerPlayerId !== null && rs.ownerPlayerId !== myPlayerId) continue;
+      out.add(rs.regionId);
+    }
+    return out;
+  }, [gameState, myPlayerId]);
+
+  const handlePlaceAmbush = useCallback((regionId: ConquestRegionId) => {
+    if (!gameState || !myPlayerId || !pusuPlacementEntryId) return;
+    if (!pusuPlacementCandidates.has(regionId)) {
+      flashIllegalRef.current?.(regionId);
+      return;
+    }
+    const next = applyPusuHiddenBonus(gameState, myPlayerId, pusuPlacementEntryId, regionId);
+    if (next === gameState) {
+      flashIllegalRef.current?.(regionId);
+      return;
+    }
+    setPusuPlacementEntryId(null);
+    playSound("click");
+    void onPushGameState(next);
+  }, [gameState, myPlayerId, pusuPlacementEntryId, pusuPlacementCandidates, onPushGameState]);
+
+  /** Region ids the local viewer has armed with a Pusu.  Used to render an
+   *  owner-only marker on the map — opponents NEVER see these.  Empty when
+   *  no ambush is armed by this viewer (the common case for non-Pusu
+   *  matches). */
+  const myAmbushRegionIds = useMemo(() => {
+    if (!gameState || !myPlayerId) return new Set<ConquestRegionId>();
+    const out = new Set<ConquestRegionId>();
+    const ambushes = gameState.activeHiddenEffects?.ambushes ?? {};
+    for (const [regionId, ambush] of Object.entries(ambushes)) {
+      if (ambush.ownerPlayerId === myPlayerId) out.add(regionId);
+    }
+    return out;
+  }, [gameState?.activeHiddenEffects, myPlayerId]);
 
   // ── DEV-ONLY: inject a hidden bonus directly into local player's inventory ─
   const handleDebugGiveBonus = useCallback((type: ConquestHiddenBonusType) => {
@@ -1199,9 +1280,20 @@ export default function ConquestGame({
       flashTimerRef.current = null;
     }, ILLEGAL_FLASH_MS);
   }, []);
+  useEffect(() => { flashIllegalRef.current = flashIllegal; }, [flashIllegal]);
 
   const handleRegionClick = useCallback((regionId: ConquestRegionId) => {
     if (!gameState || !mapConfig) return;
+
+    // Pusu 🕳️ placement short-circuit — runs outside the normal action-phase
+    // flow so the owner can arm an ambush even while it's not their turn.
+    // Eligibility is enforced by `applyPusuHiddenBonus` server-side (matches
+    // `pusuPlacementCandidates` here); invalid taps just flash-flag illegal.
+    if (pusuPlacementEntryId) {
+      handlePlaceAmbush(regionId);
+      return;
+    }
+
     if (gameState.phase !== "action") return;
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
@@ -1430,7 +1522,7 @@ export default function ConquestGame({
     const { state: nextState } = applyActionToGame(gameState, mapConfig, pending);
     void onPushGameState(nextState);
     playSound("click");
-  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId]);
+  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId, pusuPlacementEntryId, handlePlaceAmbush]);
 
   const handleSkipAction = useCallback(() => {
     if (!gameState || !mapConfig) return;
@@ -2184,6 +2276,15 @@ export default function ConquestGame({
   const hiddenBonusToastCopy = lastHiddenBonusToast
     ? getHiddenBonusToastCopyForViewer(lastHiddenBonusToast, myPlayerId)
     : null;
+  // Pusu 🕳️ "use" (placement) events are STRICTLY owner-only — opponents must
+  // never see any notification that an ambush was placed.  The viewer-aware
+  // copy returns an empty stub for non-owners; we suppress the toast entirely
+  // when that stub appears so no empty bubble flashes on opponents' screens.
+  const suppressHiddenBonusToast =
+    !!lastHiddenBonusToast
+    && lastHiddenBonusToast.event === "use"
+    && lastHiddenBonusToast.type  === "pusu"
+    && lastHiddenBonusToast.claimerId !== myPlayerId;
   const toastPlayerColor = lastBonusToast
     ? (playerColors[lastBonusToast.playerId] ?? null)
     : null;
@@ -2442,6 +2543,20 @@ export default function ConquestGame({
   // The same React elements are reused in both branches so realtime
   // state, refs, and effect ownership stay identical — only the
   // surrounding chrome differs.
+  //
+  // Pusu 🕳️ placement mode override: while the local viewer has
+  // `pusuPlacementEntryId` set, the map's legal-affordance set is replaced
+  // with the placement candidate set, the viewer is forced to act (so the
+  // affordance actually renders), the board is enabled regardless of
+  // phase, and the click handler is attached unconditionally so the
+  // owner can arm an ambush mid-challenge or mid-reveal.
+  const inAmbushMode      = pusuPlacementEntryId !== null;
+  const mapLegalTargets   = inAmbushMode ? pusuPlacementCandidates : legalTargets;
+  const mapViewerIsHolder = inAmbushMode ? true                    : isActionHolder;
+  const mapBoardDisabled  = inAmbushMode ? false                   : boardDisabled;
+  const mapClickHandler   = inAmbushMode
+    ? handleRegionClick
+    : (phase === "action" ? handleRegionClick : undefined);
   const mapNode = settings.map === "turkey" ? (
     <>
       {/* SVG map: primary interaction on all screens */}
@@ -2449,13 +2564,14 @@ export default function ConquestGame({
         regionStates={visibleRegionStates}
         players={players}
         playerColors={playerColors}
-        legalTargetIds={legalTargets}
+        legalTargetIds={mapLegalTargets}
         flashRegionId={flashRegionId}
         attackTargetRegionId={attackTargetRegionId}
-        disabled={boardDisabled}
-        viewerIsHolder={isActionHolder}
+        disabled={mapBoardDisabled}
+        viewerIsHolder={mapViewerIsHolder}
         roundBonuses={gameState.roundBonuses}
-        onRegionClick={phase === "action" ? handleRegionClick : undefined}
+        onRegionClick={mapClickHandler}
+        myAmbushRegionIds={myAmbushRegionIds}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
       <div className="cq-map-card-fallback">
@@ -2464,11 +2580,12 @@ export default function ConquestGame({
           regionStates={visibleRegionStates}
           players={players}
           playerColors={playerColors}
-          onRegionClick={phase === "action" ? handleRegionClick : undefined}
-          legalRegionIds={legalTargets}
+          onRegionClick={mapClickHandler}
+          legalRegionIds={mapLegalTargets}
           flashRegionId={flashRegionId}
-          disabled={boardDisabled}
-          viewerIsHolder={isActionHolder}
+          disabled={mapBoardDisabled}
+          viewerIsHolder={mapViewerIsHolder}
+          myAmbushRegionIds={myAmbushRegionIds}
         />
       </div>
     </>
@@ -2478,11 +2595,12 @@ export default function ConquestGame({
       regionStates={visibleRegionStates}
       players={players}
       playerColors={playerColors}
-      onRegionClick={phase === "action" ? handleRegionClick : undefined}
-      legalRegionIds={legalTargets}
+      onRegionClick={mapClickHandler}
+      legalRegionIds={mapLegalTargets}
       flashRegionId={flashRegionId}
-      disabled={boardDisabled}
-      viewerIsHolder={isActionHolder}
+      disabled={mapBoardDisabled}
+      viewerIsHolder={mapViewerIsHolder}
+      myAmbushRegionIds={myAmbushRegionIds}
     />
   );
 
@@ -2548,7 +2666,7 @@ export default function ConquestGame({
        *    - everyone else sees the generic "rakip gizli bonus keşfetti" copy
        *  The toast payload contains a `regionId` for future use, but the
        *  copy here deliberately never names it — paranoia is the feature. */}
-      {showHiddenBonusToast && lastHiddenBonusToast && hiddenBonusToastCopy && (
+      {showHiddenBonusToast && lastHiddenBonusToast && hiddenBonusToastCopy && !suppressHiddenBonusToast && (
         <div
           key={lastHiddenBonusToast.id}
           className="cq-bonus-toast"
@@ -3782,12 +3900,14 @@ export default function ConquestGame({
             </span>
           </div>
         )}
-        {/* Gizli bonuslar — local-viewer only.  Suikast is the only consume
-         *  surface today; Lanet Mührü and Pusu inventory entries (when they
-         *  ship) will get their own action rows here.  Opponents never see
-         *  anyone's hidden bonus inventory — the section unmounts when the
-         *  local viewer has nothing to consume. */}
-        {(myUnusedSuikastEntries.length > 0 || myUnusedLanetEntries.length > 0) && (
+        {/* Gizli bonuslar — local-viewer only.  Opponents never see anyone's
+         *  hidden bonus inventory — the section unmounts when the local
+         *  viewer has nothing to consume. */}
+        {(
+          myUnusedSuikastEntries.length > 0
+          || myUnusedLanetEntries.length  > 0
+          || myUnusedPusuEntries.length   > 0
+        ) && (
           <div className="cq-hidden-inventory" role="group" aria-label="Gizli bonusların">
             <div className="cq-hidden-inventory-title">🎁 Gizli Bonusların</div>
             {myUnusedSuikastEntries.map(entry => (
@@ -3816,9 +3936,60 @@ export default function ConquestGame({
                 <span className="cq-hidden-inventory-btn-text">Lanet Mührü Kullan</span>
               </button>
             ))}
+            {myUnusedPusuEntries.map(entry => {
+              const isActive = pusuPlacementEntryId === entry.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className="cq-hidden-inventory-btn"
+                  data-active={isActive ? "" : undefined}
+                  onClick={() =>
+                    setPusuPlacementEntryId(isActive ? null : entry.id)
+                  }
+                  aria-pressed={isActive}
+                  aria-label="Pusu kur — haritadan bölge seç"
+                  title="Pusu: kendi bölgene veya tarafsız bir bölgeye gizli pusu kurarsın. Rakip o bölgeye saldırırsa saldırısı iptal olur (tek kullanımlık)."
+                >
+                  <span aria-hidden="true">🕳️</span>
+                  <span className="cq-hidden-inventory-btn-text">
+                    {isActive ? "Pusu Kurulumu Açık" : "Pusu Kur"}
+                  </span>
+                </button>
+              );
+            })}
+            {pusuPlacementEntryId && (
+              <button
+                type="button"
+                className="btn btn-ghost cq-hidden-inventory-cancel"
+                onClick={() => setPusuPlacementEntryId(null)}
+                aria-label="Pusu kurulumunu iptal et"
+              >
+                İptal
+              </button>
+            )}
           </div>
         )}
       </div>
+      {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
+       *  above the map so the player understands which clicks are armed.
+       *  Opponents never render this; the placement state is owner-local. */}
+      {pusuPlacementEntryId && (
+        <div className="cq-pusu-placement-banner" role="status" aria-live="polite">
+          <span aria-hidden="true">🕳️</span>
+          <span className="cq-pusu-placement-banner-text">
+            Pusu kurmak için kendi bölgenden veya tarafsız bir bölgeden birini seç.
+            Başkentlere ve rakip bölgelerine pusu kurulamaz.
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost cq-pusu-placement-banner-cancel"
+            onClick={() => setPusuPlacementEntryId(null)}
+          >
+            İptal
+          </button>
+        </div>
+      )}
 
       {/* Suikast target picker — modal overlay.  Lists opponents only; the
        *  local viewer is filtered out so self-targeting is impossible at the

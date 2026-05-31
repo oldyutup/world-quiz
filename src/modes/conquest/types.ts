@@ -505,16 +505,45 @@ export interface ConquestPendingCurse {
 }
 
 /**
+ * Pusu 🕳️ — pending ambush armed on a chosen region.  Stored on
+ * `ConquestGameState.activeHiddenEffects.ambushes` keyed by `regionId`.
+ *
+ * Lifecycle:
+ *   1. Owner consumes their Pusu charge and chooses a region they own OR a
+ *      neutral region (NEVER an enemy region, NEVER a capital).  Inventory
+ *      entry flips to `used`; an ambush entry is inserted under that region.
+ *   2. The ambush waits silently.  Only the owner sees a marker on their
+ *      own map view; opponents see nothing.
+ *   3. The first time an *opponent* targets the ambushed region with an
+ *      attack/capture, the ambush fires: the action is cancelled BEFORE any
+ *      duel starts or ownership flips, the round jumps to `round_result`
+ *      with a Pusu-flavoured message, and the ambush entry is removed.
+ *
+ * Owner-self interactions (clicking your own ambush region) never trigger:
+ * `canCaptureNeutral` rejects own regions and `canAttackRegion` rejects
+ * targets you already own.  The trigger predicate also explicitly bails out
+ * when `attackerId === ownerPlayerId` as a defensive second guard.
+ */
+export interface ConquestPendingAmbush {
+  ownerPlayerId: string;
+  bonusEntryId:  string;
+  createdRound:  number;
+}
+
+/**
  * Container for all "in-flight" hidden bonus effects that outlive a single
- * helper call.  Today only Lanet Mührü uses this; Pusu (and any future
- * delayed-effect hidden bonus) will land here too.  Optional on
- * ConquestGameState for back-compat with pre-curse saves.
+ * helper call.  Lanet Mührü uses `curses`; Pusu uses `ambushes`.  Optional
+ * on ConquestGameState for back-compat with pre-curse saves.
  */
 export interface ConquestActiveHiddenEffects {
   /** Pending curses keyed by targetPlayerId.  At most one curse per target
    *  at any time — a second Lanet Mührü against an already-cursed target
    *  is rejected by `useLanetMuhruHiddenBonus`. */
   curses?: Record<string, ConquestPendingCurse>;
+  /** Pending ambushes keyed by regionId.  At most one ambush per region
+   *  (a second Pusu on an already-ambushed region is rejected by
+   *  `usePusuHiddenBonus`). */
+  ambushes?: Record<string, ConquestPendingAmbush>;
 }
 
 /**

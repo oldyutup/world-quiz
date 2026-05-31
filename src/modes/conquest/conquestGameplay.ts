@@ -51,7 +51,9 @@ import {
   consumePendingCurseOnTrigger,
   hasPendingCurse,
   tryClaimHiddenBonus,
+  tryConsumePendingAmbush,
   useLanetMuhruHiddenBonus,
+  usePusuHiddenBonus,
   useSuikastHiddenBonus,
 } from "./conquestHiddenBonuses";
 import type {
@@ -1038,6 +1040,65 @@ export function applyActionToGame(
     && (action.type === "attack_region" || action.type === "capture_neutral")
     && !isLegalTarget(mapConfig, state.regionStates, action.playerId, action.regionId);
 
+  // ── Pusu 🕳️ interception ──────────────────────────────────────────────
+  // Fires BEFORE the hidden-shield/duel/applyConquestAction chain so an
+  // ambushed attack/capture never even reaches resolution.  The ambush is
+  // consumed and the round jumps to round_result with a viewer-aware
+  // "Pusu Ortaya Çıktı" toast; the saldırı/fetih is treated as if it
+  // never happened.  Owner-self attempts (which the legality predicates
+  // already reject) are guarded a second time inside
+  // `tryConsumePendingAmbush`.
+  //
+  // Mancınık 🎯 charge consumption: V1 decision — a Mancınık-tagged attack
+  // that gets ambushed is still treated as "saldırı teşebbüsü yapıldı",
+  // so the charge is spent (mirrors the Ankara hidden-shield branch right
+  // below).  This keeps a single rule for "if the shot leaves the silo, the
+  // silo is empty"; the alternative (refund on ambush) would also leak
+  // info to the attacker that something they hit was ambushed-not-shielded.
+  if (action.type === "attack_region" || action.type === "capture_neutral") {
+    const attackerName =
+      state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
+    const ambushTrigger = tryConsumePendingAmbush(
+      state.activeHiddenEffects,
+      action.regionId,
+      action.playerId,
+      attackerName,
+      Date.now(),
+    );
+    if (ambushTrigger) {
+      const blockResult: ConquestActionResult = {
+        ok:                 true,
+        action:             action.type,
+        playerId:           action.playerId,
+        regionId:           action.regionId,
+        message:            "🕳️ Gizli pusu nedeniyle saldırı gerçekleşemedi.",
+        mancinikBypassUsed: mancinikBypassUsed || undefined,
+      };
+      const playerBonusesAfterAmbush = mancinikBypassUsed
+        ? consumeMancinikCharge(state.playerBonuses, action.playerId)
+        : state.playerBonuses;
+      return {
+        state: {
+          ...state,
+          phase:                "round_result",
+          playerBonuses:        playerBonusesAfterAmbush,
+          activeHiddenEffects:  ambushTrigger.activeHiddenEffects,
+          lastHiddenBonusToast: ambushTrigger.lastHiddenBonusToast,
+          round: {
+            ...state.round,
+            lastResult: blockResult,
+          },
+          history: [...state.history, {
+            roundNumber:       state.round.roundNumber,
+            challengeWinnerId: state.round.challenge.winnerPlayerId,
+            result:            blockResult,
+          }],
+        },
+        result: blockResult,
+      };
+    }
+  }
+
   // ── Ankara hidden-shield interception ──────────────────────────────────
   // Triggered BEFORE applyConquestAction so a shielded attack/capture never
   // flips ownership.  Shield is consumed on trigger and the round resolves
@@ -1529,6 +1590,46 @@ export function placeHiddenConquestOnNeutralRegion(
         regionId,
         message:  "Gizli koruma hakkın yok.",
       },
+    };
+  }
+
+  // ── Pusu 🕳️ intercept on gizli fetih ────────────────────────────────────
+  // Spec: pusu blocks "direct flip" too.  Gizli fetih is a direct flip on a
+  // neutral region, so if an opponent's pusu sits on this region, the flip
+  // must not happen.  The hidden-shield pending flag stays intact (the
+  // shield wasn't placed) so the holder can use it on a later turn.
+  const ambushTriggerHidden = tryConsumePendingAmbush(
+    state.activeHiddenEffects,
+    regionId,
+    playerId,
+    state.players.find(p => p.id === playerId)?.name ?? "Oyuncu",
+    Date.now(),
+  );
+  if (ambushTriggerHidden) {
+    const blockResult: ConquestActionResult = {
+      ok:       true,
+      action:   "defend_region",
+      playerId,
+      regionId,
+      message:  "🕳️ Gizli pusu nedeniyle saldırı gerçekleşemedi.",
+    };
+    return {
+      state: {
+        ...state,
+        phase:                "round_result",
+        activeHiddenEffects:  ambushTriggerHidden.activeHiddenEffects,
+        lastHiddenBonusToast: ambushTriggerHidden.lastHiddenBonusToast,
+        round: {
+          ...state.round,
+          lastResult: blockResult,
+        },
+        history: [...state.history, {
+          roundNumber:       state.round.roundNumber,
+          challengeWinnerId: state.round.challenge.winnerPlayerId,
+          result:            blockResult,
+        }],
+      },
+      result: blockResult,
     };
   }
 
@@ -2484,6 +2585,61 @@ export function applyLanetMuhruHiddenBonus(
     targetName:    target.name,
     currentRound:  state.round.roundNumber,
     now:           Date.now(),
+  });
+  if (!diff) return state;
+
+  return {
+    ...state,
+    playerHiddenBonuses:  diff.playerHiddenBonuses,
+    activeHiddenEffects:  diff.activeHiddenEffects,
+    lastHiddenBonusToast: diff.lastHiddenBonusToast,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hidden bonuses — consume (Pusu 🕳️)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Consume one of `ownerId`'s unused Pusu charges to arm an ambush on
+ * `regionId`.  Returns the next ConquestGameState with:
+ *
+ *   - inventory entry flipped to `used: true`
+ *   - `activeHiddenEffects.ambushes[regionId]` set to the new pending ambush
+ *   - `lastHiddenBonusToast` set to a "use" event so the owner's client
+ *     renders the "Pusu Kuruldu" notification (opponents must filter this
+ *     out — see UI surface).
+ *
+ * No-ops (returns the state untouched) when:
+ *   - the entry id is missing from the owner's inventory
+ *   - the entry is already used
+ *   - the entry is not a Pusu charge
+ *   - the chosen region is enemy-owned or a capital (placement rules)
+ *   - the region already carries another active ambush (no stacking)
+ *   - the owner id is not a real match player
+ *
+ * The phase / round / region states are NOT touched here — Pusu is a
+ * passive, off-turn place so the loop continues exactly where it was.
+ */
+export function applyPusuHiddenBonus(
+  state:        ConquestGameState,
+  ownerId:      string,
+  bonusEntryId: string,
+  regionId:     ConquestRegionId,
+): ConquestGameState {
+  const owner = state.players.find(p => p.id === ownerId);
+  if (!owner) return state;
+
+  const diff = usePusuHiddenBonus({
+    playerHiddenBonusesIn: state.playerHiddenBonuses,
+    activeHiddenEffectsIn: state.activeHiddenEffects,
+    regionStates:          state.regionStates,
+    bonusEntryId,
+    ownerId,
+    ownerName:    owner.name,
+    regionId,
+    currentRound: state.round.roundNumber,
+    now:          Date.now(),
   });
   if (!diff) return state;
 

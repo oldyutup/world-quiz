@@ -32,6 +32,10 @@ interface Props {
   illegalFlash?:  boolean;
   /** Disable interaction entirely (e.g. during round_result/finished). */
   disabled?:      boolean;
+  /** Owner-only Pusu 🕳️ marker — true when the LOCAL viewer has armed an
+   *  ambush on this region.  Opponents must NEVER receive this prop set,
+   *  so the chip stays a strict owner-side intel. */
+  myAmbushHere?:  boolean;
 }
 
 export default function ConquestRegionCard({
@@ -44,6 +48,7 @@ export default function ConquestRegionCard({
   legal = false,
   illegalFlash = false,
   disabled = false,
+  myAmbushHere = false,
 }: Props) {
   const isOwned   = ownerColor != null && ownerName != null;
   const colorAttr = isOwned ? ownerColor : "neutral";
@@ -79,6 +84,11 @@ export default function ConquestRegionCard({
         {shielded && (
           <span className="cq-region-shield" aria-label="Kalkan aktif">
             🛡
+          </span>
+        )}
+        {myAmbushHere && (
+          <span className="cq-region-ambush" aria-label="Pusu kurulu (sana özel)" title="Pusu kurulu — yalnızca sana görünür">
+            🕳️
           </span>
         )}
         {legal && (

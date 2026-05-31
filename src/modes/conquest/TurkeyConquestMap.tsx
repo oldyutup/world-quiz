@@ -165,6 +165,13 @@ interface Props {
   onRegionClick?: (id: ConquestRegionId) => void;
   flashRegionId?: ConquestRegionId | null;
   /**
+   * Region ids the LOCAL viewer has armed with a Pusu 🕳️ hidden bonus.
+   * The marker is rendered ONLY for these regions and is invisible to
+   * every other client — pass an empty set for opponents.  Owner-side
+   * intelligence; never leaks to opponents.
+   */
+  myAmbushRegionIds?: Set<ConquestRegionId>;
+  /**
    * Active per-round bonus assignment.  When present, bonus icons + tooltips
    * render against this map; pre-dynamic-bonus rooms (assignment undefined)
    * fall back to the static catalog inside `resolveActiveBonus`.
@@ -260,6 +267,7 @@ export default function TurkeyConquestMap({
   attackTargetRegionId = null,
   viewerIsHolder = true,
   roundBonuses,
+  myAmbushRegionIds,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -893,6 +901,44 @@ export default function TurkeyConquestMap({
             );
           })}
         </g>
+
+        {/* ── Layer 5.4: Pusu owner-only marker 🕳️ ──────────────────────
+             Small dim halo + glyph at the region's label anchor for every
+             region the LOCAL viewer has armed with a Pusu.  Opponents pass
+             an empty `myAmbushRegionIds` set so this layer is unmounted on
+             their map — the placement state stays secret until trigger. */}
+        {myAmbushRegionIds && myAmbushRegionIds.size > 0 && (
+          <g
+            className="cq-map-ambush-owner-layer"
+            pointerEvents="none"
+            aria-hidden="true"
+          >
+            {regionEntries
+              .filter(e => myAmbushRegionIds.has(e.id as ConquestRegionId))
+              .map(({ id, labelPos }) => {
+                const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
+                // Anchor opposite the bonus chip (which sits at +26) so the
+                // two never overlap when a region carries both.
+                const cx  = labelPos.x + off.dx - 26;
+                const cy  = labelPos.y + off.dy;
+                return (
+                  <g key={`ambush-own-${id}`} className="cq-map-ambush-owner-chip">
+                    <circle cx={cx} cy={cy} r={10} className="cq-map-ambush-owner-chip-bg" />
+                    <circle cx={cx} cy={cy} r={6.5} className="cq-map-ambush-owner-chip-inner" />
+                    <text
+                      x={cx}
+                      y={cy + 0.5}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="cq-map-ambush-owner-icon"
+                    >
+                      🕳️
+                    </text>
+                  </g>
+                );
+              })}
+          </g>
+        )}
 
         {/* ── Layer 5.5: Attack Focus target marker ─────────────────────
              Pulsing red ring + ⚔️ glyph at the region's label anchor.

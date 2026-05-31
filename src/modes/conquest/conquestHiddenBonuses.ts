@@ -25,6 +25,7 @@ import type {
   ConquestHiddenBonusToast,
   ConquestHiddenBonusType,
   ConquestMapConfig,
+  ConquestPendingAmbush,
   ConquestPendingCurse,
   ConquestPlayerHiddenBonus,
   ConquestRegionId,
@@ -555,6 +556,221 @@ export function consumePendingCurseOnTrigger(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Consume — Pusu 🕳️
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Two-step lifecycle (mirrors Lanet Mührü's place → trigger pattern):
+//
+//   1. `usePusuHiddenBonus` — owner spends a Pusu charge on a region they
+//      own OR a neutral region.  Inventory entry flips to `used: true`;
+//      an ambush entry is inserted on `activeHiddenEffects.ambushes` keyed
+//      by the chosen regionId.  No phase change.
+//
+//   2. `tryConsumePendingAmbush` — called by `applyActionToGame` BEFORE the
+//      attack/capture is resolved.  When the attacker is NOT the ambush
+//      owner and the target carries an active ambush, the ambush fires:
+//      the action is cancelled, the ambush entry is removed, and a viewer-
+//      aware "trigger" toast is emitted.
+//
+// Both halves are pure: callers splice the returned slices into ConquestGameState.
+// Eligibility (own/neutral, no enemy/capital) is enforced here so the UI's
+// optimistic placement-candidate set and the synced commit agree.
+
+export interface PusuUseDiff {
+  /** Next per-player inventory with the consumed entry's `used` flipped. */
+  playerHiddenBonuses:  Record<string, ConquestPlayerHiddenBonus[]>;
+  /** Next activeHiddenEffects with the new pending ambush stamped on
+   *  `ambushes[regionId]`. */
+  activeHiddenEffects:  ConquestActiveHiddenEffects;
+  /** Use-event toast — viewer-aware copy is decided at render time.  Only
+   *  the owner gets a real placement message; opponents must NEVER see this
+   *  toast surface at all (UI filters by `event === "use" && type === "pusu"`
+   *  and routes the toast strictly to the caster). */
+  lastHiddenBonusToast: ConquestHiddenBonusToast;
+}
+
+export interface UsePusuInput {
+  playerHiddenBonusesIn:  Record<string, ConquestPlayerHiddenBonus[]> | undefined;
+  activeHiddenEffectsIn:  ConquestActiveHiddenEffects | undefined;
+  /** Live region states — required so the helper can verify the chosen
+   *  region is owner-self or neutral (NEVER enemy-owned). */
+  regionStates:           ConquestRegionState[];
+  /** Bonus entry id (matches ConquestPlayerHiddenBonus.id). */
+  bonusEntryId:           string;
+  ownerId:                string;
+  ownerName:              string;
+  regionId:               ConquestRegionId;
+  /** 1-based round number the ambush is being placed in. */
+  currentRound:           number;
+  now:                    number;
+}
+
+/**
+ * Validate and compute the diff for placing a Pusu on `regionId`.  Returns
+ * null on:
+ *   - missing inventory entry for `bonusEntryId` in the owner's slot
+ *   - the entry is already `used: true`
+ *   - the entry is not a Pusu charge
+ *   - the chosen region is not on the map at all
+ *   - the chosen region is owned by an opponent (enemy regions ineligible)
+ *   - the chosen region is a capital (capitals never carry hidden traps)
+ *   - the region already has an active ambush (no stacking on one region)
+ *
+ * Eligible regions: owner-self OR truly neutral.  The owner's own bonus-
+ * carrying regions are still eligible — the spec's V1 decision is "açık
+ * bonuslu bölgeye pusu kurulabilir, eğer bölge benimse veya tarafsızsa".
+ *
+ * Pure: never mutates the inputs.
+ */
+export function usePusuHiddenBonus(
+  input: UsePusuInput,
+): PusuUseDiff | null {
+  const {
+    playerHiddenBonusesIn,
+    activeHiddenEffectsIn,
+    regionStates,
+    bonusEntryId,
+    ownerId,
+    ownerName,
+    regionId,
+    currentRound,
+    now,
+  } = input;
+
+  const inventory  = playerHiddenBonusesIn ?? {};
+  const ownerBag   = inventory[ownerId] ?? [];
+  const entryIndex = ownerBag.findIndex(e => e.id === bonusEntryId);
+  if (entryIndex < 0) return null;
+
+  const entry = ownerBag[entryIndex];
+  if (entry.used)            return null;
+  if (entry.type !== "pusu") return null;
+
+  // Region eligibility — owner-self or neutral; never enemy, never capital.
+  const target = regionStates.find(rs => rs.regionId === regionId);
+  if (!target) return null;
+  if (CAPITAL_REGION_IDS.has(regionId)) return null;
+  if (target.ownerPlayerId !== null && target.ownerPlayerId !== ownerId) {
+    return null;
+  }
+
+  const existingAmbushes = activeHiddenEffectsIn?.ambushes ?? {};
+  // No stacking on the same region — second Pusu rejected (owner's charge
+  // stays unspent so they can pick a different region).
+  if (existingAmbushes[regionId]) return null;
+
+  const nextOwnerBag = ownerBag.slice();
+  nextOwnerBag[entryIndex] = { ...entry, used: true };
+  const playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]> = {
+    ...inventory,
+    [ownerId]: nextOwnerBag,
+  };
+
+  const newAmbush: ConquestPendingAmbush = {
+    ownerPlayerId: ownerId,
+    bonusEntryId,
+    createdRound:  currentRound,
+  };
+  const activeHiddenEffects: ConquestActiveHiddenEffects = {
+    ...(activeHiddenEffectsIn ?? {}),
+    ambushes: {
+      ...existingAmbushes,
+      [regionId]: newAmbush,
+    },
+  };
+
+  // Owner-only toast — UI must NOT render this for any other viewer.
+  // (See getHiddenBonusToastCopyForViewer's pusu/use branch: opponents get
+  //  a null-equivalent stub copy, and the renderer is expected to suppress
+  //  it for non-owner viewers.)
+  const lastHiddenBonusToast: ConquestHiddenBonusToast = {
+    id:          `hb_use-pusu-${bonusEntryId}-${now}`,
+    type:        "pusu",
+    claimerId:   ownerId,
+    claimerName: ownerName,
+    regionId,
+    at:          now,
+    event:       "use",
+  };
+
+  return { playerHiddenBonuses, activeHiddenEffects, lastHiddenBonusToast };
+}
+
+export interface PusuTriggerDiff {
+  /** Next activeHiddenEffects with the consumed ambush stripped. */
+  activeHiddenEffects:  ConquestActiveHiddenEffects;
+  /** Trigger-event toast — viewer-aware copy is decided at render time. */
+  lastHiddenBonusToast: ConquestHiddenBonusToast;
+  /** Resolved ambush owner id (for the caller to source viewer-aware copy
+   *  / route success notifications). */
+  ownerPlayerId:        string;
+}
+
+/**
+ * Read-only: does `regionId` carry an active ambush?  Cheap branch the
+ * `applyActionToGame` transition uses to decide whether to cancel the
+ * attack/capture before any state mutates.
+ */
+export function hasPendingAmbush(
+  effects:  ConquestActiveHiddenEffects | undefined,
+  regionId: ConquestRegionId,
+): boolean {
+  return !!effects?.ambushes?.[regionId];
+}
+
+/**
+ * Try to consume a pending ambush on `regionId` because `attackerId` is
+ * targeting it with an attack/capture.  Returns null when no ambush should
+ * fire:
+ *   - no ambush is armed on this region
+ *   - the attacker IS the ambush owner (self-attempts never trigger; in
+ *     practice canCaptureNeutral/canAttackRegion already reject these, but
+ *     a defensive guard here means the helper is safe to call in any path)
+ *
+ * Pure: never mutates the inputs.  Caller is responsible for cancelling
+ * the action — `applyConquestAction` / duel / direct flip must NOT run on
+ * the ambushed region when this returns non-null.
+ */
+export function tryConsumePendingAmbush(
+  activeHiddenEffectsIn: ConquestActiveHiddenEffects | undefined,
+  regionId:              ConquestRegionId,
+  attackerId:            string,
+  attackerName:          string,
+  now:                   number,
+): PusuTriggerDiff | null {
+  const existing = activeHiddenEffectsIn?.ambushes ?? {};
+  const ambush   = existing[regionId];
+  if (!ambush) return null;
+  if (ambush.ownerPlayerId === attackerId) return null;
+
+  const nextAmbushes: Record<string, ConquestPendingAmbush> = { ...existing };
+  delete nextAmbushes[regionId];
+
+  const activeHiddenEffects: ConquestActiveHiddenEffects = {
+    ...(activeHiddenEffectsIn ?? {}),
+    ambushes: nextAmbushes,
+  };
+
+  const lastHiddenBonusToast: ConquestHiddenBonusToast = {
+    id:               `hb_trigger-pusu-${ambush.bonusEntryId}-${now}`,
+    type:             "pusu",
+    claimerId:        ambush.ownerPlayerId,
+    claimerName:      "",
+    regionId,
+    at:               now,
+    event:            "trigger",
+    targetPlayerId:   attackerId,
+    targetPlayerName: attackerName,
+  };
+
+  return {
+    activeHiddenEffects,
+    lastHiddenBonusToast,
+    ownerPlayerId: ambush.ownerPlayerId,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Toast copy — viewer-aware
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -641,6 +857,52 @@ export function getHiddenBonusToastCopyForViewer(
       icon:   "🧿",
       title:  "🧿 Lanet Mührü Kullanıldı!",
       detail: `${targetName} lanetlendi. Bir sonraki doğru cevabında hamle hakkı mühürlenecek.`,
+    };
+  }
+
+  if (event === "use" && toast.type === "pusu") {
+    // Owner-only placement copy.  Opponents must NEVER see this toast — the
+    // renderer is expected to suppress it when viewerId !== claimerId; the
+    // fallback copy below is a defensive last-resort that still says nothing
+    // about which region was ambushed.
+    const isOwner = viewerId !== null && viewerId === toast.claimerId;
+    if (isOwner) {
+      return {
+        icon:   "🕳️",
+        title:  "🕳️ Pusu Kuruldu!",
+        detail: "Seçtiğin bölgeye gizli pusu kuruldu. Rakip bu bölgeyi hedeflerse saldırısı gerçekleşmeyecek.",
+      };
+    }
+    // Defensive stub — UI must filter this out for non-owners before display.
+    return {
+      icon:   "🕳️",
+      title:  "",
+      detail: "",
+    };
+  }
+
+  if (event === "trigger" && toast.type === "pusu") {
+    const isAttacker = viewerId !== null && viewerId === toast.targetPlayerId;
+    const isOwner    = viewerId !== null && viewerId === toast.claimerId;
+
+    if (isAttacker) {
+      return {
+        icon:   "🕳️",
+        title:  "🕳️ Gizli Bonus Ortaya Çıktı!",
+        detail: "Rakip, saldırmaya gittiğin bölgenin istihbaratını önceden aldı ve yola pusu kurdu. Saldırın gerçekleşemedi!",
+      };
+    }
+    if (isOwner) {
+      return {
+        icon:   "🕳️",
+        title:  "🕳️ Pusu Başarılı!",
+        detail: "Rakibin hedeflediğin bölgeye saldırmaya çalıştı ama kurduğun pusu saldırıyı durdurdu.",
+      };
+    }
+    return {
+      icon:   "🕳️",
+      title:  "🕳️ Pusu Ortaya Çıktı!",
+      detail: "Bir saldırı, gizli pusu nedeniyle gerçekleşemedi.",
     };
   }
 
