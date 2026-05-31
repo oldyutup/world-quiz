@@ -13646,10 +13646,21 @@ body {
    selectors are mobile-only by construction (no media-query needed).
 ═══════════════════════════════════════════════════════════════ */
 .mcq-bonus-slot {
+  /* `overflow: visible` is load-bearing: the inline detail card uses
+     `position: absolute; top: 100%` to extend just below the chip row,
+     and `overflow: hidden` here would clip it the moment it crossed
+     the slot boundary (the bug — card existed in the DOM but was
+     invisible).  Horizontal clipping is handled inside the strip
+     itself via `overflow-x: auto` on `.mcq-bonus-strip`, so the slot
+     doesn't need to clip.  `position: relative` + a small z-index
+     keep the slot painting above the map row so the overflowing
+     card stacks correctly without touching `.mcq-map-slot`. */
+  position: relative;
+  z-index: 2;
   min-width: 0;
   min-height: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 .mcq-bonus-strip-wrap {
   position: relative;
