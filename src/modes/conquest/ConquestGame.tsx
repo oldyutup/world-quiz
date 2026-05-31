@@ -114,6 +114,7 @@ import TurkeyConquestMap from "./TurkeyConquestMap";
 import MobileConquestLayout from "./mobile/MobileConquestLayout";
 import MobileHeader from "./mobile/MobileHeader";
 import MobileScoreStrip from "./mobile/MobileScoreStrip";
+import MobileBonusStrip from "./mobile/MobileBonusStrip";
 import MobileBottomSheet, {
   type MobileBottomSheetState,
 } from "./mobile/MobileBottomSheet";
@@ -2170,13 +2171,20 @@ export default function ConquestGame({
   useEffect(() => {
     if (bonusGuideAutoShownRef.current) return;
     if (!hasBonusGuide) return;
+    // Mobile uses the inline `MobileBonusStrip` chip row instead of the
+    // auto-opening modal — the modal would cover too much of the small
+    // viewport.  The mobile `?` header button still toggles it manually.
+    if (isMobile) {
+      bonusGuideAutoShownRef.current = true;
+      return;
+    }
     // Round 1 is the only auto-open moment.  Players joining mid-match see
     // the "?" button but no pop-up — the active question must stay readable.
     if (gameState?.round?.roundNumber === 1) {
       setBonusGuideOpen(true);
       bonusGuideAutoShownRef.current = true;
     }
-  }, [hasBonusGuide, gameState?.round?.roundNumber]);
+  }, [hasBonusGuide, gameState?.round?.roundNumber, isMobile]);
   const handleToggleBonusGuide = useCallback(() => {
     setBonusGuideOpen(v => !v);
   }, []);
@@ -3764,6 +3772,11 @@ export default function ConquestGame({
               pointDeltas={pointDeltas}
               kahinPreview={kahinPreview}
             />
+          }
+          bonusStrip={
+            orientation === "portrait" && hasBonusGuide
+              ? <MobileBonusStrip entries={bonusGuideEntries} />
+              : undefined
           }
           map={mapNode}
           dock={orientation === "landscape" ? landscapeDockNode : undefined}

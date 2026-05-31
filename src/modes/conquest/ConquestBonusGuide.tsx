@@ -28,7 +28,7 @@ import type {
  * `buildRoundBonusAssignment` and therefore never reach this guide.  The
  * lookup below falls back to `def.description` for any missing key.
  */
-const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
+export const BONUS_TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
   istanbul_defense:
     "Bu bölgeyi fetheden oyuncu açık kalkan kazanır. Bölgeye gelen ilk düşman saldırısı, bölgeyi değil kalkanı kırar.",
   ankara_hidden_shield:
@@ -100,7 +100,7 @@ export default function ConquestBonusGuide({
       <ul className="cq-bonus-guide-list" role="list">
         {entries.map(({ regionId, def, regionLabel }) => {
           const isOpen = openId === regionId;
-          const effect = TYPE_EFFECT_COPY[def.type] ?? def.description;
+          const effect = BONUS_TYPE_EFFECT_COPY[def.type] ?? def.description;
           return (
             <li key={regionId} className="cq-bonus-guide-item">
               <button

@@ -46,6 +46,10 @@ interface Props {
    *  In landscape this same node is rendered *inside* the dock and
    *  styled vertically via CSS. */
   scoreStrip:  ReactNode;
+  /** Optional bonus chip strip (portrait only).  Renders between the
+   *  score strip and the map; collapses cleanly when undefined so
+   *  legacy callers stay byte-identical. */
+  bonusStrip?: ReactNode;
   /** Main interactive map.  Rendered inside `.mcq-map-slot`; the slot
    *  performs the centering / sizing so we can drop the legacy
    *  `transform: scale(...)` patches. */
@@ -63,6 +67,7 @@ export default function MobileConquestLayout({
   orientation,
   header,
   scoreStrip,
+  bonusStrip,
   map,
   dock,
   overlays,
@@ -94,6 +99,9 @@ export default function MobileConquestLayout({
       >
         <div className="mcq-header-slot">{header}</div>
         <div className="mcq-strip-slot">{scoreStrip}</div>
+        {bonusStrip ? (
+          <div className="mcq-bonus-slot">{bonusStrip}</div>
+        ) : null}
         <div className="mcq-map-slot">{map}</div>
       </div>
       {overlays}
