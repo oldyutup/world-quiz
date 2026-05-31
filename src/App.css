@@ -15536,3 +15536,300 @@ body {
     font-size: 14px !important;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+ * Kuşatma — mobil lobby bottom-sheet
+ *
+ * Conquest-scoped layer on top of the shared .wgg-ps-* shell.  Wheel /
+ * Duel group lobbies keep the original behaviour; only the sheet that
+ * carries the .cq-ps-sheet class swaps to this layout.
+ *
+ * Goals (see ConquestLobby.tsx for the matching markup):
+ *   1) Bonus panel never overlaps the player list — list keeps natural
+ *      height, panel sits below it in normal flow.
+ *   2) The sheet itself scrolls (via .cq-ps-body), not the player list,
+ *      so the bonus panel can grow without squeezing players.
+ *   3) Compact chip-row bonus panel; tapping a chip opens an inline
+ *      detail card with description + vote button (vote mode) or
+ *      read-only info (random mode).
+ *   4) iOS Safari safe-area padding so the bottom browser bar doesn't
+ *      clip the last bonus chip or the vote CTA.
+ * ════════════════════════════════════════════════════════════════════ */
+
+.cq-ps-backdrop {
+  /* shared shell already pins inset:0 + flex bottom — nothing extra to
+   * override here, but keep the hook so future tweaks scope clean. */
+}
+
+.cq-ps-sheet {
+  /* Override the shared 60dvh ceiling — on phones we let the sheet take
+   * most of the viewport so player list + bonus panel both breathe.
+   * The body inside (.cq-ps-body) caps the actual scroll area. */
+  max-height: 88dvh !important;
+  overflow: hidden !important; /* clip the body, not its children */
+  padding-bottom: 0 !important; /* moved into .cq-ps-body */
+}
+
+/* Sheet body — the single scroll container for everything below the
+ * header.  Player list, warning, bonus panel and bonus detail all stack
+ * here in normal flow.  overscroll-behavior keeps page scroll from
+ * chaining when the user reaches the top/bottom of the sheet. */
+.cq-ps-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: visible;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(env(safe-area-inset-bottom, 12px), 18px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+.cq-ps-body::-webkit-scrollbar { width: 4px; }
+.cq-ps-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+/* Player list inside the conquest sheet: drop the flex:1 + scroll —
+ * the body owns the scroll now.  List is intrinsic height, padding is
+ * tightened so the warning + bonus panel land closer below. */
+.cq-ps-sheet .cq-ps-list {
+  flex: none;
+  overflow: visible;
+  padding: 12px 18px 4px;
+}
+
+/* Warning / minimum players chip — keep the inherited red-amber pill
+ * look but pull the margins in line with the sheet body padding. */
+.cq-ps-sheet .cq-ps-warning {
+  margin: 6px 18px 10px;
+}
+
+/* ── Mobile bonus panel (sheet-only) ─────────────────────────────────
+ * Compact replacement for the desktop .cq-bonus-vote panel.  Chips are
+ * pills in a wrap row.  Tapping a chip never votes directly — it opens
+ * the detail card below.  Random mode hides the vote button.            */
+.cq-mbonus {
+  margin: 6px 14px 6px;
+  padding: 12px 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  background: rgba(7, 10, 18, 0.55);
+  position: relative;
+}
+.cq-mbonus-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+  flex-wrap: wrap;
+}
+.cq-mbonus-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.60 0.008 220);
+}
+.cq-mbonus-meta {
+  font-size: 11px;
+  color: var(--muted, oklch(0.62 0.008 220));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cq-mbonus-meta strong { color: #f6c074; font-weight: 800; }
+.cq-mbonus-sep { opacity: 0.45; margin: 0 2px; }
+
+.cq-mbonus-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cq-mbonus-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text, #e8edf5);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  min-width: 0;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 120ms ease;
+}
+.cq-mbonus-chip[data-category="savunma"]  { --cq-cat: #4b9efb; }
+.cq-mbonus-chip[data-category="saldiri"]  { --cq-cat: #ef6262; }
+.cq-mbonus-chip[data-category="bilgi"]    { --cq-cat: #a378ff; }
+.cq-mbonus-chip[data-category="ekonomi"]  { --cq-cat: #45c882; }
+.cq-mbonus-chip::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cq-cat, rgba(255, 255, 255, 0.30));
+  box-shadow: 0 0 6px var(--cq-cat, transparent);
+}
+.cq-mbonus-chip:active { transform: scale(0.97); }
+.cq-mbonus-chip--selected {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #f6c074;
+}
+.cq-mbonus-chip--active {
+  border-color: rgba(245, 158, 11, 0.85);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+}
+.cq-mbonus-icon { font-size: 14px; line-height: 1; }
+.cq-mbonus-label {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.cq-mbonus-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: rgba(245, 158, 11, 0.20);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #f6c074;
+}
+.cq-mbonus-hint {
+  margin: 9px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted, oklch(0.62 0.008 220));
+}
+
+/* Detail card — inline child of .cq-mbonus, anchored below the chip
+ * row.  Lives in normal flow so it never overlaps the player list, and
+ * shows the description + (in vote mode) the Oy Ver / Oyu Kaldır CTA. */
+.cq-mbonus-card {
+  margin-top: 12px;
+  padding: 12px 14px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  position: relative;
+  animation: cq-mbonus-card-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes cq-mbonus-card-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.cq-mbonus-card-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--muted, #a1a8b3);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+.cq-mbonus-card-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #e8edf5);
+}
+.cq-mbonus-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 32px;
+  margin-bottom: 8px;
+}
+.cq-mbonus-card-head[data-category="savunma"] { --cq-cat: #4b9efb; }
+.cq-mbonus-card-head[data-category="saldiri"] { --cq-cat: #ef6262; }
+.cq-mbonus-card-head[data-category="bilgi"]   { --cq-cat: #a378ff; }
+.cq-mbonus-card-head[data-category="ekonomi"] { --cq-cat: #45c882; }
+.cq-mbonus-card-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.cq-mbonus-card-title {
+  font-weight: 800;
+  font-size: 14.5px;
+  color: var(--cq-cat, var(--text, #e8edf5));
+  letter-spacing: 0.01em;
+}
+.cq-mbonus-card-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text, #e8edf5);
+  opacity: 0.88;
+}
+.cq-mbonus-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cq-mbonus-card-meta {
+  font-size: 11.5px;
+  color: var(--muted, oklch(0.62 0.008 220));
+}
+.cq-mbonus-card-meta strong { color: #f6c074; font-weight: 800; }
+.cq-mbonus-card-vote {
+  appearance: none;
+  border: 1px solid rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.16);
+  color: #f6c074;
+  font: inherit;
+  font-weight: 800;
+  font-size: 12.5px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 140ms ease, border-color 140ms ease;
+  flex-shrink: 0;
+}
+.cq-mbonus-card-vote:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.24);
+  border-color: rgba(245, 158, 11, 0.85);
+}
+.cq-mbonus-card-vote:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.cq-mbonus-card-vote:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cq-mbonus-card-vote--remove {
+  background: rgba(245, 158, 11, 0.06);
+  color: #f6c074;
+}
+.cq-mbonus-card-info {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted, oklch(0.62 0.008 220));
+  font-style: italic;
+}

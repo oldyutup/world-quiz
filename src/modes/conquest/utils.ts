@@ -18,10 +18,32 @@ export function generateConquestRoomCode(): string {
 }
 
 export function freshConquestPlayerId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  // Always returns a real RFC 4122 v4 UUID so the value is safe to write into
+  // Postgres `uuid` columns (e.g. conquest_rooms.host_player_id and the
+  // conquest_register_player RPC's p_player_id). The previous "cq-…" fallback
+  // broke iOS Safari over non-secure contexts where crypto.randomUUID is
+  // undefined — Supabase rejected the insert with `invalid input syntax for
+  // type uuid`.
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  return `cq-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+  const hex: string[] = [];
+  for (let i = 0; i < bytes.length; i++) hex.push(bytes[i].toString(16).padStart(2, "0"));
+  return (
+    hex.slice(0, 4).join("") + "-" +
+    hex.slice(4, 6).join("") + "-" +
+    hex.slice(6, 8).join("") + "-" +
+    hex.slice(8, 10).join("") + "-" +
+    hex.slice(10, 16).join("")
+  );
 }
 
 export function validateConquestName(raw: string): string | null {
