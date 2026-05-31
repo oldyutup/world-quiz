@@ -803,18 +803,10 @@ useEffect(() => {
     feedbackTimerRef.current = setTimeout(() => setFeedback(null), 700);
   }, []);
 
-  /* her yeni tur → hints + timedOut + input + feedback sıfırla
-     roundKey değişimi = current_round veya current_flag değişti, yani
-     yeni bayrak ekranda. Local input'ta önceki tura ait yazı asla kalmasın
-     (rakip doğru bildi senaryosunda da local handleGuess çalışmaz, sadece
-     roundKey değişimi tetiklenir → input burada temizlenir). handleGuess
-     içindeki submit-anında setInput("") davranışı bozulmaz; bu effect
-     yalnızca state değişimine reaksiyon verir, race oluşturmaz. */
+  /* her yeni tur → hints + timedOut sıfırla */
   useEffect(() => {
     setHints(EMPTY_HINTS);
     setTimedOut(false);
-    setInput("");
-    setFeedback(null);
   }, [roundKey]);
 
   /* joker satın alma */
@@ -975,45 +967,6 @@ useEffect(() => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players]);
-
-  /* ════════════════════════════════════════════════════════════════
-     HOST: STATE-DRIVEN ADVANCE SAFETY NET
-     ────────────────────────────────────────────────────────────────
-     Round geçişinin TEK kaynağı duel_claims INSERT realtime callback'i
-     olunca şu durumlarda ilerleme kaybolabiliyordu:
-       • Quick match'te subscribe ile claim arasındaki ince yarış
-       • realtime kanalının ara sıra bir INSERT eventini düşürmesi
-       • async closure içinde advanceRoundAsHost referansının eski kalması
-       • Host belirleme ambiguity'si (QM RPC iki player'ı aynı joined_at
-         ile insert ediyor; FE/DB ORDER BY tiebreak heap order'a düşüyor)
-     Sonuç: claim DB'ye düşüyor ama host advance çağırmıyor → her iki
-     tarafta "Rakip bekleniyor" sonsuza kadar kalıyor.
-
-     Bu effect aynı geçişi STATE'ten türetir (roundResolved /
-     passedThisRound). claims state realtime ile veya manuel SELECT ile
-     dolduğunda useEffect re-evaluate olur ve advance'i garanti eder.
-     advancingRef her iki tetiği de tek seferlik tutar; realtime
-     handler'ı çıkarmıyoruz, bu sadece güvenlik ağı.
-  ════════════════════════════════════════════════════════════════ */
-  const bothPassedThisRound = passedThisRound.size >= 2;
-  useEffect(() => {
-    if (!isHost) return;
-    if (phase !== "playing") return;
-    if (advancingRef.current) return;
-
-    // 1) Tur cevaplandı ya da timeout → REVEAL_DELAY_MS sonra advance
-    if (roundResolved) {
-      const reason: "answered" | "timeout" = roundAnswered ? "answered" : "timeout";
-      const t = setTimeout(() => { advanceRoundAsHost(reason); }, REVEAL_DELAY_MS);
-      return () => clearTimeout(t);
-    }
-
-    // 2) Çözülmedi ama ikisi de pas geçti → PASS_REVEAL_MS sonra both_passed
-    if (bothPassedThisRound) {
-      const t = setTimeout(() => { advanceRoundAsHost("both_passed"); }, PASS_REVEAL_MS);
-      return () => clearTimeout(t);
-    }
-  }, [isHost, phase, roundResolved, roundAnswered, bothPassedThisRound, advanceRoundAsHost]);
 
   // ─── REMATCH FONKSİYONLARI ───────────────────────────────────────────
   

@@ -104,10 +104,6 @@ export default function ConquestLobby({
   const [chatOpen,    setChatOpen]    = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  /* Mobile-only: tapping a bonus chip opens a detail card instead of voting
-   * directly.  Vote / Oyu Kaldır lives inside that card.  Desktop ignores
-   * this state — its chips keep direct-click voting + hover tooltip. */
-  const [mobileBonusDetail, setMobileBonusDetail] = useState<ConquestRegionBonusType | null>(null);
 
   const shareLink = useMemo(() => buildConquestShareLink(roomCode), [roomCode]);
 
@@ -189,34 +185,6 @@ export default function ConquestLobby({
       document.removeEventListener("keydown", onKey);
     };
   }, [colorPickerOpen]);
-
-  /* Close mobile bonus detail on outside tap / Esc.  Taps on another chip
-   * are allowed through so the detail can swap target instead of close+reopen. */
-  useEffect(() => {
-    if (!mobileBonusDetail) return;
-    function onDocClick(ev: MouseEvent) {
-      const t = ev.target as Element | null;
-      if (!t) return;
-      if (t.closest(".cq-mbonus-card")) return;
-      if (t.closest(".cq-mbonus-chip")) return;
-      setMobileBonusDetail(null);
-    }
-    function onKey(ev: KeyboardEvent) {
-      if (ev.key === "Escape") setMobileBonusDetail(null);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [mobileBonusDetail]);
-
-  /* Close the detail card whenever the sheet itself closes — otherwise the
-   * card silently reopens at the same bonus next time the sheet is opened. */
-  useEffect(() => {
-    if (!playersOpen) setMobileBonusDetail(null);
-  }, [playersOpen]);
 
   function renderColorPopover() {
     if (!colorPickerOpen || !me) return null;
@@ -398,146 +366,6 @@ export default function ConquestLobby({
             Bonuslar maç başında rastgele dağıtılır.
           </p>
         )}
-      </div>
-    );
-  }
-
-  /* ── Mobile bonus panel ────────────────────────────────────────────
-   * Lives inside the players bottom-sheet on phones.  Differences from
-   * the desktop panel:
-   *   - Compact chip-row (flex-wrap pills, no scrolling container).
-   *   - Tapping a chip opens an inline detail card (icon + name +
-   *     description + vote button in vote mode), never votes directly.
-   *   - In "random" mode the card is read-only — no vote affordance.
-   *   - Only one detail card open at a time; tapping a different chip
-   *     swaps the card instead of closing.
-   */
-  function renderMobileBonusPanel() {
-    const isVoting    = bonusMode === "vote";
-    const title       = isVoting ? "🗳️ Bonus Oylaması" : "🎁 Bu Maçtaki Bonuslar";
-    const detailEntry = mobileBonusDetail
-      ? VOTEABLE_BONUS_POOL.find(e => e.type === mobileBonusDetail) ?? null
-      : null;
-
-    return (
-      <div
-        className={"cq-mbonus" + (isVoting ? "" : " cq-mbonus--readonly")}
-        role="group"
-        aria-label={isVoting ? "Bonus oylaması" : "Maçtaki bonuslar"}
-      >
-        <div className="cq-mbonus-head">
-          <span className="cq-mbonus-title">{title}</span>
-          {isVoting && (
-            <span className="cq-mbonus-meta">
-              Seç: <strong>{voteCap}</strong>
-              <span className="cq-mbonus-sep">·</span>
-              Kalan: <strong>{remainingVotes}</strong>
-            </span>
-          )}
-        </div>
-
-        <div className="cq-mbonus-chips">
-          {VOTEABLE_BONUS_POOL.map(entry => {
-            const count    = tally.get(entry.type) ?? 0;
-            const selected = isVoting && myVoteSet.has(entry.type);
-            const active   = mobileBonusDetail === entry.type;
-            return (
-              <button
-                key={`m-${entry.type}`}
-                type="button"
-                className={
-                  "cq-mbonus-chip"
-                  + (selected ? " cq-mbonus-chip--selected" : "")
-                  + (active   ? " cq-mbonus-chip--active"   : "")
-                }
-                data-category={entry.category}
-                aria-pressed={selected}
-                aria-expanded={active}
-                onClick={() => {
-                  playSound("click");
-                  setMobileBonusDetail(prev => prev === entry.type ? null : entry.type);
-                }}
-              >
-                <span className="cq-mbonus-icon" aria-hidden>{entry.icon}</span>
-                <span className="cq-mbonus-label">{entry.label}</span>
-                {isVoting && count > 0 && (
-                  <span className="cq-mbonus-badge" aria-label={`${count} oy`}>{count}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {isVoting && !myPlayerId && (
-          <p className="cq-mbonus-hint" role="status">
-            Oy vermek için odaya katılmalısın.
-          </p>
-        )}
-        {!isVoting && (
-          <p className="cq-mbonus-hint" role="status">
-            Bonuslar maç başında rastgele dağıtılır. Detay için bonusa dokun.
-          </p>
-        )}
-
-        {detailEntry && (() => {
-          const selected   = isVoting && myVoteSet.has(detailEntry.type);
-          const noQuota    = !selected && remainingVotes <= 0;
-          const cannotVote = !myPlayerId || noQuota;
-          const voteLabel  = selected
-            ? "✓ Oyu Kaldır"
-            : noQuota
-              ? "Oy hakkın doldu"
-              : "Oy Ver";
-          return (
-            <div
-              className="cq-mbonus-card"
-              role="dialog"
-              aria-label={detailEntry.label}
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="cq-mbonus-card-close"
-                aria-label="Kapat"
-                onClick={() => setMobileBonusDetail(null)}
-              >
-                ✕
-              </button>
-              <div className="cq-mbonus-card-head" data-category={detailEntry.category}>
-                <span className="cq-mbonus-card-icon" aria-hidden>{detailEntry.icon}</span>
-                <span className="cq-mbonus-card-title">{detailEntry.label}</span>
-              </div>
-              <p className="cq-mbonus-card-desc">{detailEntry.description}</p>
-              {isVoting ? (
-                <div className="cq-mbonus-card-foot">
-                  <span className="cq-mbonus-card-meta">
-                    Kalan oy: <strong>{remainingVotes}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    className={
-                      "cq-mbonus-card-vote"
-                      + (selected ? " cq-mbonus-card-vote--remove" : "")
-                    }
-                    disabled={cannotVote}
-                    onClick={() => {
-                      if (!myPlayerId) return;
-                      if (!selected && remainingVotes <= 0) return;
-                      playSound("click");
-                      onToggleBonusVote(detailEntry.type);
-                    }}
-                  >
-                    {voteLabel}
-                  </button>
-                </div>
-              ) : (
-                <p className="cq-mbonus-card-info">
-                  Rastgele modda oy verilemez — bonuslar maç başında dağıtılır.
-                </p>
-              )}
-            </div>
-          );
-        })()}
       </div>
     );
   }
@@ -783,24 +611,10 @@ export default function ConquestLobby({
         </button>
       )}
 
-      {/* ════ MOBİL: Oyuncular bottom-sheet ════
-       *
-       * Conquest-scoped classes (.cq-ps-*) layer on top of the shared
-       * .wgg-ps-* shell — wheel/duel group lobbies still get the original
-       * behaviour.  The sheet itself is the scroll container (via .cq-ps-body)
-       * so the bonus panel can never overlap the player list: list is natural
-       * height, bonus panel sits below it, and the whole stack scrolls in
-       * one direction with safe-area padding for iOS Safari.
-       */}
+      {/* ════ MOBİL: Oyuncular bottom-sheet ════ */}
       {playersOpen && (
-        <div
-          className="wgg-ps-backdrop cq-ps-backdrop"
-          onClick={() => setPlayersOpen(false)}
-        >
-          <div
-            className="wgg-ps-sheet cq-ps-sheet"
-            onClick={e => e.stopPropagation()}
-          >
+        <div className="wgg-ps-backdrop" onClick={() => setPlayersOpen(false)}>
+          <div className="wgg-ps-sheet" onClick={e => e.stopPropagation()}>
             <div className="wgg-ps-handle" />
             <header className="wgg-ps-header">
               <span className="wgg-ps-title">
@@ -819,37 +633,35 @@ export default function ConquestLobby({
                 ✕
               </button>
             </header>
-            <div className="cq-ps-body">
-              <div className="wgg-ps-list cq-ps-list">
-                {Array.from({ length: totalRendered }, (_, i) => {
-                  const p = players[i] ?? null;
-                  const isClosed = i >= settings.maxPlayers;
-                  if (!p) {
-                    if (isClosed) {
-                      return (
-                        <div key={`m-closed-${i}`} className="wgg-slot-closed">
-                          <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
-                          <span className="wgg-slot-closed-label">Kapalı slot</span>
-                        </div>
-                      );
-                    }
+            <div className="wgg-ps-list">
+              {Array.from({ length: totalRendered }, (_, i) => {
+                const p = players[i] ?? null;
+                const isClosed = i >= settings.maxPlayers;
+                if (!p) {
+                  if (isClosed) {
                     return (
-                      <div key={`m-empty-${i}`} className="wgg-ps-empty-slot">
-                        <span className="wgg-ps-dot-empty" />
-                        <span>Boş slot</span>
+                      <div key={`m-closed-${i}`} className="wgg-slot-closed">
+                        <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                        <span className="wgg-slot-closed-label">Kapalı slot</span>
                       </div>
                     );
                   }
-                  return renderPlayerChip(p, { keyPrefix: "mobile" });
-                })}
-              </div>
-              {players.length < CONQUEST_MIN_PLAYERS && (
-                <div className="wgg-ps-warning cq-ps-warning">
-                  En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli.
-                </div>
-              )}
-              {renderMobileBonusPanel()}
+                  return (
+                    <div key={`m-empty-${i}`} className="wgg-ps-empty-slot">
+                      <span className="wgg-ps-dot-empty" />
+                      <span>Boş slot</span>
+                    </div>
+                  );
+                }
+                return renderPlayerChip(p, { keyPrefix: "mobile" });
+              })}
             </div>
+            {renderBonusPanel("mobile")}
+            {players.length < CONQUEST_MIN_PLAYERS && (
+              <div className="wgg-ps-warning">
+                En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli.
+              </div>
+            )}
           </div>
         </div>
       )}
