@@ -36,13 +36,24 @@ import ConquestJoinByCode from "./ConquestJoinByCode";
 import {
   CONQUEST_DEFAULT_SETTINGS,
   mapLabel,
+  type ConquestBonusDistribution,
   type ConquestMapId,
   type ConquestMaxPlayers,
   type ConquestPlayer,
   type ConquestPlayerColor,
+  type ConquestRegionBonusType,
   type ConquestRoomSettings,
   type ConquestRoundCount,
 } from "./types";
+import {
+  EMPTY_LOBBY_BROADCAST_STATE,
+  applyVoteToggle,
+  clearPlayerVotes,
+  subscribeLobbyBroadcast,
+  type ConquestLobbyBroadcastHandle,
+  type ConquestLobbyBroadcastState,
+} from "./conquestLobbyBroadcast";
+import { resolveActiveBonusTypesFromVotes, voteBonusCountForPlayers } from "./bonusPool";
 import {
   createConquestRoom,
   joinConquestRoomByCode,
@@ -110,6 +121,15 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   const [statusMsg,   setStatusMsg]   = useState<string | null>(null);
   const [hostClosed,  setHostClosed]  = useState(false);
 
+  // Lobby-only ephemeral state: bonus distribution mode + per-player votes.
+  // Synced via Supabase Realtime broadcast (see conquestLobbyBroadcast.ts).
+  // Not persisted in any table and intentionally not wired into match start
+  // yet — gameplay binding lands in a follow-up.
+  const [lobbyExtra, setLobbyExtra] = useState<ConquestLobbyBroadcastState>(EMPTY_LOBBY_BROADCAST_STATE);
+  const lobbyExtraRef    = useRef<ConquestLobbyBroadcastState>(lobbyExtra);
+  useEffect(() => { lobbyExtraRef.current = lobbyExtra; }, [lobbyExtra]);
+  const lobbyChannelRef  = useRef<ConquestLobbyBroadcastHandle | null>(null);
+
   // Refs that mirror state — read inside realtime callbacks where stale
   // closures would otherwise trip us up.
   const myPlayerIdRef = useRef<string | null>(null);
@@ -121,8 +141,14 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
 
   // ── Derived UI shapes ────────────────────────────────────────────────────
   const settings = useMemo<ConquestRoomSettings>(
-    () => roomRow ? roomToSettings(roomRow) : CONQUEST_DEFAULT_SETTINGS,
-    [roomRow],
+    () => {
+      const base = roomRow ? roomToSettings(roomRow) : CONQUEST_DEFAULT_SETTINGS;
+      // Bonus distribution is carried on lobby broadcast state, not on the
+      // conquest_rooms row — fold it into settings here so the lobby props
+      // can stay a single object.
+      return { ...base, bonusDistribution: lobbyExtra.bonusDistribution };
+    },
+    [roomRow, lobbyExtra.bonusDistribution],
   );
 
   const uiPlayers = useMemo<ConquestPlayer[]>(
@@ -257,6 +283,66 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     };
   }, [roomRow?.id, phase]);
 
+  // ── Lobby-only broadcast channel (bonus mode + votes) ───────────────────
+  // Owns its own Supabase channel separate from the postgres_changes one so
+  // ephemeral lobby state never touches the DB.  Only active while phase
+  // === "lobby"; tears down on game start or leave.
+  const isHostRef = useRef(false);
+  useEffect(() => { isHostRef.current = !!me?.is_host; }, [me?.is_host]);
+
+  useEffect(() => {
+    if (!roomRow?.id || phase !== "lobby") return;
+
+    const handle = subscribeLobbyBroadcast({
+      roomId:   roomRow.id,
+      isHost:   !!me?.is_host,
+      getState: () => lobbyExtraRef.current,
+      handlers: {
+        onSnapshot:    (state) => setLobbyExtra(state),
+        onModeChange:  (mode)  => setLobbyExtra(prev => ({ ...prev, bonusDistribution: mode })),
+        onVoteToggle:  (payload) => {
+          // The host enforces the per-player cap so all clients agree on the
+          // outcome; non-host clients always apply the toggle as instructed
+          // because vote_toggle senders only ever flip their OWN vote.
+          setLobbyExtra(prev => ({
+            ...prev,
+            votes: applyVoteToggle(prev.votes, payload, voteBonusCountForPlayers(playerRows.length || 0) || 99),
+          }));
+        },
+        onClearVotes:  (playerId) => {
+          setLobbyExtra(prev => ({ ...prev, votes: clearPlayerVotes(prev.votes, playerId) }));
+        },
+        onRequestSnapshot: () => { /* host auto-responds inside the helper */ },
+      },
+    });
+    lobbyChannelRef.current = handle;
+
+    return () => {
+      handle.unsubscribe();
+      lobbyChannelRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomRow?.id, phase, me?.is_host]);
+
+  // ── Drop votes for any player who has left the room ─────────────────────
+  useEffect(() => {
+    if (phase !== "lobby") return;
+    const alive = new Set(playerRows.map(p => p.id));
+    const stale = Object.keys(lobbyExtra.votes).filter(pid => !alive.has(pid));
+    if (stale.length === 0) return;
+    setLobbyExtra(prev => {
+      let next = prev.votes;
+      for (const pid of stale) next = clearPlayerVotes(next, pid);
+      return { ...prev, votes: next };
+    });
+    // Host re-broadcasts the cleaned snapshot so everyone agrees.
+    if (isHostRef.current && lobbyChannelRef.current) {
+      let next = lobbyExtra.votes;
+      for (const pid of stale) next = clearPlayerVotes(next, pid);
+      lobbyChannelRef.current.emitSnapshot({ ...lobbyExtra, votes: next });
+    }
+  }, [playerRows, lobbyExtra, phase]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Actions
   // ─────────────────────────────────────────────────────────────────────────
@@ -382,19 +468,33 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     if (!roomRow || !isHost) return;
     const mapConfig = getConquestMapConfig(settings.map);
     if (!mapConfig) return;
+    // Vote-mode bonus selection: resolve top-N voted open bonuses (with
+    // deterministic tie-break + fallback) here on the host so the resulting
+    // list goes into the canonical initial state every client deserialises.
+    // Random mode leaves `selectedBonusTypes` undefined so the round-bonus
+    // builder keeps its legacy seeded random pick.
+    const selectedBonusTypes =
+      lobbyExtra.bonusDistribution === "vote"
+        ? resolveActiveBonusTypesFromVotes(
+            lobbyExtra.votes,
+            uiPlayers.length,
+            Date.now(),
+          )
+        : undefined;
     // Seed the initial synced state from the current player roster so every
     // client sees the same starting board / round-1 challenge.
     const initialState = createInitialConquestGameState(
       mapConfig,
       uiPlayers,
       settings.rounds,
+      selectedBonusTypes,
     );
     const updated = await initializeConquestGameplayState(roomRow.id, initialState);
     if (updated) {
       setRoomRow(updated);
       setPhase("game");
     }
-  }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers]);
+  }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers, lobbyExtra]);
 
   /**
    * Push a new gameplay snapshot to Supabase.  Centralised here so
@@ -439,6 +539,41 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       }
     },
     [roomRow, myPlayerId],
+  );
+
+  const handleChangeBonusDistribution = useCallback(
+    (mode: ConquestBonusDistribution) => {
+      if (!isHost) return;
+      setLobbyExtra(prev => {
+        // Flipping back to "random" wipes votes so a future "vote" toggle
+        // starts from a clean slate.
+        if (mode === "random") return { bonusDistribution: mode, votes: {} };
+        return { ...prev, bonusDistribution: mode };
+      });
+      const handle = lobbyChannelRef.current;
+      if (handle) {
+        handle.emitModeChange(mode);
+        if (mode === "random") {
+          // Reset votes everywhere too.
+          handle.emitSnapshot({ bonusDistribution: mode, votes: {} });
+        }
+      }
+    },
+    [isHost],
+  );
+
+  const handleToggleBonusVote = useCallback(
+    (bonusType: ConquestRegionBonusType) => {
+      if (!myPlayerId) return;
+      const cap = voteBonusCountForPlayers(playerRows.length);
+      // Optimistic local apply so the chip feels instant.
+      setLobbyExtra(prev => ({
+        ...prev,
+        votes: applyVoteToggle(prev.votes, { playerId: myPlayerId, bonusType }, cap),
+      }));
+      lobbyChannelRef.current?.emitVoteToggle({ playerId: myPlayerId, bonusType });
+    },
+    [myPlayerId, playerRows.length],
   );
 
   const handleUpdateSettings = useCallback(
@@ -607,7 +742,10 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           players={uiPlayers}
           isHost={isHost}
           isLoggedIn={isLoggedIn}
+          bonusVotes={lobbyExtra.votes}
           onUpdateSettings={handleUpdateSettings}
+          onChangeBonusDistribution={handleChangeBonusDistribution}
+          onToggleBonusVote={handleToggleBonusVote}
           onChangeColor={handleChangeColor}
           onStart={handleStartGame}
           onLeave={handleLeaveLobby}

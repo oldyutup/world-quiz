@@ -98,15 +98,15 @@ export function getBonusToastCopyForViewer(
   if (toast.bonusType === "karadeniz_extra_time") {
     if (isOwner) {
       return {
-        icon:   "⛰️",
+        icon:   "⏳",
         title:  `${where} Bonusu`,
-        detail: "⛰️ Geçit kontrolü sende! Sıradaki hamlene +5 saniye kazandın.",
+        detail: "⏳ Zaman Takviyesi sende! Soru süresine +5 saniye eklendi.",
       };
     }
     return {
-      icon:   "⛰️",
+      icon:   "⏳",
       title:  `${where} Ele Geçirildi`,
-      detail: "⛰️ Rakip geçidi kontrol ediyor. Bir sonraki hamlesinde +5 saniye avantajı olacak.",
+      detail: "⏳ Rakip Zaman Takviyesi'ni eline geçirdi. Sıradaki sorusunda +5 saniye avantajı olacak.",
     };
   }
 
@@ -343,9 +343,9 @@ export const REGION_BONUSES: Record<string, ConquestRegionBonusDef> = {
   dogu_karadeniz: {
     regionId:    "dogu_karadeniz",
     type:        "karadeniz_extra_time",
-    icon:        "⛰️",
-    label:       "Geçit Yolu",
-    description: "Fethedenin sıradaki hamle süresine +5 saniye ekler (tek kullanım).",
+    icon:        "⏳",
+    label:       "Zaman Takviyesi",
+    description: "Soru süresine +5 saniye ekler.",
   },
 };
 
@@ -537,9 +537,9 @@ const BONUS_TOAST_COPY: Partial<Record<
     detail: "+2 puan kazandın. 3 tur elinde tutarsan bir kereye mahsus +4 puanlık hasat bonusu alırsın.",
   },
   karadeniz_extra_time: {
-    icon:   "⛰️",
-    title:  "Doğu Karadeniz Bonusu",
-    detail: "Sıradaki hamlene +5 saniye.",
+    icon:   "⏳",
+    title:  "Zaman Takviyesi Bonusu",
+    detail: "Soru süresine +5 saniye eklendi.",
   },
   eleme_yetkisi: {
     icon:   "🃏",

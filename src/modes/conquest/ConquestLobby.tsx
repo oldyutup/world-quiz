@@ -2,19 +2,31 @@
  * ConquestLobby — 3-panel lobby skeleton for Kuşatma.
  *
  * Visual layout reuses `.wgg-grid` from WheelGroupGame: left = player
- * slots, middle = room status + invite + settings + actions,
+ * slots + bonus panel, middle = room status + invite + settings + actions,
  * right = LobbyChat. No gameplay logic yet; this is the waiting room.
  *
- * Settings (Harita / Oyuncu / Tur / Görünürlük) are editable selects for
- * the host and disabled read-only selects for non-host players. Changes
- * call `onUpdateSettings` which updates local state in ConquestMode; a
- * future Supabase persist layer plugs into that callback.
+ * Settings (Harita / Oyuncu / Tur / Görünürlük / Bonus Dağıtımı) are
+ * editable for the host and disabled read-only for non-host players. Map /
+ * Oyuncu / Tur / Görünürlük persist via `onUpdateSettings`; Bonus Dağıtımı
+ * is ephemeral lobby state broadcast through `onChangeBonusDistribution`
+ * (see ConquestMode.tsx + conquestLobbyBroadcast.ts).
  *
- * Backend status: room state is local-only for Phase 2. Chat reuses the
- * shared duel_messages table via LobbyChat (room code is "K"-prefixed).
+ * Bonus panel is always rendered in the left card.  In "Oy ile Seç" it is a
+ * voting UI (selected glow, vote badges, cap/remaining).  In "Rastgele" it
+ * collapses to a read-only chip list of the bonuses that may roll in — same
+ * tooltips, no interactivity, no vote state.
+ *
+ * Color picking is inline: the small dot next to your name acts as the
+ * swatch.  Tapping your OWN dot opens a compact popover anchored beneath
+ * that dot (not a tall block under the player list).
+ *
+ * Backend status: room state for map/round/visibility/maxPlayers persists in
+ * conquest_rooms.  Bonus mode + votes ride a separate broadcast channel and
+ * are not yet wired into match start.  Chat reuses the shared duel_messages
+ * table via LobbyChat (room code is "K"-prefixed).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LobbyChat from "../../components/LobbyChat";
 import { playSound } from "../../lib/sound";
 import { recallConquestClaim } from "./conquestClaim";
@@ -27,10 +39,12 @@ import {
   mapLabel,
 } from "./types";
 import type {
+  ConquestBonusDistribution,
   ConquestMapId,
   ConquestMaxPlayers,
   ConquestPlayer,
   ConquestPlayerColor,
+  ConquestRegionBonusType,
   ConquestRoomSettings,
   ConquestRoundCount,
   ConquestVisibility,
@@ -41,6 +55,12 @@ import {
   assignConquestPlayerColors,
 } from "./conquestState";
 import { buildConquestShareLink } from "./utils";
+import {
+  VOTEABLE_BONUS_POOL,
+  voteBonusCountForPlayers,
+} from "./bonusPool";
+import type { ConquestLobbyVotes } from "./conquestLobbyBroadcast";
+import { tallyVotes } from "./conquestLobbyBroadcast";
 
 interface Props {
   roomCode:          string;
@@ -54,7 +74,10 @@ interface Props {
   isHost:            boolean;
   /** False for guest users — they can see chat but cannot write. */
   isLoggedIn:        boolean;
+  bonusVotes:        ConquestLobbyVotes;
   onUpdateSettings:  (patch: Partial<ConquestRoomSettings>) => void;
+  onChangeBonusDistribution: (mode: ConquestBonusDistribution) => void;
+  onToggleBonusVote: (bonusType: ConquestRegionBonusType) => void;
   onChangeColor:     (color: ConquestPlayerColor) => void;
   onStart:           () => void;
   onLeave:           () => void;
@@ -69,7 +92,10 @@ export default function ConquestLobby({
   players,
   isHost,
   isLoggedIn,
+  bonusVotes,
   onUpdateSettings,
+  onChangeBonusDistribution,
+  onToggleBonusVote,
   onChangeColor,
   onStart,
   onLeave,
@@ -77,6 +103,7 @@ export default function ConquestLobby({
   const [copied,      setCopied]      = useState(false);
   const [chatOpen,    setChatOpen]    = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
 
   const shareLink = useMemo(() => buildConquestShareLink(roomCode), [roomCode]);
 
@@ -127,12 +154,49 @@ export default function ConquestLobby({
     return s;
   }, [players, myPlayerId]);
 
-  function renderColorPicker(idPrefix: string) {
-    if (!me) return null;
+  // ── Bonus voting derived values ────────────────────────────────────────
+  const bonusMode      = settings.bonusDistribution ?? "random";
+  const voteCap        = voteBonusCountForPlayers(players.length);
+  const myVotes        = myPlayerId ? (bonusVotes[myPlayerId] ?? []) : [];
+  const myVoteSet      = useMemo(() => new Set(myVotes), [myVotes]);
+  const tally          = useMemo(() => tallyVotes(bonusVotes), [bonusVotes]);
+  const remainingVotes = Math.max(0, voteCap - myVotes.length);
+
+  /* Inline color popover — closes on outside click / Esc.  Because the
+   * popover is rendered inline next to *your* chip dot and that chip can
+   * be present in both the desktop list and the mobile sheet at the same
+   * time, we use selector-based hit-testing rather than a single ref. */
+  useEffect(() => {
+    if (!colorPickerOpen) return;
+    function onDocClick(ev: MouseEvent) {
+      const t = ev.target as Element | null;
+      if (!t) return;
+      if (t.closest(".cq-color-popover")) return;
+      if (t.closest(".cq-player-chip-dot-btn")) return;
+      setColorPickerOpen(false);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setColorPickerOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [colorPickerOpen]);
+
+  function renderColorPopover() {
+    if (!colorPickerOpen || !me) return null;
     return (
-      <div className="cq-color-picker" role="group" aria-label="Rengini seç">
-        <div className="cq-color-picker-head">
-          <span className="cq-color-picker-title">🎨 Rengin</span>
+      <div
+        className="cq-color-popover"
+        role="dialog"
+        aria-label="Rengini seç"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="cq-color-popover-head">
+          <span className="cq-color-popover-title">🎨 Rengini seç</span>
           {myColor && (
             <span className="cq-color-picker-current" data-color={myColor}>
               <span className="cq-color-picker-current-dot" aria-hidden />
@@ -146,7 +210,7 @@ export default function ConquestLobby({
             const selected = c === myColor;
             return (
               <button
-                key={`${idPrefix}-${c}`}
+                key={`pop-${c}`}
                 type="button"
                 className={
                   "cq-color-swatch"
@@ -162,6 +226,7 @@ export default function ConquestLobby({
                   if (taken || selected) return;
                   playSound("click");
                   onChangeColor(c);
+                  setColorPickerOpen(false);
                 }}
               >
                 <span className="cq-color-swatch-dot" aria-hidden />
@@ -171,6 +236,136 @@ export default function ConquestLobby({
             );
           })}
         </div>
+      </div>
+    );
+  }
+
+  function renderPlayerChip(p: ConquestPlayer, opts: { keyPrefix: string }) {
+    const color = resolvedColors[p.id];
+    const isMe  = p.id === myPlayerId;
+    const dotInteractive = isMe;
+    return (
+      <div
+        key={`${opts.keyPrefix}-${p.id}`}
+        className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
+        data-color={color}
+      >
+        <div className="cq-player-chip-main">
+          <span className="cq-player-name">{p.name}</span>
+          {isMe && <span className="cq-player-you-tag">sen</span>}
+          {p.isHost && <span className="duel-tag host">👑</span>}
+        </div>
+        {dotInteractive ? (
+          <span className="cq-player-chip-dot-wrap">
+            <button
+              type="button"
+              className="cq-player-chip-dot-btn"
+              aria-label="Rengini değiştir"
+              aria-haspopup="dialog"
+              aria-expanded={colorPickerOpen}
+              title="Rengini değiştir"
+              data-color={color}
+              onClick={() => {
+                playSound("click");
+                setColorPickerOpen(v => !v);
+              }}
+            >
+              <span className="duel-player-dot cq-player-chip-dot" />
+              <span className="cq-player-chip-dot-edit" aria-hidden>✎</span>
+            </button>
+            {colorPickerOpen && renderColorPopover()}
+          </span>
+        ) : (
+          <span
+            className="duel-player-chip-dot-static"
+            data-color={color}
+            aria-hidden
+          >
+            <span className="duel-player-dot cq-player-chip-dot" />
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  function renderBonusPanel(keyPrefix: string) {
+    const isVoting = bonusMode === "vote";
+    const title    = isVoting ? "🗳️ Bonus Oylaması" : "🎁 Bu Maçtaki Bonuslar";
+    return (
+      <div
+        className={"cq-bonus-vote" + (isVoting ? "" : " cq-bonus-vote--readonly")}
+        role="group"
+        aria-label={isVoting ? "Bonus oylaması" : "Maçtaki bonuslar"}
+      >
+        <div className="cq-bonus-vote-head">
+          <span className="cq-bonus-vote-title">{title}</span>
+          {isVoting && (
+            <span className="cq-bonus-vote-meta">
+              Seçilecek bonus: <strong>{voteCap}</strong>
+              <span className="cq-bonus-vote-sep">·</span>
+              Kalan oy: <strong>{remainingVotes}</strong>
+            </span>
+          )}
+        </div>
+        <div className="cq-bonus-vote-grid">
+          {VOTEABLE_BONUS_POOL.map(entry => {
+            if (!isVoting) {
+              /* Read-only chip — title attribute keeps the hover tooltip,
+               * no badge / glow / cap / click behaviour. */
+              return (
+                <div
+                  key={`${keyPrefix}-ro-${entry.type}`}
+                  className="cq-bonus-vote-chip cq-bonus-vote-chip--readonly"
+                  data-category={entry.category}
+                  title={`${entry.label} — ${entry.description}`}
+                >
+                  <span className="cq-bonus-vote-icon" aria-hidden>{entry.icon}</span>
+                  <span className="cq-bonus-vote-label">{entry.label}</span>
+                </div>
+              );
+            }
+            const count    = tally.get(entry.type) ?? 0;
+            const selected = myVoteSet.has(entry.type);
+            const disabled = !myPlayerId || (!selected && remainingVotes <= 0);
+            return (
+              <button
+                key={`${keyPrefix}-${entry.type}`}
+                type="button"
+                className={
+                  "cq-bonus-vote-chip"
+                  + (selected ? " cq-bonus-vote-chip--selected" : "")
+                  + (disabled ? " cq-bonus-vote-chip--disabled" : "")
+                }
+                data-category={entry.category}
+                disabled={disabled}
+                aria-pressed={selected}
+                title={`${entry.label} — ${entry.description}`}
+                onClick={() => {
+                  if (!myPlayerId) return;
+                  if (!selected && remainingVotes <= 0) return;
+                  playSound("click");
+                  onToggleBonusVote(entry.type);
+                }}
+              >
+                <span className="cq-bonus-vote-icon" aria-hidden>{entry.icon}</span>
+                <span className="cq-bonus-vote-label">{entry.label}</span>
+                {count > 0 && (
+                  <span className="cq-bonus-vote-badge" aria-label={`${count} oy`}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {isVoting && !myPlayerId && (
+          <p className="cq-bonus-vote-hint" role="status">
+            Oy vermek için odaya katılmalısın.
+          </p>
+        )}
+        {!isVoting && (
+          <p className="cq-bonus-vote-hint" role="status">
+            Bonuslar maç başında rastgele dağıtılır.
+          </p>
+        )}
       </div>
     );
   }
@@ -208,26 +403,11 @@ export default function ConquestLobby({
                   </div>
                 );
               }
-              const color = resolvedColors[p.id];
-              const isMe  = p.id === myPlayerId;
-              return (
-                <div
-                  key={p.id}
-                  className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
-                  data-color={color}
-                >
-                  <div className="cq-player-chip-main">
-                    <span className="duel-player-dot cq-player-chip-dot" />
-                    <span className="cq-player-name">{p.name}</span>
-                    {isMe && <span className="cq-player-you-tag">sen</span>}
-                    {p.isHost && <span className="duel-tag host">👑</span>}
-                  </div>
-                </div>
-              );
+              return renderPlayerChip(p, { keyPrefix: "desktop" });
             })}
           </div>
 
-          {renderColorPicker("desktop")}
+          {renderBonusPanel("desktop")}
 
           {players.length < CONQUEST_MIN_PLAYERS && (
             <div className="cq-wait-chip" role="status">
@@ -334,6 +514,23 @@ export default function ConquestLobby({
                 >
                   <option value="public">🌐 Açık Oda</option>
                   <option value="private">🔒 Gizli Oda</option>
+                </select>
+                <span className="duel-select-caret">▾</span>
+              </div>
+            </div>
+
+            <div className="duel-select-wrap">
+              <label className="duel-select-label">🎁 Bonus Dağıtımı</label>
+              <div className="duel-select-box">
+                <select
+                  className="duel-select"
+                  value={bonusMode}
+                  disabled={!isHost}
+                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+                  onChange={e => onChangeBonusDistribution(e.target.value as ConquestBonusDistribution)}
+                >
+                  <option value="random">🎲 Rastgele</option>
+                  <option value="vote">🗳️ Oy ile Seç</option>
                 </select>
                 <span className="duel-select-caret">▾</span>
               </div>
@@ -456,25 +653,10 @@ export default function ConquestLobby({
                     </div>
                   );
                 }
-                const color = resolvedColors[p.id];
-                const isMe  = p.id === myPlayerId;
-                return (
-                  <div
-                    key={p.id}
-                    className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
-                    data-color={color}
-                  >
-                    <div className="cq-player-chip-main">
-                      <span className="duel-player-dot cq-player-chip-dot" />
-                      <span className="cq-player-name">{p.name}</span>
-                      {isMe && <span className="cq-player-you-tag">sen</span>}
-                      {p.isHost && <span className="duel-tag host">👑</span>}
-                    </div>
-                  </div>
-                );
+                return renderPlayerChip(p, { keyPrefix: "mobile" });
               })}
             </div>
-            {renderColorPicker("mobile")}
+            {renderBonusPanel("mobile")}
             {players.length < CONQUEST_MIN_PLAYERS && (
               <div className="wgg-ps-warning">
                 En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli.

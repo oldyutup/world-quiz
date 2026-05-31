@@ -20,6 +20,16 @@ export type ConquestRoundCount = 6 | 8 | 10;
 
 export type ConquestMaxPlayers = 2 | 3 | 4;
 
+/**
+ * How active bonuses are picked for a match.
+ *   "random" — engine picks bonuses (current behaviour).
+ *   "vote"   — players vote in the lobby; top vote-getters become active.
+ * Lobby-only setting today: the picker still uses the legacy random path
+ * regardless of this value (see bonusPool.ts).  Wiring the vote result into
+ * `createInitialConquestGameState` is a follow-up.
+ */
+export type ConquestBonusDistribution = "random" | "vote";
+
 export type ConquestRoomStatus = "waiting" | "playing" | "finished";
 
 export interface ConquestPlayer {
@@ -41,6 +51,12 @@ export interface ConquestRoomSettings {
   maxPlayers: ConquestMaxPlayers;
   rounds: ConquestRoundCount;
   visibility: ConquestVisibility;
+  /**
+   * Phase-bonus-vote: how bonus types are distributed at match start.
+   * Optional for back-compat with rooms whose row predates the setting —
+   * readers default to "random".
+   */
+  bonusDistribution?: ConquestBonusDistribution;
 }
 
 export interface ConquestRoomSummary {
@@ -71,6 +87,7 @@ export const CONQUEST_DEFAULT_SETTINGS: ConquestRoomSettings = {
   maxPlayers: 4,
   rounds: 8,
   visibility: "public",
+  bonusDistribution: "random",
 };
 
 /** Minimum players to enable "Oyunu Başlat". */

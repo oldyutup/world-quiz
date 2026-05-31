@@ -59,15 +59,15 @@ export interface BonusPoolEntry {
 }
 
 /**
- * Full pool of 12 bonus types.  Order is documentation only — the selector
+ * Full pool of bonus types.  Order is documentation only — the selector
  * groups by category internally.
  *
- * Implementation note: the two legacy types that are currently in
- * ROTATING_BONUS_TYPES but NOT in this user-defined pool list
- * (`ankara_hidden_shield`, `karadeniz_extra_time`) are intentionally absent.
- * They remain in the `ConquestRegionBonusType` union and continue to be
- * assigned by the legacy path; they will eventually be retired or
- * re-categorised in a follow-up PR.
+ * `ankara_hidden_shield` ("Gizli Operasyon") and `karadeniz_extra_time`
+ * ("Zaman Takviyesi") are real, wired open bonuses and are catalogued here
+ * with `implemented: true` so the lobby vote panel surfaces them alongside
+ * the rest of the pool.  Their gameplay copy still lives in REGION_BONUSES
+ * (legacy region-tied entries) — only the display label / category /
+ * description used by lobby UI lives in this catalog.
  */
 export const BONUS_POOL: readonly BonusPoolEntry[] = [
   // ── Savunma ────────────────────────────────────────────────────────────────
@@ -88,6 +88,14 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     implemented: true,
   },
   {
+    type:        "karadeniz_extra_time",
+    category:    "savunma",
+    icon:        "⏳",
+    label:       "Zaman Takviyesi",
+    description: "Soru süresine +5 saniye ekler.",
+    implemented: true,
+  },
+  {
     type:        "direnis",
     category:    "savunma",
     icon:        "✊",
@@ -105,11 +113,19 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     implemented: true,
   },
   {
+    type:        "ankara_hidden_shield",
+    category:    "saldiri",
+    icon:        "🎭",
+    label:       "Gizli Operasyon",
+    description: "Gizli bir hamle yapmanı sağlar.",
+    implemented: true,
+  },
+  {
     type:        "gecit",
     category:    "saldiri",
     icon:        "🌉",
-    label:       "Geçit",
-    description: "Hamle erişimini genişleten bir bonus.",
+    label:       "Köprü Başı",
+    description: "Hamle erişimini genişleten bir bonus (henüz uygulanmadı).",
     implemented: false,
   },
   {
@@ -217,6 +233,30 @@ export function activeBonusCountForPlayers(playerCount: number): number {
 }
 
 /**
+ * Vote-mode active bonus count.  One more than the random-mode count per the
+ * lobby UX spec — players each pick this many bonuses, the top vote-getters
+ * become active when the match starts.
+ *
+ *   2 players → 4 bonuses (vote slots per player)
+ *   3 players → 5
+ *   4+ players → 6
+ */
+export function voteBonusCountForPlayers(playerCount: number): number {
+  if (playerCount <= 2) return 4;
+  if (playerCount === 3) return 5;
+  return 6;
+}
+
+/**
+ * Bonus pool entries that are eligible to appear in the lobby vote UI.
+ * Mirrors `buildActiveBonusTypes` filtering — only `implemented: true` types
+ * are voteable.  Order matches BONUS_POOL declaration so the UI groups by
+ * category visually.
+ */
+export const VOTEABLE_BONUS_POOL: readonly BonusPoolEntry[] =
+  BONUS_POOL.filter(e => e.implemented);
+
+/**
  * Resolved per-match active bonus type set.  Same shape as the input to the
  * existing `scoreCandidate` region picker, so swapping ROTATING_BONUS_TYPES
  * for this output is a drop-in replacement when the time comes.
@@ -261,6 +301,83 @@ function shuffledSeeded<T>(arr: readonly T[], rng: () => number): T[] {
 // ─────────────────────────────────────────────────────────────────────────────
 // Selector — pure function; not yet wired into match creation.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the final active open-bonus types for a match in **vote** mode.
+ *
+ * Inputs:
+ *   - `votes`        : playerId → bonus types they voted for (from lobby).
+ *   - `playerCount`  : roster size at game start; determines target N
+ *                      (2→4, 3→5, 4+→6) via `voteBonusCountForPlayers`.
+ *   - `matchSeed`    : per-match seed (gameState.startedAt) so host/guest
+ *                      derive an identical tie-break and fallback fill.
+ *
+ * Selection rules:
+ *   1. Only types present in `VOTEABLE_BONUS_POOL` (implemented open bonuses)
+ *      are eligible.  Hidden bonuses (Suikast / Lanet Mührü / Pusu) and
+ *      placeholder pool entries (`implemented:false`) never enter the result.
+ *   2. Tally one vote per (player, type).  Sort by descending tally; break
+ *      ties deterministically using a seeded permutation of the eligible
+ *      pool (every client computes the same order from `matchSeed`).
+ *   3. Take up to N from the sorted list.  If fewer than N unique bonuses
+ *      received any vote, fill the remaining slots from the eligible pool
+ *      using a seeded shuffle — never duplicates.  If the pool itself has
+ *      fewer than N implemented types, the returned list is shorter (no
+ *      error thrown).
+ */
+export function resolveActiveBonusTypesFromVotes(
+  votes:       Record<string, readonly ConquestRegionBonusType[]>,
+  playerCount: number,
+  matchSeed:   number,
+): ConquestRegionBonusType[] {
+  const target = voteBonusCountForPlayers(playerCount);
+
+  // Eligible pool — implemented open bonuses only.
+  const eligibleTypes = VOTEABLE_BONUS_POOL.map(e => e.type);
+  const eligibleSet   = new Set<ConquestRegionBonusType>(eligibleTypes);
+
+  // Tally votes, filtering out anything not in the voteable pool.
+  const counts = new Map<ConquestRegionBonusType, number>();
+  for (const list of Object.values(votes)) {
+    if (!list) continue;
+    for (const t of list) {
+      if (!eligibleSet.has(t)) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+
+  // Deterministic tie-break order: seeded shuffle of the eligible pool keyed
+  // by matchSeed.  Two clients with the same (votes, playerCount, matchSeed)
+  // always produce the same final list.
+  const rng         = mulberry32(seedFromMatchSeed(matchSeed));
+  const tieOrder    = shuffledSeeded(eligibleTypes, rng);
+  const tieRank     = new Map<ConquestRegionBonusType, number>();
+  tieOrder.forEach((t, i) => tieRank.set(t, i));
+
+  const voted = [...counts.keys()].sort((a, b) => {
+    const dc = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+    if (dc !== 0) return dc;
+    return (tieRank.get(a) ?? 0) - (tieRank.get(b) ?? 0);
+  });
+
+  const picked: ConquestRegionBonusType[] = voted.slice(0, target);
+
+  // Fallback fill — seeded random over remaining eligible types.  Uses the
+  // same `rng` stream so the fill order is also deterministic per match.
+  if (picked.length < target) {
+    const pickedSet = new Set(picked);
+    const remaining = shuffledSeeded(
+      eligibleTypes.filter(t => !pickedSet.has(t)),
+      rng,
+    );
+    for (const t of remaining) {
+      if (picked.length >= target) break;
+      picked.push(t);
+    }
+  }
+
+  return picked;
+}
 
 /**
  * Pick a balanced, deterministic set of active bonus types for a match.

@@ -73,6 +73,7 @@ import type {
   ConquestPlayer,
   ConquestPlayerBonusState,
   ConquestPlayerHiddenBonus,
+  ConquestRegionBonusType,
   ConquestRegionId,
   ConquestRegionState,
   ConquestRoundBonusAssignment,
@@ -206,9 +207,10 @@ export const ROUND_COUNTDOWN_MS   = 3_000;
 const ROUND_INTRO_PACING_MS = ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS;
 
 export function createInitialConquestGameState(
-  mapConfig:   ConquestMapConfig,
-  players:     ConquestPlayer[],
-  totalRounds: number,
+  mapConfig:           ConquestMapConfig,
+  players:             ConquestPlayer[],
+  totalRounds:         number,
+  selectedBonusTypes?: readonly ConquestRegionBonusType[],
 ): ConquestGameState {
   const safeRounds = Math.max(1, Math.floor(totalRounds));
   const now        = Date.now();
@@ -224,8 +226,10 @@ export function createInitialConquestGameState(
 
   // Match-level bonus assignment — seeded from match start, fixed for
   // every round.  Round transitions never rebuild this; new matches reseed.
+  // When `selectedBonusTypes` is supplied (vote mode), the assignment uses
+  // those types verbatim; otherwise it falls back to the legacy random pick.
   const roundBonuses = buildRoundBonusAssignment(
-    mapConfig, regionStates, players, now,
+    mapConfig, regionStates, players, now, selectedBonusTypes,
   );
 
   // Hidden bonus placements — computed AFTER the open bonus assignment so

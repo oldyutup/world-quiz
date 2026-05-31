@@ -30,7 +30,7 @@
  * the same bonus map when reading the same snapshot.
  */
 
-import { BONUS_POOL } from "./bonusPool";
+import { BONUS_POOL, voteBonusCountForPlayers } from "./bonusPool";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
 import { COASTAL_REGION_IDS } from "./coastalRegions";
 import { REGION_BONUSES } from "./regionBonuses";
@@ -113,12 +113,12 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** Number of bonus tiles to place per round.  Maps with very few regions
- *  receive fewer bonuses so they don't saturate the board. */
-function pickBonusCountForRound(regionCount: number): number {
-  if (regionCount <= 6)  return 2;
-  if (regionCount <= 12) return 3;
-  return 4;
+/** Match-level active open-bonus count, keyed off player count via
+ *  `voteBonusCountForPlayers` (2→4, 3→5, 4+→6).  Both random and vote modes
+ *  obey this rule; clamped to the available region pool so tiny maps don't
+ *  ask for more bonuses than they can place. */
+function pickBonusCountForMatch(playerCount: number, regionPoolSize: number): number {
+  return Math.min(regionPoolSize, voteBonusCountForPlayers(playerCount));
 }
 
 /** Build a deterministic seed for the match-level assignment from the raw
@@ -143,10 +143,11 @@ export function matchBonusSeed(matchSeed: number): number {
  * verbatim, so there is no per-round anti-repeat concept here.
  */
 export function buildRoundBonusAssignment(
-  mapConfig:     ConquestMapConfig,
-  regionStates:  ConquestRegionState[],
-  players:       ConquestPlayer[],
-  matchSeed:     number,
+  mapConfig:          ConquestMapConfig,
+  regionStates:       ConquestRegionState[],
+  players:            ConquestPlayer[],
+  matchSeed:          number,
+  selectedBonusTypes?: readonly ConquestRegionBonusType[],
 ): ConquestRoundBonusAssignment {
   const regions = mapConfig.regions;
   if (regions.length === 0) return {};
@@ -173,11 +174,20 @@ export function buildRoundBonusAssignment(
     }
   }
 
-  const targetCount = Math.min(pool.length, pickBonusCountForRound(regions.length));
+  const targetCount = pickBonusCountForMatch(players.length, pool.length);
 
-  // Pick bonus *types* in a seeded shuffled order so type→region mapping
-  // doesn't always assign the same type to the highest-scoring region.
-  const bonusTypes = shuffledSeeded(ROTATING_BONUS_TYPES, rng).slice(0, targetCount);
+  // Bonus type selection:
+  //   - Vote mode passes `selectedBonusTypes` (already top-N voted with
+  //     seeded fallback) — we honour that list verbatim, clamped to the
+  //     region pool size.
+  //   - Random mode passes nothing — we shuffle ROTATING_BONUS_TYPES with
+  //     the match rng and slice to N, preserving the legacy random feel.
+  // Either way the resulting list is then walked in order and placed onto
+  // regions via the same scoring function, so visual placement behaviour
+  // matches what shipped before this change.
+  const bonusTypes = selectedBonusTypes && selectedBonusTypes.length > 0
+    ? selectedBonusTypes.slice(0, targetCount)
+    : shuffledSeeded(ROTATING_BONUS_TYPES, rng).slice(0, targetCount);
 
   const picked: ConquestRegionId[] = [];
   const pickedGroups: Set<string>  = new Set();

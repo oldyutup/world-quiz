@@ -36,7 +36,7 @@ const TYPE_EFFECT_COPY: Partial<Record<ConquestRegionBonusType, string>> = {
   cukurova_score:
     "Bu bölgeyi fetheden oyuncuya anında +2 bonus puan verilir. Aynı oyuncu 3 tur boyunca elinde tutarsa bir kereye mahsus +4 puanlık 'Hasat' bonusu kazanır; bölge aynı sahipte kaldığı sürece tekrar hasat üretmez. Bölge el değiştirirse hasat sayacı sıfırlanır ve yeni sahip için 0/3'ten yeniden başlar.",
   karadeniz_extra_time:
-    "Fetheden oyuncunun sıradaki hamle süresine +5 saniye eklenir (tek kullanım).",
+    "Soru süresine +5 saniye ekler.",
   eleme_yetkisi:
     "Sonraki test sorunda 1 yanlış şık silinir.",
   mevzi_bekcisi:
