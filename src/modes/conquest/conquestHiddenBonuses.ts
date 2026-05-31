@@ -42,11 +42,24 @@ export const HIDDEN_BONUS_TYPES: readonly ConquestHiddenBonusType[] = [
   "suikast",
 ] as const;
 
-/** Per-match probability that a hidden bonus is placed at all. */
-export const HIDDEN_BONUS_FIRST_CHANCE  = 0.40;
+/** Per-match probability that the FIRST hidden bonus is placed, by player
+ *  count.  Below the minimum player count we still fall back to the 2-player
+ *  rate so legacy 1-player smoke tests keep their deterministic behaviour. */
+const HIDDEN_BONUS_FIRST_CHANCE_BY_PLAYER_COUNT: Record<number, number> = {
+  2: 0.20,
+  3: 0.30,
+  4: 0.40,
+};
+/** Resolve the first-slot probability for a given player count.  Counts above
+ *  4 reuse the 4-player rate; counts below 2 reuse the 2-player rate. */
+export function getHiddenBonusFirstChance(playerCount: number): number {
+  if (playerCount >= 4) return HIDDEN_BONUS_FIRST_CHANCE_BY_PLAYER_COUNT[4];
+  if (playerCount === 3) return HIDDEN_BONUS_FIRST_CHANCE_BY_PLAYER_COUNT[3];
+  return HIDDEN_BONUS_FIRST_CHANCE_BY_PLAYER_COUNT[2];
+}
 /** Additional probability of a SECOND hidden bonus when the match has 4
  *  players (rolled independently from the first slot). */
-export const HIDDEN_BONUS_SECOND_CHANCE = 0.15;
+export const HIDDEN_BONUS_SECOND_CHANCE = 0.10;
 /** Player count threshold above which the second hidden bonus may roll. */
 export const HIDDEN_BONUS_SECOND_MIN_PLAYERS = 4;
 
@@ -120,11 +133,12 @@ export interface BuildHiddenBonusPlacementsInput {
  *      special-start mechanism today, so excluding non-neutral starts handles
  *      both classes in one filter.
  *
- *   2. Roll for the first hidden bonus (40% gate).  If it lands, pick a random
- *      region from the pool and a random type.
+ *   2. Roll for the first hidden bonus.  Gate scales with player count:
+ *      20% at 2 players, 30% at 3 players, 40% at 4+ players.  If it lands,
+ *      pick a random region from the pool and a random type.
  *
  *   3. If the match has 4+ players, INDEPENDENTLY roll for the second hidden
- *      bonus (15% gate).  Pick a region NOT already chosen and a (possibly
+ *      bonus (10% gate).  Pick a region NOT already chosen and a (possibly
  *      different) random type.  If no candidate remains, silently skip — no
  *      error.
  *
@@ -174,7 +188,11 @@ export function buildHiddenBonusPlacements(
   let regionIndex = 0;
 
   // ── First slot ─────────────────────────────────────────────────────────
-  if (rng() < HIDDEN_BONUS_FIRST_CHANCE) {
+  // Probability scales with player count — see getHiddenBonusFirstChance.
+  // We always consume one rng() call here regardless of the gate value so the
+  // deterministic stream stays aligned across player counts sharing a seed.
+  const firstChance = getHiddenBonusFirstChance(playerCount);
+  if (rng() < firstChance) {
     const regionId = shuffledCandidates[regionIndex++];
     const type     = shuffledTypes[typeIndex++ % shuffledTypes.length];
     placements[regionId] = { type };
