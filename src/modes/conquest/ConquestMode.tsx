@@ -56,6 +56,7 @@ import {
 import { resolveActiveBonusTypesFromVotes, voteBonusCountForPlayers } from "./bonusPool";
 import {
   createConquestRoom,
+  heartbeatConquestPlayer,
   joinConquestRoomByCode,
   leaveConquestRoom,
   markConquestRoomWaiting,
@@ -323,6 +324,25 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomRow?.id, phase, me?.is_host]);
+
+  // ── Lobby heartbeat: keep conquest_players.last_seen_at fresh ───────────
+  // Public oda listesi yalnız son 60 saniyede heartbeat atan oyuncuları
+  // sayar. Lobby açıkken 20 saniyede bir RPC çağrısı yaparak ghost
+  // (browser-kapatıldı / dev-server-kapandı) durumlarda diğer oyuncuların
+  // listeyi temiz görmesini sağlıyoruz. Oyun fazına geçince (status='playing'
+  // → public listeden zaten düşer) ve unmount'ta interval temizlenir.
+  useEffect(() => {
+    if (!roomRow?.id || !myPlayerId || phase !== "lobby") return;
+
+    void heartbeatConquestPlayer(myPlayerId);
+    const interval = window.setInterval(() => {
+      void heartbeatConquestPlayer(myPlayerId);
+    }, 20_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [roomRow?.id, myPlayerId, phase]);
 
   // ── Drop votes for any player who has left the room ─────────────────────
   useEffect(() => {

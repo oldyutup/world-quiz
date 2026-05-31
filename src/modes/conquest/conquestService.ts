@@ -509,17 +509,26 @@ export interface ConquestPublicRoomSummary {
 }
 
 /**
+ * Active-player horizon (ms). conquest_players satırının last_seen_at değeri
+ * bu eşikten daha eskiyse oyuncu "stale" sayılır ve public listede oda
+ * doluluğunu artırmaz. Bkz: 20260531130000_conquest_player_heartbeat.sql.
+ */
+const CONQUEST_ACTIVE_PLAYER_WINDOW_MS = 60_000;
+
+/**
  * List public, joinable Kuşatma rooms.  Filters:
  *   • visibility = 'public'
  *   • status     = 'waiting'
  *   • updated_at within the last 6 hours (drops abandoned rooms)
- *   • not full (computed in app since SQL view would over-engineer Phase 5)
+ *   • playerCount > 0 ve < max (sadece aktif heartbeat'li oyuncular sayılır)
  *
- * Returns rooms with their current player counts so the UI can render
- * "n/max" badges without a second round-trip per row.
+ * Stale oyuncular (browser kapatma / bağlantı kopması) listeden düşürülür:
+ * `last_seen_at >= now() - 60s` olanlar aktif sayılır. Böylece "0/4" ya da
+ * "1/4 ama gerçekte boş" gibi hayalet odalar listede yer kaplamaz.
  */
 export async function fetchPublicConquestRooms(): Promise<ConquestPublicRoomSummary[]> {
   const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const activeSince = new Date(Date.now() - CONQUEST_ACTIVE_PLAYER_WINDOW_MS).toISOString();
 
   const { data: rooms, error: roomErr } = await supabase
     .from("conquest_rooms")
@@ -533,10 +542,14 @@ export async function fetchPublicConquestRooms(): Promise<ConquestPublicRoomSumm
   if (roomErr || !rooms || rooms.length === 0) return [];
 
   const ids = rooms.map(r => r.id);
+  // Sadece aktif (heartbeat'i son 60sn içinde olan) oyuncuları say. Eski/null
+  // last_seen_at değerleri filtreyi geçemez, dolayısıyla ghost oyuncular oda
+  // doluluk göstergesini şişiremez.
   const { data: players } = await supabase
     .from("conquest_players")
     .select("room_id")
-    .in("room_id", ids);
+    .in("room_id", ids)
+    .gte("last_seen_at", activeSince);
 
   const counts = new Map<string, number>();
   for (const p of (players ?? []) as { room_id: string }[]) {
@@ -548,7 +561,34 @@ export async function fetchPublicConquestRooms(): Promise<ConquestPublicRoomSumm
       room,
       playerCount: counts.get(room.id) ?? 0,
     }))
-    .filter(s => s.playerCount < s.room.max_players);
+    // Aktif oyuncusu kalmamış / dolmuş odalar listede yer almaz.
+    .filter(s => s.playerCount > 0 && s.playerCount < s.room.max_players);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Heartbeat
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lobby açıkken aktif olduğumuzu bildirir: conquest_players.last_seen_at ve
+ * conquest_rooms.updated_at değerlerini SECURITY DEFINER RPC üzerinden now()'a
+ * çeker. Yetki conquest_authorize_player ile doğrulanır:
+ *   • Logged-in : auth.uid() == conquest_players.profile_id
+ *   • Misafir   : localStorage'daki claim_token, conquest_player_claims ile
+ *                 eşleşmeli.
+ * Hata sessizce yutulur — bu çağrı 20 saniyede bir tetikleniyor; geçici ağ
+ * kesintilerini konsol spam'ine çevirmek istemiyoruz.
+ */
+export async function heartbeatConquestPlayer(playerId: string): Promise<void> {
+  const claimToken = recallConquestClaim(playerId);
+  try {
+    await supabase.rpc("conquest_heartbeat_player", {
+      p_player_id:   playerId,
+      p_claim_token: claimToken,
+    });
+  } catch {
+    /* network blip — next tick will retry */
+  }
 }
 
 /** Fetch room+players for a known room id (used after realtime UPDATE events). */
