@@ -246,6 +246,9 @@ type FlagDuelRoom = DuelRoom & {
   total_rounds:    number;
   current_round:   number;
   is_golden_round: boolean;
+  /** Manuel oda createRoom RPC'sinde set edilir; quick_match için
+   *  20260620120000 migration'ı sonrası candidate (waiter) id. */
+  host_player_id:  string | null;
 };
 
 function makeCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
@@ -803,10 +806,14 @@ useEffect(() => {
     feedbackTimerRef.current = setTimeout(() => setFeedback(null), 700);
   }, []);
 
-  /* her yeni tur → hints + timedOut sıfırla */
+  /* her yeni tur → hints + timedOut + input + feedback sıfırla.
+     roundKey = current_round + current_flag → tur ilerlediğinde değişir.
+     Önceki turdan kalan input/feedback yeni bayrak üstünde görünmesin. */
   useEffect(() => {
     setHints(EMPTY_HINTS);
     setTimedOut(false);
+    setInput("");
+    setFeedback(null);
   }, [roundKey]);
 
   /* joker satın alma */
@@ -1155,7 +1162,14 @@ const declineRematch = useCallback(() => {
         .order("joined_at", { ascending: true });
 
       const players = (ps ?? []) as DuelPlayer[];
-      const isMeHost = (players[0]?.id ?? "") === playerId;
+      // Host kararı KESIN olmalı: önce DB'deki host_player_id (yeni QM
+      // migration'ı bunu set ediyor), o yoksa player_id'ye göre deterministik
+      // sıralama (joined_at iki QM player'ı için eşittir → sıralama belirsizdir).
+      const hostId =
+        (r.host_player_id ?? "") ||
+        [...players].sort((a, b) => a.id.localeCompare(b.id))[0]?.id ||
+        "";
+      const isMeHost = hostId === playerId;
 
       // XP idempotency için fresh state
       setXpResult(null);
@@ -1167,11 +1181,14 @@ const declineRematch = useCallback(() => {
       setClaims([]);
       setIsHost(isMeHost);
       isHostRef.current = isMeHost;
-      // QM-flag: flag_duel_quick_match RPC duel_player_claims kaydı atmaz;
-      // claim_token boş kalır. Auth fallback flag_duel_queue üzerinden çalışır
-      // (flag_duel_authorize_player helper'ı bu durumu handle eder).
-      claimTokenRef.current = "";
-      saveSession(r.id, r.code, playerId, "");
+      // QM-flag: flag_duel_quick_match RPC duel_player_claims kaydı atmaz,
+      // ama p_claim_token parametresi uuid olarak deklare; boş string PostgREST
+      // tarafında uuid_in('') hatası verir → her submit_claim/set_next_round
+      // çağrısı 'invalid input syntax for type uuid' ile düşer. Auth gerçekte
+      // flag_duel_queue.profile_id = auth.uid() üzerinden kuruluyor, claim_token
+      // QM-flag branch'inde okunmuyor — yine de geçerli bir UUID gönderiyoruz.
+      claimTokenRef.current = crypto.randomUUID();
+      saveSession(r.id, r.code, playerId, claimTokenRef.current);
       buildPool(r.region);
 
       // Quick match countdown başlat (started_at - now() farkı)
