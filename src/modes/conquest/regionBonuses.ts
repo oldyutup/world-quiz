@@ -200,6 +200,21 @@ export function getBonusToastCopyForViewer(
     };
   }
 
+  if (toast.bonusType === "istihbarat_agi") {
+    if (isOwner) {
+      return {
+        icon:   "👁️",
+        title:  `👁️ İstihbarat Ağı Kuruldu!`,
+        detail: `${where} artık senin kontrolünde. Rakiplerin gizli bonus keşiflerini ve Gizli Operasyon hamlelerini rapor olarak görebileceksin.`,
+      };
+    }
+    return {
+      icon:   "👁️",
+      title:  `👁️ Rakip İstihbarat Ağı Kurdu!`,
+      detail: `${toast.playerName} ${where} bölgesini kontrol altına aldı. Gizli hamleler artık onun için daha görünür olacak.`,
+    };
+  }
+
   if (toast.bonusType === "mevzi_bekcisi") {
     // Loss-flavour banner: emitted when a mevzi region changed hands.  The
     // previous owner keeps the region's point value as a "mevzi" protection
@@ -555,5 +570,10 @@ const BONUS_TOAST_COPY: Partial<Record<
     icon:   "🔮",
     title:  "Kâhin Büyüsü Bonusu",
     detail: "Sıradaki sorunun türünü önceden görürsün.",
+  },
+  istihbarat_agi: {
+    icon:   "👁️",
+    title:  "İstihbarat Ağı Bonusu",
+    detail: "Rakip gizli bonus keşiflerini ve Gizli Operasyon hedeflerini rapor olarak görürsün.",
   },
 };

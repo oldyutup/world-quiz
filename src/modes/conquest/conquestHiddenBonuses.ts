@@ -24,6 +24,7 @@ import type {
   ConquestHiddenBonusPlacement,
   ConquestHiddenBonusToast,
   ConquestHiddenBonusType,
+  ConquestIntelReport,
   ConquestMapConfig,
   ConquestPendingAmbush,
   ConquestPendingCurse,
@@ -938,5 +939,92 @@ export function getHiddenBonusToastCopyForViewer(
     icon:   "❓",
     title:  "❓ Rakip Gizli Bonus Keşfetti!",
     detail: "Rakibin haritada gizli bir bonus buldu. Hangi bonus olduğunu, özelliği kullandığında öğreneceksin.",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// İstihbarat Ağı 👁️ — intel report builders + copy
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Intel reports are a synced channel that EVERY client receives, but only the
+// current owner of the istihbarat_agi bonus region is allowed to render.  The
+// recipient is NEVER baked into the payload — the renderer looks up the
+// region's current owner at render time, so a mid-round handover means future
+// reports go to the new owner and prior reports stop showing for the old
+// owner (they're cleared on round advance anyway).
+//
+// The actual ownership lookup helper lives in conquestGameplay.ts as
+// `getIntelNetworkOwnerId` so it can stay close to the gameplay state shape.
+
+/** Build an intel report for a hidden bonus claim event. */
+export function buildHiddenClaimIntelReport(
+  claimerId:    string,
+  claimerName:  string,
+  hiddenType:   ConquestHiddenBonusType,
+  now:          number,
+): ConquestIntelReport {
+  return {
+    id:              `intel-claim-${hiddenType}-${now}-${claimerId}`,
+    kind:            "hidden_claim",
+    actorPlayerId:   claimerId,
+    actorPlayerName: claimerName,
+    at:              now,
+    hiddenBonusType: hiddenType,
+  };
+}
+
+/** Build an intel report for a Gizli Operasyon (own-region shield OR
+ *  neutral-region gizli fetih) placement event. */
+export function buildGizliOpIntelReport(
+  actorId:       string,
+  actorName:     string,
+  targetRegion:  ConquestRegionId,
+  now:           number,
+): ConquestIntelReport {
+  return {
+    id:              `intel-gizliop-${targetRegion}-${now}-${actorId}`,
+    kind:            "gizli_op",
+    actorPlayerId:   actorId,
+    actorPlayerName: actorName,
+    at:              now,
+    targetRegionId:  targetRegion,
+  };
+}
+
+export interface IntelReportCopy {
+  icon:   string;
+  title:  string;
+  detail: string;
+}
+
+/**
+ * Build the toast text for an intel report.  Callers (the UI) must already
+ * have decided the viewer is the current istihbarat_agi region owner —
+ * suppression-by-non-owner happens at the render layer, not here.
+ *
+ * `regionLabel` is the display label of the gizli_op target region, looked up
+ * via the local map config.  Optional: when omitted (gizli_op report without
+ * a resolvable label, or a hidden_claim report), the copy drops the phrase.
+ */
+export function getIntelReportCopy(
+  report:       ConquestIntelReport,
+  regionLabel?: string | null,
+): IntelReportCopy {
+  if (report.kind === "hidden_claim") {
+    const label = report.hiddenBonusType
+      ? getHiddenBonusLabel(report.hiddenBonusType)
+      : "bilinmeyen bonus";
+    return {
+      icon:   "👁️",
+      title:  "👁️ İstihbarat Raporu",
+      detail: `${report.actorPlayerName} gizli bonus keşfetti: ${label}.`,
+    };
+  }
+  // gizli_op
+  const where = regionLabel ?? "bilinmeyen bölge";
+  return {
+    icon:   "👁️",
+    title:  "👁️ İstihbarat Raporu",
+    detail: `${report.actorPlayerName} Gizli Operasyon kullandı. Hedef bölge: ${where}.`,
   };
 }

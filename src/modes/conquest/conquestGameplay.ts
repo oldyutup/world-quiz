@@ -47,7 +47,9 @@ import {
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
 import {
+  buildGizliOpIntelReport,
   buildHiddenBonusPlacements,
+  buildHiddenClaimIntelReport,
   consumePendingCurseOnTrigger,
   hasPendingCurse,
   tryClaimHiddenBonus,
@@ -144,6 +146,24 @@ export function consumeMoveTimeBonus(
     durationMs:    MOVE_PHASE_MS + extra,
     playerBonuses: { ...current, [holderId]: { ...pb, extraNextMoveMs: 0 } },
   };
+}
+
+/**
+ * 👁️ İstihbarat Ağı — find the player currently controlling the intel
+ * network region (if any).  Returns null when no region carries the
+ * istihbarat_agi bonus this match or when the region is neutral.
+ *
+ * Used by the renderer to decide whether the local viewer should see the
+ * `lastIntelReport` toast.  Intel reports are synced to every client, but
+ * only the current owner of this region is allowed to display them.
+ */
+export function getIntelNetworkOwnerId(
+  state: ConquestGameState,
+): string | null {
+  const regionId = findRegionIdForBonusType(state.roundBonuses, "istihbarat_agi");
+  if (!regionId) return null;
+  const rs = state.regionStates.find(r => r.regionId === regionId);
+  return rs?.ownerPlayerId ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -773,6 +793,15 @@ function triggerCaptureBonus(
         pb.mancinikCharges = 1;
         toast = buildBonusToast("mancinik", capturedRegionId, ownerId, ownerName, now);
         break;
+      case "istihbarat_agi":
+        // Pure region/owner-tied effect: while the current owner controls
+        // this region, opponents' hidden bonus claims and Gizli Operasyon
+        // placements are surfaced to them as intel reports.  No per-player
+        // state to mutate — the visibility check happens at render time
+        // via findRegionIdForBonusType + region ownership.  Capture just
+        // announces the unlock with the standard viewer-aware toast.
+        toast = buildBonusToast("istihbarat_agi", capturedRegionId, ownerId, ownerName, now);
+        break;
     }
   }
 
@@ -1251,6 +1280,7 @@ export function applyActionToGame(
   let postHiddenPlacements = state.hiddenBonusPlacements;
   let postPlayerHidden     = state.playerHiddenBonuses;
   let postHiddenToast      = state.lastHiddenBonusToast;
+  let postIntelReport      = state.lastIntelReport;
   if (action.type === "capture_neutral" || action.type === "attack_region") {
     const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
     const now = Date.now();
@@ -1302,6 +1332,16 @@ export function applyActionToGame(
       postHiddenPlacements = hb.hiddenBonusPlacements;
       postPlayerHidden     = hb.playerHiddenBonuses;
       postHiddenToast      = hb.lastHiddenBonusToast;
+      // 👁️ İstihbarat Ağı — sync the real bonus type to every client; the
+      // renderer suppresses for non-intel-owners.  Always emitted alongside
+      // the standard hidden bonus claim toast; gameplay effect of the
+      // hidden bonus itself is unaffected.
+      postIntelReport = buildHiddenClaimIntelReport(
+        action.playerId,
+        actorName,
+        hb.lastHiddenBonusToast.type,
+        now,
+      );
     }
   }
 
@@ -1337,6 +1377,7 @@ export function applyActionToGame(
         hiddenBonusPlacements: postHiddenPlacements,
         playerHiddenBonuses:   postPlayerHidden,
         lastHiddenBonusToast:  postHiddenToast,
+        lastIntelReport:       postIntelReport,
         round: {
           ...state.round,
           lastResult: domResult,
@@ -1357,6 +1398,7 @@ export function applyActionToGame(
       hiddenBonusPlacements: postHiddenPlacements,
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
+      lastIntelReport:       postIntelReport,
       round: {
         ...state.round,
         lastResult: applied.result,
@@ -1473,12 +1515,20 @@ export function placeHiddenShieldOnOwnRegion(
     message:  buildHiddenOpPlacedMessage(playerName),
   };
 
+  // 👁️ İstihbarat Ağı — Gizli Operasyon (own-region shield flavour) intel
+  // report.  Carries the target region so the intel owner learns WHERE the
+  // secret cloak landed; renderer suppresses for non-intel-owners.
+  const intelReport = buildGizliOpIntelReport(
+    playerId, playerName, regionId, Date.now(),
+  );
+
   return {
     state: {
       ...state,
-      phase:         "round_result",
-      regionStates:  nextRegionStates,
-      playerBonuses: nextPlayerBonuses,
+      phase:           "round_result",
+      regionStates:    nextRegionStates,
+      playerBonuses:   nextPlayerBonuses,
+      lastIntelReport: intelReport,
       round: {
         ...state.round,
         lastResult: result,
@@ -1700,6 +1750,17 @@ export function placeHiddenConquestOnNeutralRegion(
   const postPlayerHidden     = hb ? hb.playerHiddenBonuses   : state.playerHiddenBonuses;
   const postHiddenToast      = hb ? hb.lastHiddenBonusToast  : state.lastHiddenBonusToast;
 
+  // 👁️ İstihbarat Ağı — Gizli Operasyon (gizli fetih flavour) intel report.
+  // Carries the target region so the intel owner learns WHERE the secret
+  // move landed; renderer suppresses for non-intel-owners.  When the gizli
+  // fetih also claimed a hidden bonus, the hidden_claim report would take
+  // priority — but since both events are equally meaningful intel, we emit
+  // the gizli_op report (the placer's own hidden bonus claim still surfaces
+  // through the standard claimer-only toast).
+  const intelReportNeutral = buildGizliOpIntelReport(
+    playerId, playerName, regionId, nowForHb,
+  );
+
   // Early finish: a gizli fetih on the last neutral region while the player
   // owns every other tile would complete domination.  Mirrors the post-capture
   // check in applyActionToGame so the secret path can't accidentally bypass
@@ -1721,6 +1782,7 @@ export function placeHiddenConquestOnNeutralRegion(
         hiddenBonusPlacements: postHiddenPlacements,
         playerHiddenBonuses:   postPlayerHidden,
         lastHiddenBonusToast:  postHiddenToast,
+        lastIntelReport:       intelReportNeutral,
         round: {
           ...state.round,
           lastResult: domResult,
@@ -1740,6 +1802,7 @@ export function placeHiddenConquestOnNeutralRegion(
       hiddenBonusPlacements: postHiddenPlacements,
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
+      lastIntelReport:       intelReportNeutral,
       round: {
         ...state.round,
         lastResult: baseResult,
@@ -2058,6 +2121,12 @@ function resolveDuelWithWinner(
   const postHiddenPlacements = hb ? hb.hiddenBonusPlacements : state.hiddenBonusPlacements;
   const postPlayerHidden     = hb ? hb.playerHiddenBonuses   : state.playerHiddenBonuses;
   const postHiddenToast      = hb ? hb.lastHiddenBonusToast  : state.lastHiddenBonusToast;
+  // 👁️ İstihbarat Ağı — when the duel flip claimed a hidden bonus, emit an
+  // intel report carrying the real bonus type so the intel owner learns
+  // WHAT the opponent picked up.  Renderer suppresses for non-intel-owners.
+  const postIntelReport = hb
+    ? buildHiddenClaimIntelReport(duel.attackerId, attackerName, hb.lastHiddenBonusToast.type, now)
+    : state.lastIntelReport;
 
   const flipResult: ConquestActionResult = {
     ok:                  true,
@@ -2094,6 +2163,7 @@ function resolveDuelWithWinner(
       hiddenBonusPlacements: postHiddenPlacements,
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
+      lastIntelReport:       postIntelReport,
       round: {
         ...base.round,
         lastResult: domResult,
@@ -2117,6 +2187,7 @@ function resolveDuelWithWinner(
     hiddenBonusPlacements: postHiddenPlacements,
     playerHiddenBonuses:   postPlayerHidden,
     lastHiddenBonusToast:  postHiddenToast,
+    lastIntelReport:       postIntelReport,
   };
 }
 
@@ -2269,6 +2340,10 @@ export function advanceToNextRound(
     /* Hidden bonus claim toasts are one-shot: clear on round advance so a
      * stale claim doesn't echo to late joiners or replay on next-round mount. */
     lastHiddenBonusToast: undefined,
+    /* 👁️ İstihbarat Ağı intel reports are one-shot: clear on round advance
+     * so a stale report doesn't echo to late joiners or to a new intel-
+     * region owner who joined after the original event. */
+    lastIntelReport: undefined,
     nextChallenge,
     round: {
       roundNumber:    nextRoundNumber,

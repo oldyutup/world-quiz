@@ -295,6 +295,7 @@ export type ConquestRegionBonusType =
   | "eleme_yetkisi"
   | "kahin"
   | "atlas"
+  | "istihbarat_agi"
   // Ekonomi
   | "liman"
   | "ganimet";
@@ -987,6 +988,44 @@ export interface ConquestGameState {
    * saves; readers default missing/empty sub-maps to "no active effects".
    */
   activeHiddenEffects?: ConquestActiveHiddenEffects;
+  /**
+   * 👁️ İstihbarat Ağı — last intel report written to synced state.  The
+   * payload is identical on every client; only the renderer decides whether
+   * to display it (true only when the local viewer currently owns the
+   * istihbarat_agi bonus region).  Cleared on round advance so a stale
+   * report doesn't echo to late joiners.
+   */
+  lastIntelReport?: ConquestIntelReport;
+}
+
+/**
+ * 👁️ İstihbarat Ağı — single intel report.  Two flavours share the channel:
+ *
+ *   - "hidden_claim" — a player just claimed a hidden bonus by capturing
+ *     the carrying region.  `hiddenBonusType` carries the real bonus type
+ *     so the intel owner learns WHAT the opponent picked up (regular
+ *     opponents continue to see only the generic claim toast).
+ *
+ *   - "gizli_op" — a player just consumed a Gizli Operasyon hakkı
+ *     (own-region shield placement OR neutral-region gizli fetih).
+ *     `targetRegionId` carries the chosen region so the intel owner learns
+ *     WHERE the secret move landed.
+ *
+ * Recipient is NEVER baked into the payload — the renderer looks up the
+ * current owner of the istihbarat_agi region at render time, so ownership
+ * changes mid-round are honoured (new owner sees future reports, prior
+ * owner sees nothing more).
+ */
+export interface ConquestIntelReport {
+  id:                 string;
+  kind:               "hidden_claim" | "gizli_op";
+  actorPlayerId:      string;
+  actorPlayerName:    string;
+  at:                 number;
+  /** hidden_claim only: the real type of the claimed hidden bonus. */
+  hiddenBonusType?:   ConquestHiddenBonusType;
+  /** gizli_op only: the region the secret op was placed on. */
+  targetRegionId?:    ConquestRegionId;
 }
 
 /** Final result row — one per player — used by the result screen. */

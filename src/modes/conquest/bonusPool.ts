@@ -153,6 +153,14 @@ export const BONUS_POOL: readonly BonusPoolEntry[] = [
     description: "Harita bilgisi avantajı sağlayan bir bonus.",
     implemented: false,
   },
+  {
+    type:        "istihbarat_agi",
+    category:    "bilgi",
+    icon:        "👁️",
+    label:       "İstihbarat Ağı",
+    description: "Bu bölgeyi elinde tutan oyuncu rakip gizli bonus keşiflerini ve Gizli Operasyon hedeflerini rapor olarak görür. Bölge el değiştirirse avantaj da el değiştirir.",
+    implemented: true,
+  },
   // ── Ekonomi ────────────────────────────────────────────────────────────────
   {
     type:        "cukurova_score",

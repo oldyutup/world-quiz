@@ -71,7 +71,10 @@ import {
   getActiveBonusEntries,
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
-import { getHiddenBonusToastCopyForViewer } from "./conquestHiddenBonuses";
+import {
+  getHiddenBonusToastCopyForViewer,
+  getIntelReportCopy,
+} from "./conquestHiddenBonuses";
 import { getQuestionPreviewLabel } from "./conquestChallenges";
 import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
@@ -87,6 +90,7 @@ import {
   expireDuel,
   finalizeReveal,
   getCurrentLegalTargets,
+  getIntelNetworkOwnerId,
   getPlayerOwningAllRegions,
   LIMAN_INCOME_GOLD,
   placeHiddenConquestOnNeutralRegion,
@@ -2285,6 +2289,45 @@ export default function ConquestGame({
     && lastHiddenBonusToast.event === "use"
     && lastHiddenBonusToast.type  === "pusu"
     && lastHiddenBonusToast.claimerId !== myPlayerId;
+
+  // 👁️ İstihbarat Ağı — intel report toast (owner-only).  The synced payload
+  // is identical on every client; the renderer suppresses it for anyone
+  // other than the current istihbarat_agi region owner.  Two flavours:
+  //   - hidden_claim → "X gizli bonus keşfetti: <real bonus name>."
+  //   - gizli_op     → "X Gizli Operasyon kullandı. Hedef bölge: <region>."
+  const INTEL_REPORT_TOAST_MS = 6000;
+  const lastIntelReport = gameState.lastIntelReport ?? null;
+  const intelNetworkOwnerId = getIntelNetworkOwnerId(gameState);
+  const [dismissedIntelReportId, setDismissedIntelReportId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lastIntelReport) return;
+    if (dismissedIntelReportId === lastIntelReport.id) return;
+    const remaining = lastIntelReport.at + INTEL_REPORT_TOAST_MS - Date.now();
+    if (remaining <= 0) {
+      setDismissedIntelReportId(lastIntelReport.id);
+      return;
+    }
+    const t = window.setTimeout(
+      () => setDismissedIntelReportId(lastIntelReport.id),
+      remaining,
+    );
+    return () => window.clearTimeout(t);
+  }, [lastIntelReport?.id, lastIntelReport?.at, dismissedIntelReportId]);
+  const intelTargetRegionLabel = lastIntelReport?.targetRegionId && mapConfig
+    ? (mapConfig.regions.find(r => r.id === lastIntelReport.targetRegionId)?.displayLabel
+       ?? mapConfig.regions.find(r => r.id === lastIntelReport.targetRegionId)?.name
+       ?? null)
+    : null;
+  const intelReportCopy = lastIntelReport
+    ? getIntelReportCopy(lastIntelReport, intelTargetRegionLabel)
+    : null;
+  const showIntelReportToast =
+    !!lastIntelReport
+    && dismissedIntelReportId !== lastIntelReport.id
+    && intelNetworkOwnerId !== null
+    && intelNetworkOwnerId === myPlayerId;
+  const intelReportToastColor =
+    myPlayerId ? (playerColors[myPlayerId] ?? null) : null;
   const toastPlayerColor = lastBonusToast
     ? (playerColors[lastBonusToast.playerId] ?? null)
     : null;
@@ -2683,6 +2726,33 @@ export default function ConquestGame({
             </div>
             <div className="cq-bonus-toast-detail">
               {hiddenBonusToastCopy.detail}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👁️ İstihbarat Ağı — intel report toast.  Synced to every client but
+       *  rendered ONLY for the current owner of the istihbarat_agi bonus
+       *  region.  showIntelReportToast already gates on
+       *  `intelNetworkOwnerId === myPlayerId`, so opponents never see this
+       *  surface even though the payload reaches them. */}
+      {showIntelReportToast && lastIntelReport && intelReportCopy && (
+        <div
+          key={lastIntelReport.id}
+          className="cq-bonus-toast"
+          data-color={intelReportToastColor ?? undefined}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">
+            {intelReportCopy.icon}
+          </span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">
+              {intelReportCopy.title}
+            </div>
+            <div className="cq-bonus-toast-detail">
+              {intelReportCopy.detail}
             </div>
           </div>
         </div>
