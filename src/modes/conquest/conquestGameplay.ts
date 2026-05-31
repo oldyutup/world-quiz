@@ -48,7 +48,11 @@ import {
 } from "./conquestRoundBonuses";
 import {
   buildHiddenBonusPlacements,
+  consumePendingCurseOnTrigger,
+  hasPendingCurse,
   tryClaimHiddenBonus,
+  useLanetMuhruHiddenBonus,
+  useSuikastHiddenBonus,
 } from "./conquestHiddenBonuses";
 import type {
   ConquestActionResult,
@@ -558,6 +562,41 @@ export function finalizeReveal(state: ConquestGameState): ConquestGameState {
   if (winnerId
     && state.round.challenge.challenge.eligiblePlayerIds.includes(winnerId)
   ) {
+    // Lanet Mührü 🧿 — if the winner is cursed, the move is mühürlendi.
+    // The curse is consumed exactly here (the moment hamle hakkı would
+    // otherwise be granted); wrong/no-winner branches never reach this
+    // line, so a wrong answer leaves the curse intact.
+    if (hasPendingCurse(state.activeHiddenEffects, winnerId)) {
+      const winner = state.players.find(p => p.id === winnerId);
+      const winnerName = winner?.name ?? "Oyuncu";
+      const curseDiff = consumePendingCurseOnTrigger(
+        state.activeHiddenEffects,
+        winnerId,
+        winnerName,
+        now,
+      );
+      const cursedResult: ConquestActionResult = {
+        ok:       true,
+        action:   "skip",
+        playerId: winnerId,
+        regionId: null,
+        message:  `${winnerName} doğru bildi ancak Lanet Mührü hamle hakkını mühürledi.`,
+      };
+      return {
+        ...state,
+        phase: "round_result",
+        activeHiddenEffects:  curseDiff?.activeHiddenEffects  ?? state.activeHiddenEffects,
+        lastHiddenBonusToast: curseDiff?.lastHiddenBonusToast ?? state.lastHiddenBonusToast,
+        round: {
+          ...state.round,
+          actionHolderId:  null,
+          lastResult:      cursedResult,
+          revealStartedAt: undefined,
+          revealEndsAt:    undefined,
+        },
+      };
+    }
+
     const { durationMs, playerBonuses } = consumeMoveTimeBonus(state, winnerId);
     return {
       ...state,
@@ -2321,6 +2360,138 @@ export function applyLimanRoundIncome(
     regionStates:   nextRegionStates,
     playerBonuses:  nextPlayerBonuses,
     lastBonusToast: toast,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hidden bonuses — consume (Suikast 🗡️)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Consume one of `casterId`'s unused Suikast charges to dock `targetId`'s
+ * score by SUIKAST_DAMAGE (currently 2).  Returns the next ConquestGameState
+ * with:
+ *
+ *   - inventory entry flipped to `used: true`
+ *   - target's `playerBonuses[targetId].bonusPoints` decremented by the
+ *     EFFECTIVE loss (clamped so the displayed total never drops below 0)
+ *   - `lastHiddenBonusToast` set to a "use" event so every client renders
+ *     the viewer-aware Suikast notification at the same moment
+ *
+ * No-ops (returns the state untouched) when:
+ *   - the entry id is missing from the caster's inventory
+ *   - the entry is already used
+ *   - the entry is not a Suikast charge
+ *   - the caster is targeting themselves
+ *   - the target id is not a real match player
+ *
+ * The phase / round / region states are NOT touched here — Suikast is a
+ * passive, off-turn consume so the loop continues exactly where it was.
+ */
+export function applySuikastHiddenBonus(
+  state:        ConquestGameState,
+  casterId:     string,
+  bonusEntryId: string,
+  targetId:     string,
+): ConquestGameState {
+  const caster = state.players.find(p => p.id === casterId);
+  const target = state.players.find(p => p.id === targetId);
+  if (!caster || !target) return state;
+
+  // Target's CURRENT visible total — region points + bonusPoints.  The pure
+  // helper uses this only to clamp the deduction so the displayed score
+  // never goes negative.
+  const totals = getPlayerTotalPoints(
+    state.players, state.regionStates, state.playerBonuses,
+  );
+  const targetCurrentScore = totals[targetId] ?? 0;
+
+  const diff = useSuikastHiddenBonus({
+    playerHiddenBonusesIn: state.playerHiddenBonuses,
+    bonusEntryId,
+    casterId,
+    casterName:         caster.name,
+    targetId,
+    targetName:         target.name,
+    targetCurrentScore,
+    now:                Date.now(),
+  });
+  if (!diff) return state;
+
+  // Apply the score deduction onto the target's bonusPoints.  Subtracting
+  // from bonusPoints (rather than mutating regionStates) mirrors how every
+  // other bonus-driven score change is modelled — total = regionPoints +
+  // bonusPoints, see regionPoints.ts.  The deduction is already clamped at
+  // the helper level so visible totals stay ≥ 0; the underlying bonusPoints
+  // field can legitimately go negative, but the rendered total cannot.
+  const currentBonuses = state.playerBonuses ?? {};
+  const targetBonus    = currentBonuses[targetId] ?? createEmptyPlayerBonusState();
+  const nextPlayerBonuses: Record<string, ConquestPlayerBonusState> = {
+    ...currentBonuses,
+    [targetId]: {
+      ...targetBonus,
+      bonusPoints: targetBonus.bonusPoints - diff.pointsLost,
+    },
+  };
+
+  return {
+    ...state,
+    playerHiddenBonuses:  diff.playerHiddenBonuses,
+    playerBonuses:        nextPlayerBonuses,
+    lastHiddenBonusToast: diff.lastHiddenBonusToast,
+  };
+}
+
+/**
+ * Consume one of `casterId`'s unused Lanet Mührü charges against `targetId`.
+ * Returns the next ConquestGameState with:
+ *
+ *   - inventory entry flipped to `used: true`
+ *   - `activeHiddenEffects.curses[targetId]` set to the new pending curse
+ *   - `lastHiddenBonusToast` set to a "use" event so every client renders
+ *     the viewer-aware Lanet notification at the same moment
+ *
+ * No-ops (returns the state untouched) when:
+ *   - the entry id is missing from the caster's inventory
+ *   - the entry is already used
+ *   - the entry is not a Lanet Mührü charge
+ *   - the caster is targeting themselves
+ *   - the target already has an active curse (no stacking)
+ *   - the target id is not a real match player
+ *
+ * The phase / round / region states are NOT touched — the curse is purely
+ * pending until the target would otherwise be promoted to action holder.
+ * Defense duels are explicitly outside the curse window; only the round-level
+ * `finalizeReveal` transition consumes it (see hasPendingCurse callsite there).
+ */
+export function applyLanetMuhruHiddenBonus(
+  state:        ConquestGameState,
+  casterId:     string,
+  bonusEntryId: string,
+  targetId:     string,
+): ConquestGameState {
+  const caster = state.players.find(p => p.id === casterId);
+  const target = state.players.find(p => p.id === targetId);
+  if (!caster || !target) return state;
+
+  const diff = useLanetMuhruHiddenBonus({
+    playerHiddenBonusesIn: state.playerHiddenBonuses,
+    activeHiddenEffectsIn: state.activeHiddenEffects,
+    bonusEntryId,
+    casterId,
+    casterName:    caster.name,
+    targetId,
+    targetName:    target.name,
+    currentRound:  state.round.roundNumber,
+    now:           Date.now(),
+  });
+  if (!diff) return state;
+
+  return {
+    ...state,
+    playerHiddenBonuses:  diff.playerHiddenBonuses,
+    activeHiddenEffects:  diff.activeHiddenEffects,
+    lastHiddenBonusToast: diff.lastHiddenBonusToast,
   };
 }
 

@@ -9889,6 +9889,152 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Gizli bonuslar — local-viewer inventory.  Rendered inside
+ * .cq-players-panel only when the local player has unused hidden bonus
+ * charges available to consume.  Pointer-events override unlocks the
+ * button despite the panel's default pointer-events: none. */
+.cq-hidden-inventory {
+  margin: 6px 4px 2px;
+  padding: 6px 8px 7px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  box-shadow: 0 0 10px -4px rgba(239, 68, 68, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: auto;
+}
+.cq-hidden-inventory-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.78 0.10 30);
+  padding-bottom: 2px;
+}
+.cq-hidden-inventory-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: oklch(0.94 0.04 30);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.cq-hidden-inventory-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  transform: translateY(-1px);
+}
+.cq-hidden-inventory-btn:active {
+  transform: translateY(0);
+}
+.cq-hidden-inventory-btn-text {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+/* Suikast target picker — modal overlay (single-step). */
+.cq-suikast-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 10, 18, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2100;
+  padding: 16px;
+}
+.cq-suikast-picker {
+  width: min(380px, 100%);
+  background: rgba(15, 19, 28, 0.96);
+  border: 1.5px solid rgba(239, 68, 68, 0.5);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), 0 0 24px -10px rgba(239, 68, 68, 0.6);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: #f1f5f9;
+}
+.cq-suikast-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: oklch(0.94 0.05 30);
+}
+.cq-suikast-picker-hint {
+  font-size: 12px;
+  margin: 0;
+  color: rgba(241, 245, 249, 0.78);
+  line-height: 1.4;
+}
+.cq-suikast-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cq-suikast-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #f1f5f9;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease;
+  text-align: left;
+}
+.cq-suikast-picker-row:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.55);
+  transform: translateY(-1px);
+}
+.cq-suikast-picker-row[data-color="red"]    { --cq-pick-color: #ef4444; }
+.cq-suikast-picker-row[data-color="blue"]   { --cq-pick-color: #3b82f6; }
+.cq-suikast-picker-row[data-color="green"]  { --cq-pick-color: #22c55e; }
+.cq-suikast-picker-row[data-color="yellow"] { --cq-pick-color: #eab308; }
+.cq-suikast-picker-row[data-color="purple"] { --cq-pick-color: #a855f7; }
+.cq-suikast-picker-row[data-color="orange"] { --cq-pick-color: #f97316; }
+.cq-suikast-picker-row[data-color="pink"]   { --cq-pick-color: #ec4899; }
+.cq-suikast-picker-row[data-color="cyan"]   { --cq-pick-color: #06b6d4; }
+.cq-suikast-picker-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cq-pick-color, #f1f5f9);
+  flex-shrink: 0;
+}
+.cq-suikast-picker-name {
+  flex: 1 1 auto;
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cq-suikast-picker-points {
+  font-size: 12px;
+  color: rgba(241, 245, 249, 0.68);
+  flex-shrink: 0;
+}
+.cq-suikast-picker-cancel {
+  margin-top: 4px;
+  align-self: stretch;
+}
+
 /* Bonus toast — center-screen transient banner. Auto-dismissed in TSX
  * after BONUS_TOAST_MS; animation duration matches that window so the
  * fade-out lines up with React un-mounting the node. */
@@ -11052,6 +11198,49 @@ body {
     justify-content: center;
     text-align: center;
   }
+}
+
+/* ── DEV-ONLY hidden bonus test panel ─────────────────────────────────────── */
+
+.cq-debug-panel {
+  position: fixed;
+  bottom: 70px;
+  right: 12px;
+  z-index: 9999;
+  background: rgba(20, 8, 40, 0.94);
+  border: 1px solid #7c3aed;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.35);
+}
+
+.cq-debug-panel-title {
+  color: #c4b5fd;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-bottom: 2px;
+}
+
+.cq-debug-panel-btn {
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid #7c3aed;
+  border-radius: 6px;
+  color: #ddd6fe;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.cq-debug-panel-btn:hover {
+  background: rgba(124, 58, 237, 0.38);
 }
 
 @media (max-width: 360px) {

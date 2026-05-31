@@ -20,10 +20,12 @@
 
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
 import type {
+  ConquestActiveHiddenEffects,
   ConquestHiddenBonusPlacement,
   ConquestHiddenBonusToast,
   ConquestHiddenBonusType,
   ConquestMapConfig,
+  ConquestPendingCurse,
   ConquestPlayerHiddenBonus,
   ConquestRegionId,
   ConquestRegionState,
@@ -268,6 +270,291 @@ export function tryClaimHiddenBonus(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Consume — Suikast 🗡️
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Raw point damage of a Suikast hit before the floor-at-0 clamp. */
+export const SUIKAST_DAMAGE = 2;
+
+export interface SuikastUseDiff {
+  /** Next per-player inventory with the consumed entry's `used` flipped to true. */
+  playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]>;
+  /** Effective points deducted from the target (0..SUIKAST_DAMAGE).  Capped
+   *  by the target's current visible total so the score never displays a
+   *  negative value. */
+  pointsLost:          number;
+  /** Toast describing the consume — viewer-aware copy is decided at render
+   *  time, NOT here, so the synced payload is identical on every client. */
+  lastHiddenBonusToast: ConquestHiddenBonusToast;
+}
+
+export interface UseSuikastInput {
+  playerHiddenBonusesIn: Record<string, ConquestPlayerHiddenBonus[]> | undefined;
+  /** Bonus entry id (matches ConquestPlayerHiddenBonus.id) — identifies WHICH
+   *  Suikast charge in the caster's inventory is being consumed.  Required so
+   *  two charges held by the same player are independently spendable and so
+   *  realtime echoes are idempotent against the exact item id. */
+  bonusEntryId:          string;
+  casterId:              string;
+  casterName:            string;
+  targetId:              string;
+  targetName:            string;
+  /** Target's current TOTAL visible score (region points + bonus points).
+   *  Used solely to clamp the deduction so the displayed score never drops
+   *  below 0; pure functions in this module never look up scoring tables. */
+  targetCurrentScore:    number;
+  now:                   number;
+}
+
+/**
+ * Validate and compute the diff for using a Suikast charge.  Returns null on:
+ *   - missing inventory entry for `bonusEntryId` in the caster's slot
+ *   - the entry is already `used: true`
+ *   - the entry is not a Suikast charge
+ *   - the caster is targeting themselves
+ *
+ * Pure: never mutates the inputs.  Caller (`applySuikastHiddenBonus` in
+ * gameplay) is responsible for splicing the diff into ConquestGameState and
+ * applying the score deduction onto the target's `bonusPoints`.
+ */
+export function useSuikastHiddenBonus(
+  input: UseSuikastInput,
+): SuikastUseDiff | null {
+  const {
+    playerHiddenBonusesIn,
+    bonusEntryId,
+    casterId,
+    casterName,
+    targetId,
+    targetName,
+    targetCurrentScore,
+    now,
+  } = input;
+
+  if (casterId === targetId) return null;
+
+  const inventory  = playerHiddenBonusesIn ?? {};
+  const casterBag  = inventory[casterId] ?? [];
+  const entryIndex = casterBag.findIndex(e => e.id === bonusEntryId);
+  if (entryIndex < 0) return null;
+
+  const entry = casterBag[entryIndex];
+  if (entry.used)              return null;
+  if (entry.type !== "suikast") return null;
+
+  // Clamp the deduction so the target's visible total never displays below 0.
+  // A target with 0 points takes a 0-point Suikast — the inventory entry is
+  // still consumed (spec: "Suikast tek kullanımlıktır"), and the toast still
+  // fires so opponents know it happened.
+  const safeCurrentScore = Math.max(0, targetCurrentScore);
+  const pointsLost       = Math.min(SUIKAST_DAMAGE, safeCurrentScore);
+
+  const nextCasterBag = casterBag.slice();
+  nextCasterBag[entryIndex] = { ...entry, used: true };
+  const playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]> = {
+    ...inventory,
+    [casterId]: nextCasterBag,
+  };
+
+  const lastHiddenBonusToast: ConquestHiddenBonusToast = {
+    id:               `hb_use-suikast-${bonusEntryId}-${now}`,
+    type:             "suikast",
+    claimerId:        casterId,
+    claimerName:      casterName,
+    at:               now,
+    event:            "use",
+    targetPlayerId:   targetId,
+    targetPlayerName: targetName,
+    pointsLost,
+  };
+
+  return { playerHiddenBonuses, pointsLost, lastHiddenBonusToast };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consume — Lanet Mührü 🧿
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Two-step lifecycle (NOT symmetric with Suikast):
+//
+//   1. `useLanetMuhruHiddenBonus` — caster spends a Lanet Mührü charge on a
+//      chosen opponent.  Inventory entry flips to `used: true` immediately;
+//      a pending curse entry is inserted on `activeHiddenEffects.curses`
+//      keyed by the target's id.  No score changes, no phase changes — the
+//      curse is purely waiting.
+//
+//   2. `consumePendingCurseOnTrigger` — called at the moment a cursed player
+//      would otherwise be promoted to action holder (challenge → action via
+//      `finalizeReveal`).  Removes the curse entry and builds the trigger
+//      toast.  A wrong answer never reaches this path because no promotion
+//      happens; the curse stays pending.
+//
+// Both halves are pure: callers (`applyLanetMuhruHiddenBonus` /
+// `finalizeReveal` in gameplay) splice the returned slices into the synced
+// ConquestGameState.
+
+export interface LanetMuhruUseDiff {
+  /** Next per-player inventory with the consumed entry's `used` flipped. */
+  playerHiddenBonuses:  Record<string, ConquestPlayerHiddenBonus[]>;
+  /** Next activeHiddenEffects with the new pending curse stamped on
+   *  `curses[targetId]`. */
+  activeHiddenEffects:  ConquestActiveHiddenEffects;
+  /** Use-event toast — viewer-aware copy is decided at render time. */
+  lastHiddenBonusToast: ConquestHiddenBonusToast;
+}
+
+export interface UseLanetMuhruInput {
+  playerHiddenBonusesIn:  Record<string, ConquestPlayerHiddenBonus[]> | undefined;
+  activeHiddenEffectsIn:  ConquestActiveHiddenEffects | undefined;
+  /** Bonus entry id (matches ConquestPlayerHiddenBonus.id) — identifies WHICH
+   *  Lanet Mührü charge in the caster's inventory is being consumed. */
+  bonusEntryId:           string;
+  casterId:               string;
+  casterName:             string;
+  targetId:               string;
+  targetName:             string;
+  /** 1-based round number the curse is being cast in.  Stored on the curse
+   *  entry purely as a debugging / replay hint. */
+  currentRound:           number;
+  now:                    number;
+}
+
+/**
+ * Validate and compute the diff for applying a Lanet Mührü to `targetId`.
+ * Returns null on:
+ *   - missing inventory entry for `bonusEntryId` in the caster's slot
+ *   - the entry is already `used: true`
+ *   - the entry is not a Lanet Mührü charge
+ *   - the caster is targeting themselves
+ *   - the target already has an active curse (no stacking)
+ *
+ * Pure: never mutates the inputs.
+ */
+export function useLanetMuhruHiddenBonus(
+  input: UseLanetMuhruInput,
+): LanetMuhruUseDiff | null {
+  const {
+    playerHiddenBonusesIn,
+    activeHiddenEffectsIn,
+    bonusEntryId,
+    casterId,
+    casterName,
+    targetId,
+    targetName,
+    currentRound,
+    now,
+  } = input;
+
+  if (casterId === targetId) return null;
+
+  const inventory  = playerHiddenBonusesIn ?? {};
+  const casterBag  = inventory[casterId] ?? [];
+  const entryIndex = casterBag.findIndex(e => e.id === bonusEntryId);
+  if (entryIndex < 0) return null;
+
+  const entry = casterBag[entryIndex];
+  if (entry.used)                    return null;
+  if (entry.type !== "lanet_muhru")  return null;
+
+  const existingCurses = activeHiddenEffectsIn?.curses ?? {};
+  // No stacking: a second curse on an already-cursed target is rejected.
+  // The caster's charge stays unspent so they can retarget.
+  if (existingCurses[targetId]) return null;
+
+  const nextCasterBag = casterBag.slice();
+  nextCasterBag[entryIndex] = { ...entry, used: true };
+  const playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]> = {
+    ...inventory,
+    [casterId]: nextCasterBag,
+  };
+
+  const newCurse: ConquestPendingCurse = {
+    casterPlayerId: casterId,
+    bonusEntryId,
+    createdRound:   currentRound,
+  };
+  const activeHiddenEffects: ConquestActiveHiddenEffects = {
+    ...(activeHiddenEffectsIn ?? {}),
+    curses: {
+      ...existingCurses,
+      [targetId]: newCurse,
+    },
+  };
+
+  const lastHiddenBonusToast: ConquestHiddenBonusToast = {
+    id:               `hb_use-lanet_muhru-${bonusEntryId}-${now}`,
+    type:             "lanet_muhru",
+    claimerId:        casterId,
+    claimerName:      casterName,
+    at:               now,
+    event:            "use",
+    targetPlayerId:   targetId,
+    targetPlayerName: targetName,
+  };
+
+  return { playerHiddenBonuses, activeHiddenEffects, lastHiddenBonusToast };
+}
+
+export interface CurseTriggerDiff {
+  /** Next activeHiddenEffects with the consumed curse stripped. */
+  activeHiddenEffects:  ConquestActiveHiddenEffects;
+  /** Trigger-event toast — viewer-aware copy is decided at render time. */
+  lastHiddenBonusToast: ConquestHiddenBonusToast;
+}
+
+/**
+ * Read-only: is `playerId` currently cursed?  Cheap branch the
+ * `finalizeReveal` transition uses to decide whether to cancel the hamle.
+ */
+export function hasPendingCurse(
+  effects: ConquestActiveHiddenEffects | undefined,
+  playerId: string,
+): boolean {
+  return !!effects?.curses?.[playerId];
+}
+
+/**
+ * Strip the pending curse on `targetId` and build the trigger toast.  Returns
+ * null when no curse is pending on the target (called speculatively from the
+ * reveal → action transition).
+ *
+ * Pure: never mutates the inputs.  Caller (gameplay) is responsible for
+ * routing the round into `round_result` with a curse-flavoured message
+ * instead of promoting the player to action holder.
+ */
+export function consumePendingCurseOnTrigger(
+  activeHiddenEffectsIn: ConquestActiveHiddenEffects | undefined,
+  targetId:              string,
+  targetName:            string,
+  now:                   number,
+): CurseTriggerDiff | null {
+  const existing = activeHiddenEffectsIn?.curses ?? {};
+  const curse    = existing[targetId];
+  if (!curse) return null;
+
+  const nextCurses: Record<string, ConquestPendingCurse> = { ...existing };
+  delete nextCurses[targetId];
+
+  const activeHiddenEffects: ConquestActiveHiddenEffects = {
+    ...(activeHiddenEffectsIn ?? {}),
+    curses: nextCurses,
+  };
+
+  const lastHiddenBonusToast: ConquestHiddenBonusToast = {
+    id:               `hb_trigger-lanet_muhru-${curse.bonusEntryId}-${now}`,
+    type:             "lanet_muhru",
+    claimerId:        curse.casterPlayerId,
+    claimerName:      "",
+    at:               now,
+    event:            "trigger",
+    targetPlayerId:   targetId,
+    targetPlayerName: targetName,
+  };
+
+  return { activeHiddenEffects, lastHiddenBonusToast };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Toast copy — viewer-aware
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -290,14 +577,92 @@ export interface HiddenBonusToastCopy {
 }
 
 /**
- * Build the toast text for `viewerId`.  Claimer-side copy names the real
- * bonus; opponent-side copy intentionally hides the bonus type, the region,
- * and the effect.
+ * Build the toast text for `viewerId`.
+ *
+ * - "claim" events: claimer-side copy names the real bonus; opponent-side
+ *   copy intentionally hides the bonus type, the region, and the effect.
+ * - "use"   events: three audiences — caster (success), target (got hit),
+ *   observers (announcement).  All three name the bonus that was used,
+ *   since spec calls for transparent reveal at consume time.
  */
 export function getHiddenBonusToastCopyForViewer(
   toast:    ConquestHiddenBonusToast,
   viewerId: string | null,
 ): HiddenBonusToastCopy {
+  const event = toast.event ?? "claim";
+
+  if (event === "use" && toast.type === "suikast") {
+    const isCaster = viewerId !== null && viewerId === toast.claimerId;
+    const isTarget = viewerId !== null && viewerId === toast.targetPlayerId;
+    const points   = toast.pointsLost ?? 0;
+    const targetName = toast.targetPlayerName ?? "Rakip";
+
+    if (isCaster) {
+      return {
+        icon:   "🗡️",
+        title:  "🗡️ Suikast Başarılı!",
+        detail: `${targetName} hedef alındı ve ${points} puan kaybetti.`,
+      };
+    }
+    if (isTarget) {
+      return {
+        icon:   "🗡️",
+        title:  "🗡️ Suikast!",
+        detail: `Gizli bir saldırıya uğradın ve ${points} puan kaybettin.`,
+      };
+    }
+    return {
+      icon:   "🗡️",
+      title:  "🗡️ Suikast Gerçekleşti!",
+      detail: `${targetName} gizli bir saldırıya uğradı ve ${points} puan kaybetti.`,
+    };
+  }
+
+  if (event === "use" && toast.type === "lanet_muhru") {
+    const isCaster = viewerId !== null && viewerId === toast.claimerId;
+    const isTarget = viewerId !== null && viewerId === toast.targetPlayerId;
+    const targetName = toast.targetPlayerName ?? "Rakip";
+
+    if (isCaster) {
+      return {
+        icon:   "🧿",
+        title:  "🧿 Lanet Mührü Uygulandı!",
+        detail: `${targetName} lanetlendi. Bir sonraki doğru cevabında hamle hakkı mühürlenecek.`,
+      };
+    }
+    if (isTarget) {
+      return {
+        icon:   "🧿",
+        title:  "🧿 Lanetlendin!",
+        detail: "Üzerine Lanet Mührü uygulandı. Bir sonraki doğru cevabında hamle hakkın mühürlenecek.",
+      };
+    }
+    return {
+      icon:   "🧿",
+      title:  "🧿 Lanet Mührü Kullanıldı!",
+      detail: `${targetName} lanetlendi. Bir sonraki doğru cevabında hamle hakkı mühürlenecek.`,
+    };
+  }
+
+  if (event === "trigger" && toast.type === "lanet_muhru") {
+    const isTarget = viewerId !== null && viewerId === toast.targetPlayerId;
+    const targetName = toast.targetPlayerName ?? "Rakip";
+
+    if (isTarget) {
+      return {
+        icon:   "🧿",
+        title:  "🧿 Hamlen Mühürlendi!",
+        detail: "Doğru bildin ancak Lanet Mührü hamle hakkını engelledi.",
+      };
+    }
+    return {
+      icon:   "🧿",
+      title:  "🧿 Lanet Mührü Devreye Girdi!",
+      detail: `${targetName} doğru bildi ancak Lanet Mührü nedeniyle hamle yapamadı.`,
+    };
+  }
+
+  // Default: claim event (legacy + lanet_muhru/pusu claim flow).
   const isClaimer = viewerId !== null && viewerId === toast.claimerId;
   if (isClaimer) {
     const label = getHiddenBonusLabel(toast.type);

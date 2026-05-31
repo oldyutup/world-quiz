@@ -443,20 +443,78 @@ export interface ConquestPlayerHiddenBonus {
 }
 
 /**
- * Viewer-aware toast announced on a hidden bonus claim.  Synced through
+ * Viewer-aware toast announced on a hidden bonus event.  Synced through
  * `ConquestGameState.lastHiddenBonusToast` so every client renders the same
  * notification at the same moment.  The renderer chooses which copy to show
- * based on the local viewer id — the claimer sees the real bonus type; every
- * other player sees a generic "rakip gizli bonus keşfetti" message that
- * deliberately hides the type, the region, and the effect.
+ * based on the local viewer id.
+ *
+ * Two event flavours share the channel:
+ *   - "claim" (default / legacy)  — a player just picked up a hidden bonus by
+ *     capturing the carrying region.  Claimer sees the real type; everyone
+ *     else gets the generic "rakip gizli bonus keşfetti" copy.
+ *   - "use"                       — a player consumed a hidden bonus (Suikast
+ *     so far).  Three audiences: caster (success), target (got hit), others
+ *     (observer).  `targetPlayerId/Name` and `pointsLost` carry the payload
+ *     needed for those copy variants.
  */
 export interface ConquestHiddenBonusToast {
   id:           string;
   type:         ConquestHiddenBonusType;
   claimerId:    string;
   claimerName:  string;
-  regionId:     ConquestRegionId;
+  /** Region the bonus was claimed on.  Optional on "use" events where the
+   *  toast is not tied to any region.  Required on legacy "claim" events. */
+  regionId?:    ConquestRegionId;
   at:           number;
+  /** Distinguishes a claim notification from a consume notification.  Absent
+   *  in pre-use saves — readers must default to "claim" for back-compat.
+   *  "trigger" fires when a delayed-effect bonus (Lanet Mührü) actually
+   *  consumes its pending effect — distinct from "use" which fires at the
+   *  moment the caster spends the charge. */
+  event?:       "claim" | "use" | "trigger";
+  /** Use-only: the player that got hit by the consumed bonus. */
+  targetPlayerId?:   string;
+  targetPlayerName?: string;
+  /** Use-only: how many points were actually deducted from the target
+   *  (clamped so their visible total never drops below 0). */
+  pointsLost?:       number;
+}
+
+/**
+ * Lanet Mührü 🧿 — pending curse applied to a target player.  Stored on
+ * `ConquestGameState.activeHiddenEffects.curses` keyed by `targetPlayerId`.
+ *
+ * Lifecycle:
+ *   1. Caster consumes their Lanet Mührü charge against a chosen opponent —
+ *      a curse entry is inserted; caster's inventory entry flips to `used`.
+ *   2. The curse waits silently.  Target may answer wrong any number of
+ *      times — the curse does NOT consume on a wrong answer.
+ *   3. The first time the target answers a CHALLENGE correctly *and would
+ *      receive hamle hakkı* (i.e. they'd promote from `reveal` → `action`
+ *      as the action holder), the curse fires: the move is cancelled, the
+ *      round jumps to `round_result` with a curse-specific message, and the
+ *      curse entry is removed.
+ *
+ * Defense duels are explicitly outside the curse window — only the
+ * round-level challenge → action transition consumes it.
+ */
+export interface ConquestPendingCurse {
+  casterPlayerId: string;
+  bonusEntryId:   string;
+  createdRound:   number;
+}
+
+/**
+ * Container for all "in-flight" hidden bonus effects that outlive a single
+ * helper call.  Today only Lanet Mührü uses this; Pusu (and any future
+ * delayed-effect hidden bonus) will land here too.  Optional on
+ * ConquestGameState for back-compat with pre-curse saves.
+ */
+export interface ConquestActiveHiddenEffects {
+  /** Pending curses keyed by targetPlayerId.  At most one curse per target
+   *  at any time — a second Lanet Mührü against an already-cursed target
+   *  is rejected by `useLanetMuhruHiddenBonus`. */
+  curses?: Record<string, ConquestPendingCurse>;
 }
 
 /**
@@ -894,6 +952,12 @@ export interface ConquestGameState {
    * joiners.
    */
   lastHiddenBonusToast?: ConquestHiddenBonusToast;
+  /**
+   * Container for delayed-effect hidden bonus state that outlives a single
+   * helper call (currently Lanet Mührü pending curses).  Absent in pre-curse
+   * saves; readers default missing/empty sub-maps to "no active effects".
+   */
+  activeHiddenEffects?: ConquestActiveHiddenEffects;
 }
 
 /** Final result row — one per player — used by the result screen. */

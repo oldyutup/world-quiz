@@ -44,8 +44,10 @@ import {
   type ConquestActionResult,
   type ConquestChallenge,
   type ConquestGameState,
+  type ConquestHiddenBonusType,
   type ConquestPendingAction,
   type ConquestPlayer,
+  type ConquestPlayerHiddenBonus,
   type ConquestRegionId,
   type ConquestRoomSettings,
 } from "./types";
@@ -76,6 +78,8 @@ import {
   actionHolderHasNoMoves,
   advanceToNextRound,
   applyActionToGame,
+  applyLanetMuhruHiddenBonus,
+  applySuikastHiddenBonus,
   buildFinalStandings,
   expireActionPhase,
   expireChallenge,
@@ -648,6 +652,82 @@ export default function ConquestGame({
     );
     return () => timers.forEach(t => window.clearTimeout(t));
   }, [playerPoints]);
+
+  // ── Hidden bonuses — Suikast inventory + target picker ─────────────
+  // Only renders the consume UI for the LOCAL viewer; opponents never see
+  // anyone else's hidden-bonus inventory (paranoia is the feature).  The
+  // target picker state is fully local — only the `applySuikastHiddenBonus`
+  // call writes synced state, and only when the user confirms a target.
+  const myUnusedSuikastEntries = useMemo(() => {
+    if (!myPlayerId) return [];
+    const bag = gameState?.playerHiddenBonuses?.[myPlayerId] ?? [];
+    return bag.filter(e => !e.used && e.type === "suikast");
+  }, [gameState?.playerHiddenBonuses, myPlayerId]);
+  // Picker state: the bonus entry id whose target the user is choosing.
+  // Null when the picker is closed.  Cleared after a successful use, on
+  // cancel, or when the underlying entry vanishes (e.g. realtime echo).
+  const [suikastPickerEntryId, setSuikastPickerEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!suikastPickerEntryId) return;
+    const stillPresent = myUnusedSuikastEntries.some(e => e.id === suikastPickerEntryId);
+    if (!stillPresent) setSuikastPickerEntryId(null);
+  }, [suikastPickerEntryId, myUnusedSuikastEntries]);
+
+  const handleUseSuikast = useCallback((bonusEntryId: string, targetId: string) => {
+    if (!gameState || !myPlayerId) return;
+    if (targetId === myPlayerId) return;
+    const next = applySuikastHiddenBonus(gameState, myPlayerId, bonusEntryId, targetId);
+    if (next === gameState) return;
+    setSuikastPickerEntryId(null);
+    void onPushGameState(next);
+  }, [gameState, myPlayerId, onPushGameState]);
+
+  // ── Hidden bonuses — Lanet Mührü inventory + target picker ─────────
+  // Mirrors the Suikast wiring: local-viewer only, opponents never see anyone
+  // else's inventory.  The use call writes synced state ONLY on confirm.
+  const myUnusedLanetEntries = useMemo(() => {
+    if (!myPlayerId) return [];
+    const bag = gameState?.playerHiddenBonuses?.[myPlayerId] ?? [];
+    return bag.filter(e => !e.used && e.type === "lanet_muhru");
+  }, [gameState?.playerHiddenBonuses, myPlayerId]);
+  const [lanetPickerEntryId, setLanetPickerEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lanetPickerEntryId) return;
+    const stillPresent = myUnusedLanetEntries.some(e => e.id === lanetPickerEntryId);
+    if (!stillPresent) setLanetPickerEntryId(null);
+  }, [lanetPickerEntryId, myUnusedLanetEntries]);
+
+  const handleUseLanetMuhru = useCallback((bonusEntryId: string, targetId: string) => {
+    if (!gameState || !myPlayerId) return;
+    if (targetId === myPlayerId) return;
+    const next = applyLanetMuhruHiddenBonus(gameState, myPlayerId, bonusEntryId, targetId);
+    if (next === gameState) return;
+    setLanetPickerEntryId(null);
+    void onPushGameState(next);
+  }, [gameState, myPlayerId, onPushGameState]);
+
+  // ── DEV-ONLY: inject a hidden bonus directly into local player's inventory ─
+  const handleDebugGiveBonus = useCallback((type: ConquestHiddenBonusType) => {
+    if (!gameState || !myPlayerId) return;
+    const now = Date.now();
+    const entry: ConquestPlayerHiddenBonus = {
+      id:              `hb-debug-${type}-${now}-${myPlayerId}`,
+      type,
+      used:            false,
+      claimedRegionId: "__debug__",
+      claimedRound:    gameState.round.roundNumber,
+    };
+    const currentInventory = gameState.playerHiddenBonuses ?? {};
+    const currentBag = currentInventory[myPlayerId] ?? [];
+    const next: ConquestGameState = {
+      ...gameState,
+      playerHiddenBonuses: {
+        ...currentInventory,
+        [myPlayerId]: [...currentBag, entry],
+      },
+    };
+    void onPushGameState(next);
+  }, [gameState, myPlayerId, onPushGameState]);
 
   // Derived shield ownership maps — drive the per-player panel chips without
   // adding new fields to playerBonuses (single source of truth = regionStates).
@@ -3702,7 +3782,147 @@ export default function ConquestGame({
             </span>
           </div>
         )}
+        {/* Gizli bonuslar — local-viewer only.  Suikast is the only consume
+         *  surface today; Lanet Mührü and Pusu inventory entries (when they
+         *  ship) will get their own action rows here.  Opponents never see
+         *  anyone's hidden bonus inventory — the section unmounts when the
+         *  local viewer has nothing to consume. */}
+        {(myUnusedSuikastEntries.length > 0 || myUnusedLanetEntries.length > 0) && (
+          <div className="cq-hidden-inventory" role="group" aria-label="Gizli bonusların">
+            <div className="cq-hidden-inventory-title">🎁 Gizli Bonusların</div>
+            {myUnusedSuikastEntries.map(entry => (
+              <button
+                key={entry.id}
+                type="button"
+                className="cq-hidden-inventory-btn"
+                onClick={() => setSuikastPickerEntryId(entry.id)}
+                aria-label="Suikast kullan — rakip oyuncu seç"
+                title="Suikast: seçtiğin rakip oyuncudan 2 puan götürür (tek kullanımlık)."
+              >
+                <span aria-hidden="true">🗡️</span>
+                <span className="cq-hidden-inventory-btn-text">Suikast Kullan</span>
+              </button>
+            ))}
+            {myUnusedLanetEntries.map(entry => (
+              <button
+                key={entry.id}
+                type="button"
+                className="cq-hidden-inventory-btn"
+                onClick={() => setLanetPickerEntryId(entry.id)}
+                aria-label="Lanet Mührü kullan — rakip oyuncu seç"
+                title="Lanet Mührü: seçtiğin rakibin bir sonraki doğru cevabında hamle hakkı mühürlenir (tek kullanımlık)."
+              >
+                <span aria-hidden="true">🧿</span>
+                <span className="cq-hidden-inventory-btn-text">Lanet Mührü Kullan</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Suikast target picker — modal overlay.  Lists opponents only; the
+       *  local viewer is filtered out so self-targeting is impossible at the
+       *  UI layer too (gameplay rejects it as a second guard). */}
+      {suikastPickerEntryId && (
+        <div
+          className="cq-suikast-picker-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Suikast hedefi seç"
+          onClick={() => setSuikastPickerEntryId(null)}
+        >
+          <div
+            className="cq-suikast-picker"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="cq-suikast-picker-header">
+              <span aria-hidden="true">🗡️</span>
+              <span>Suikast Hedefi Seç</span>
+            </div>
+            <p className="cq-suikast-picker-hint">
+              Seçtiğin rakip 2 puan kaybedecek. Bu bonus tek kullanımlık.
+            </p>
+            <div className="cq-suikast-picker-list">
+              {players
+                .filter(p => p.id !== myPlayerId)
+                .map(opponent => (
+                  <button
+                    key={opponent.id}
+                    type="button"
+                    className="cq-suikast-picker-row"
+                    data-color={playerColors[opponent.id] ?? undefined}
+                    onClick={() => handleUseSuikast(suikastPickerEntryId, opponent.id)}
+                  >
+                    <span className="cq-suikast-picker-dot" aria-hidden="true" />
+                    <span className="cq-suikast-picker-name">{opponent.name}</span>
+                    <span className="cq-suikast-picker-points" aria-hidden="true">
+                      {playerPoints[opponent.id] ?? 0} puan
+                    </span>
+                  </button>
+                ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost cq-suikast-picker-cancel"
+              onClick={() => setSuikastPickerEntryId(null)}
+            >
+              İptal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lanet Mührü target picker — modal overlay.  Same shape as the Suikast
+       *  picker (opponents-only, self-target filtered out, gameplay rejects
+       *  self-target as a second guard). */}
+      {lanetPickerEntryId && (
+        <div
+          className="cq-suikast-picker-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Lanet Mührü hedefi seç"
+          onClick={() => setLanetPickerEntryId(null)}
+        >
+          <div
+            className="cq-suikast-picker"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="cq-suikast-picker-header">
+              <span aria-hidden="true">🧿</span>
+              <span>Lanet Mührü Hedefi Seç</span>
+            </div>
+            <p className="cq-suikast-picker-hint">
+              Seçtiğin rakibin bir sonraki doğru cevabında hamle hakkı mühürlenecek. Bu bonus tek kullanımlık.
+            </p>
+            <div className="cq-suikast-picker-list">
+              {players
+                .filter(p => p.id !== myPlayerId)
+                .map(opponent => (
+                  <button
+                    key={opponent.id}
+                    type="button"
+                    className="cq-suikast-picker-row"
+                    data-color={playerColors[opponent.id] ?? undefined}
+                    onClick={() => handleUseLanetMuhru(lanetPickerEntryId, opponent.id)}
+                  >
+                    <span className="cq-suikast-picker-dot" aria-hidden="true" />
+                    <span className="cq-suikast-picker-name">{opponent.name}</span>
+                    <span className="cq-suikast-picker-points" aria-hidden="true">
+                      {playerPoints[opponent.id] ?? 0} puan
+                    </span>
+                  </button>
+                ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost cq-suikast-picker-cancel"
+              onClick={() => setLanetPickerEntryId(null)}
+            >
+              İptal
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
       <div className="cq-game-board-wrap">
@@ -3717,6 +3937,34 @@ export default function ConquestGame({
       {/* ── Toasts + floating phase card (shared with mobile shell) ── */}
       {overlaysNode}
 
+
+      {/* ── DEV-ONLY: hidden bonus test panel ──────────────────── */}
+      {import.meta.env.DEV && myPlayerId && gameState && (
+        <div className="cq-debug-panel" aria-label="Dev: Gizli Bonus Test">
+          <div className="cq-debug-panel-title">🧪 Gizli Bonus Test</div>
+          <button
+            type="button"
+            className="cq-debug-panel-btn"
+            onClick={() => handleDebugGiveBonus("suikast")}
+          >
+            🗡️ Bana Suikast Ver
+          </button>
+          <button
+            type="button"
+            className="cq-debug-panel-btn"
+            onClick={() => handleDebugGiveBonus("lanet_muhru")}
+          >
+            🧿 Bana Lanet Mührü Ver
+          </button>
+          <button
+            type="button"
+            className="cq-debug-panel-btn"
+            onClick={() => handleDebugGiveBonus("pusu")}
+          >
+            🪤 Bana Pusu Ver
+          </button>
+        </div>
+      )}
 
       {/* ── Footer notice ──────────────────────────────────────── */}
       <div className="cq-game-footer">
