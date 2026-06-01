@@ -135,6 +135,14 @@ interface Props {
   roomCode:        string;
   settings:        ConquestRoomSettings;
   players:         ConquestPlayer[];
+  /**
+   * playerId → last_seen_at ISO timestamp from conquest_players.  Used by the
+   * host-only auto-finish effect to decide whether a player who's still in
+   * the roster but missed heartbeats has burned through their reconnect
+   * window yet.  Absent ids (player row deleted via leave) are treated as
+   * "left" by the same effect.
+   */
+  lastSeenByPlayerId?: Record<string, string>;
   /** Synced gameplay state from conquest_rooms.gameplay_state — null while
    *  the host's initial UPDATE is in flight. */
   gameState:       ConquestGameState | null;
@@ -283,6 +291,7 @@ export default function ConquestGame({
   roomCode: _roomCode,
   settings,
   players,
+  lastSeenByPlayerId,
   gameState,
   isHost,
   myPlayerId,
@@ -1243,6 +1252,106 @@ export default function ConquestGame({
   // roundNumberForAdvance re-keys the timer when advancing between rounds.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost, phaseForAdvance, roundNumberForAdvance]);
+
+  // ── Host-only: auto-finish when a single active player remains ─────────
+  // Eğer maç başladıktan sonra rakipler ya bilinçli leave ile player rowunu
+  // sildirip listeden düşerse, ya da heartbeat'i durup 60 sn boyunca dönmezse
+  // (tarayıcı kapatma / internet kopması), kalan tek aktif oyuncuyu otomatik
+  // kazanan olarak işaretliyoruz.
+  //
+  // Aktif oyuncu tanımı:
+  //   • match.players içinde olacak (lobby'de değil, maçta başladı),
+  //   • players prop'unda (live conquest_players roster) hâlâ var olacak,
+  //   • last_seen_at son `RECONNECT_TOLERANCE_MS` içinde olacak.
+  // Bu üç koşulu sağlayan oyuncular kümesi 1 elemana inerse, finish.
+  //
+  // 60 sn'lik reconnect penceresi: ani kopmalarda oyuncuya geri dönme şansı
+  // vermek için sadece last_seen_at eski (> 60 sn) olduğunda stale sayıyoruz.
+  // Heartbeat hâlâ canlıysa stale sayılmaz; oyun olduğu gibi devam eder.
+  //
+  // Re-check kadansı: roster veya last_seen_at değiştiğinde anında, ek olarak
+  // 5 sn'de bir poll — böylece stale eşiği gerçek zamanlı yakalanır.
+  const RECONNECT_TOLERANCE_MS = 60_000;
+  const matchPlayerIdsKey = useMemo(
+    () => (gameState?.players ?? []).map(p => p.id).sort().join(","),
+    [gameState?.players],
+  );
+  const lastSeenSig = useMemo(
+    () => Object.entries(lastSeenByPlayerId ?? {})
+      .map(([id, ts]) => `${id}:${ts}`)
+      .sort()
+      .join("|"),
+    [lastSeenByPlayerId],
+  );
+  const presentPlayerIdsKey = useMemo(
+    () => players.map(p => p.id).sort().join(","),
+    [players],
+  );
+  useEffect(() => {
+    const phase = gameState?.phase;
+    // Only run after the match has actually started and before it ends.
+    // Lobby aşaması (no gameState) ve normal/early finish dışarıda tutulur,
+    // double-finish hiç yazılmaz.
+    if (!gameState) return;
+    if (phase === "setup" || phase === "finished") return;
+    const matchPlayers = gameState.players;
+    if (matchPlayers.length < 2) return;
+
+    // Writer gate: the host is the canonical writer (matches the rest of the
+    // timer-driven flow), BUT if the host itself disconnected/stale, the
+    // lone surviving player has to be allowed to rescue the match too —
+    // otherwise an absent host blocks the finish forever (no host transfer
+    // system in Phase 9.x).  We tolerate the (very narrow) race of "host +
+    // last player both write" via idempotency on `phase === 'finished'`
+    // plus the canonical winnerPlayerId.
+    const check = () => {
+      const gs = gameStateRef.current;
+      if (!gs) return;
+      if (gs.phase === "finished" || gs.phase === "setup") return;
+      const now = Date.now();
+      const presentIds = new Set(players.map(p => p.id));
+      const active = gs.players.filter(p => {
+        if (!presentIds.has(p.id)) return false; // explicit leave → removed from roster
+        const ts = lastSeenByPlayerId?.[p.id];
+        if (!ts) return false;
+        const seen = Date.parse(ts);
+        if (Number.isNaN(seen)) return false;
+        return now - seen <= RECONNECT_TOLERANCE_MS;
+      });
+      if (active.length !== 1) return;
+      const winner = active[0];
+      // Non-host writers may only push the finish when they themselves are
+      // the lone active player — otherwise a non-host spectator could race
+      // the host into writing the wrong winner.
+      if (!isHost && winner.id !== myPlayerId) return;
+      // Whether the abandon was a clean leave (player row deleted) or a
+      // stale heartbeat decides finishReason.  Same winner either way.
+      const anyMissingFromRoster = gs.players.some(p => p.id !== winner.id && !presentIds.has(p.id));
+      const reason: NonNullable<ConquestGameState["finishReason"]> =
+        anyMissingFromRoster ? "opponent_left" : "last_player_standing";
+      const next: ConquestGameState = {
+        ...gs,
+        phase:          "finished",
+        finishedAt:     now,
+        winnerPlayerId: winner.id,
+        winnerName:     winner.name,
+        finishReason:   reason,
+      };
+      void onPushStateRef.current(next);
+    };
+
+    check();
+    const t = window.setInterval(check, 5_000);
+    return () => window.clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isHost,
+    myPlayerId,
+    gameState?.phase,
+    matchPlayerIdsKey,
+    presentPlayerIdsKey,
+    lastSeenSig,
+  ]);
 
   // ── Host-only: action-phase early finish (belt-and-suspenders) ─────────
   // applyActionToGame already catches domination at the capture step, but if

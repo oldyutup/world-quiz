@@ -1013,6 +1013,24 @@ export interface ConquestGameState {
    * report doesn't echo to late joiners.
    */
   lastIntelReport?: ConquestIntelReport;
+  /**
+   * Auto-finish (last player standing) winner.  Populated only when the match
+   * was ended because every other player either explicitly left or stayed
+   * stale (no heartbeat) past the 60-second reconnect window.  The normal
+   * round-based finish path leaves this absent; `buildFinalStandings` honours
+   * the override by promoting this player to rank #1 so the result screen
+   * and the win/lose audio cue agree with the abandoned-match outcome.
+   */
+  winnerPlayerId?: string;
+  /** Display name snapshotted at finish time — handy for XP/audit later. */
+  winnerName?:     string;
+  /**
+   * How the match ended.  Absent on legacy / in-progress saves; the natural
+   * round-loop finish path leaves it implicit.  Auto-finish writes one of
+   * the two values below so future XP logic can distinguish a normal victory
+   * from a walkover.
+   */
+  finishReason?:   "last_player_standing" | "opponent_left";
 }
 
 /**

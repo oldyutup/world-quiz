@@ -2819,18 +2819,38 @@ export function buildFinalStandings(
   // Primary sort: points (desc). Tiebreak: region count (desc).
   rows.sort((a, b) => (b.points - a.points) || (b.regionsHeld - a.regionsHeld));
 
+  // Auto-finish override: when the match ended via "last player standing"
+  // (opponent left or stale past the reconnect window), the player still in
+  // the room is the winner regardless of who held more points/regions at
+  // abandon time.  Promote that row to the top before computing ranks so the
+  // result screen and the win/lose audio cue agree.
+  const forcedWinnerId = state.winnerPlayerId ?? null;
+  if (forcedWinnerId) {
+    const idx = rows.findIndex(r => r.playerId === forcedWinnerId);
+    if (idx > 0) {
+      const [w] = rows.splice(idx, 1);
+      rows.unshift(w);
+    }
+  }
+
   const out: ConquestFinalStanding[] = [];
   let lastKey: string | null = null;
   let lastRank               = 0;
   rows.forEach((r, i) => {
-    const key = `${r.points}|${r.regionsHeld}`;
     let rank: number;
-    if (lastKey !== null && key === lastKey) {
-      rank = lastRank;
+    if (forcedWinnerId && r.playerId === forcedWinnerId) {
+      // Force the auto-finish winner to a solo rank 1; everyone else slots
+      // beneath without sharing it, even on a points tie.
+      rank = 1;
     } else {
-      rank = i + 1;
-      lastRank = rank;
-      lastKey  = key;
+      const key = `${r.points}|${r.regionsHeld}`;
+      if (lastKey !== null && key === lastKey) {
+        rank = lastRank;
+      } else {
+        rank = i + 1;
+        lastRank = rank;
+        lastKey  = key;
+      }
     }
     out.push({ ...r, rank });
   });

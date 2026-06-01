@@ -157,6 +157,21 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     [playerRows],
   );
 
+  // playerId → last_seen_at ISO timestamp.  Carried into ConquestGame so the
+  // host-only "tek aktif oyuncu kalınca otomatik galibiyet" effect can decide
+  // whether a player is fresh (heartbeat within the active window) or stale
+  // (no heartbeat past the reconnect tolerance).  Updated by the same realtime
+  // stream that drives `playerRows`, so it stays consistent with the live
+  // roster without a second fetch.
+  const lastSeenByPlayerId = useMemo<Record<string, string>>(
+    () => {
+      const out: Record<string, string> = {};
+      for (const r of playerRows) out[r.id] = r.last_seen_at;
+      return out;
+    },
+    [playerRows],
+  );
+
   const me      = useMemo(
     () => playerRows.find(p => p.id === myPlayerId) ?? null,
     [playerRows, myPlayerId],
@@ -325,14 +340,15 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomRow?.id, phase, me?.is_host]);
 
-  // ── Lobby heartbeat: keep conquest_players.last_seen_at fresh ───────────
-  // Public oda listesi yalnız son 60 saniyede heartbeat atan oyuncuları
-  // sayar. Lobby açıkken 20 saniyede bir RPC çağrısı yaparak ghost
-  // (browser-kapatıldı / dev-server-kapandı) durumlarda diğer oyuncuların
-  // listeyi temiz görmesini sağlıyoruz. Oyun fazına geçince (status='playing'
-  // → public listeden zaten düşer) ve unmount'ta interval temizlenir.
+  // ── Heartbeat: keep conquest_players.last_seen_at fresh ────────────────
+  // Lobby: public oda listesi son 60 sn'de heartbeat atan oyuncuları sayar.
+  // Game: in-match "tek aktif oyuncu kalınca otomatik galibiyet" mantığı
+  // de aynı 60 sn pencereye yaslanıyor — heartbeat olmadığında 60 sn sonra
+  // herkes "stale" görünür ve yanlış otomatik finish tetiklenir. 20 sn'lik
+  // ping ikisini de güvenli marjla içeride tutar.
   useEffect(() => {
-    if (!roomRow?.id || !myPlayerId || phase !== "lobby") return;
+    if (!roomRow?.id || !myPlayerId) return;
+    if (phase !== "lobby" && phase !== "game") return;
 
     void heartbeatConquestPlayer(myPlayerId);
     const interval = window.setInterval(() => {
@@ -654,6 +670,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         roomCode={roomRow.room_code}
         settings={settings}
         players={uiPlayers}
+        lastSeenByPlayerId={lastSeenByPlayerId}
         gameState={syncedGameState}
         isHost={isHost}
         myPlayerId={myPlayerId}
