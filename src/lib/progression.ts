@@ -26,7 +26,12 @@ import { supabase } from "./supabase";
  *  Not: RPC tarafı server-side mode_key whitelist'i uygulayabilir; yeni bir
  *  mode eklerken DB'deki check constraint'inin de güncellenmesi gerekebilir.
  *  awardXpEvent hata durumunda fırlatmaz, sadece result.error doldurur. */
-export type ModeKey = "country_duel" | "flag_duel" | "wheel_duel" | "wheel_group";
+export type ModeKey =
+  | "country_duel"
+  | "flag_duel"
+  | "wheel_duel"
+  | "wheel_group"
+  | "conquest";
 
 /** Maç sonucu. */
 export type MatchResult = "win" | "loss" | "draw";
@@ -358,6 +363,126 @@ export function calculateWheelDuelXp(
   };
 }
 
+/** Kuşatma (Conquest) XP hesaplaması için girdiler. */
+export interface ConquestXpParams {
+  /** 1-based final rank from buildFinalStandings. Eşitlikte ortak rank verilebilir. */
+  finalRank:    number;
+  /** Maçtaki toplam oyuncu sayısı. */
+  totalPlayers: number;
+  /** Walkover işaretleri — set edilirse kazanan +40 XP alır. */
+  finishReason?: "last_player_standing" | "opponent_left" | null;
+  /** Bilinçli ayrılan oyuncuya 0 XP vermek için kullanılır. */
+  forfeited?:   boolean;
+  /** Tek beraberlikte tüm oyuncular +30 XP alır (rank=1, herkes eşit). */
+  isDraw?:      boolean;
+}
+
+/** Conquest breakdown — XpGainBar için. Kuşatma'da "doğru sayısı" yok;
+ *  XpBreakdown'ı uyumlu doldurmak için correct alanları 0 bırakılır ve
+ *  bonusLabelText 3. parça olarak anlamlı bir metin sağlar. */
+export interface ConquestXpBreakdown extends XpBreakdown {
+  finalRank:    number;
+  totalPlayers: number;
+}
+
+/**
+ * Kuşatma (Conquest) XP — V1 ödül tablosu:
+ *
+ *   Walkover (finishReason set):
+ *     Kazanan         → +40 XP   (rank #1)
+ *     Diğer (kalan)   → +20 XP   (mağlubiyet bandı)
+ *     Bilinçli ayrılan→  +0 XP   (forfeited=true)
+ *
+ *   Beraberlik (isDraw=true):
+ *     Herkes          → +30 XP
+ *
+ *   Normal 2 kişilik maç:
+ *     1. (kazanan)    → +50 XP
+ *     2. (kaybeden)   → +20 XP
+ *
+ *   Normal 3-4 kişilik maç:
+ *     1.              → +50 XP
+ *     2.              → +30 XP
+ *     3.              → +20 XP
+ *     4.              → +10 XP
+ *
+ * Aynı miktar hem genel XP'ye hem conquest mod XP'sine işlenir (RPC tarafı
+ * tek INSERT yapar; toplamlar `xp_events` üzerinden okunur).
+ *
+ * Level progression: getLevelFromXp / getXpForLevel (Bayrak ile birebir).
+ */
+export function calculateConquestXp(
+  params: ConquestXpParams
+): ConquestXpBreakdown {
+  const totalPlayers = Math.max(1, Math.floor(params.totalPlayers || 1));
+  const finalRank    = Math.max(1, Math.floor(params.finalRank    || 1));
+  const finishReason = params.finishReason ?? null;
+  const forfeited    = Boolean(params.forfeited);
+  const isDraw       = Boolean(params.isDraw);
+
+  let total = 0;
+  let bonusLabelText = "";
+  let resultBonusLabel: "win" | "draw" | "loss" = "loss";
+
+  if (forfeited) {
+    total = 0;
+    bonusLabelText = "Maçtan ayrıldın · +0";
+    resultBonusLabel = "loss";
+  } else if (finishReason === "opponent_left" && finalRank === 1) {
+    total = 40;
+    bonusLabelText = `Rakip ayrıldı +${total}`;
+    resultBonusLabel = "win";
+  } else if (finishReason === "last_player_standing" && finalRank === 1) {
+    total = 40;
+    bonusLabelText = `Son ayakta kalan +${total}`;
+    resultBonusLabel = "win";
+  } else if (isDraw) {
+    total = 30;
+    bonusLabelText = `Beraberlik +${total}`;
+    resultBonusLabel = "draw";
+  } else if (totalPlayers <= 2) {
+    if (finalRank === 1) {
+      total = 50;
+      bonusLabelText = `Galibiyet +${total}`;
+      resultBonusLabel = "win";
+    } else {
+      total = 20;
+      bonusLabelText = `Mağlubiyet +${total}`;
+      resultBonusLabel = "loss";
+    }
+  } else {
+    // 3-4 kişilik: rank bazlı sabit tablo. 5+ için en alt basamak kullanılır.
+    const rankBonus =
+      finalRank === 1 ? 50 :
+      finalRank === 2 ? 30 :
+      finalRank === 3 ? 20 :
+      10;
+    total = rankBonus;
+    bonusLabelText =
+      finalRank === 1 ? `🥇 Sıra #1 +${rankBonus}` :
+      finalRank === 2 ? `🥈 Sıra #2 +${rankBonus}` :
+      finalRank === 3 ? `🥉 Sıra #3 +${rankBonus}` :
+                       `#${finalRank} sıra +${rankBonus}`;
+    resultBonusLabel = finalRank === 1 ? "win" : finalRank <= 3 ? "draw" : "loss";
+  }
+
+  // XpBreakdown şeması: Kuşatma'da "katılım" / "doğru" ayrımı yok; tüm XP
+  // resultBonus altında. Bayrak ile aynı UI satırını kullanabilmek için
+  // correct alanları 0, participation 0, resultBonus = total.
+  return {
+    participation: 0,
+    perCorrect:    0,
+    correctCount:  0,
+    correctTotal:  0,
+    resultBonus:   total,
+    resultBonusLabel,
+    bonusLabelText,
+    finalRank,
+    totalPlayers,
+    total,
+  };
+}
+
 /* ────────────────────────────────────────────────
    Maç sonucu yardımcısı
    ──────────────────────────────────────────────── */
@@ -440,16 +565,26 @@ export async function awardXpEvent(
     return emptyAwardResult(null);
   }
 
-  // wheel_group için adanmış RPC: mevcut award_xp_event'in mode_key whitelist'i
-  // 'wheel_group'u içermediği için (eski modlar oluşturulduktan sonra eklendi)
-  // o modu kendi SECURITY DEFINER fonksiyonu üzerinden yazıyoruz. Sözleşme aynı;
-  // sadece mode_key argümanı ve RPC adı farklı.
-  // Migration: 20260518130000_wheel_group_xp_rpc.sql
+  // wheel_group ve conquest için adanmış RPC'ler: mevcut award_xp_event'in
+  // mode_key whitelist'i bu modları içermediği için (eski modlar
+  // oluşturulduktan sonra eklendiler) kendi SECURITY DEFINER fonksiyonları
+  // üzerinden yazıyoruz. Sözleşme aynı; sadece mode_key sabit ve RPC adı farklı.
+  //   wheel_group → 20260518130000_wheel_group_xp_rpc.sql
+  //   conquest    → 20260602120000_conquest_xp_rpc.sql
   const useDedicatedWheelGroupRpc = params.modeKey === "wheel_group";
+  const useDedicatedConquestRpc   = params.modeKey === "conquest";
 
   try {
     const { data, error } = useDedicatedWheelGroupRpc
       ? await supabase.rpc("award_wheel_group_xp_event", {
+          p_profile_id: params.profileId,
+          p_room_id:    params.roomId,
+          p_xp_earned:  xpEarned,
+          p_result:     params.result,
+          p_details:    params.details ?? {},
+        })
+      : useDedicatedConquestRpc
+      ? await supabase.rpc("award_conquest_xp_event", {
           p_profile_id: params.profileId,
           p_room_id:    params.roomId,
           p_xp_earned:  xpEarned,
@@ -468,7 +603,9 @@ export async function awardXpEvent(
     if (error) {
       const rpcName = useDedicatedWheelGroupRpc
         ? "award_wheel_group_xp_event"
-        : "award_xp_event";
+        : useDedicatedConquestRpc
+          ? "award_conquest_xp_event"
+          : "award_xp_event";
       console.error(`[progression] ${rpcName} RPC error:`, error);
       return emptyAwardResult(error.message ?? "RPC failed");
     }

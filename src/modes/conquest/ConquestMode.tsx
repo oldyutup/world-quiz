@@ -668,12 +668,14 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     return (
       <ConquestGame
         roomCode={roomRow.room_code}
+        roomId={roomRow.id}
         settings={settings}
         players={uiPlayers}
         lastSeenByPlayerId={lastSeenByPlayerId}
         gameState={syncedGameState}
         isHost={isHost}
         myPlayerId={myPlayerId}
+        profile={profile}
         onPushGameState={handlePushGameplayState}
         onBackToLobby={handleBackToLobbyFromGame}
       />

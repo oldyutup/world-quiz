@@ -129,10 +129,20 @@ import { useConquestSignals } from "./useConquestSignals";
 import ConquestBonusGuide, {
   type ConquestBonusGuideEntry,
 } from "./ConquestBonusGuide";
+import XpGainBar from "../../components/XpGainBar";
+import {
+  awardXpEvent,
+  calculateConquestXp,
+  type ConquestXpBreakdown,
+} from "../../lib/progression";
+import type { Profile } from "../../lib/auth";
 
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
   roomCode:        string;
+  /** conquest_rooms.id (UUID).  Combined with gameState.startedAt to build
+   *  the stable per-match XP idempotency key. */
+  roomId:          string;
   settings:        ConquestRoomSettings;
   players:         ConquestPlayer[];
   /**
@@ -148,6 +158,9 @@ interface Props {
   gameState:       ConquestGameState | null;
   isHost:          boolean;
   myPlayerId:      string | null;
+  /** Logged-in profile (null for guests).  Drives the match-end XP award
+   *  flow — guests skip XP entirely. */
+  profile:         Profile | null;
   /** Persist a new gameplay snapshot to Supabase.  Called by transition
    *  handlers; realtime echo brings the row back to every client. */
   onPushGameState: (next: ConquestGameState) => Promise<void> | void;
@@ -271,6 +284,40 @@ function eliminatorRng(seed: number): () => number {
   };
 }
 
+/**
+ * Build a deterministic UUID-shaped key for the XP idempotency guard.
+ *
+ * The XP RPC's `(profile_id, mode_key, room_id)` UNIQUE constraint is what
+ * makes the conquest XP award idempotent across re-renders and refreshes.
+ * `room_id` is typed `uuid` in postgres, so we need a string in 8-4-4-4-12
+ * hex format.  Two requirements:
+ *   - Stable per match: same (roomId, startedAt) MUST produce the same key
+ *     so a refresh-after-finish or a second realtime finished echo
+ *     collapses into the SAME row.
+ *   - Distinct per match: a fresh match in the same room (new startedAt)
+ *     MUST produce a NEW key so the next match can award XP again.
+ *
+ * Implementation is a small FNV-1a 32-bit hash sampled with 4 different
+ * salts → 32 hex chars → standard 8-4-4-4-12 layout.  Collision risk is
+ * irrelevant for our scale (it's a uniqueness key per profile, not a
+ * security primitive).
+ */
+function deriveConquestMatchUuid(roomId: string, startedAt: number): string {
+  const fnv32 = (s: string): number => {
+    let h = 0x811c9dc5 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h >>> 0;
+  };
+  const seed = `${roomId}|${startedAt}`;
+  const hex = [0, 1, 2, 3]
+    .map(salt => fnv32(`${seed}:${salt}`).toString(16).padStart(8, "0"))
+    .join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 function pickEliminatedWrongChoice(
   challenge: ConquestChallenge,
   viewerId:  string,
@@ -289,12 +336,14 @@ function pickEliminatedWrongChoice(
 
 export default function ConquestGame({
   roomCode: _roomCode,
+  roomId,
   settings,
   players,
   lastSeenByPlayerId,
   gameState,
   isHost,
   myPlayerId,
+  profile,
   onPushGameState,
   onBackToLobby,
 }: Props) {
@@ -930,6 +979,122 @@ export default function ConquestGame({
     () => gameState ? buildFinalStandings(gameState) : [],
     [gameState],
   );
+
+  // ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ──
+  // Same pattern as FlagDuelGame: server-side idempotency on
+  // (profile_id, mode_key, room_id), client-side ref to skip re-renders.
+  // The match-level room_id is derived deterministically from
+  // (conquest_rooms.id, gameState.startedAt) so a fresh match in the same
+  // room produces a NEW key, but the SAME match (refresh, late finished
+  // realtime echo) keeps the same key → no duplicate insert.
+  const [xpResult, setXpResult] = useState<{
+    awarded:     boolean;
+    xpEarned:    number;
+    prevTotalXp: number;
+    totalXp:     number;
+    prevModeXp:  number;
+    modeXp:      number;
+    breakdown:   ConquestXpBreakdown;
+    roomKey:     string;
+    dismissed:   boolean;
+  } | null>(null);
+  const xpAwardedRef = useRef<string | null>(null);
+  const isLoggedInPlayer = !!profile?.id;
+
+  const matchKey = useMemo(() => {
+    const startedAt = gameState?.startedAt ?? 0;
+    if (!roomId || !startedAt) return null;
+    return deriveConquestMatchUuid(roomId, startedAt);
+  }, [roomId, gameState?.startedAt]);
+
+  const finishedPhase = gameState?.phase === "finished";
+  const finishReason  = gameState?.finishReason ?? null;
+  const winnerPlayerId = gameState?.winnerPlayerId ?? null;
+
+  useEffect(() => {
+    if (!finishedPhase) return;
+    if (!isLoggedInPlayer || !profile?.id) return;
+    if (!myPlayerId) return;
+    if (!matchKey) return;
+    // Per-match guard: same match → exit; new match → fall through.
+    if (xpAwardedRef.current === matchKey) return;
+    xpAwardedRef.current = matchKey;
+
+    const myStanding = standings.find(r => r.playerId === myPlayerId);
+    if (!myStanding) {
+      // Player not in standings (shouldn't happen if they're in players[]).
+      // Don't lock the ref forever — release so a later realtime update can retry.
+      xpAwardedRef.current = null;
+      return;
+    }
+
+    const totalPlayers = standings.length;
+    const finalRank    = myStanding.rank;
+    // Draw: top points/regions shared at rank 1 and no walkover override.
+    const top = standings[0];
+    const isDraw = !winnerPlayerId
+      && standings.filter(r => r.rank === 1).length > 1
+      && top?.rank === 1;
+
+    const breakdown = calculateConquestXp({
+      finalRank,
+      totalPlayers,
+      finishReason,
+      isDraw,
+    });
+
+    const matchResult =
+      breakdown.resultBonusLabel === "win"
+        ? "win"
+        : breakdown.resultBonusLabel === "draw"
+          ? "draw"
+          : "loss";
+
+    const profileId = profile.id;
+    const xpRoomId  = matchKey;
+
+    (async () => {
+      const res = await awardXpEvent({
+        profileId,
+        modeKey:  "conquest",
+        roomId:   xpRoomId,
+        xpEarned: breakdown.total,
+        result:   matchResult,
+        details: {
+          final_rank:    finalRank,
+          total_players: totalPlayers,
+          finish_reason: finishReason,
+          is_draw:       isDraw,
+          breakdown,
+          real_room_id:  roomId,
+        },
+      });
+
+      if (res.error) {
+        xpAwardedRef.current = null;
+        console.error("[ConquestGame] XP yazılamadı:", res.error);
+        return;
+      }
+
+      const prevModeXp  = res.awarded ? Math.max(0, res.modeXp  - res.xpEarned) : res.modeXp;
+      const prevTotalXp = res.awarded ? Math.max(0, res.totalXp - res.xpEarned) : res.totalXp;
+
+      setXpResult({
+        awarded:     res.awarded,
+        xpEarned:    res.xpEarned,
+        prevTotalXp,
+        totalXp:     res.totalXp,
+        prevModeXp,
+        modeXp:      res.modeXp,
+        breakdown,
+        roomKey:     matchKey,
+        dismissed:   false,
+      });
+    })();
+    // standings is derived from gameState, finishReason/winnerPlayerId are
+    // primitives; matchKey changes only when a new match starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishedPhase, matchKey, isLoggedInPlayer, profile?.id, myPlayerId]);
 
   // ── Local event feed ───────────────────────────────────────────────
   // Derived from ownership diffs + lastBonusToast id + duel start/end.
@@ -3658,10 +3823,11 @@ export default function ConquestGame({
             ))}
           </ol>
 
-          <p className="cq-finished-note" role="status">
-            Bu maçta XP veya Altın ödül verilmedi — ödüller ilerleyen
-            aşamada eklenecek.
-          </p>
+          {!isLoggedInPlayer && (
+            <p className="cq-finished-note" role="status">
+              XP kazanmak için giriş yap.
+            </p>
+          )}
 
           <div className="cq-finished-actions">
             <button
@@ -4450,6 +4616,24 @@ export default function ConquestGame({
         )}
       </div>
       {confirmLeaveNode}
+
+      {/* ════════ XP KAZANIMI — fixed footer (reusable XpGainBar) ════════ */}
+      {xpResult && !xpResult.dismissed && (
+        <XpGainBar
+          key={xpResult.roomKey}
+          modeLabel="KUŞATMA"
+          prevTotalXp={xpResult.prevTotalXp}
+          newTotalXp={xpResult.totalXp}
+          prevModeXp={xpResult.prevModeXp}
+          newModeXp={xpResult.modeXp}
+          xpEarned={xpResult.xpEarned}
+          awarded={xpResult.awarded}
+          breakdown={xpResult.breakdown}
+          onDismiss={() =>
+            setXpResult(prev => (prev ? { ...prev, dismissed: true } : null))
+          }
+        />
+      )}
     </div>
   );
 }

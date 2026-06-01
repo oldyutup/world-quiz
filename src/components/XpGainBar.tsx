@@ -178,10 +178,18 @@ export default function XpGainBar({
         {/* Orta: breakdown + iki level satırı */}
         <div className="xpgain-body">
           <div className="xpgain-breakdown">
-            <span>Katılım +{breakdown.participation}</span>
-            <span className="xpgain-dot">·</span>
-            <span>{breakdown.correctCount} doğru +{breakdown.correctTotal}</span>
-            <span className="xpgain-dot">·</span>
+            {breakdown.participation > 0 && (
+              <>
+                <span>Katılım +{breakdown.participation}</span>
+                <span className="xpgain-dot">·</span>
+              </>
+            )}
+            {breakdown.correctCount > 0 && (
+              <>
+                <span>{breakdown.correctCount} doğru +{breakdown.correctTotal}</span>
+                <span className="xpgain-dot">·</span>
+              </>
+            )}
             <span>
               {breakdown.bonusLabelText ? (
                 breakdown.bonusLabelText
