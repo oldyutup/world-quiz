@@ -10305,40 +10305,57 @@ body {
 
 /* ──────────────────────────────────────────────────────────────────────
  * Kader Kartı V1 — widget + reveal overlay.
- * Widget mirrors the hidden-inventory chrome so it sits naturally in the
- * player panel; reveal is a centered overlay shown for ~3s on every draw.
+ * The widget is always rendered as the last block inside the players panel
+ * during a live match, so it reads as a continuation of the scoreboard
+ * rather than a detached island.  Three visual states swap inside the same
+ * frame: active (purple, clickable), waiting (muted, disabled with a "your
+ * turn" hint), used (slate, locked).  Reveal is a centered overlay shown
+ * for ~3s on every draw.
  * ────────────────────────────────────────────────────────────────────── */
 .cq-fate-card-widget {
-  margin: 6px 4px 2px;
-  padding: 6px 8px 7px;
-  border-radius: 6px;
-  background: rgba(168, 85, 247, 0.10);
-  border: 1px solid rgba(168, 85, 247, 0.32);
-  box-shadow: 0 0 10px -4px rgba(168, 85, 247, 0.5);
+  /* Pull the widget up against the players-panel divider so it reads as
+   * a continuation of the same card, not a detached box.  The top border
+   * + matched horizontal padding tie it to the rows above. */
+  margin: 6px 0 0;
+  padding: 8px 10px 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(
+    180deg,
+    rgba(168, 85, 247, 0.10) 0%,
+    rgba(168, 85, 247, 0.04) 100%
+  );
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   pointer-events: auto;
+  /* Round only the bottom corners so the top edge merges with the panel. */
+  border-bottom-left-radius: 7px;
+  border-bottom-right-radius: 7px;
 }
-.cq-fate-card-widget[data-state="used"] {
-  background: rgba(148, 163, 184, 0.08);
-  border-color: rgba(148, 163, 184, 0.22);
-  box-shadow: none;
-  color: oklch(0.75 0.02 270);
-  font-size: 11px;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+.cq-fate-card-widget--waiting {
+  background: rgba(148, 163, 184, 0.05);
+}
+.cq-fate-card-widget--used {
+  background: rgba(148, 163, 184, 0.05);
 }
 .cq-fate-card-widget-icon {
   font-size: 14px;
+  flex-shrink: 0;
+}
+.cq-fate-card-widget-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: oklch(0.78 0.018 270);
+  letter-spacing: 0.02em;
 }
 .cq-fate-card-widget-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: 6px;
   background: rgba(168, 85, 247, 0.22);
   border: 1px solid rgba(168, 85, 247, 0.55);
@@ -10346,7 +10363,8 @@ body {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 120ms ease, transform 120ms ease;
+  transition: background 120ms ease, transform 120ms ease, border-color 120ms ease;
+  width: 100%;
 }
 .cq-fate-card-widget-btn:hover:not(:disabled) {
   background: rgba(168, 85, 247, 0.34);
@@ -10356,21 +10374,49 @@ body {
   transform: translateY(0);
 }
 .cq-fate-card-widget-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
+  cursor: not-allowed;
+  background: rgba(148, 163, 184, 0.10);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: oklch(0.70 0.012 250);
+  /* Stay readable — disabled but not faded into the background. */
+  opacity: 1;
 }
 .cq-fate-card-widget-text {
   flex: 1 1 auto;
   text-align: left;
   letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cq-fate-card-widget-help {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: oklch(0.62 0.012 250);
+  letter-spacing: 0.01em;
 }
 .cq-fate-card-widget--mobile {
+  /* In the mobile dock the widget is freestanding, so restore a full
+   * border and slight breathing room above the action buttons. */
   margin: 8px 0 0;
+  border-top: none;
+  border: 1px solid rgba(168, 85, 247, 0.32);
+  border-radius: 7px;
+  padding: 8px 10px 9px;
+}
+.cq-fate-card-widget--mobile.cq-fate-card-widget--waiting,
+.cq-fate-card-widget--mobile.cq-fate-card-widget--used {
+  border-color: rgba(148, 163, 184, 0.22);
 }
 .cq-fate-card-widget--mobile .cq-fate-card-widget-btn {
-  padding: 9px 12px;
+  padding: 10px 12px;
   font-size: 13px;
   justify-content: center;
+}
+.cq-fate-card-widget--mobile .cq-fate-card-widget-help {
+  font-size: 11.5px;
+  text-align: center;
 }
 
 /* Reveal overlay — fullscreen centered card. */

@@ -1956,6 +1956,18 @@ export default function ConquestGame({
     canDrawFateCard ? "active"
       : fateCardAlreadyUsed ? "used"
       : "waiting";
+  // Widget visibility — render only when there's an in-progress match the
+  // viewer is participating in.  Hides on setup/finished/lobby and for
+  // spectators (myPlayerId not in players[]).  The widget is rendered
+  // even when the viewer can't draw right now; the "waiting" state keeps
+  // the affordance visible so the player doesn't miss it.
+  const fateCardWidgetVisible = !!(
+    gameState
+    && myPlayerId
+    && gameState.phase !== "setup"
+    && gameState.phase !== "finished"
+    && gameState.players.some(p => p.id === myPlayerId)
+  );
   const lastFateCardEvent = gameState?.lastFateCardEvent ?? null;
 
   // ── Safety fallbacks ─────────────────────────────────────────────────
@@ -3799,6 +3811,7 @@ export default function ConquestGame({
           {isMobile && (
             <ConquestFateCardWidget
               mode={fateCardWidgetMode}
+              visible={fateCardWidgetVisible}
               disabled={!canDrawFateCard}
               variant="mobile"
               onDraw={handleDrawFateCard}
@@ -4531,11 +4544,13 @@ export default function ConquestGame({
             )}
           </div>
         )}
-        {/* Kader Kartı V1 — single per-match draw button.  Lives in the
-         *  player panel so it sits below the scoreboard without crowding
-         *  the bonus chips. */}
+        {/* Kader Kartı V1 — always-on widget that anchors the bottom of
+         *  the player panel.  Visibility is gated on (a) the viewer being
+         *  a match participant and (b) the match being in-progress; the
+         *  active / waiting / used state then chooses what to show. */}
         <ConquestFateCardWidget
           mode={fateCardWidgetMode}
+          visible={fateCardWidgetVisible}
           disabled={!canDrawFateCard}
           variant="desktop"
           onDraw={handleDrawFateCard}
