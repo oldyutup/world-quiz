@@ -109,6 +109,14 @@ import { normaliseAnswer } from "./conquestChallengeValidation";
 import ConquestBoard from "./ConquestBoard";
 import ConquestChallengePanel from "./ConquestChallengePanel";
 import ConquestActionPanel from "./ConquestActionPanel";
+import ConquestFateCardWidget from "./ConquestFateCardWidget";
+import ConquestFateCardReveal from "./ConquestFateCardReveal";
+import {
+  applyFateCardEffectToBonuses,
+  drawRandomFateCard,
+  FATE_REVEAL_MS,
+  playerCanDrawFateCard,
+} from "./conquestFateCards";
 import DefenseDuelPanel from "./DefenseDuelPanel";
 import TurkeyConquestMap from "./TurkeyConquestMap";
 import MobileConquestLayout from "./mobile/MobileConquestLayout";
@@ -1871,6 +1879,84 @@ export default function ConquestGame({
     if (next === gameState) return;
     void onPushGameState(next);
   }, [isHost, gameState, mapConfig, onPushGameState]);
+
+  // ── Kader Kartı V1 — once-per-match fate-card draw ─────────────────────
+  // The draw is gated to the action phase + action holder (so it never
+  // collides with challenge / duel / round_result transitions) AND a local
+  // in-flight ref so a double-click can't issue two draws before the
+  // realtime echo lands. Eligibility is re-checked against the LATEST
+  // gameState inside the callback so a stale snapshot can't bypass the
+  // once-per-match cap.
+  const fateCardDrawingRef = useRef(false);
+  const handleDrawFateCard = useCallback(() => {
+    const gs = gameStateRef.current;
+    if (!gs || !myPlayerId)                return;
+    if (fateCardDrawingRef.current)        return;
+    if (!playerCanDrawFateCard(gs, myPlayerId)) return;
+
+    fateCardDrawingRef.current = true;
+    const player = gs.players.find(p => p.id === myPlayerId);
+    const card   = drawRandomFateCard();
+    const now    = Date.now();
+
+    const nextBonuses = applyFateCardEffectToBonuses(gs, myPlayerId, card.id);
+
+    // Pause the move clock while the reveal overlay is up.  We do this by
+    // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
+    // so the total-duration math stays correct) forward by exactly the reveal
+    // window.  Both the local countdown render (`actionEndsAt - now`) and the
+    // host-side auto-skip setTimeout consume `actionEndsAt`, so a single
+    // atomic bump freezes the visible timer behind the backdrop AND prevents
+    // `expireActionPhase` from firing during the reveal.  Net effect: after
+    // the overlay closes, the holder still sees roughly the same remaining
+    // time they had when they tapped Çek.
+    const nextRound = (gs.phase === "action"
+      && typeof gs.round.actionEndsAt    === "number"
+      && typeof gs.round.actionStartedAt === "number")
+      ? {
+          ...gs.round,
+          actionStartedAt: gs.round.actionStartedAt + FATE_REVEAL_MS,
+          actionEndsAt:    gs.round.actionEndsAt    + FATE_REVEAL_MS,
+        }
+      : gs.round;
+
+    const next: ConquestGameState = {
+      ...gs,
+      round: nextRound,
+      playerBonuses: nextBonuses,
+      fateCardsUsedByPlayerId: {
+        ...(gs.fateCardsUsedByPlayerId ?? {}),
+        [myPlayerId]: true,
+      },
+      lastFateCardEvent: {
+        id:          `fate-${now}-${myPlayerId}`,
+        playerId:    myPlayerId,
+        playerName:  player?.name ?? "Bir oyuncu",
+        cardId:      card.id,
+        cardName:    card.name,
+        cardType:    card.type,
+        description: card.description,
+        createdAt:   now,
+        round:       gs.round.roundNumber,
+      },
+    };
+
+    playSound("click");
+    Promise.resolve(onPushGameState(next)).finally(() => {
+      fateCardDrawingRef.current = false;
+    });
+  }, [myPlayerId, onPushGameState]);
+
+  const canDrawFateCard = playerCanDrawFateCard(gameState, myPlayerId);
+  const fateCardAlreadyUsed = !!(
+    myPlayerId
+    && gameState?.fateCardsUsedByPlayerId?.[myPlayerId]
+  );
+  const fateCardWidgetMode: "active" | "used" | "waiting" =
+    canDrawFateCard ? "active"
+      : fateCardAlreadyUsed ? "used"
+      : "waiting";
+  const lastFateCardEvent = gameState?.lastFateCardEvent ?? null;
 
   // ── Safety fallbacks ─────────────────────────────────────────────────
   if (!mapConfig) {
@@ -3688,23 +3774,37 @@ export default function ConquestGame({
        *  so it doesn't get buried in the side card or mobile sheet body. */}
 
       {phase === "action" && canActOnRegion && (
-        <ConquestActionPanel
-          actionHolder={actionHolder}
-          holderColor={actionHolder ? (playerColors[actionHolder.id] ?? null) : null}
-          noMovesLeft={noMovesLeft}
-          lastResult={lastResult}
-          msRemaining={moveMsRemaining}
-          totalMs={moveTotalMs}
-          hasPendingHiddenShield={
-            !!actionHolder
-            && !!gameState.playerBonuses?.[actionHolder.id]?.pendingHiddenShield
-          }
-          hasMancinikCharge={
-            !!actionHolder
-            && (gameState.playerBonuses?.[actionHolder.id]?.mancinikCharges ?? 0) > 0
-          }
-          onSkip={handleSkipAction}
-        />
+        <>
+          <ConquestActionPanel
+            actionHolder={actionHolder}
+            holderColor={actionHolder ? (playerColors[actionHolder.id] ?? null) : null}
+            noMovesLeft={noMovesLeft}
+            lastResult={lastResult}
+            msRemaining={moveMsRemaining}
+            totalMs={moveTotalMs}
+            hasPendingHiddenShield={
+              !!actionHolder
+              && !!gameState.playerBonuses?.[actionHolder.id]?.pendingHiddenShield
+            }
+            hasMancinikCharge={
+              !!actionHolder
+              && (gameState.playerBonuses?.[actionHolder.id]?.mancinikCharges ?? 0) > 0
+            }
+            onSkip={handleSkipAction}
+          />
+          {/* Mobile-only fate-card surface — desktop already shows the
+           *  widget inside the player panel.  Inline here keeps the
+           *  button inside the bottom sheet / dock so it never overlaps
+           *  the map fit or the bonus strip. */}
+          {isMobile && (
+            <ConquestFateCardWidget
+              mode={fateCardWidgetMode}
+              disabled={!canDrawFateCard}
+              variant="mobile"
+              onDraw={handleDrawFateCard}
+            />
+          )}
+        </>
       )}
 
       {phase === "action" && !canActOnRegion && (
@@ -3858,6 +3958,7 @@ export default function ConquestGame({
         {phasePanelContent}
       </div>
       <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
+      <ConquestFateCardReveal event={lastFateCardEvent} />
       {bonusGuideNode}
     </>
   );
@@ -4046,6 +4147,9 @@ export default function ConquestGame({
       >
         {phasePanelContent}
       </MobileBottomSheet>
+      {/* Kader Kartı reveal stays full-overlay on mobile so it isn't
+       *  clipped by the bottom sheet or the map fit. */}
+      <ConquestFateCardReveal event={lastFateCardEvent} />
       {bonusGuideNode}
     </>
   );
@@ -4427,6 +4531,15 @@ export default function ConquestGame({
             )}
           </div>
         )}
+        {/* Kader Kartı V1 — single per-match draw button.  Lives in the
+         *  player panel so it sits below the scoreboard without crowding
+         *  the bonus chips. */}
+        <ConquestFateCardWidget
+          mode={fateCardWidgetMode}
+          disabled={!canDrawFateCard}
+          variant="desktop"
+          onDraw={handleDrawFateCard}
+        />
       </div>
       {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
        *  above the map so the player understands which clicks are armed.
