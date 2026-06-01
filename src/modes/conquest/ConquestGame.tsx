@@ -989,6 +989,53 @@ export default function ConquestGame({
     onBackToLobby();
   }
 
+  /* Mid-match leave guard.  A single active survivor wins automatically
+   * (see conquestGameSync), so a stray tap on the back arrow can throw a
+   * real match.  We gate every active-play exit through requestBack: it
+   * opens the confirm modal only while a match is in progress, and falls
+   * through to handleBack on the setup / finished phases and on the
+   * pre-sync safety screens (where gameState is null). */
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+
+  function isMatchInProgress(): boolean {
+    if (!gameState) return false;
+    const p = gameState.phase;
+    return p !== "finished" && p !== "setup";
+  }
+
+  function requestBack() {
+    if (isMatchInProgress()) {
+      playSound("click");
+      setConfirmLeaveOpen(true);
+      return;
+    }
+    handleBack();
+  }
+
+  function cancelLeave() {
+    playSound("click");
+    setConfirmLeaveOpen(false);
+  }
+
+  function confirmLeave() {
+    setConfirmLeaveOpen(false);
+    handleBack();
+  }
+
+  // ESC closes the confirm modal (treated as "Vazgeç").  Listener only
+  // mounts while open so we don't intercept other ESC-driven UI.
+  useEffect(() => {
+    if (!confirmLeaveOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setConfirmLeaveOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [confirmLeaveOpen]);
+
   const handleSubmitAnswer = useCallback((rawAnswer: string) => {
     if (!gameState || !myPlayerId) return;
     if (gameState.phase !== "challenge") return;
@@ -3843,6 +3890,54 @@ export default function ConquestGame({
   // sheet (see MobileBottomSheet) instead of the legacy floating card.
   // Toasts still position:fixed for now — toast-queue lands in a later
   // step.  Landscape uses the same shell for now and inherits the
+  // Mid-match leave confirmation.  Rendered into both the mobile and the
+  // desktop return trees so the modal sits above whichever shell is active.
+  const confirmLeaveNode = confirmLeaveOpen ? (
+    <div
+      className="modal-backdrop cq-confirm-leave-backdrop"
+      role="presentation"
+      onClick={cancelLeave}
+    >
+      <div
+        className="modal cq-confirm-leave-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="cq-confirm-leave-title"
+        aria-describedby="cq-confirm-leave-desc"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="cq-confirm-leave-title" className="cq-confirm-leave-title">
+          Maçtan ayrılmak istiyor musun?
+        </h2>
+        <p id="cq-confirm-leave-desc" className="cq-confirm-leave-desc">
+          Maç devam ederken ayrılırsan çekilmiş sayılabilirsin.
+        </p>
+        <ul className="cq-confirm-leave-points" role="list">
+          <li>Bu maçtan çekilmiş sayılabilirsin.</li>
+          <li>Geri dönemezsin, ilerlemen kaybolur.</li>
+          <li>Tek aktif oyuncu rakibin kalırsa maçı otomatik kazanır.</li>
+        </ul>
+        <div className="cq-confirm-leave-actions">
+          <button
+            type="button"
+            className="btn btn-accent cq-confirm-leave-cancel"
+            onClick={cancelLeave}
+            autoFocus
+          >
+            Vazgeç
+          </button>
+          <button
+            type="button"
+            className="btn cq-confirm-leave-confirm"
+            onClick={confirmLeave}
+          >
+            Maçtan Ayrıl
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // legacy side-dock CSS from `.cq-game-phase-panel` — but only on
   // landscape (the sheet replaces the panel in portrait).
   if (isMobile) {
@@ -3858,7 +3953,7 @@ export default function ConquestGame({
             <MobileHeader
               roundNumber={roundNumber}
               totalRounds={totalRounds}
-              onBack={handleBack}
+              onBack={requestBack}
               onHelp={hasBonusGuide ? handleToggleBonusGuide : undefined}
               helpActive={bonusGuideOpen}
               onVolumeOpen={() => setBonusGuideOpen(false)}
@@ -3901,6 +3996,10 @@ export default function ConquestGame({
                 )
           }
         />
+        {phase === "finished" && (
+          <div className="cq-finished-backdrop" aria-hidden="true" />
+        )}
+        {confirmLeaveNode}
       </div>
     );
   }
@@ -3915,7 +4014,7 @@ export default function ConquestGame({
       <div className="duel-header cq-game-header">
         <button
           className="back-btn"
-          onClick={handleBack}
+          onClick={requestBack}
           title="Lobiye Dön"
         >
           <span>←</span>
@@ -4297,6 +4396,11 @@ export default function ConquestGame({
         </div>
       </div>
 
+      {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
+      {phase === "finished" && (
+        <div className="cq-finished-backdrop" aria-hidden="true" />
+      )}
+
       {/* ── Toasts + floating phase card (shared with mobile shell) ── */}
       {overlaysNode}
 
@@ -4339,12 +4443,13 @@ export default function ConquestGame({
           <button
             type="button"
             className="btn btn-ghost cq-game-back-btn"
-            onClick={handleBack}
+            onClick={requestBack}
           >
             ← Lobiye Dön
           </button>
         )}
       </div>
+      {confirmLeaveNode}
     </div>
   );
 }
