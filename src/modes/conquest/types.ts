@@ -1031,6 +1031,38 @@ export interface ConquestGameState {
    * from a walkover.
    */
   finishReason?:   "last_player_standing" | "opponent_left";
+  /**
+   * Kader Kartı V1 — playerId → true map of players who have already drawn
+   * their once-per-match fate card.  Absent or missing keys mean the player
+   * still has their draw.  Optional for back-compat with pre-fate-card saves;
+   * readers must default missing entries to "not used yet".
+   */
+  fateCardsUsedByPlayerId?: Record<string, boolean>;
+  /**
+   * Kader Kartı V1 — most recent fate-card draw event.  Persisted so every
+   * client renders the same reveal overlay; cleared (or replaced) by the
+   * next draw.  UI tracks the last-seen event id locally to avoid replaying
+   * a stale reveal on reconnect / late join.
+   */
+  lastFateCardEvent?: ConquestFateCardEvent;
+}
+
+/**
+ * Kader Kartı V1 — synced fate-card draw event.  Carries everything the
+ * reveal overlay and action-log surfaces need, so the renderer never has to
+ * cross-reference a card catalog.  Future revisions may extend `cardType`
+ * with neutral / mixed variants.
+ */
+export interface ConquestFateCardEvent {
+  id:          string;
+  playerId:    string;
+  playerName:  string;
+  cardId:      string;
+  cardName:    string;
+  cardType:    "good" | "bad";
+  description: string;
+  createdAt:   number;
+  round?:      number;
 }
 
 /**

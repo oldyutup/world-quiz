@@ -70,6 +70,7 @@ export function useConquestEventFeed(
   const prevOwnersRef      = useRef<Record<string, string | null> | null>(null);
   const prevDuelIdRef      = useRef<string | null>(null);
   const prevBonusToastRef  = useRef<string | null>(null);
+  const prevFateCardIdRef  = useRef<string | null>(null);
 
   // ── Ownership transitions ───────────────────────────────────────────
   useEffect(() => {
@@ -251,6 +252,33 @@ export function useConquestEventFeed(
       }
     }
   }, [gameState?.defenseDuel, gameState?.round.lastResult, players, mapConfig, playerColors, myPlayerId]);
+
+  // ── Kader Kartı V1 — log every draw exactly once ────────────────────
+  useEffect(() => {
+    const fc = gameState?.lastFateCardEvent;
+    if (!fc) {
+      prevFateCardIdRef.current = null;
+      return;
+    }
+    if (prevFateCardIdRef.current === fc.id) return;
+    prevFateCardIdRef.current = fc.id;
+    const key = `fate:${fc.id}`;
+    if (seenIdsRef.current.has(key)) return;
+    seenIdsRef.current.add(key);
+
+    const isMine  = myPlayerId === fc.playerId;
+    const isGood  = fc.cardType === "good";
+    const delta   = isGood ? "+1 puan" : "-1 puan";
+    const text    = `${fc.playerName} Kader Kartı çekti: ${fc.cardName} (${delta})`;
+    setEvents(prev => prependBounded(prev, [{
+      id:       key,
+      at:       fc.createdAt,
+      icon:     isGood ? "🎴" : "💀",
+      text,
+      colorKey: playerColors[fc.playerId] ?? "neutral",
+      isMine,
+    }]));
+  }, [gameState?.lastFateCardEvent, myPlayerId, playerColors]);
 
   return events;
 }
