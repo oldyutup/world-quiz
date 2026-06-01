@@ -113,6 +113,7 @@ import ConquestFateCardWidget from "./ConquestFateCardWidget";
 import ConquestFateCardReveal from "./ConquestFateCardReveal";
 import {
   applyFateCardEffectToBonuses,
+  applyFateCardEffectToRound,
   drawRandomFateCard,
   FATE_REVEAL_MS,
   playerCanDrawFateCard,
@@ -1910,7 +1911,7 @@ export default function ConquestGame({
     // `expireActionPhase` from firing during the reveal.  Net effect: after
     // the overlay closes, the holder still sees roughly the same remaining
     // time they had when they tapped Çek.
-    const nextRound = (gs.phase === "action"
+    const pausedRound = (gs.phase === "action"
       && typeof gs.round.actionEndsAt    === "number"
       && typeof gs.round.actionStartedAt === "number")
       ? {
@@ -1919,6 +1920,9 @@ export default function ConquestGame({
           actionEndsAt:    gs.round.actionEndsAt    + FATE_REVEAL_MS,
         }
       : gs.round;
+    // Layer card-specific time effects (Son Hamle / Sis Çöktü) on top of the
+    // reveal pause.  No-op for any other card.
+    const nextRound = applyFateCardEffectToRound(pausedRound, gs.phase, card.id, now);
 
     const next: ConquestGameState = {
       ...gs,

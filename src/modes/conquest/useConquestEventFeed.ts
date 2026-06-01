@@ -268,8 +268,12 @@ export function useConquestEventFeed(
 
     const isMine  = myPlayerId === fc.playerId;
     const isGood  = fc.cardType === "good";
-    const delta   = isGood ? "+1 puan" : "-1 puan";
-    const text    = `${fc.playerName} Kader Kartı çekti: ${fc.cardName} (${delta})`;
+    // V2 catalog has +1/+2 / -1/-2 / time-effect cards, so the per-card
+    // description carries the actual delta.  Falling back to the card name
+    // keeps old saves readable if `description` ever ends up missing.
+    const text    = fc.description
+      ? `${fc.playerName} Kader Kartı çekti: ${fc.cardName} — ${fc.description}`
+      : `${fc.playerName} Kader Kartı çekti: ${fc.cardName}`;
     setEvents(prev => prependBounded(prev, [{
       id:       key,
       at:       fc.createdAt,
