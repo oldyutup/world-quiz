@@ -2,21 +2,25 @@
  * ConquestFateCardWidget — Kader Kartı V1 draw surface.
  *
  * Always-on widget that lives at the bottom of the players panel.  Renders
- * one of three states so the player never loses sight of the affordance:
- *   - active:  it's the viewer's action phase and they haven't drawn yet
- *   - waiting: the viewer is in the match but it isn't their turn / they
- *              haven't earned the action right yet
- *   - used:    the viewer has already drawn this match
+ * one of four states so the player never loses sight of the affordance:
+ *   - active:       it's the viewer's action phase, they haven't drawn yet,
+ *                   and they have enough Gold to pay the cost.
+ *   - waiting:      the viewer is in the match but it isn't their turn /
+ *                   they haven't earned the action right yet.
+ *   - insufficient: it IS their turn and they haven't drawn yet, but they
+ *                   don't have enough Gold to cover `cost`.
+ *   - used:         the viewer has already drawn this match.
  *
  * The parent decides whether the widget renders at all via `visible`
  * (false outside an active match or for spectators).  `onDraw` is the only
  * side effect; `disabled` lets the parent lock the button while a network
- * write is in flight (double-click protection).
+ * write is in flight (double-click protection).  `spending` flips the
+ * button into a loading label while the Gold spend RPC is awaited.
  */
 
 import { playSound } from "../../lib/sound";
 
-type Mode = "active" | "waiting" | "used";
+type Mode = "active" | "waiting" | "used" | "insufficient";
 
 interface Props {
   mode:     Mode;
@@ -26,6 +30,11 @@ interface Props {
   /** Disable the button during an in-flight write to prevent two draws in a
    *  single click burst. */
   disabled: boolean;
+  /** Gold cost displayed on the button/help text. */
+  cost:     number;
+  /** True while the spend RPC is awaited; renders a loading label and
+   *  forces the button into a disabled state. */
+  spending?: boolean;
   variant?: "desktop" | "mobile";
   onDraw:   () => void;
 }
@@ -34,6 +43,8 @@ export default function ConquestFateCardWidget({
   mode,
   visible,
   disabled,
+  cost,
+  spending = false,
   variant = "desktop",
   onDraw,
 }: Props) {
@@ -63,8 +74,39 @@ export default function ConquestFateCardWidget({
     );
   }
 
-  const isActive   = mode === "active";
-  const buttonDisabled = !isActive || disabled;
+  const isActive       = mode === "active";
+  const isInsufficient = mode === "insufficient";
+  const buttonDisabled = !isActive || disabled || spending;
+
+  const label = spending
+    ? "Kart çekiliyor..."
+    : isActive
+      ? `Kader Kartı Çek — ${cost} Gold`
+      : isInsufficient
+        ? `Yetersiz Gold — ${cost} Gold gerekli`
+        : "Sıranı Bekle";
+
+  const ariaLabel = spending
+    ? "Kart çekiliyor"
+    : isActive
+      ? `Kader Kartı çek, ${cost} Gold`
+      : isInsufficient
+        ? `Yetersiz Gold. Bu işlem ${cost} Gold gerektiriyor.`
+        : "Sıranı bekle";
+
+  const title = spending
+    ? "Gold harcaması sürüyor..."
+    : isActive
+      ? `Bu maçta yalnızca bir kez Kader Kartı çekebilirsin. ${cost} Gold harcar.`
+      : isInsufficient
+        ? `Bu işlem ${cost} Gold gerektiriyor.`
+        : "Sıran geldiğinde Kader Kartı çekebilirsin.";
+
+  const help = isActive
+    ? `Sıra sendeyken maçta 1 kez kullanılır. ${cost} Gold harcar. %50 iyi, %50 kötü etki verir.`
+    : isInsufficient
+      ? `Kader Kartı çekmek için ${cost} Gold gerekli.`
+      : "Doğru cevap verip hamle hakkı aldığında Kader Kartı çekebilirsin.";
 
   return (
     <div className={className} data-state={mode}>
@@ -77,23 +119,14 @@ export default function ConquestFateCardWidget({
           onDraw();
         }}
         disabled={buttonDisabled}
-        aria-label={isActive ? "Kader Kartı çek" : "Sıranı bekle"}
-        title={
-          isActive
-            ? "Bu maçta yalnızca bir kez Kader Kartı çekebilirsin."
-            : "Sıran geldiğinde Kader Kartı çekebilirsin."
-        }
+        aria-label={ariaLabel}
+        aria-busy={spending || undefined}
+        title={title}
       >
         <span className="cq-fate-card-widget-icon" aria-hidden="true">🎴</span>
-        <span className="cq-fate-card-widget-text">
-          {isActive ? "Kader Kartı Çek" : "Sıranı Bekle"}
-        </span>
+        <span className="cq-fate-card-widget-text">{label}</span>
       </button>
-      <p className="cq-fate-card-widget-help">
-        {isActive
-          ? "Sıra sendeyken 1 kez kullanılır. %50 iyi, %50 kötü etki verir."
-          : "Doğru cevap verip hamle hakkı aldığında Kader Kartı çekebilirsin."}
-      </p>
+      <p className="cq-fate-card-widget-help">{help}</p>
     </div>
   );
 }

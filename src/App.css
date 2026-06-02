@@ -10678,6 +10678,12 @@ body {
 .cq-fate-card-widget--used {
   background: rgba(148, 163, 184, 0.05);
 }
+.cq-fate-card-widget--insufficient {
+  background: rgba(234, 179, 8, 0.05);
+}
+.cq-fate-card-widget--insufficient .cq-fate-card-widget-help {
+  color: oklch(0.78 0.10 80);
+}
 .cq-fate-card-widget-icon {
   font-size: 14px;
   flex-shrink: 0;

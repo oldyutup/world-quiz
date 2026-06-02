@@ -33,6 +33,14 @@ const GOLD_KEY       = "geoquiz_gold";
 const GOLD_BONUS_KEY = "geoquiz_daily_bonus";
 export const DAILY_BONUS = 50;
 
+/**
+ * Kuşatma modunda Kader Kartı çekiminin sabit Gold maliyeti.
+ * Client tarafının bu sayıyı yerelde değiştirmesine izin vermemek için
+ * harcama her zaman `spend_gameplay_gold` RPC'si üzerinden yapılır;
+ * sabit yalnızca UI ve handler için merkezi bir kaynaktır.
+ */
+export const CONQUEST_FATE_CARD_COST = 200;
+
 let activeProfileId: string | null = null;
 let cachedGold = readLocal();
 let listeners: Array<(n: number) => void> = [];
@@ -111,6 +119,7 @@ type AwardReason =
   | "flag_match_reward"
   | "route_match_reward"
   | "conquest_liman_income"
+  | "conquest_fate_card_refund"
   | "gameplay_award";
 
 type SpendReason =
@@ -122,6 +131,7 @@ type SpendReason =
   | "hint_neighbors"
   | "hint_silhouette"
   | "hint_generic"
+  | "conquest_fate_card"
   | "gameplay_spend";
 
 /* ── RPC sarmalayicilari ────────────────────────────────────────────── */
@@ -233,6 +243,48 @@ export function spendGold(
     });
   }
 
+  return true;
+}
+
+/**
+ * Server-onayli (await'li) Gold harcamasi.
+ *
+ * `spendGold` optimistic — kart çekimi gibi “Gold gerçekten düşmeden önce
+ * efekt uygulanmamalı” akışlar için yetersizdir: optimistic harcama UI'ı
+ * günceller, RPC reddederse cache geri alınır ama o sırada efekt çoktan
+ * uygulanmış olabilir. Bu helper RPC sonucunu bekler ve yalnızca server
+ * spend'i onayladıktan sonra `true` döner.
+ *
+ *  - Misafir kullanıcı (Kuşatma'ya giremese de defansif): yalnızca local
+ *    cache kontrol edilir. Local yetersizse `false`; yeterliyse local
+ *    düşülür ve `true` döner (RPC çağrılmaz).
+ *  - Giriş yapmış kullanıcı: cache yetersizse erkenden `false`. Aksi halde
+ *    optimistic cache güncellenir, RPC awaitlenir; başarısızsa optimistic
+ *    geri alınır ve `false` döner.
+ */
+export async function spendGoldAsync(
+  amount: number,
+  reason: SpendReason,
+  metadata: Record<string, unknown> = {},
+): Promise<boolean> {
+  const amt = Math.max(0, Math.floor(amount || 0));
+  if (amt === 0) return true;
+  if (cachedGold < amt) return false;
+
+  if (!activeProfileId) {
+    setCache(cachedGold - amt);
+    return true;
+  }
+
+  const before = cachedGold;
+  setCache(cachedGold - amt);
+
+  const serverGold = await rpcSpend(amt, reason, metadata);
+  if (serverGold === null) {
+    setCache(before);
+    return false;
+  }
+  setCache(serverGold);
   return true;
 }
 

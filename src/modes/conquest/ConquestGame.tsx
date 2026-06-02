@@ -29,7 +29,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { addGold, useGold } from "../../lib/gold";
+import {
+  addGold,
+  useGold,
+  spendGoldAsync,
+  CONQUEST_FATE_CARD_COST,
+} from "../../lib/gold";
 import { playSound } from "../../lib/sound";
 import { playConquestSound, unlockConquestSounds } from "./conquestSound";
 import { useConquestSound } from "./useConquestSound";
@@ -1888,78 +1893,150 @@ export default function ConquestGame({
   // realtime echo lands. Eligibility is re-checked against the LATEST
   // gameState inside the callback so a stale snapshot can't bypass the
   // once-per-match cap.
+  //
+  // Akis: eligibility → cift-tiklama kilidi → spend → state push.
+  // Spend basariyla finalize olduktan sonra herhangi bir asama basarisiz
+  // olursa (post-spend re-check, state push hatasi, vs.) 200 Gold
+  // `conquest_fate_card_refund` reason'i ile geri iade edilir. Boylece
+  // oyuncu Gold kaybedip kart efekti alamama durumuna dusmez.
   const fateCardDrawingRef = useRef(false);
-  const handleDrawFateCard = useCallback(() => {
+  const [fateCardSpending, setFateCardSpending] = useState(false);
+  const handleDrawFateCard = useCallback(async () => {
     const gs = gameStateRef.current;
     if (!gs || !myPlayerId)                return;
     if (fateCardDrawingRef.current)        return;
     if (!playerCanDrawFateCard(gs, myPlayerId)) return;
 
     fateCardDrawingRef.current = true;
+    setFateCardSpending(true);
     const player = gs.players.find(p => p.id === myPlayerId);
     const card   = drawRandomFateCard();
     const now    = Date.now();
 
-    const nextBonuses = applyFateCardEffectToBonuses(gs, myPlayerId, card.id);
+    let spent = false;
+    let success = false;
+    let failureReason: string | null = null;
 
-    // Pause the move clock while the reveal overlay is up.  We do this by
-    // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
-    // so the total-duration math stays correct) forward by exactly the reveal
-    // window.  Both the local countdown render (`actionEndsAt - now`) and the
-    // host-side auto-skip setTimeout consume `actionEndsAt`, so a single
-    // atomic bump freezes the visible timer behind the backdrop AND prevents
-    // `expireActionPhase` from firing during the reveal.  Net effect: after
-    // the overlay closes, the holder still sees roughly the same remaining
-    // time they had when they tapped Çek.
-    const pausedRound = (gs.phase === "action"
-      && typeof gs.round.actionEndsAt    === "number"
-      && typeof gs.round.actionStartedAt === "number")
-      ? {
-          ...gs.round,
-          actionStartedAt: gs.round.actionStartedAt + FATE_REVEAL_MS,
-          actionEndsAt:    gs.round.actionEndsAt    + FATE_REVEAL_MS,
-        }
-      : gs.round;
-    // Layer card-specific time effects (Son Hamle / Sis Çöktü) on top of the
-    // reveal pause.  No-op for any other card.
-    const nextRound = applyFateCardEffectToRound(pausedRound, gs.phase, card.id, now);
+    try {
+      // Server-otoriteli Gold harcamasi. RPC sonucu beklenmeden kart efekti
+      // uygulanmaz; yetersiz Gold ya da reddedilen istek durumunda erkenden
+      // cikilir ve UI eski haline doner.
+      try {
+        spent = await spendGoldAsync(
+          CONQUEST_FATE_CARD_COST,
+          "conquest_fate_card",
+          {
+            roomId,
+            playerId: myPlayerId,
+            cardId:   card.id,
+            cardName: card.name,
+          },
+        );
+      } catch (err) {
+        console.error("[conquest] fate card spend RPC threw:", err);
+        spent = false;
+      }
+      if (!spent) return;
 
-    const next: ConquestGameState = {
-      ...gs,
-      round: nextRound,
-      playerBonuses: nextBonuses,
-      fateCardsUsedByPlayerId: {
-        ...(gs.fateCardsUsedByPlayerId ?? {}),
-        [myPlayerId]: true,
-      },
-      lastFateCardEvent: {
-        id:          `fate-${now}-${myPlayerId}`,
-        playerId:    myPlayerId,
-        playerName:  player?.name ?? "Bir oyuncu",
-        cardId:      card.id,
-        cardName:    card.name,
-        cardType:    card.type,
-        description: card.description,
-        createdAt:   now,
-        round:       gs.round.roundNumber,
-      },
-    };
+      // Eligibility'i RPC sonrasinda yeniden dogrula — bu sirada baska bir
+      // event (faz/sira degisimi, oyuncu kart kullanmis) gelmis olabilir.
+      // Bu race'de Gold zaten dustugu icin asagidaki finally block refund
+      // tetikler.
+      const latest = gameStateRef.current;
+      if (!latest || !playerCanDrawFateCard(latest, myPlayerId)) {
+        failureReason = "post_spend_recheck_failed";
+        return;
+      }
 
-    playSound("click");
-    Promise.resolve(onPushGameState(next)).finally(() => {
+      const nextBonuses = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+
+      // Pause the move clock while the reveal overlay is up.  We do this by
+      // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
+      // so the total-duration math stays correct) forward by exactly the reveal
+      // window.  Both the local countdown render (`actionEndsAt - now`) and the
+      // host-side auto-skip setTimeout consume `actionEndsAt`, so a single
+      // atomic bump freezes the visible timer behind the backdrop AND prevents
+      // `expireActionPhase` from firing during the reveal.  Net effect: after
+      // the overlay closes, the holder still sees roughly the same remaining
+      // time they had when they tapped Çek.
+      const pausedRound = (latest.phase === "action"
+        && typeof latest.round.actionEndsAt    === "number"
+        && typeof latest.round.actionStartedAt === "number")
+        ? {
+            ...latest.round,
+            actionStartedAt: latest.round.actionStartedAt + FATE_REVEAL_MS,
+            actionEndsAt:    latest.round.actionEndsAt    + FATE_REVEAL_MS,
+          }
+        : latest.round;
+      // Layer card-specific time effects (Son Hamle / Sis Çöktü) on top of the
+      // reveal pause.  No-op for any other card.
+      const nextRound = applyFateCardEffectToRound(pausedRound, latest.phase, card.id, now);
+
+      const next: ConquestGameState = {
+        ...latest,
+        round: nextRound,
+        playerBonuses: nextBonuses,
+        fateCardsUsedByPlayerId: {
+          ...(latest.fateCardsUsedByPlayerId ?? {}),
+          [myPlayerId]: true,
+        },
+        lastFateCardEvent: {
+          id:          `fate-${now}-${myPlayerId}`,
+          playerId:    myPlayerId,
+          playerName:  player?.name ?? "Bir oyuncu",
+          cardId:      card.id,
+          cardName:    card.name,
+          cardType:    card.type,
+          description: card.description,
+          createdAt:   now,
+          round:       latest.round.roundNumber,
+        },
+      };
+
+      playSound("click");
+      try {
+        await Promise.resolve(onPushGameState(next));
+        success = true;
+      } catch (err) {
+        console.error("[conquest] fate card state push failed:", err);
+        failureReason = "state_push_failed";
+      }
+    } finally {
+      // Gold dustu ama kart efekti uygulanamadi → refund. Tek source of
+      // truth: `spent && !success`. Bu sayede ayni oyuncudan ikinci kez
+      // Gold dusmez ve gold_transactions log'unda spend + refund cifti
+      // tutarli kalir.
+      if (spent && !success) {
+        addGold(
+          CONQUEST_FATE_CARD_COST,
+          "conquest_fate_card_refund",
+          {
+            roomId,
+            playerId: myPlayerId,
+            reason:   failureReason ?? "post_spend_recheck_failed",
+          },
+        );
+      }
       fateCardDrawingRef.current = false;
-    });
-  }, [myPlayerId, onPushGameState]);
+      setFateCardSpending(false);
+    }
+  }, [myPlayerId, onPushGameState, roomId]);
 
-  const canDrawFateCard = playerCanDrawFateCard(gameState, myPlayerId);
+  const eligibleForFateCardDraw = playerCanDrawFateCard(gameState, myPlayerId);
   const fateCardAlreadyUsed = !!(
     myPlayerId
     && gameState?.fateCardsUsedByPlayerId?.[myPlayerId]
   );
-  const fateCardWidgetMode: "active" | "used" | "waiting" =
-    canDrawFateCard ? "active"
-      : fateCardAlreadyUsed ? "used"
-      : "waiting";
+  const canAffordFateCard = accountGold >= CONQUEST_FATE_CARD_COST;
+  // Çekim için tum kosullar: faz + sira + maliyet. UI butonunu yalnizca
+  // tum kosullar saglandiginda aktif birakiyoruz; aksi halde widget mode'u
+  // duruma uygun bilgilendirici state'lere dusuyor.
+  const canDrawFateCard = eligibleForFateCardDraw && canAffordFateCard;
+  const fateCardWidgetMode: "active" | "used" | "waiting" | "insufficient" =
+    fateCardAlreadyUsed ? "used"
+      : eligibleForFateCardDraw
+        ? (canAffordFateCard ? "active" : "insufficient")
+        : "waiting";
   // Widget visibility — render only when there's an in-progress match the
   // viewer is participating in.  Hides on setup/finished/lobby and for
   // spectators (myPlayerId not in players[]).  The widget is rendered
@@ -3816,7 +3893,9 @@ export default function ConquestGame({
             <ConquestFateCardWidget
               mode={fateCardWidgetMode}
               visible={fateCardWidgetVisible}
-              disabled={!canDrawFateCard}
+              disabled={!canDrawFateCard || fateCardSpending}
+              spending={fateCardSpending}
+              cost={CONQUEST_FATE_CARD_COST}
               variant="mobile"
               onDraw={handleDrawFateCard}
             />
@@ -4555,7 +4634,9 @@ export default function ConquestGame({
         <ConquestFateCardWidget
           mode={fateCardWidgetMode}
           visible={fateCardWidgetVisible}
-          disabled={!canDrawFateCard}
+          disabled={!canDrawFateCard || fateCardSpending}
+          spending={fateCardSpending}
+          cost={CONQUEST_FATE_CARD_COST}
           variant="desktop"
           onDraw={handleDrawFateCard}
         />
