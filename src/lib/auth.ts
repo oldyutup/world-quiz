@@ -11,9 +11,135 @@ export type Profile = {
   gold: number;
   created_at: string;
   updated_at: string;
+  username_changed_at?: string | null;
+  username_change_count?: number | null;
 };
 
 const USERNAME_REGEX = /^[a-z0-9_çğıöşü]{3,16}$/;
+
+// V1 strict username regex — kullanıcı adı değiştirme akışı için
+// server-side regex ile birebir aynı: sadece a-z, 0-9, alt çizgi.
+const USERNAME_V1_REGEX = /^[a-z0-9_]{3,16}$/;
+
+export const USERNAME_CHANGE_COST = 500;
+export const USERNAME_CHANGE_COOLDOWN_DAYS = 14;
+
+// V1'de yasaklı sabit isim listesi. Server da aynı listeyi kontrol eder;
+// burada client tarafında erken uyarı için tutuyoruz.
+const USERNAME_RESERVED: ReadonlySet<string> = new Set([
+  "admin",
+  "administrator",
+  "moderator",
+  "mod",
+  "system",
+  "sistem",
+  "torble",
+  "bot",
+  "npc",
+  "test",
+  "support",
+  "destek",
+  "official",
+  "owner",
+  "root",
+  "staff",
+  "null",
+  "undefined",
+  "geoquiz",
+  "geo_quiz",
+  "developer",
+  "dev",
+  "yetkili",
+  "kurucu",
+  "yonetici",
+  "help",
+  "helper",
+]);
+
+export function normalizeUsernameV1(raw: string): string {
+  let v = (raw ?? "").trim();
+  if (v.startsWith("@")) v = v.slice(1);
+  return v.toLowerCase();
+}
+
+/**
+ * Yeni kullanıcı adı değiştirme akışı için V1 client validation.
+ * Server-side change_username RPC ile birebir aynı kuralları uygular;
+ * UI'da canlı feedback için kullanılır. Asıl otorite RPC'dir.
+ */
+export function validateUsernameV1(raw: string): string | null {
+  const v = normalizeUsernameV1(raw);
+
+  if (v.length === 0) {
+    return "Kullanıcı adı boş olamaz.";
+  }
+  if (v.length < 3) {
+    return "Kullanıcı adı en az 3 karakter olmalı.";
+  }
+  if (v.length > 16) {
+    return "Kullanıcı adı en fazla 16 karakter olabilir.";
+  }
+  if (!USERNAME_V1_REGEX.test(v)) {
+    return "Sadece küçük harf (a-z), rakam ve alt çizgi (_) kullanılabilir.";
+  }
+  if (USERNAME_RESERVED.has(v)) {
+    return "Bu kullanıcı adı kullanılamaz.";
+  }
+
+  const lowerBanned = BANNED_USERNAME_WORDS.some((w) => v.includes(w));
+  if (lowerBanned) {
+    return "Bu kullanıcı adı kullanılamaz.";
+  }
+
+  return null;
+}
+
+export type ChangeUsernameResult =
+  | {
+      ok: true;
+      username: string;
+      gold: number;
+      was_first: boolean;
+      cost: number;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      days_left?: number;
+      cost?: number;
+      gold?: number;
+    };
+
+/**
+ * Server-side change_username RPC wrapper.
+ * Client doğrudan profiles tablosunu UPDATE etmez — Gold düşmesi ve username
+ * değiştirilmesi tek transaction içinde server'da yapılır.
+ */
+export async function callChangeUsername(
+  rawUsername: string
+): Promise<ChangeUsernameResult> {
+  const cleaned = normalizeUsernameV1(rawUsername);
+  const { data, error } = await supabase.rpc("change_username", {
+    p_new_username: cleaned,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      code: "network",
+      message: error.message || "Bir hata oluştu, tekrar dene.",
+    };
+  }
+  if (!data || typeof data !== "object") {
+    return {
+      ok: false,
+      code: "bad_response",
+      message: "Sunucu beklenmeyen bir cevap döndü.",
+    };
+  }
+  return data as ChangeUsernameResult;
+}
 
 
 export function normalizeUsername(username: string) {

@@ -7431,6 +7431,13 @@ body {
   position: fixed;
   top: 14px;
   right: 18px;
+  /* Net z-index katmanları:
+       1   — ana ekran
+       5050 — sıralama butonu (dropdown KAPALIYKEN; açıkken zaten gizleniyor)
+       5100 — sağ üst stack tabanı + profil pill
+       5200 — profil dropdown paneli (lb-trigger üstünde paint olur)
+       6000 — sıralama modalı overlay
+       6100 — username değiştirme modalı overlay (profil panelinin üstü) */
   z-index: 5100;
   display: flex;
   flex-direction: column;
@@ -7442,7 +7449,14 @@ body {
   position: relative;
   top: auto;
   right: auto;
-  z-index: auto;
+  /* Dropdown panelinin sıralama butonunun üstünde paint edilmesini garanti et.
+     (Aynı zamanda lb-trigger zaten profileMenuOpen iken hide ediliyor.) */
+  z-index: 5200;
+}
+
+.top-right-stack .lb-trigger {
+  position: relative;
+  z-index: 5050;
 }
 
 .upd-wrap {
@@ -7543,9 +7557,45 @@ body {
   font-weight: 900;
   flex-shrink: 0;
 }
-.upd-head-info { display: flex; flex-direction: column; gap: 2px; }
-.upd-head-uname { font-size: 14px; font-weight: 800; color: rgba(220, 235, 255, 0.95); }
+.upd-head-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.upd-head-uname-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.upd-head-uname {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(220, 235, 255, 0.95);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .upd-head-level { font-size: 12px; color: rgba(130, 170, 255, 0.8); font-weight: 700; }
+
+/* "Adı Değiştir" küçük buton — profil paneli header'ında */
+.upd-edit-uname {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(120, 170, 255, 0.32);
+  border-radius: 999px;
+  background: rgba(60, 110, 220, 0.18);
+  color: rgba(190, 215, 255, 0.95);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.upd-edit-uname:hover {
+  background: rgba(80, 140, 240, 0.28);
+  border-color: rgba(140, 190, 255, 0.55);
+  color: rgba(220, 235, 255, 1);
+}
+.upd-edit-uname:active { transform: translateY(1px); }
 
 /* XP bar */
 .upd-xp { display: flex; flex-direction: column; gap: 6px; }
@@ -16471,3 +16521,196 @@ body {
     height: 44px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   USERNAME CHANGE MODAL — profil panelinden açılan küçük modal
+   ═══════════════════════════════════════════════════════════ */
+.uc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.66);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  /* Profil dropdown (5200) ve sıralama overlay'in (6000) üstünde */
+  z-index: 6100;
+  animation: uc-fade-in 0.18s ease-out;
+}
+@keyframes uc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.uc-modal {
+  position: relative;
+  width: min(420px, 100%);
+  background: linear-gradient(180deg, rgba(20, 26, 40, 0.97), rgba(14, 18, 30, 0.97));
+  border: 1px solid rgba(140, 170, 220, 0.22);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  padding: 22px 22px 18px;
+  color: rgba(232, 240, 255, 0.94);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: uc-pop 0.18s cubic-bezier(0.18, 0.9, 0.32, 1.18);
+}
+@keyframes uc-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.uc-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: rgba(200, 215, 245, 0.7);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.12s, color 0.12s;
+}
+.uc-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 245, 255, 0.95);
+}
+
+.uc-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: rgba(230, 240, 255, 0.96);
+}
+
+.uc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(170, 195, 230, 0.78);
+  background: rgba(60, 110, 220, 0.07);
+  border: 1px solid rgba(100, 150, 230, 0.18);
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+.uc-info p { margin: 0; }
+
+.uc-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(170, 195, 255, 0.6);
+}
+
+.uc-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.uc-input-at {
+  position: absolute;
+  left: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(160, 185, 230, 0.55);
+  pointer-events: none;
+}
+.uc-input {
+  width: 100%;
+  padding: 10px 12px 10px 26px;
+  background: rgba(8, 12, 22, 0.7);
+  border: 1px solid rgba(140, 170, 220, 0.32);
+  border-radius: 10px;
+  color: rgba(235, 244, 255, 0.96);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  outline: none;
+  transition: border-color 0.12s, background 0.12s;
+}
+.uc-input:focus {
+  border-color: rgba(120, 170, 255, 0.7);
+  background: rgba(10, 16, 28, 0.85);
+}
+.uc-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.uc-error,
+.uc-warn {
+  font-size: 12.5px;
+  line-height: 1.4;
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-weight: 600;
+}
+.uc-error {
+  color: rgba(255, 175, 165, 0.95);
+  background: rgba(220, 60, 60, 0.12);
+  border: 1px solid rgba(220, 80, 80, 0.35);
+}
+.uc-warn {
+  color: rgba(255, 205, 130, 0.92);
+  background: rgba(220, 150, 40, 0.1);
+  border: 1px solid rgba(230, 170, 70, 0.32);
+}
+
+.uc-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+.uc-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, transform 0.05s, opacity 0.14s;
+  border: 1px solid transparent;
+}
+.uc-btn:active { transform: translateY(1px); }
+.uc-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.uc-btn--ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(180, 200, 230, 0.22);
+  color: rgba(210, 220, 240, 0.85);
+}
+.uc-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(200, 220, 250, 0.4);
+}
+.uc-btn--primary {
+  background: linear-gradient(135deg, rgba(60, 130, 230, 0.9), rgba(110, 80, 220, 0.9));
+  border-color: rgba(140, 170, 255, 0.5);
+  color: #fff;
+}
+.uc-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(80, 150, 245, 0.95), rgba(130, 100, 235, 0.95));
+  border-color: rgba(170, 200, 255, 0.7);
+}
+.uc-btn--free {
+  background: linear-gradient(135deg, rgba(70, 175, 95, 0.9), rgba(50, 140, 200, 0.9));
+  border-color: rgba(120, 220, 150, 0.55);
+}
+.uc-btn--free:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(85, 195, 110, 0.95), rgba(60, 160, 220, 0.95));
+}
+
+@media (max-width: 520px) {
+  .uc-modal { padding: 18px 16px 14px; gap: 12px; }
+  .uc-title { font-size: 16px; }
+  .uc-info  { font-size: 12px; }
+  .uc-btn   { font-size: 13px; padding: 10px; }
+}
+

@@ -15,6 +15,10 @@ interface Props {
   onSetCountdownSoundMode: (mode: CountdownSoundMode) => void;
   onLogout: () => void;
   onLogin: () => void;
+  /** Parent ataması — dropdown açıldığında üst üste binmeleri kapatmak için. */
+  onOpenChange?: (open: boolean) => void;
+  /** "Adı Değiştir" butonuna basılınca modal açma sinyali parent'a gider. */
+  onRequestUsernameChange?: () => void;
 }
 
 export function UserProfileDropdown({
@@ -29,8 +33,15 @@ export function UserProfileDropdown({
   onSetCountdownSoundMode,
   onLogout,
   onLogin,
+  onOpenChange,
+  onRequestUsernameChange,
 }: Props) {
   const [open, setOpen] = useState(false);
+
+  // Parent'a açık/kapalı sinyali — leaderboard butonunun gizlenmesi için.
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
   const [freshXp, setFreshXp] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +124,23 @@ export function UserProfileDropdown({
           <div className="upd-head">
             <span className="upd-head-avatar">{initial}</span>
             <div className="upd-head-info">
-              <span className="upd-head-uname">@{profile.username}</span>
+              <div className="upd-head-uname-row">
+                <span className="upd-head-uname">@{profile.username}</span>
+                {onRequestUsernameChange && (
+                  <button
+                    type="button"
+                    className="upd-edit-uname"
+                    onClick={() => {
+                      setOpen(false);
+                      onRequestUsernameChange();
+                    }}
+                    aria-label="Kullanıcı adını değiştir"
+                    title="Kullanıcı adını değiştir"
+                  >
+                    Adı Değiştir
+                  </button>
+                )}
+              </div>
               <span className="upd-head-level">Seviye {lp.level}</span>
             </div>
           </div>

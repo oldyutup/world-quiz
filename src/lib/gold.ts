@@ -106,6 +106,19 @@ function applyDelta(delta: number): number {
   return next;
 }
 
+/**
+ * Server-side bir RPC (örn. change_username) Gold'u zaten düştüğünde
+ * UI cache'ini güncellemek için kullanılır. Burada Supabase'e tekrar
+ * yazmıyoruz — sadece local cache & localStorage senkronize edilir.
+ */
+export function syncGoldFromServer(value: number): number {
+  const next = Math.max(0, Math.floor(value || 0));
+  cachedGold = next;
+  writeLocal(next);
+  emit(next);
+  return next;
+}
+
 /** Pozitif değer ekler. Sonuçtaki toplamı döner. */
 export function addGold(amount: number): number {
   const amt = Math.max(0, Math.floor(amount || 0));

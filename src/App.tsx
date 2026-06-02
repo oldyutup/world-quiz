@@ -46,6 +46,7 @@ import {
 import AuthModal from "./components/AuthModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
+import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import {
   createProfile,
   getCurrentUser,
@@ -2049,6 +2050,8 @@ export default function App() {
   const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
   const [authOpen, setAuthOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [usernameModalOpen, setUsernameModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
@@ -2239,23 +2242,54 @@ useEffect(() => {
           onSetCountdownSoundMode={handleSetCountdownSoundMode}
           onLogout={handleLogout}
           onLogin={() => setAuthOpen(true)}
+          onOpenChange={setProfileMenuOpen}
+          onRequestUsernameChange={
+            profile ? () => setUsernameModalOpen(true) : undefined
+          }
         />
 
-        <button
-          type="button"
-          className="lb-trigger"
-          onClick={() => setLeaderboardOpen(true)}
-          aria-label="Sıralamayı aç"
-        >
-          <span className="lb-trigger-icon">🏆</span>
-          <span className="lb-trigger-label">Sıralama</span>
-        </button>
+        {/* Profil dropdown açıkken sıralama butonu görsel olarak çakışmasın
+            diye gizleniyor; dropdown kapanınca tekrar görünür. */}
+        {!profileMenuOpen && (
+          <button
+            type="button"
+            className="lb-trigger"
+            onClick={() => setLeaderboardOpen(true)}
+            aria-label="Sıralamayı aç"
+          >
+            <span className="lb-trigger-icon">🏆</span>
+            <span className="lb-trigger-label">Sıralama</span>
+          </button>
+        )}
       </div>
 
       <HomeScreen onSelect={setScreen} profile={profile} />
 
       {leaderboardOpen && (
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
+      )}
+
+      {usernameModalOpen && profile && (
+        <UsernameChangeModal
+          profile={profile}
+          gold={gold}
+          onClose={() => setUsernameModalOpen(false)}
+          onSuccess={({ username, gold: newGold }) => {
+            setProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    username,
+                    gold: newGold,
+                    username_changed_at: new Date().toISOString(),
+                    username_change_count:
+                      (prev.username_change_count ?? 0) + 1,
+                  }
+                : prev
+            );
+            setUsernameModalOpen(false);
+          }}
+        />
       )}
 
       {authOpen && (
