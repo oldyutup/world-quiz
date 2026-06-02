@@ -81,9 +81,9 @@ export default function ConquestFateCardWidget({
   const label = spending
     ? "Kart çekiliyor..."
     : isActive
-      ? `Kader Kartı Çek — ${cost} Gold`
+      ? `Kader Kartı ${cost}g`
       : isInsufficient
-        ? `Yetersiz Gold — ${cost} Gold gerekli`
+        ? `Yetersiz Gold ${cost}g`
         : "Sıranı Bekle";
 
   const ariaLabel = spending

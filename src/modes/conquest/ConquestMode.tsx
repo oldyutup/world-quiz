@@ -60,7 +60,6 @@ import {
   joinConquestRoomByCode,
   leaveConquestRoom,
   markConquestRoomWaiting,
-  normalizeConquestRoomCode,
   updateConquestPlayerColor,
   updateConquestRoomSettings,
   type ConquestJoinResult,
@@ -180,6 +179,11 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   const myName  = me?.name ?? "";
 
   // ── Mount: detect invite link ?conquest=CODE and auto-join ──────────────
+  // App.tsx gates routing to this screen on a resolved profile, so by the
+  // time we mount with ?conquest= the user is guaranteed to be logged in.
+  // The defensive `onHome` fallback exists only for direct deep-link edge
+  // cases (e.g. someone forcing the screen via dev tools) — guests should
+  // never land here with the manual code-entry screen pre-filled.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -192,21 +196,22 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     cleanUrl.searchParams.delete("conquest");
     window.history.replaceState({}, "", cleanUrl.toString());
 
-    // Login-state-aware behaviour:
-    //   - Logged in    → auto-join with profile name.
-    //   - Guest        → land on join-code screen with code pre-filled so
-    //                    they can enter a display name first.
+    // Also clear the sessionStorage failsafe App.tsx wrote, so refreshes /
+    // re-navigations don't retry the join after a failure.
+    try { sessionStorage.removeItem("pending_conquest_invite_code"); }
+    catch { /* ignore */ }
+
     if (profile?.username) {
       void doAutoJoin(code, profile.username);
     } else {
-      setPhase("join-code");
-      // Stash the code for ConquestJoinByCode to read via prop.
-      setPendingJoinCode(normalizeConquestRoomCode(code));
+      onHome();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-filled code for the join-code screen (from invite link redirects).
+  // Pre-filled code for the join-code screen — only populated when the user
+  // arrives here manually from a "Kod ile katıl" entry point. Invite links
+  // skip this state entirely (they auto-join above).
   const [pendingJoinCode, setPendingJoinCode] = useState<string>("");
 
   // ── Auto-create: when launched from "Oda Kur" menu button ───────────────

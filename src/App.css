@@ -5714,6 +5714,18 @@ body {
   line-height: 1.45;
 }
 
+.auth-head .auth-note {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(245, 192, 110, 0.13);
+  border: 1px solid rgba(245, 192, 110, 0.35);
+  color: rgb(245, 213, 158);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;

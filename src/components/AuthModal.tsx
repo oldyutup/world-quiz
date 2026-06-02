@@ -15,12 +15,16 @@ type AuthModalProps = {
   onClose: () => void;
   onGuest: () => void;
   onAuthSuccess: (profile: Profile | null) => void;
+  /** Optional context-aware notice shown above the form (e.g. "Kuşatma moduna
+   *  katılmak için giriş yapmalısın."). */
+  headerNote?: string;
 };
 
 export default function AuthModal({
   onClose,
   onGuest,
   onAuthSuccess,
+  headerNote,
 }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -180,6 +184,7 @@ return;
               ? "XP, level ve ilerlemeni kaydetmek için hesap oluştur."
               : "Profiline, XP seviyene ve ilerlemene devam et."}
           </p>
+          {headerNote && <p className="auth-note">{headerNote}</p>}
         </div>
 
         <div className="auth-tabs">

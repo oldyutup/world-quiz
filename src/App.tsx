@@ -2077,6 +2077,11 @@ export default function App() {
   const [usernameModalOpen, setUsernameModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
+  /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
+   * "Kuşatma moduna katılmak için giriş yapmalısın." and triggers an auto-join
+   * once login completes. */
+  const [authPromptReason, setAuthPromptReason] =
+    useState<null | "welcome" | "conquest-invite">(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
@@ -2190,19 +2195,68 @@ async function handleLogout() {
   setProfile(null);
 }
 
+function clearPendingConquestInvite() {
+  try { sessionStorage.removeItem("pending_conquest_invite_code"); }
+  catch { /* sessionStorage disabled — best effort */ }
+  if (typeof window === "undefined") return;
+  const cleaned = new URL(window.location.href);
+  if (cleaned.searchParams.has("conquest")) {
+    cleaned.searchParams.delete("conquest");
+    window.history.replaceState({}, "", cleaned.toString());
+  }
+}
+
+  /* ── Invite-link routing ──────────────────────────────────────────────────
+   * Conquest is the only mode that requires login, so it has to wait for the
+   * auth-load to settle before routing. Re-runs when authLoading / profile
+   * flips so a guest who logs in via the conquest auth prompt is routed into
+   * the lobby on the same mount. The conquest invite code is mirrored into
+   * sessionStorage too — an OAuth round-trip (e.g. Google) replaces the URL,
+   * so we'd otherwise lose it; we write it back into the URL once we resume.
+   */
   useEffect(() => {
+    if (authLoading) return;
+
     const params = new URLSearchParams(window.location.search);
     const duelCode = params.get("duel");
     const duelGroupCode = params.get("duelGroup");
     const flagDuelCode = params.get("flagDuel");
     const wheelDuelCode = params.get("wheelDuel");
     const wheelGroupCode = params.get("wheelGroup");
-    const conquestCode = params.get("conquest");
+
+    const conquestFromUrl = params.get("conquest")?.trim().toUpperCase() || null;
+    const conquestFromStorage = (() => {
+      try { return sessionStorage.getItem("pending_conquest_invite_code"); }
+      catch { return null; }
+    })();
+    const conquestCode = conquestFromUrl ?? conquestFromStorage;
 
     if (conquestCode) {
-      // ConquestMode reads the same param on mount and runs the auto-join
-      // flow itself (and strips the param from the URL afterwards).
-      setScreen("conquest-join");
+      // Persist so we survive an OAuth redirect.
+      try { sessionStorage.setItem("pending_conquest_invite_code", conquestCode); }
+      catch { /* sessionStorage disabled — best effort */ }
+
+      // After OAuth the URL no longer carries ?conquest=, restore it so
+      // ConquestMode's own auto-join effect can pick it up.
+      if (!conquestFromUrl && typeof window !== "undefined") {
+        const restored = new URL(window.location.href);
+        restored.searchParams.set("conquest", conquestCode);
+        window.history.replaceState({}, "", restored.toString());
+      }
+
+      if (profile?.username) {
+        // Hand off to ConquestMode — it strips ?conquest= and joins.
+        try { sessionStorage.removeItem("pending_conquest_invite_code"); }
+        catch { /* ignore */ }
+        if (screen !== "conquest-join") setScreen("conquest-join");
+      } else {
+        // Guest: prompt login. The effect re-runs after onAuthSuccess
+        // sets the profile, which is when the join actually happens.
+        if (!authOpen) {
+          setAuthPromptReason("conquest-invite");
+          setAuthOpen(true);
+        }
+      }
       return;
     }
 
@@ -2230,7 +2284,8 @@ async function handleLogout() {
       setScreen("duel-game");
       return;
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, profile?.id]);
   /* ── Hoş geldin: misafir kullanıcıya giriş davet modal'ı (bir kez) ── */
 useEffect(() => {
   // Auth check henüz bitmediyse bekle
@@ -2240,12 +2295,19 @@ useEffect(() => {
   // Daha önce göstermişsek bir daha çıkma
   if (localStorage.getItem("torble_welcome_seen") === "true") return;
 
-  // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin
+  // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin.
+  // Conquest davetinde de modal'ı atla; conquest-invite effect kendi auth
+  // promptunu açıyor (farklı header mesajıyla).
   const params = new URLSearchParams(window.location.search);
   if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("conquest")) {
     return;
   }
+  let pendingConquest: string | null = null;
+  try { pendingConquest = sessionStorage.getItem("pending_conquest_invite_code"); }
+  catch { /* ignore */ }
+  if (pendingConquest) return;
 
+  setAuthPromptReason("welcome");
   setAuthOpen(true);
 }, [authLoading, profile]);
 
@@ -2317,17 +2379,35 @@ useEffect(() => {
 
       {authOpen && (
   <AuthModal
+    headerNote={
+      authPromptReason === "conquest-invite"
+        ? "Kuşatma moduna katılmak için giriş yapmalısın."
+        : undefined
+    }
     onClose={() => {
       setAuthOpen(false);
+      // Dismissing the conquest auth prompt drops the pending invite so
+      // a reload doesn't pester the user with the same login modal.
+      if (authPromptReason === "conquest-invite") {
+        clearPendingConquestInvite();
+      }
+      setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}
     onGuest={() => {
       setProfile(null);
+      if (authPromptReason === "conquest-invite") {
+        clearPendingConquestInvite();
+      }
+      setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}
     onAuthSuccess={(nextProfile) => {
       setProfile(nextProfile);
+      setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
+      // The invite-link effect re-runs once `profile?.id` flips, which is
+      // where the conquest auto-join is triggered. Nothing else to do here.
     }}
   />
 )}
