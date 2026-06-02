@@ -1045,6 +1045,44 @@ export interface ConquestGameState {
    * a stale reveal on reconnect / late join.
    */
   lastFateCardEvent?: ConquestFateCardEvent;
+  /**
+   * Elimination — players who have dropped to 0 regions during this match.
+   * Ordered by elimination time (first eliminated first); used as a
+   * secondary tiebreaker in final standings so later-eliminated outrank
+   * earlier-eliminated when points/regions tie. 1v1 matches keep the
+   * legacy "domination" early-finish path; 3+ player matches stay alive
+   * until the active count (players minus eliminated) drops to 1.
+   * Optional / [] for pre-elimination saves.
+   */
+  eliminatedPlayerIds?: string[];
+  /**
+   * Per-eliminated-player metadata: when they were eliminated.  Mirrors
+   * eliminatedPlayerIds but indexed by player id so the result screen can
+   * surface "Round X" badges without re-deriving from history.
+   */
+  eliminations?: Record<string, { at: number; round: number }>;
+  /**
+   * Most recent elimination event — persisted so every client renders the
+   * same rival-side banner ("@name hanedanlığı düştü!").  May carry
+   * multiple ids when the same hamle eliminated more than one player.
+   * UI dedupes by event id; cleared on round advance so a stale event
+   * doesn't replay to late joiners.
+   */
+  lastEliminationEvent?: ConquestEliminationEvent;
+}
+
+/**
+ * Elimination — synced event payload announcing one or more players just
+ * dropped to 0 regions.  Used by the rival-side dramatic banner and the
+ * event-feed row.  The self-side modal is driven directly from
+ * `eliminatedPlayerIds` (no toast needed for the player themselves).
+ */
+export interface ConquestEliminationEvent {
+  id:           string;
+  playerIds:    string[];
+  playerNames:  string[];
+  at:           number;
+  round:        number;
 }
 
 /**

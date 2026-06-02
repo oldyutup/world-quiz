@@ -48,7 +48,8 @@ export type ConquestSignalTier = "minor" | "major" | "critical";
 
 export type ConquestSignalKind =
   | "capital_fell"
-  | "last_stand";
+  | "last_stand"
+  | "player_eliminated";
 
 export interface ConquestSignal {
   id:        string;
@@ -77,6 +78,7 @@ export function useConquestSignals(
   const prevOwnersRef      = useRef<Record<string, string | null> | null>(null);
   const lastStandFiredRef  = useRef<Set<string>>(new Set());
   const capitalFiredRef    = useRef<Set<string>>(new Set());
+  const eliminationFiredRef = useRef<Set<string>>(new Set());
 
   const enqueue = (s: ConquestSignal) => {
     setQueue(q => (q.some(e => e.id === s.id) ? q : [...q, s]));
@@ -146,14 +148,17 @@ export function useConquestSignals(
       });
     }
 
-    // Last-stand: a player dropped from >1 to exactly 1 region this tick.
-    // Guarded per (player, round) to prevent re-fire from re-renders.
-    const round = gameState.round.roundNumber;
+    // Last-stand: a player dropped to exactly 1 region this tick.
+    // V1: fire at most once per player per match (latched in
+    // `lastStandFiredRef` by player id alone, not by round) so a player
+    // who bounces 1 → 2 → 1 doesn't re-fire the banner.  Eliminated
+    // players never re-enter the banner since their count won't return
+    // to 1 once they reach 0.
     for (const pid of Object.keys(afterCounts)) {
       const beforeC = beforeCounts[pid] ?? 0;
       const afterC  = afterCounts[pid] ?? 0;
       if (beforeC > 1 && afterC === 1) {
-        const key = `last-stand:${pid}:${round}`;
+        const key = `last-stand:${pid}`;
         if (lastStandFiredRef.current.has(key)) continue;
         lastStandFiredRef.current.add(key);
         const id = `${key}:${now}`;
@@ -177,6 +182,39 @@ export function useConquestSignals(
       }
     }
   }, [gameState?.regionStates, gameState?.round.roundNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Player elimination (critical) ──────────────────────────────────
+  // Synced through `lastEliminationEvent` so every client renders the
+  // same dramatic banner.  Dedupe by event id; the self-side gets a
+  // dedicated modal in ConquestGame instead of this banner.
+  useEffect(() => {
+    const ev = gameState?.lastEliminationEvent;
+    if (!ev) return;
+    if (eliminationFiredRef.current.has(ev.id)) return;
+    eliminationFiredRef.current.add(ev.id);
+
+    // For each newly-eliminated player in the event, enqueue a signal
+    // visible to rivals (suppressed for the eliminated player themselves).
+    for (let i = 0; i < ev.playerIds.length; i++) {
+      const pid  = ev.playerIds[i];
+      const name = ev.playerNames[i] ?? "Bir oyuncu";
+      if (pid === myPlayerId) continue;
+      const id = `elim-banner:${ev.id}:${pid}`;
+      if (seenRef.current.has(id)) continue;
+      seenRef.current.add(id);
+      enqueue({
+        id,
+        kind:     "player_eliminated",
+        tier:     "critical",
+        icon:     "💀",
+        title:    `${name} hanedanlığı düştü!`,
+        subtitle: "Savaştan çekildi.",
+        colorKey: playerColors[pid] ?? null,
+        at:       ev.at,
+        ttlMs:    TTL_CRITICAL,
+      });
+    }
+  }, [gameState?.lastEliminationEvent, myPlayerId, playerColors]);
 
   // Match-over intentionally has no banner here — the final standings
   // panel is the only post-match feedback so the two never stack.

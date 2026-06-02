@@ -279,5 +279,8 @@ export function playerCanDrawFateCard(
   if (state.phase !== "action")               return false;
   if (state.round.actionHolderId !== playerId) return false;
   if (state.fateCardsUsedByPlayerId?.[playerId]) return false;
+  // Eliminated players cannot draw — defensive, since they can't become
+  // action holder anyway once their region count hits 0.
+  if ((state.eliminatedPlayerIds ?? []).includes(playerId)) return false;
   return true;
 }

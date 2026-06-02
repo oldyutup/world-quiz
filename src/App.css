@@ -16592,6 +16592,93 @@ body {
   }
 }
 
+/* ═══ Elimination modal — local viewer just dropped to 0 regions ═══
+   Same shell as the confirm-leave dialog (.modal-backdrop / .modal) so
+   the eliminated player gets a centred, focus-trapped explainer card
+   with two paths forward: keep spectating, or leave the room.  Sits
+   above every in-game overlay (toasts, signals, sheets). */
+.cq-elimination-backdrop {
+  z-index: 1100;
+}
+.cq-elimination-modal {
+  max-width: 420px;
+  padding: 26px 22px 20px;
+  gap: 12px;
+  align-items: stretch;
+  text-align: center;
+}
+.cq-elimination-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+.cq-elimination-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 1.55rem;
+  letter-spacing: .04em;
+  line-height: 1.15;
+  color: var(--text);
+}
+.cq-elimination-desc {
+  margin: 0;
+  font-size: .94rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.cq-elimination-desc--soft {
+  color: var(--muted);
+  font-size: .86rem;
+}
+.cq-elimination-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+.cq-elimination-actions .btn {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+}
+@media (max-width: 540px) {
+  .cq-elimination-modal {
+    max-width: 100%;
+    padding: 22px 16px 16px;
+  }
+  .cq-elimination-title {
+    font-size: 1.35rem;
+  }
+  .cq-elimination-actions {
+    flex-direction: column;
+  }
+  .cq-elimination-actions .btn {
+    height: 44px;
+  }
+}
+
+/* ═══ Eliminated player badge in players panel ═══════════════════ */
+.cq-players-panel-row[data-eliminated="true"] {
+  opacity: .55;
+}
+.cq-players-panel-row[data-eliminated="true"] .cq-players-panel-name {
+  text-decoration: line-through;
+  text-decoration-color: rgba(248, 81, 73, .55);
+}
+.cq-eliminated-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: rgba(248, 81, 73, .12);
+  color: var(--red);
+  border: 1px solid rgba(248, 81, 73, .35);
+  border-radius: 999px;
+}
+
 /* ═══════════════════════════════════════════════════════════
    USERNAME CHANGE MODAL — profil panelinden açılan küçük modal
    ═══════════════════════════════════════════════════════════ */

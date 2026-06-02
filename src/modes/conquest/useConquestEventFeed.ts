@@ -71,6 +71,7 @@ export function useConquestEventFeed(
   const prevDuelIdRef      = useRef<string | null>(null);
   const prevBonusToastRef  = useRef<string | null>(null);
   const prevFateCardIdRef  = useRef<string | null>(null);
+  const prevEliminationIdRef = useRef<string | null>(null);
 
   // ── Ownership transitions ───────────────────────────────────────────
   useEffect(() => {
@@ -283,6 +284,40 @@ export function useConquestEventFeed(
       isMine,
     }]));
   }, [gameState?.lastFateCardEvent, myPlayerId, playerColors]);
+
+  // ── Elimination — log every elimination event exactly once ─────────
+  useEffect(() => {
+    const ev = gameState?.lastEliminationEvent;
+    if (!ev) {
+      prevEliminationIdRef.current = null;
+      return;
+    }
+    if (prevEliminationIdRef.current === ev.id) return;
+    prevEliminationIdRef.current = ev.id;
+
+    const newRows: ConquestEventFeedEntry[] = [];
+    for (let i = 0; i < ev.playerIds.length; i++) {
+      const pid  = ev.playerIds[i];
+      const name = ev.playerNames[i] ?? "Bir oyuncu";
+      const key  = `elim:${ev.id}:${pid}`;
+      if (seenIdsRef.current.has(key)) continue;
+      seenIdsRef.current.add(key);
+      const isMine = pid === myPlayerId;
+      newRows.push({
+        id:       key,
+        at:       ev.at,
+        icon:     "💀",
+        text:     isMine
+          ? "Hanedanlığın düştü — savaştan çekildin."
+          : `${name} hanedanlığı düştü — savaştan çekildi.`,
+        colorKey: playerColors[pid] ?? "neutral",
+        isMine,
+      });
+    }
+    if (newRows.length > 0) {
+      setEvents(prev => prependBounded(prev, newRows));
+    }
+  }, [gameState?.lastEliminationEvent, myPlayerId, playerColors]);
 
   return events;
 }

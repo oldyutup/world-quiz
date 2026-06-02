@@ -66,6 +66,7 @@ import type {
   ConquestChallengeState,
   ConquestChallengeType,
   ConquestDefenseDuelState,
+  ConquestEliminationEvent,
   ConquestFinalStanding,
   ConquestGameState,
   ConquestMapConfig,
@@ -424,6 +425,11 @@ export function submitChallengeAnswer(
     return { ok: false, correct: false, firstCorrect: false, winning: false, state };
   }
   if (state.round.challenge.status !== "active") {
+    return { ok: false, correct: false, firstCorrect: false, winning: false, state };
+  }
+  // Eliminated players cannot submit — defensive guard in addition to the
+  // eligibility list, which is rebuilt to exclude them on every round advance.
+  if (isPlayerEliminated(state, submitterId)) {
     return { ok: false, correct: false, firstCorrect: false, winning: false, state };
   }
   const challenge = state.round.challenge.challenge;
@@ -1060,6 +1066,21 @@ export function applyActionToGame(
       },
     };
   }
+  // Eliminated players cannot commit moves.  Defensive guard — the action
+  // holder is set from the challenge winner, who is filtered to active
+  // players, but a stale snapshot could still arrive on the wire.
+  if (isPlayerEliminated(state, action.playerId)) {
+    return {
+      state,
+      result: {
+        ok:       false,
+        action:   action.type,
+        playerId: action.playerId,
+        regionId: action.type === "skip" ? null : action.regionId,
+        message:  "Elenmiş oyuncu hamle yapamaz.",
+      },
+    };
+  }
 
   // ── Mancınık 🎯 — long-range attack bypass decision ───────────────────
   // The bypass is "used" iff the holder has a charge AND the target was NOT
@@ -1355,20 +1376,45 @@ export function applyActionToGame(
     result:             applied.result,
   };
 
+  // Elimination diff — any player who lost their last region this hamle is
+  // marked eliminated.  Computed before the finish checks so the result
+  // screen can rank eliminated players honestly and downstream phases (next
+  // challenge / action holder) can skip them.
+  const elimDiff = action.type !== "skip"
+    ? computeEliminationDiff(state, postRegionStates, Date.now())
+    : {
+        eliminatedPlayerIds:  state.eliminatedPlayerIds ?? [],
+        eliminations:         state.eliminations ?? {},
+        newlyEliminatedIds:   [],
+        lastEliminationEvent: state.lastEliminationEvent,
+      };
+
   // Early finish: one player now owns every region on the map.
   // Only possible after a capture/attack (skip never changes ownership).
   const dominatorId = action.type !== "skip"
     ? getPlayerOwningAllRegions(postRegionStates, mapConfig)
     : null;
 
-  if (dominatorId !== null) {
-    const dominator   = state.players.find(p => p.id === dominatorId);
+  // Last-player-standing finish: after eliminating someone, only one player
+  // still has territory.  Covers the 3+ player case where a neutral region
+  // remains (so dominatorId is null) AND the 1v1 case where the loser drops
+  // to 0 while neutrals remain.
+  const survivorId = action.type !== "skip"
+    ? getSoleSurvivorId(state.players, elimDiff.eliminatedPlayerIds)
+    : null;
+
+  if (dominatorId !== null || survivorId !== null) {
+    const winnerId  = dominatorId ?? survivorId!;
+    const winner    = state.players.find(p => p.id === winnerId);
+    const finishMsg = dominatorId !== null
+      ? `${winner?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`
+      : `${winner?.name ?? "Bir oyuncu"} son ayakta kalan oldu!`;
     const domResult: ConquestActionResult = {
       ok:       true,
       action:   applied.result.action,
       playerId: applied.result.playerId,
       regionId: applied.result.regionId,
-      message:  `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+      message:  finishMsg,
     };
     return {
       state: {
@@ -1382,6 +1428,12 @@ export function applyActionToGame(
         playerHiddenBonuses:   postPlayerHidden,
         lastHiddenBonusToast:  postHiddenToast,
         lastIntelReport:       postIntelReport,
+        eliminatedPlayerIds:   elimDiff.eliminatedPlayerIds,
+        eliminations:          elimDiff.eliminations,
+        lastEliminationEvent:  elimDiff.lastEliminationEvent,
+        winnerPlayerId:        winnerId,
+        winnerName:            winner?.name,
+        finishReason:          dominatorId !== null ? undefined : "last_player_standing",
         round: {
           ...state.round,
           lastResult: domResult,
@@ -1403,6 +1455,9 @@ export function applyActionToGame(
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
       lastIntelReport:       postIntelReport,
+      eliminatedPlayerIds:   elimDiff.eliminatedPlayerIds,
+      eliminations:          elimDiff.eliminations,
+      lastEliminationEvent:  elimDiff.lastEliminationEvent,
       round: {
         ...state.round,
         lastResult: applied.result,
@@ -1960,6 +2015,9 @@ export function submitDuelAnswer(
   if (submitterId !== duel.attackerId && submitterId !== duel.defenderId) {
     return { ok: false, winning: false, state };
   }
+  if (isPlayerEliminated(state, submitterId)) {
+    return { ok: false, winning: false, state };
+  }
 
   // Mevzi Bekçisi attacker-cap.  When the defender holds the bonus, their
   // deadline (`endsAt`) is later than the attacker's by `defenderTimeBonusMs`.
@@ -2145,16 +2203,29 @@ function resolveDuelWithWinner(
 
   const base = finishDuelIntoRoundResult(state, flipResult);
 
+  // Elimination diff — the duel flip may have captured the defender's last
+  // region.  Computed against the final post-bonus region snapshot so the
+  // result screen ranks the defender below active players.
+  const elimDiff = computeEliminationDiff(state, mevziOut.regionStates, now);
+
   // Domination check — attacker may have just captured the last enemy region.
   const dominatorId = getPlayerOwningAllRegions(mevziOut.regionStates, mapConfig);
-  if (dominatorId !== null) {
-    const dominator = state.players.find(p => p.id === dominatorId);
+  // Last-player-standing — covers the 3+ player case where the defender just
+  // dropped to 0 but neutral regions still exist (dominatorId stays null).
+  const survivorId  = getSoleSurvivorId(state.players, elimDiff.eliminatedPlayerIds);
+
+  if (dominatorId !== null || survivorId !== null) {
+    const winnerId  = dominatorId ?? survivorId!;
+    const winner    = state.players.find(p => p.id === winnerId);
+    const finishMsg = dominatorId !== null
+      ? `${winner?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`
+      : `${winner?.name ?? "Bir oyuncu"} son ayakta kalan oldu!`;
     const domResult: ConquestActionResult = {
       ok:              true,
       action:          "attack_region",
       playerId:        duel.attackerId,
       regionId:        duel.regionId,
-      message:         `${dominator?.name ?? "Bir oyuncu"} tüm bölgeleri ele geçirdi!`,
+      message:         finishMsg,
       previousOwnerId: duel.defenderId,
     };
     return {
@@ -2168,6 +2239,12 @@ function resolveDuelWithWinner(
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
       lastIntelReport:       postIntelReport,
+      eliminatedPlayerIds:   elimDiff.eliminatedPlayerIds,
+      eliminations:          elimDiff.eliminations,
+      lastEliminationEvent:  elimDiff.lastEliminationEvent,
+      winnerPlayerId:        winnerId,
+      winnerName:            winner?.name,
+      finishReason:          dominatorId !== null ? undefined : "last_player_standing",
       round: {
         ...base.round,
         lastResult: domResult,
@@ -2192,6 +2269,9 @@ function resolveDuelWithWinner(
     playerHiddenBonuses:   postPlayerHidden,
     lastHiddenBonusToast:  postHiddenToast,
     lastIntelReport:       postIntelReport,
+    eliminatedPlayerIds:   elimDiff.eliminatedPlayerIds,
+    eliminations:          elimDiff.eliminations,
+    lastEliminationEvent:  elimDiff.lastEliminationEvent,
   };
 }
 
@@ -2289,17 +2369,30 @@ export function advanceToNextRound(
   const nextRoundNumber = bereketApplied.round.roundNumber + 1;
   const usedSoFar  = bereketApplied.usedChallengeKeys ?? [];
   const lastType   = bereketApplied.lastChallengeType;
+  // Filter out eliminated players from challenge eligibility so they cannot
+  // submit answers next round.  Pre-picked Kâhin challenges may still carry
+  // a stale roster; the eligibility list is rebuilt below regardless.
+  const activeForNext = getActivePlayers(bereketApplied);
   // Kâhin Büyüsü 🔮 — consume the pre-picked next challenge when present
   // (so the round actually delivers the question type Kâhin previewed).
   // Falls back to picking fresh for legacy saves with no `nextChallenge`.
-  const { challenge, bankId } = bereketApplied.nextChallenge
+  const picked = bereketApplied.nextChallenge
     ? bereketApplied.nextChallenge
     : pickRandomConquestChallenge(
         nextRoundNumber,
-        bereketApplied.players,
+        activeForNext,
         usedSoFar,
         lastType,
       );
+  // Always restrict eligibility to active (non-eliminated) players, even on
+  // the pre-picked Kâhin path where the cached challenge may carry an older
+  // roster.  Pure rewrite of one field; rest of the challenge stays intact.
+  const activeIds = activeForNext.map(p => p.id);
+  const challenge: ConquestChallenge = {
+    ...picked.challenge,
+    eligiblePlayerIds: activeIds,
+  };
+  const bankId = picked.bankId;
   const now = Date.now();
 
   // Refresh the Kâhin preview for the round AFTER the one we're about to
@@ -2313,11 +2406,14 @@ export function advanceToNextRound(
   if (nextRoundNumber < totalRounds) {
     const peek = pickRandomConquestChallenge(
       nextRoundNumber + 1,
-      bereketApplied.players,
+      activeForNext,
       usedAfterMount,
       challenge.type as ConquestChallengeType,
     );
-    nextChallenge = { challenge: peek.challenge, bankId: peek.bankId };
+    nextChallenge = {
+      challenge: { ...peek.challenge, eligiblePlayerIds: activeIds },
+      bankId:    peek.bankId,
+    };
   }
   const finalUsedKeys = nextChallenge
     ? [...usedAfterMount, nextChallenge.bankId]
@@ -2344,6 +2440,10 @@ export function advanceToNextRound(
     /* Hidden bonus claim toasts are one-shot: clear on round advance so a
      * stale claim doesn't echo to late joiners or replay on next-round mount. */
     lastHiddenBonusToast: undefined,
+    /* Elimination events are one-shot: clear on round advance so the rival
+     * banner doesn't replay to late joiners.  eliminatedPlayerIds /
+     * eliminations stay populated — they are durable match state. */
+    lastEliminationEvent: undefined,
     /* 👁️ İstihbarat Ağı intel reports are one-shot: clear on round advance
      * so a stale report doesn't echo to late joiners or to a new intel-
      * region owner who joined after the original event. */
@@ -2755,6 +2855,128 @@ export function getPlayerOwningAllRegions(
   return firstOwner;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Elimination — players who have lost every region
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * True when this player has been eliminated (lost every region) earlier in the
+ * match.  Eliminated players are skipped by challenge eligibility, action
+ * holder selection, and submission gating.
+ */
+export function isPlayerEliminated(
+  state:    ConquestGameState,
+  playerId: string,
+): boolean {
+  return (state.eliminatedPlayerIds ?? []).includes(playerId);
+}
+
+/**
+ * Active player ids (players minus eliminated).  Order matches the roster's
+ * order — never reshuffled — so downstream rotation logic remains stable.
+ */
+export function getActivePlayerIds(state: ConquestGameState): string[] {
+  const elim = new Set(state.eliminatedPlayerIds ?? []);
+  return state.players.filter(p => !elim.has(p.id)).map(p => p.id);
+}
+
+/**
+ * Active players (full ConquestPlayer rows).  Convenience wrapper around
+ * getActivePlayerIds used by challenge factories that take the roster.
+ */
+export function getActivePlayers(state: ConquestGameState): ConquestPlayer[] {
+  const elim = new Set(state.eliminatedPlayerIds ?? []);
+  return state.players.filter(p => !elim.has(p.id));
+}
+
+/**
+ * Compute the elimination diff produced by transitioning to `nextRegionStates`.
+ * Returns the new eliminated-id list, the elimination metadata map, and an
+ * event payload covering the newly-eliminated players (if any).  Pure: does
+ * not mutate inputs.
+ *
+ * A player counts as newly-eliminated when:
+ *   - they are not already in `state.eliminatedPlayerIds`, AND
+ *   - they own zero regions in `nextRegionStates`.
+ *
+ * Multiple players can be eliminated by the same hamle (e.g. a single attack
+ * captures the last region of two simultaneously-distinct holders); they all
+ * land in the same event so the rival banner can chain them.
+ */
+export function computeEliminationDiff(
+  state:            ConquestGameState,
+  nextRegionStates: ConquestRegionState[],
+  now:              number = Date.now(),
+): {
+  eliminatedPlayerIds: string[];
+  eliminations:        Record<string, { at: number; round: number }>;
+  newlyEliminatedIds:  string[];
+  lastEliminationEvent: ConquestEliminationEvent | undefined;
+} {
+  const elimSet = new Set(state.eliminatedPlayerIds ?? []);
+  const counts: Record<string, number> = {};
+  for (const p of state.players) counts[p.id] = 0;
+  for (const rs of nextRegionStates) {
+    const o = rs.ownerPlayerId;
+    if (o && counts[o] !== undefined) counts[o] += 1;
+  }
+  const newly: string[] = [];
+  for (const p of state.players) {
+    if (elimSet.has(p.id)) continue;
+    if ((counts[p.id] ?? 0) === 0) newly.push(p.id);
+  }
+  if (newly.length === 0) {
+    return {
+      eliminatedPlayerIds:  state.eliminatedPlayerIds ?? [],
+      eliminations:         state.eliminations ?? {},
+      newlyEliminatedIds:   [],
+      lastEliminationEvent: state.lastEliminationEvent,
+    };
+  }
+  const eliminatedPlayerIds = [...(state.eliminatedPlayerIds ?? []), ...newly];
+  const eliminations: Record<string, { at: number; round: number }> = {
+    ...(state.eliminations ?? {}),
+  };
+  for (const pid of newly) {
+    eliminations[pid] = { at: now, round: state.round.roundNumber };
+  }
+  const playerNames = newly.map(
+    pid => state.players.find(p => p.id === pid)?.name ?? "Oyuncu",
+  );
+  const lastEliminationEvent: ConquestEliminationEvent = {
+    id:          `elim-${now}-${newly.join("_")}`,
+    playerIds:   newly,
+    playerNames,
+    at:          now,
+    round:       state.round.roundNumber,
+  };
+  return {
+    eliminatedPlayerIds,
+    eliminations,
+    newlyEliminatedIds: newly,
+    lastEliminationEvent,
+  };
+}
+
+/**
+ * Return the lone surviving player id when only one remains active,
+ * otherwise null.  Used to trigger the multi-player "last man standing"
+ * finish path after an elimination.
+ *
+ * In 1v1, the legacy domination-based finish still fires first (one player
+ * owning every region); this fallback covers the multi-player path where a
+ * neutral region remains but only one player still has territory.
+ */
+export function getSoleSurvivorId(
+  players:              ConquestPlayer[],
+  eliminatedPlayerIds:  string[],
+): string | null {
+  const elim = new Set(eliminatedPlayerIds);
+  const active = players.filter(p => !elim.has(p.id));
+  if (active.length !== 1) return null;
+  return active[0].id;
+}
+
 /**
  * Count regions owned by each player.  Players with zero regions are still
  * present in the output map (value = 0) so the result screen can list every
@@ -2810,14 +3032,35 @@ export function buildFinalStandings(
   const points = getPlayerTotalPoints(
     state.players, state.regionStates, state.playerBonuses,
   );
+  // Elimination order: position in `eliminatedPlayerIds` → first eliminated
+  // gets the lowest order so they slot lowest in standings.  Active players
+  // get +Infinity so any eliminated row sorts below them, regardless of
+  // points / regions.  Reverse-order on ties so a later elimination outranks
+  // an earlier one.
+  const elimOrder: Record<string, number> = {};
+  (state.eliminatedPlayerIds ?? []).forEach((pid, i) => { elimOrder[pid] = i; });
+  const isElim = (pid: string) => elimOrder[pid] !== undefined;
+
   const rows = state.players.map(p => ({
     playerId:    p.id,
     playerName:  p.name,
     regionsHeld: counts[p.id] ?? 0,
     points:      points[p.id] ?? 0,
   }));
-  // Primary sort: points (desc). Tiebreak: region count (desc).
-  rows.sort((a, b) => (b.points - a.points) || (b.regionsHeld - a.regionsHeld));
+  // Primary sort: active players above eliminated.  Among actives: points
+  // (desc) then region count (desc).  Among eliminated: later-eliminated
+  // (higher elimOrder) outranks earlier-eliminated; remaining ties fall back
+  // to points / regions.
+  rows.sort((a, b) => {
+    const aElim = isElim(a.playerId);
+    const bElim = isElim(b.playerId);
+    if (aElim !== bElim) return aElim ? 1 : -1;
+    if (aElim && bElim) {
+      const ord = (elimOrder[b.playerId] ?? 0) - (elimOrder[a.playerId] ?? 0);
+      if (ord !== 0) return ord;
+    }
+    return (b.points - a.points) || (b.regionsHeld - a.regionsHeld);
+  });
 
   // Auto-finish override: when the match ended via "last player standing"
   // (opponent left or stale past the reconnect window), the player still in
@@ -2843,7 +3086,11 @@ export function buildFinalStandings(
       // beneath without sharing it, even on a points tie.
       rank = 1;
     } else {
-      const key = `${r.points}|${r.regionsHeld}`;
+      // Tie key includes elimination order so an eliminated row never
+      // shares a rank with an active row (or with another player who
+      // dropped on a different hamle).
+      const elimKey = isElim(r.playerId) ? `E${elimOrder[r.playerId]}` : "A";
+      const key = `${elimKey}|${r.points}|${r.regionsHeld}`;
       if (lastKey !== null && key === lastKey) {
         rank = lastRank;
       } else {

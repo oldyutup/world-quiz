@@ -97,6 +97,7 @@ import {
   getCurrentLegalTargets,
   getIntelNetworkOwnerId,
   getPlayerOwningAllRegions,
+  isPlayerEliminated,
   LIMAN_INCOME_GOLD,
   placeHiddenConquestOnNeutralRegion,
   placeHiddenShieldOnOwnRegion,
@@ -1208,6 +1209,18 @@ export default function ConquestGame({
    * gameState is null).  The finished panel uses its own dedicated
    * "Lobiye Dön" button — it never routes through this leave path. */
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+
+  // Elimination — the local viewer just dropped to 0 regions.  Modal shows
+  // once until dismissed (V1: per-mount, no persistence; reconnects will
+  // re-show it which we consider acceptable for the spectator flow).
+  const localEliminated =
+    !!gameState && !!myPlayerId && isPlayerEliminated(gameState, myPlayerId);
+  const [eliminationModalDismissed, setEliminationModalDismissed] = useState(false);
+  // Reset the dismissed flag if the player somehow re-enters a fresh match
+  // (matchKey-driven) so the modal can re-appear if needed in a new room.
+  useEffect(() => {
+    if (!localEliminated) setEliminationModalDismissed(false);
+  }, [localEliminated]);
 
   function isMatchInProgress(): boolean {
     if (!gameState) return false;
@@ -4339,6 +4352,67 @@ export default function ConquestGame({
     </div>
   ) : null;
 
+  // Elimination modal — surfaced to the eliminated viewer the moment their
+  // region count reaches 0 (and the match is still in progress).  Two
+  // actions: "Oyunu İzle" dismisses the modal so the player can spectate
+  // (the rest of the UI already disables input for eliminated players), and
+  // "Odadan Ayrıl" routes through the existing confirm-leave flow.
+  const eliminationModalNode =
+    localEliminated
+    && !eliminationModalDismissed
+    && gameState?.phase !== "finished"
+    && gameState?.phase !== "setup"
+      ? (
+        <div
+          className="modal-backdrop cq-elimination-backdrop"
+          role="presentation"
+        >
+          <div
+            className="modal cq-elimination-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cq-elimination-title"
+            aria-describedby="cq-elimination-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="cq-elimination-icon" aria-hidden="true">💀</div>
+            <h2 id="cq-elimination-title" className="cq-elimination-title">
+              Hanedanlığının kontrolünü kaybettin!
+            </h2>
+            <p id="cq-elimination-desc" className="cq-elimination-desc">
+              Tüm bölgelerini kaybettin. Bu maçta artık hamle yapamazsın.
+            </p>
+            <p className="cq-elimination-desc cq-elimination-desc--soft">
+              Bir sonraki oyuna daha güçlü hazırlanman dileğiyle.
+            </p>
+            <div className="cq-elimination-actions">
+              <button
+                type="button"
+                className="btn btn-accent"
+                onClick={() => {
+                  playSound("click");
+                  setEliminationModalDismissed(true);
+                }}
+                autoFocus
+              >
+                Oyunu İzle
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  playSound("click");
+                  setEliminationModalDismissed(true);
+                  onLeaveRoom();
+                }}
+              >
+                Odadan Ayrıl
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null;
+
   // legacy side-dock CSS from `.cq-game-phase-panel` — but only on
   // landscape (the sheet replaces the panel in portrait).
   if (isMobile) {
@@ -4401,6 +4475,7 @@ export default function ConquestGame({
           <div className="cq-finished-backdrop" aria-hidden="true" />
         )}
         {confirmLeaveNode}
+        {eliminationModalNode}
       </div>
     );
   }
@@ -4514,16 +4589,30 @@ export default function ConquestGame({
             });
           }
 
+          const eliminated = !!gameState && isPlayerEliminated(gameState, player.id);
           return (
             <div
               key={player.id}
               className={"cq-players-panel-row" + (isHolder ? " cq-players-panel-row--active" : "")}
               data-color={color}
+              data-eliminated={eliminated || undefined}
               role="listitem"
-              aria-label={`${player.name} — ${playerPoints[player.id] ?? 0} puan, ${regionCounts[player.id] ?? 0} bölge${isHolder ? " (sırada)" : ""}`}
+              aria-label={
+                `${player.name} — ${playerPoints[player.id] ?? 0} puan, `
+                + `${regionCounts[player.id] ?? 0} bölge`
+                + (eliminated ? " (elendi)" : isHolder ? " (sırada)" : "")
+              }
             >
               <span className="cq-players-panel-dot" aria-hidden="true" />
               <span className="cq-players-panel-name">{player.name}</span>
+              {eliminated && (
+                <span
+                  className="cq-eliminated-chip"
+                  title="Tüm bölgelerini kaybetti — bu maçta artık aktif değil."
+                >
+                  💀 Elendi
+                </span>
+              )}
               <span
                 className="cq-players-panel-gold"
                 title={`Bu maçta kazanılan Gold: ${pb.matchGoldEarned ?? 0}g`}
@@ -4864,6 +4953,7 @@ export default function ConquestGame({
         )}
       </div>
       {confirmLeaveNode}
+      {eliminationModalNode}
 
       {/* ════════ XP KAZANIMI — fixed footer (reusable XpGainBar) ════════ */}
       {xpResult && !xpResult.dismissed && (
