@@ -45,6 +45,7 @@ import {
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
+import { LeaderboardModal } from "./components/LeaderboardModal";
 import {
   createProfile,
   getCurrentUser,
@@ -2047,6 +2048,7 @@ export default function App() {
   const gold = useGold();
   const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
   const [authOpen, setAuthOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
@@ -2224,21 +2226,37 @@ useEffect(() => {
   if (screen === "home")
   return (
     <>
-      <UserProfileDropdown
-        profile={profile}
-        authLoading={authLoading}
-        gold={gold}
-        canBonus={canBonus}
-        soundEnabled={soundEnabled}
-        countdownSoundMode={countdownSoundMode}
-        onClaimBonus={handleAppClaimBonus}
-        onSetSoundEnabled={handleSetSoundEnabled}
-        onSetCountdownSoundMode={handleSetCountdownSoundMode}
-        onLogout={handleLogout}
-        onLogin={() => setAuthOpen(true)}
-      />
+      <div className="top-right-stack">
+        <UserProfileDropdown
+          profile={profile}
+          authLoading={authLoading}
+          gold={gold}
+          canBonus={canBonus}
+          soundEnabled={soundEnabled}
+          countdownSoundMode={countdownSoundMode}
+          onClaimBonus={handleAppClaimBonus}
+          onSetSoundEnabled={handleSetSoundEnabled}
+          onSetCountdownSoundMode={handleSetCountdownSoundMode}
+          onLogout={handleLogout}
+          onLogin={() => setAuthOpen(true)}
+        />
+
+        <button
+          type="button"
+          className="lb-trigger"
+          onClick={() => setLeaderboardOpen(true)}
+          aria-label="Sıralamayı aç"
+        >
+          <span className="lb-trigger-icon">🏆</span>
+          <span className="lb-trigger-label">Sıralama</span>
+        </button>
+      </div>
 
       <HomeScreen onSelect={setScreen} profile={profile} />
+
+      {leaderboardOpen && (
+        <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
+      )}
 
       {authOpen && (
   <AuthModal
