@@ -177,6 +177,11 @@ export interface ConquestRoomRow {
    * has been initialized yet.  See conquestGameSync.ts for the shape.
    */
   gameplay_state:   unknown | null;
+  /**
+   * 2v2 Takımlı mod — Layer 1.  "individual" (varsayılan) ya da "teams_2v2".
+   * Pre-Layer-1 satırlarda yoksa "individual" varsayılır.
+   */
+  team_mode?:       "individual" | "teams_2v2";
 }
 
 export interface ConquestPlayerRow {
@@ -192,4 +197,12 @@ export interface ConquestPlayerRow {
   color:        string | null;
   joined_at:    string;
   last_seen_at: string;
+  /**
+   * 2v2 Takımlı mod — oyuncunun takım numarası.
+   *   • null  → henüz takım seçmedi (veya bireysel modda)
+   *   • 1     → Mavi Takım
+   *   • 2     → Kırmızı Takım
+   * Pre-Layer-1 satırlarda yoksa null kabul edilir.
+   */
+  team_id?:     1 | 2 | null;
 }

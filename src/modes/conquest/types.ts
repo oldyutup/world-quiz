@@ -30,6 +30,18 @@ export type ConquestMaxPlayers = 2 | 3 | 4;
  */
 export type ConquestBonusDistribution = "random" | "vote";
 
+/**
+ * Oyun tipi — Layer 1.
+ *   • "individual"  → bireysel Kuşatma (mevcut davranış)
+ *   • "teams_2v2"   → 4 oyunculu, 2v2 takımlı lobby
+ * Gameplay kuralları Layer 1'de bu değerden etkilenmez; sadece lobby/takım
+ * seçimi/state altyapısı bu alanı kullanır.
+ */
+export type ConquestTeamMode = "individual" | "teams_2v2";
+
+/** 2v2 modda kullanılabilen takım kimlikleri. 1 = Mavi, 2 = Kırmızı. */
+export type ConquestTeamId = 1 | 2;
+
 export type ConquestRoomStatus = "waiting" | "playing" | "finished";
 
 export interface ConquestPlayer {
@@ -44,6 +56,11 @@ export interface ConquestPlayer {
    * assignment via `assignConquestPlayerColors`.
    */
   color?: ConquestPlayerColor;
+  /**
+   * 2v2 Takımlı modda oyuncunun takımı.  null → seçmedi / bireysel mod.
+   * Layer 1: bilgilendirme amaçlı; gameplay kuralları bu alanı kullanmıyor.
+   */
+  teamId?: ConquestTeamId | null;
 }
 
 export interface ConquestRoomSettings {
@@ -57,6 +74,12 @@ export interface ConquestRoomSettings {
    * readers default to "random".
    */
   bonusDistribution?: ConquestBonusDistribution;
+  /**
+   * 2v2 Takımlı mod — Layer 1.  Yoksa "individual" varsayılır.  Sadece
+   * lobby/seçim altyapısı kullanır; gameplay kuralları bu alana göre
+   * davranmaz.
+   */
+  teamMode?: ConquestTeamMode;
 }
 
 export interface ConquestRoomSummary {
@@ -88,6 +111,7 @@ export const CONQUEST_DEFAULT_SETTINGS: ConquestRoomSettings = {
   rounds: 8,
   visibility: "public",
   bonusDistribution: "random",
+  teamMode: "individual",
 };
 
 /** Minimum players to enable "Oyunu Başlat". */
@@ -1069,6 +1093,17 @@ export interface ConquestGameState {
    * doesn't replay to late joiners.
    */
   lastEliminationEvent?: ConquestEliminationEvent;
+  /**
+   * 2v2 Takımlı mod — Layer 1.  Maç başında lobby'den taşınır ama gameplay
+   * kuralları henüz bu alanı kullanmaz (Layer 2'de aynı takım saldırı yasağı,
+   * takım skoru vb. eklenecek).  Pre-Layer-1 saves için optional.
+   */
+  teamMode?: ConquestTeamMode;
+  /**
+   * 2v2 Takımlı mod — Layer 1.  playerId → 1|2 mapping.  Lobby'den maç
+   * başında taşınır; Layer 2'de kullanılacak.
+   */
+  teamAssignments?: Record<string, ConquestTeamId>;
 }
 
 /**

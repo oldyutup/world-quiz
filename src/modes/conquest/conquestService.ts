@@ -28,6 +28,8 @@ import type {
   ConquestMapId,
   ConquestPlayerColor,
   ConquestRoomSettings,
+  ConquestTeamId,
+  ConquestTeamMode,
 } from "./types";
 import {
   freshConquestPlayerId,
@@ -149,6 +151,9 @@ export async function createConquestRoom(
     const code = generateConquestRoomCode();
     const hostPlayerId = freshConquestPlayerId();
 
+    // Yeni odalar varsayılan olarak "individual" açılır. Eski odadan gelen
+    // teamMode state'i taşınmaz — Layer 1 spec: yeni oda kurunca eski takım
+    // state'i taşınmasın.
     const { data: roomData, error: roomErr } = await supabase
       .from("conquest_rooms")
       .insert({
@@ -161,6 +166,7 @@ export async function createConquestRoom(
         max_players:     settings.maxPlayers,
         round_count:     settings.rounds,
         visibility:      settings.visibility,
+        team_mode:       "individual",
       })
       .select("*")
       .single();
@@ -621,4 +627,110 @@ export async function fetchConquestPlayers(
     .eq("room_id", roomId)
     .order("joined_at", { ascending: true });
   return (data ?? []) as ConquestPlayerRow[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2v2 Takımlı mod — Layer 1
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ConquestTeamModeUpdateOk   { ok: true;  room: ConquestRoomRow; }
+export interface ConquestTeamModeUpdateFail { ok: false; reason: "capacity" | "unauthorized" | "error"; message: string; }
+export type ConquestTeamModeUpdateResult = ConquestTeamModeUpdateOk | ConquestTeamModeUpdateFail;
+
+/**
+ * Host: oda team_mode'unu değiştir.  teams_2v2 sadece kapasite 4 iken
+ * seçilebilir.  individual'a dönülürse server-side tüm team_id'ler temizlenir.
+ */
+export async function setConquestTeamMode(
+  roomId:    string,
+  playerId:  string,
+  teamMode:  ConquestTeamMode,
+): Promise<ConquestTeamModeUpdateResult> {
+  const claimToken = recallConquestClaim(playerId);
+  const { data, error } = await supabase.rpc("set_conquest_team_mode", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+    p_team_mode:   teamMode,
+  });
+  if (error) {
+    if (error.message?.includes("team_mode_requires_capacity_4")) {
+      return { ok: false, reason: "capacity", message: "2v2 Takımlı mod için oda kapasitesi 4 olmalı." };
+    }
+    if (error.message?.includes("unauthorized")) {
+      return { ok: false, reason: "unauthorized", message: "Bu işlem için yetkin yok." };
+    }
+    return { ok: false, reason: "error", message: error.message ?? "Oyun tipi güncellenemedi." };
+  }
+  if (!data) return { ok: false, reason: "error", message: "Oyun tipi güncellenemedi." };
+  return { ok: true, room: data as ConquestRoomRow };
+}
+
+export interface ConquestSelectTeamOk   { ok: true;  player: ConquestPlayerRow; }
+export interface ConquestSelectTeamFail { ok: false; reason: "team_full" | "not_team_mode" | "unauthorized" | "error"; message: string; }
+export type ConquestSelectTeamResult = ConquestSelectTeamOk | ConquestSelectTeamFail;
+
+/**
+ * Oyuncu: kendi takımını seç.  Hedef takımda 2 oyuncu varsa "team_full",
+ * oda team_mode='teams_2v2' değilse "not_team_mode" döner.
+ */
+export async function selectConquestTeam(
+  roomId:   string,
+  playerId: string,
+  teamId:   ConquestTeamId,
+): Promise<ConquestSelectTeamResult> {
+  const claimToken = recallConquestClaim(playerId);
+  const { data, error } = await supabase.rpc("select_conquest_team", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+    p_team_id:     teamId,
+  });
+  if (error) {
+    if (error.message?.includes("team_full")) {
+      return { ok: false, reason: "team_full", message: "Bu takım dolu." };
+    }
+    if (error.message?.includes("team_mode_not_teams")) {
+      return { ok: false, reason: "not_team_mode", message: "Takım seçimi yalnız 2v2 Takımlı modda yapılabilir." };
+    }
+    if (error.message?.includes("unauthorized")) {
+      return { ok: false, reason: "unauthorized", message: "Bu işlem için yetkin yok." };
+    }
+    return { ok: false, reason: "error", message: error.message ?? "Takım seçimi başarısız." };
+  }
+  if (!data) return { ok: false, reason: "error", message: "Takım seçimi başarısız." };
+  return { ok: true, player: data as ConquestPlayerRow };
+}
+
+export interface ConquestShuffleTeamsOk   { ok: true;  players: ConquestPlayerRow[]; }
+export interface ConquestShuffleTeamsFail { ok: false; reason: "needs_4" | "not_team_mode" | "unauthorized" | "error"; message: string; }
+export type ConquestShuffleTeamsResult = ConquestShuffleTeamsOk | ConquestShuffleTeamsFail;
+
+/**
+ * Host: 4 oyuncuyu rastgele 2-2 takımlara dağıt.  Oda 4 oyuncudan azsa
+ * "needs_4" döner.
+ */
+export async function shuffleConquestTeams(
+  roomId:   string,
+  playerId: string,
+): Promise<ConquestShuffleTeamsResult> {
+  const claimToken = recallConquestClaim(playerId);
+  const { data, error } = await supabase.rpc("shuffle_conquest_teams", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+  });
+  if (error) {
+    if (error.message?.includes("team_shuffle_requires_4_players")) {
+      return { ok: false, reason: "needs_4", message: "Takımları karıştırmak için 4 oyuncu gerekli." };
+    }
+    if (error.message?.includes("team_mode_not_teams")) {
+      return { ok: false, reason: "not_team_mode", message: "Takımları karıştırma yalnız 2v2 Takımlı modda yapılabilir." };
+    }
+    if (error.message?.includes("unauthorized")) {
+      return { ok: false, reason: "unauthorized", message: "Bu işlem için yetkin yok." };
+    }
+    return { ok: false, reason: "error", message: error.message ?? "Takımlar karıştırılamadı." };
+  }
+  return { ok: true, players: (data ?? []) as ConquestPlayerRow[] };
 }

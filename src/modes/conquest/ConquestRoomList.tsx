@@ -152,6 +152,11 @@ export default function ConquestRoomList({
                         🗺️ {mapLabel(room.map_id as Parameters<typeof mapLabel>[0])}
                       </span>
                       <span className="cq-room-rounds">🔄 {room.round_count} Tur</span>
+                      {room.team_mode === "teams_2v2" && (
+                        <span className="cq-room-team-tag" title="2v2 Takımlı mod">
+                          🛡️ 2v2 Takımlı
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="cq-room-card-side">

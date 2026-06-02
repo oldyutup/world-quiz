@@ -55,7 +55,8 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
 
     setErrorMsg(null);
     playSound("click");
-    onCreate(effectiveName, { map, maxPlayers, rounds, visibility });
+    // teamMode varsayılan 'individual'; 2v2 Takımlı lobby'den seçilir.
+    onCreate(effectiveName, { map, maxPlayers, rounds, visibility, teamMode: "individual" });
   }
 
   /* Belt-and-suspenders: modal already blocks guests, but guard here too. */

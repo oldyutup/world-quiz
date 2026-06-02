@@ -45,6 +45,8 @@ import {
   type ConquestRegionBonusType,
   type ConquestRoomSettings,
   type ConquestRoundCount,
+  type ConquestTeamId,
+  type ConquestTeamMode,
 } from "./types";
 import {
   EMPTY_LOBBY_BROADCAST_STATE,
@@ -60,6 +62,9 @@ import {
   heartbeatConquestPlayer,
   joinConquestRoomByCode,
   leaveConquestRoom,
+  selectConquestTeam,
+  setConquestTeamMode,
+  shuffleConquestTeams,
   updateConquestPlayerColor,
   updateConquestRoomSettings,
   type ConquestJoinResult,
@@ -92,6 +97,7 @@ function roomToSettings(room: ConquestRoomRow): ConquestRoomSettings {
     maxPlayers: room.max_players as ConquestMaxPlayers,
     rounds:     room.round_count as ConquestRoundCount,
     visibility: room.visibility,
+    teamMode:   (room.team_mode ?? "individual") as ConquestTeamMode,
   };
 }
 
@@ -101,6 +107,7 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
     name:   row.name,
     isHost: row.is_host,
     color:  (row.color ?? undefined) as ConquestPlayerColor | undefined,
+    teamId: (row.team_id ?? null) as ConquestTeamId | null,
   };
 }
 
@@ -131,6 +138,8 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // Inline error surfaced when the host clicks "Yeni Oyunu Başlat" but
   // fewer than CONQUEST_MIN_PLAYERS have returned to lobby.
   const [startBlockedMsg, setStartBlockedMsg] = useState<string | null>(null);
+  // 2v2 Takımlı mod — geçici bilgilendirme (örn. "Bu takım dolu.").
+  const [teamNotice, setTeamNotice] = useState<string | null>(null);
 
   // Lobby-only ephemeral state: bonus distribution mode + per-player votes.
   // Synced via Supabase Realtime broadcast (see conquestLobbyBroadcast.ts).
@@ -174,10 +183,22 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       const base = roomRow ? roomToSettings(roomRow) : CONQUEST_DEFAULT_SETTINGS;
       // Bonus distribution is carried on lobby broadcast state, not on the
       // conquest_rooms row — fold it into settings here so the lobby props
-      // can stay a single object.
+      // can stay a single object.  teamMode is persisted on the row.
       return { ...base, bonusDistribution: lobbyExtra.bonusDistribution };
     },
     [roomRow, lobbyExtra.bonusDistribution],
+  );
+
+  // playerId → teamId|null lookup, derived from the live conquest_players rows.
+  const teamAssignments = useMemo<Record<string, ConquestTeamId | null>>(
+    () => {
+      const out: Record<string, ConquestTeamId | null> = {};
+      for (const r of playerRows) {
+        out[r.id] = (r.team_id ?? null) as ConquestTeamId | null;
+      }
+      return out;
+    },
+    [playerRows],
   );
 
   const uiPlayers = useMemo<ConquestPlayer[]>(
@@ -652,7 +673,27 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       ? uiPlayers.filter(p => ready.has(p.id))
       : uiPlayers;
 
-    if (includedPlayers.length < CONQUEST_MIN_PLAYERS) {
+    // 2v2 Takımlı mod start gate (Layer 1):
+    //   • Kapasite 4 olmalı
+    //   • 4 aktif oyuncu olmalı
+    //   • 2 Mavi + 2 Kırmızı
+    const teamMode = (roomRow.team_mode ?? "individual") as ConquestTeamMode;
+    if (teamMode === "teams_2v2") {
+      if (roomRow.max_players !== 4) {
+        setStartBlockedMsg("2v2 Takımlı mod için oda kapasitesi 4 olmalı.");
+        return;
+      }
+      if (includedPlayers.length !== 4) {
+        setStartBlockedMsg("2v2 Takımlı mod için 4 oyuncu gerekli.");
+        return;
+      }
+      const blue = includedPlayers.filter(p => teamAssignments[p.id] === 1).length;
+      const red  = includedPlayers.filter(p => teamAssignments[p.id] === 2).length;
+      if (blue !== 2 || red !== 2) {
+        setStartBlockedMsg("Takımlı mod için takımlar 2'ye 2 olmalı.");
+        return;
+      }
+    } else if (includedPlayers.length < CONQUEST_MIN_PLAYERS) {
       setStartBlockedMsg(
         `Yeni oyun için en az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`,
       );
@@ -675,6 +716,20 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       settings.rounds,
       selectedBonusTypes,
     );
+
+    // Layer 1: takım moduyla başlatılan oyunlarda gameState'e back-compat
+    // takım metadatasını yaz.  Gameplay henüz bu alanları kullanmıyor;
+    // Layer 2'de saldırı yasağı / skor / kazanan vb. burada okunacak.
+    if (teamMode === "teams_2v2") {
+      initialState.teamMode = "teams_2v2";
+      const assignments: Record<string, ConquestTeamId> = {};
+      for (const p of includedPlayers) {
+        const tid = teamAssignments[p.id];
+        if (tid === 1 || tid === 2) assignments[p.id] = tid;
+      }
+      initialState.teamAssignments = assignments;
+    }
+
     const updated = await initializeConquestGameplayState(roomRow.id, initialState);
     if (updated) {
       setRoomRow(updated);
@@ -687,7 +742,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       lobbyChannelRef.current?.emitClearReady();
       setPhase("game");
     }
-  }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers, lobbyExtra]);
+  }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers, lobbyExtra, teamAssignments]);
 
   /**
    * Push a new gameplay snapshot to Supabase.  Centralised here so
@@ -797,16 +852,21 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         return;
       }
 
+      // Kapasite 4 dışına düşerse 2v2 Takımlı modu otomatik bireysele
+      // çevir (server-side team_id'leri de temizler).
+      const willDropBelow4 =
+        patch.maxPlayers !== undefined && patch.maxPlayers !== 4;
+      const currentlyTeams = (roomRow.team_mode ?? "individual") === "teams_2v2";
+
       // Optimistic local update for snappy host UX; realtime UPDATE will
-      // confirm.  If the DB rejects, the realtime row replaces our optimistic
-      // copy on the next event (or we'd roll back here, but Phase 5 keeps it
-      // simple since the only constraint comes from us).
+      // confirm.
       const next: ConquestRoomRow = {
         ...roomRow,
         ...(patch.map        !== undefined && { map_id:      patch.map }),
         ...(patch.maxPlayers !== undefined && { max_players: patch.maxPlayers }),
         ...(patch.rounds     !== undefined && { round_count: patch.rounds }),
         ...(patch.visibility !== undefined && { visibility:  patch.visibility }),
+        ...(willDropBelow4 && currentlyTeams && { team_mode: "individual" as const }),
       };
       setRoomRow(next);
 
@@ -816,9 +876,75 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         rounds:     patch.rounds,
         visibility: patch.visibility,
       });
+
+      // Kapasite 4 dışına düştü ve halen teams_2v2'ydi → server-side
+      // team_mode='individual' set et (RPC team_id'leri temizler).
+      if (willDropBelow4 && currentlyTeams && myPlayerId) {
+        const result = await setConquestTeamMode(roomRow.id, myPlayerId, "individual");
+        if (!result.ok) {
+          setTeamNotice(result.message);
+        }
+      }
     },
-    [roomRow, isHost, playerRows.length],
+    [roomRow, isHost, playerRows.length, myPlayerId],
   );
+
+  // ── 2v2 Takımlı mod handlers ─────────────────────────────────────────────
+  const handleChangeTeamMode = useCallback(
+    async (mode: ConquestTeamMode) => {
+      if (!roomRow || !isHost || !myPlayerId) return;
+      if (mode === "teams_2v2" && roomRow.max_players !== 4) {
+        setTeamNotice("2v2 Takımlı mod için oda kapasitesi 4 olmalı.");
+        return;
+      }
+      // Optimistic: realtime room update will confirm.
+      setRoomRow(prev => prev ? { ...prev, team_mode: mode } : prev);
+      const result = await setConquestTeamMode(roomRow.id, myPlayerId, mode);
+      if (!result.ok) {
+        setTeamNotice(result.message);
+        // Rollback: realtime row is authoritative; force a manual reset is
+        // not strictly needed because Supabase realtime will echo the actual
+        // server state, but we keep the optimistic value for now.
+      }
+    },
+    [roomRow, isHost, myPlayerId],
+  );
+
+  const handleSelectTeam = useCallback(
+    async (teamId: ConquestTeamId) => {
+      if (!roomRow || !myPlayerId) return;
+      // Optimistic local update.
+      setPlayerRows(prev =>
+        prev.map(r => (r.id === myPlayerId ? { ...r, team_id: teamId } : r)),
+      );
+      const result = await selectConquestTeam(roomRow.id, myPlayerId, teamId);
+      if (!result.ok) {
+        setTeamNotice(result.message);
+        // Roll back from server.
+        const refreshed = await supabase
+          .from("conquest_players")
+          .select("*")
+          .eq("room_id", roomRow.id)
+          .order("joined_at", { ascending: true });
+        if (refreshed.data) setPlayerRows(refreshed.data as ConquestPlayerRow[]);
+      }
+    },
+    [roomRow, myPlayerId],
+  );
+
+  const handleShuffleTeams = useCallback(async () => {
+    if (!roomRow || !isHost || !myPlayerId) return;
+    const result = await shuffleConquestTeams(roomRow.id, myPlayerId);
+    if (!result.ok) {
+      setTeamNotice(result.message);
+      return;
+    }
+    // Realtime echo will refresh playerRows; also nudge locally so it's
+    // instant for the host.
+    if (result.players.length > 0) {
+      setPlayerRows(result.players);
+    }
+  }, [roomRow, isHost, myPlayerId]);
 
   // Auto-clear the host-transfer banner so it doesn't linger forever.
   useEffect(() => {
@@ -826,6 +952,13 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     const t = window.setTimeout(() => setHostTransferBanner(null), 6000);
     return () => window.clearTimeout(t);
   }, [hostTransferBanner]);
+
+  // Auto-clear the team-notice banner.
+  useEffect(() => {
+    if (!teamNotice) return;
+    const t = window.setTimeout(() => setTeamNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [teamNotice]);
 
   // ── Initial phase prop change (e.g. Home → Browse) ──────────────────────
   useEffect(() => {
@@ -1020,6 +1153,12 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           onChangeColor={handleChangeColor}
           onStart={handleStartGame}
           onLeave={handleLeaveLobby}
+          teamAssignments={teamAssignments}
+          onChangeTeamMode={handleChangeTeamMode}
+          onSelectTeam={handleSelectTeam}
+          onShuffleTeams={handleShuffleTeams}
+          teamNotice={teamNotice}
+          onDismissTeamNotice={() => setTeamNotice(null)}
         />
       )}
 

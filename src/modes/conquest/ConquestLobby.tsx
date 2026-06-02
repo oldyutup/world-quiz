@@ -47,6 +47,8 @@ import type {
   ConquestRegionBonusType,
   ConquestRoomSettings,
   ConquestRoundCount,
+  ConquestTeamId,
+  ConquestTeamMode,
   ConquestVisibility,
 } from "./types";
 import {
@@ -96,6 +98,18 @@ interface Props {
   onChangeColor:     (color: ConquestPlayerColor) => void;
   onStart:           () => void;
   onLeave:           () => void;
+  // 2v2 Takımlı mod — Layer 1
+  /** playerId → teamId|null mapping (1=Mavi, 2=Kırmızı). */
+  teamAssignments:   Record<string, ConquestTeamId | null>;
+  onChangeTeamMode:  (mode: ConquestTeamMode) => void;
+  onSelectTeam:      (teamId: ConquestTeamId) => void;
+  /** Reserved for a future re-introduction of "Takımları Karıştır" — kept on
+   *  the interface so the parent contract is unchanged, intentionally not
+   *  destructured/used in this layer of the UI. */
+  onShuffleTeams:    () => void;
+  /** Transient error / info message tied to takım işlemleri (örn. "Bu takım dolu."). */
+  teamNotice?:       string | null;
+  onDismissTeamNotice?: () => void;
 }
 
 export default function ConquestLobby({
@@ -117,6 +131,11 @@ export default function ConquestLobby({
   onChangeColor,
   onStart,
   onLeave,
+  teamAssignments,
+  onChangeTeamMode,
+  onSelectTeam,
+  teamNotice,
+  onDismissTeamNotice,
 }: Props) {
   const [copied,      setCopied]      = useState(false);
   const [chatOpen,    setChatOpen]    = useState(false);
@@ -173,10 +192,66 @@ export default function ConquestLobby({
     [players, readySet, isRematch],
   );
   const activeCount = activePlayers.length;
-  const canStart = activeCount >= CONQUEST_MIN_PLAYERS;
-  const startBlockedHelper = !canStart
-    ? `Yeni oyun için en az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`
-    : null;
+
+  // ── 2v2 Takımlı mod — Layer 1 ──────────────────────────────────────────
+  const teamMode    = settings.teamMode ?? "individual";
+  const isTeamMode  = teamMode === "teams_2v2";
+  // Host kapasite 4 değilse 2v2 Takımlı seçemez.
+  const teamModeSelectable = settings.maxPlayers === 4;
+  // Takım kompozisyonu — DB team_id'lerine göre.
+  const teamBlueIds  = useMemo(
+    () => players.filter(p => teamAssignments[p.id] === 1).map(p => p.id),
+    [players, teamAssignments],
+  );
+  const teamRedIds   = useMemo(
+    () => players.filter(p => teamAssignments[p.id] === 2).map(p => p.id),
+    [players, teamAssignments],
+  );
+  const blueCount    = teamBlueIds.length;
+  const redCount     = teamRedIds.length;
+  const blueFull     = blueCount >= 2;
+  const redFull      = redCount  >= 2;
+
+  /* Client-side notice channel for the team toggle: parent only sets
+   * `teamNotice` after a server-rejected RPC, but the toggle also rejects
+   * locally when the target team is already full (so we don't waste a
+   * round-trip). Both notices feed the same banner. */
+  const [localTeamNotice, setLocalTeamNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!localTeamNotice) return;
+    const t = window.setTimeout(() => setLocalTeamNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [localTeamNotice]);
+  const displayedTeamNotice = teamNotice ?? localTeamNotice;
+  function dismissTeamNotice() {
+    setLocalTeamNotice(null);
+    onDismissTeamNotice?.();
+  }
+
+  // Start gate hesabı:
+  //   • Bireysel mod → eski kural (CONQUEST_MIN_PLAYERS aktif oyuncu)
+  //   • Teams_2v2  → kapasite 4 + 4 aktif oyuncu + 2-2 dağılım
+  let canStart: boolean;
+  let startBlockedHelper: string | null = null;
+  if (isTeamMode) {
+    if (settings.maxPlayers !== 4) {
+      canStart = false;
+      startBlockedHelper = "2v2 Takımlı mod için oda kapasitesi 4 olmalı.";
+    } else if (activeCount < 4) {
+      canStart = false;
+      startBlockedHelper = "2v2 Takımlı mod için 4 oyuncu gerekli.";
+    } else if (blueCount !== 2 || redCount !== 2) {
+      canStart = false;
+      startBlockedHelper = "Takımlı mod için takımlar 2'ye 2 olmalı.";
+    } else {
+      canStart = true;
+    }
+  } else {
+    canStart = activeCount >= CONQUEST_MIN_PLAYERS;
+    startBlockedHelper = !canStart
+      ? `Yeni oyun için en az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`
+      : null;
+  }
   const countLabel = isRematch
     ? `Hazır ${activeCount}/${settings.maxPlayers}`
     : `${players.length}/${settings.maxPlayers}`;
@@ -337,6 +412,7 @@ export default function ConquestLobby({
     const ready = isPlayerReady(p);
     const passive = isRematch && !ready;
     const dotInteractive = isMe;
+    const myTeamForChip = teamAssignments[p.id] ?? null;
     return (
       <div
         key={`${opts.keyPrefix}-${p.id}`}
@@ -347,6 +423,7 @@ export default function ConquestLobby({
           + (passive ? " cq-player-chip--inactive" : "")
         }
         data-color={color}
+        data-team={isTeamMode ? (myTeamForChip ?? "none") : undefined}
         aria-disabled={passive || undefined}
       >
         <div className="cq-player-chip-main">
@@ -358,6 +435,44 @@ export default function ConquestLobby({
           )}
           {passive && (
             <span className="cq-player-status-tag cq-player-status-tag--idle">Sonuç ekranında</span>
+          )}
+          {isTeamMode && (
+            isMe ? (
+              <button
+                type="button"
+                className="cq-team-toggle"
+                data-team={myTeamForChip ?? "none"}
+                aria-label={
+                  myTeamForChip === 1 ? "Kırmızı takıma geç"
+                  : myTeamForChip === 2 ? "Mavi takıma geç"
+                  : "Takım seç"
+                }
+                title={
+                  myTeamForChip === 1 ? "Kırmızı takıma geç"
+                  : myTeamForChip === 2 ? "Mavi takıma geç"
+                  : "Takım seç"
+                }
+                onClick={handleTeamToggle}
+              >
+                <span aria-hidden>
+                  {myTeamForChip === 1 ? "🔵" : myTeamForChip === 2 ? "🔴" : "⚪"}
+                </span>
+              </button>
+            ) : (
+              <span
+                className="cq-team-toggle cq-team-toggle--static"
+                data-team={myTeamForChip ?? "none"}
+                aria-label={
+                  myTeamForChip === 1 ? "Mavi takımda"
+                  : myTeamForChip === 2 ? "Kırmızı takımda"
+                  : "Takım seçmedi"
+                }
+              >
+                <span aria-hidden>
+                  {myTeamForChip === 1 ? "🔵" : myTeamForChip === 2 ? "🔴" : "⚪"}
+                </span>
+              </span>
+            )
           )}
         </div>
         {dotInteractive ? (
@@ -389,6 +504,55 @@ export default function ConquestLobby({
             <span className="duel-player-dot cq-player-chip-dot" />
           </span>
         )}
+      </div>
+    );
+  }
+
+  /** Single-icon team toggle for the local player.
+   *  - ⚪ (no team) → try Mavi first, then Kırmızı, else "Bu takım dolu."
+   *  - 🔵 (Mavi)    → swap to Kırmızı, else "Bu takım dolu."
+   *  - 🔴 (Kırmızı) → swap to Mavi, else "Bu takım dolu." */
+  function handleTeamToggle() {
+    if (!me) return;
+    const cur = teamAssignments[me.id] ?? null;
+    if (cur === 1) {
+      if (redFull) { setLocalTeamNotice("Bu takım dolu."); return; }
+      playSound("click");
+      onSelectTeam(2);
+      return;
+    }
+    if (cur === 2) {
+      if (blueFull) { setLocalTeamNotice("Bu takım dolu."); return; }
+      playSound("click");
+      onSelectTeam(1);
+      return;
+    }
+    if (!blueFull) { playSound("click"); onSelectTeam(1); return; }
+    if (!redFull)  { playSound("click"); onSelectTeam(2); return; }
+    setLocalTeamNotice("Bu takım dolu.");
+  }
+
+  /** Slim notice strip — replaces the older `cq-team-summary` block. We no
+   *  longer surface Mavi/Kırmızı counters or the "Takımları Karıştır" button
+   *  in the lobby UI; only the transient takım-dolu / RPC-error notice is
+   *  shown, and only while it has a message to display. */
+  function renderTeamNotice(keyPrefix: string) {
+    if (!displayedTeamNotice) return null;
+    return (
+      <div
+        key={`${keyPrefix}-team-notice`}
+        className="cq-team-notice cq-team-notice--standalone"
+        role="status"
+      >
+        <span className="cq-team-notice-msg">⚠️ {displayedTeamNotice}</span>
+        <button
+          type="button"
+          className="cq-team-notice-close"
+          aria-label="Kapat"
+          onClick={dismissTeamNotice}
+        >
+          ✕
+        </button>
       </div>
     );
   }
@@ -650,19 +814,24 @@ export default function ConquestLobby({
             })}
           </div>
 
+          {isTeamMode && renderTeamNotice("desktop")}
+
           {renderBonusPanel("desktop")}
 
           {isRematch
-            ? !canStart && (
+            ? !canStart && !isTeamMode && (
                 <div className="cq-wait-chip" role="status">
                   En az {CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli — {CONQUEST_MIN_PLAYERS - activeCount} bekleniyor
                 </div>
               )
-            : players.length < CONQUEST_MIN_PLAYERS && (
+            : !isTeamMode && players.length < CONQUEST_MIN_PLAYERS && (
                 <div className="cq-wait-chip" role="status">
                   En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli — {CONQUEST_MIN_PLAYERS - players.length} bekleniyor
                 </div>
               )}
+          {isTeamMode && !canStart && startBlockedHelper && (
+            <div className="cq-wait-chip" role="status">{startBlockedHelper}</div>
+          )}
         </div>
 
         {/* ══ MIDDLE: Oda durumu + ayarlar + aksiyon ══ */}
@@ -791,6 +960,39 @@ export default function ConquestLobby({
                 </select>
                 <span className="duel-select-caret">▾</span>
               </div>
+            </div>
+
+            <div className="duel-select-wrap">
+              <label className="duel-select-label">⚔️ Oyun Tipi</label>
+              <div className="duel-select-box">
+                <select
+                  className="duel-select"
+                  value={teamMode}
+                  disabled={!isHost}
+                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+                  title={
+                    isHost && !teamModeSelectable
+                      ? "2v2 Takımlı mod için oda kapasitesi 4 olmalı."
+                      : undefined
+                  }
+                  onChange={e => {
+                    const next = e.target.value as ConquestTeamMode;
+                    if (next === "teams_2v2" && !teamModeSelectable) return;
+                    onChangeTeamMode(next);
+                  }}
+                >
+                  <option value="individual">👤 Bireysel</option>
+                  <option value="teams_2v2" disabled={!teamModeSelectable}>
+                    🛡️ 2v2 Takımlı
+                  </option>
+                </select>
+                <span className="duel-select-caret">▾</span>
+              </div>
+              {isHost && !teamModeSelectable && (
+                <p className="cq-team-mode-helper" role="status">
+                  2v2 Takımlı mod için oda kapasitesi 4 olmalı.
+                </p>
+              )}
             </div>
           </div>
 
@@ -935,12 +1137,16 @@ export default function ConquestLobby({
                   return renderPlayerChip(p, { keyPrefix: "mobile" });
                 })}
               </div>
-              {(isRematch ? !canStart : players.length < CONQUEST_MIN_PLAYERS) && (
+              {isTeamMode && renderTeamNotice("mobile")}
+              {!isTeamMode && (isRematch ? !canStart : players.length < CONQUEST_MIN_PLAYERS) && (
                 <div className="wgg-ps-warning cq-ps-warning">
                   {isRematch
                     ? `En az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`
                     : `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli.`}
                 </div>
+              )}
+              {isTeamMode && !canStart && startBlockedHelper && (
+                <div className="wgg-ps-warning cq-ps-warning">{startBlockedHelper}</div>
               )}
               {renderMobileBonusPanel()}
             </div>
