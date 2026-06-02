@@ -143,7 +143,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
     goldFlushedRef.current = true;
     const total = pendingGold + extra;
     if (total > 0) {
-      addGold(total);
+      addGold(total, "route_match_reward");
     }
   }, [pendingGold]);
 
@@ -171,7 +171,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
   /* ── neighbor joker ── */
   const handleRevealNeighbors = useCallback(() => {
     if (joker.neighborsRevealed) return;
-    if (!spendGoldStore(HINT_COST_NEIGHBORS)) return;
+    if (!spendGoldStore(HINT_COST_NEIGHBORS, "hint_neighbors")) return;
     setJoker({ neighborsRevealed: true });
   }, [joker.neighborsRevealed]);
 

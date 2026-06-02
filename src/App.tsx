@@ -151,6 +151,26 @@ const HINT_COSTS = {
 } as const;
 type HintType = keyof typeof HINT_COSTS;
 
+const HINT_REASON: Record<HintType,
+  "hint_first_letter" | "hint_letter_count" | "hint_continent" |
+  "hint_region" | "hint_coast" | "hint_neighbors"
+> = {
+  firstLetter: "hint_first_letter",
+  continent:   "hint_continent",
+  letterCount: "hint_letter_count",
+  region:      "hint_region",
+  coast:       "hint_coast",
+  neighbors:   "hint_neighbors",
+};
+
+const MATCH_REWARD_REASON: Partial<Record<AppScreen,
+  "map_match_reward" | "silhouette_match_reward" | "flag_match_reward"
+>> = {
+  "map-game":        "map_match_reward",
+  "silhouette-game": "silhouette_match_reward",
+  "flag-game":       "flag_match_reward",
+};
+
 type HintState = Record<HintType, boolean>;
 const EMPTY_HINTS: HintState = {
   firstLetter: false,
@@ -1335,7 +1355,7 @@ function useGameCore(
       pendingGoldRef.current = pending; // update so modal shows the real earned amount
     }
     if (pending > 0) {
-      addGold(pending);
+      addGold(pending, MATCH_REWARD_REASON[gameType] ?? "gameplay_award");
     }
   }, [gameType, selectedDuration]);
 
@@ -1449,9 +1469,12 @@ function useGameCore(
   }, []);
 
   /** Spend gold for a hint (immediate deduction) */
-  const spendGold = useCallback((amount: number) => {
-    spendGoldStore(amount);
-  }, []);
+  const spendGold = useCallback(
+    (amount: number, reason?: Parameters<typeof spendGoldStore>[1]) => {
+      spendGoldStore(amount, reason);
+    },
+    []
+  );
 
   const handleShare = useCallback(async (difficulty?: Difficulty) => {
     const result = await shareScore(scoreInScope, totalInScope, continent, selectedDuration, gameType, difficulty);
@@ -1615,7 +1638,7 @@ function FlagGame({
   const handleBuyHint = useCallback((type: HintType) => {
     const cost = HINT_COSTS[type];
     if (g.gold < cost) return;
-    g.spendGold(cost);
+    g.spendGold(cost, HINT_REASON[type]);
     setHints(prev => ({ ...prev, [type]: true }));
     hintUsedThisQRef.current = true;
   }, [g]);
@@ -1846,7 +1869,7 @@ function SilhouetteGame({
   const handleBuyHint = useCallback((type: HintType) => {
     const cost = HINT_COSTS[type];
     if (g.gold < cost) return;
-    g.spendGold(cost);
+    g.spendGold(cost, HINT_REASON[type]);
     setHints(prev => ({ ...prev, [type]: true }));
     hintUsedThisQRef.current = true;
   }, [g]);

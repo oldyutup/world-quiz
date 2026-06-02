@@ -1,22 +1,30 @@
 /**
  * gold.ts
  *
- * Tek noktadan Gold persistence katmanı.
+ * Tek noktadan Gold persistence katmanı (server-otoriteli).
  *
- *  - Giriş yapmış kullanıcı → public.profiles.gold (source of truth)
- *  - Misafir kullanıcı       → localStorage("geoquiz_gold") (fallback)
+ *  - Giriş yapmış kullanıcı → server'da public.profiles.gold (source of truth).
+ *    Yazımlar yalnızca SECURITY DEFINER RPC'leri uzerinden yapılır:
+ *      - claim_daily_gold_bonus()
+ *      - award_gameplay_gold(amount, reason, metadata)
+ *      - spend_gameplay_gold(amount, reason, metadata)
+ *    Client doğrudan profiles.gold UPDATE etmez (DB tarafında
+ *    `revoke update (gold) on profiles from authenticated` ile bloklanır).
+ *
+ *  - Misafir kullanıcı → localStorage("geoquiz_gold") fallback. RPC çağrılmaz;
+ *    misafirlerin Gold'u cihaz-yerel, izlenebilir/transaction log'suz kalır.
  *
  * Tasarım:
- *  - Uygulama içinde bir modül-global cache (cachedGold) tutuyoruz; UI senkron
- *    okuyabilsin diye. Supabase yazımları arka planda asenkron yapılır.
- *  - setActiveProfile(profileId, profile.gold) login/logout anında çağrılır;
- *    sadece profile.id değiştiğinde tetiklenmesi gerek (yoksa fresh local
- *    değeri stale profile.gold ile override edebiliriz).
- *  - addGold/spendGold optimistic; başarısız Supabase yazımı UI'da geri
- *    rollback ETMEZ — sadece error log'lar. Sebep: oyunlar hızlı akar,
- *    rollback flicker yapar. Manuel reload Supabase'i otorite kabul eder.
- *  - localStorage misafir verisini koruyoruz; login Supabase'in lehine yazsın
- *    diye burada migration yok.
+ *  - UI'ın senkron `useGold()` / `getGold()` API'sini koruyabilmek için
+ *    modül-global cache (`cachedGold`) tutuyoruz. RPC çağrıları arka planda
+ *    asenkron yapılır ve sonuç dönünce server'in dönen yeni bakiyesiyle
+ *    reconcile edilir.
+ *  - addGold/spendGold optimistic: cache anında güncellenir, RPC sonucu
+ *    gelince cache server otoritesine senkronize edilir. RPC reddederse
+ *    (yetersiz Gold, geçersiz reason, vs.) cache rollback'lenir.
+ *  - setActiveProfile(profileId, profile.gold) login/logout anında çağrılır.
+ *  - Public API geriye dönük uyumlu: tüm çağrı yerleri (gameplay dahil)
+ *    değişmeden çalışır.
  */
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
@@ -49,6 +57,14 @@ function emit(n: number) {
   for (const cb of listeners) cb(n);
 }
 
+function setCache(n: number): number {
+  const next = Math.max(0, Math.floor(n));
+  cachedGold = next;
+  writeLocal(next);
+  emit(next);
+  return next;
+}
+
 /** Senkron okuma — UI initial state için. */
 export function getGold(): number {
   return cachedGold;
@@ -58,11 +74,8 @@ export function getGold(): number {
  * Login/logout anında çağır. Supabase profile.gold ile cache'i set eder.
  *
  *  - profileId === null → misafir moduna döner, cache localStorage'tan yüklenir.
- *  - profileId verilirse goldFromProfile değerini KAYNAĞIN OTORİTESİ kabul
- *    eder; misafir localStorage değeri Supabase'e KOPYALANMAZ.
- *
- * profileId hiç değişmediyse no-op'tur — her render'da çağrılması güvenli
- * ama tipik kullanım useEffect içinde profile.id dependency ile.
+ *  - profileId verilirse goldFromProfile değerini OTORİTE kabul eder; misafir
+ *    localStorage değeri Supabase'e KOPYALANMAZ.
  */
 export function setActiveProfile(
   profileId: string | null,
@@ -73,37 +86,12 @@ export function setActiveProfile(
   }
   activeProfileId = profileId;
   if (profileId) {
-    const next = Math.max(0, Math.floor(goldFromProfile ?? 0));
-    cachedGold = next;
-    writeLocal(next);
-    emit(next);
+    setCache(goldFromProfile ?? 0);
   } else {
     const next = readLocal();
     cachedGold = next;
     emit(next);
   }
-}
-
-function applyDelta(delta: number): number {
-  const next = Math.max(0, cachedGold + delta);
-  cachedGold = next;
-  writeLocal(next);
-  emit(next);
-
-  if (activeProfileId) {
-    const id = activeProfileId;
-    supabase
-      .from("profiles")
-      .update({ gold: next, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .then(({ error }) => {
-        if (error) {
-          console.error("[gold] Supabase profile gold update failed:", error);
-        }
-      });
-  }
-
-  return next;
 }
 
 /**
@@ -112,33 +100,148 @@ function applyDelta(delta: number): number {
  * yazmıyoruz — sadece local cache & localStorage senkronize edilir.
  */
 export function syncGoldFromServer(value: number): number {
-  const next = Math.max(0, Math.floor(value || 0));
-  cachedGold = next;
-  writeLocal(next);
-  emit(next);
-  return next;
+  return setCache(value);
 }
 
-/** Pozitif değer ekler. Sonuçtaki toplamı döner. */
-export function addGold(amount: number): number {
+/* ── Tipler ──────────────────────────────────────────────────────────── */
+
+type AwardReason =
+  | "map_match_reward"
+  | "silhouette_match_reward"
+  | "flag_match_reward"
+  | "route_match_reward"
+  | "conquest_liman_income"
+  | "gameplay_award";
+
+type SpendReason =
+  | "hint_first_letter"
+  | "hint_letter_count"
+  | "hint_continent"
+  | "hint_region"
+  | "hint_coast"
+  | "hint_neighbors"
+  | "hint_silhouette"
+  | "hint_generic"
+  | "gameplay_spend";
+
+/* ── RPC sarmalayicilari ────────────────────────────────────────────── */
+
+async function rpcAward(
+  amount: number,
+  reason: AwardReason,
+  metadata: Record<string, unknown>
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("award_gameplay_gold", {
+    p_amount:   amount,
+    p_reason:   reason,
+    p_metadata: metadata,
+  });
+  if (error) {
+    console.error("[gold] award_gameplay_gold RPC error:", error);
+    return null;
+  }
+  if (data && typeof data === "object" && (data as { ok?: boolean }).ok) {
+    return Number((data as { gold: number }).gold);
+  }
+  console.warn("[gold] award_gameplay_gold rejected:", data);
+  return null;
+}
+
+async function rpcSpend(
+  amount: number,
+  reason: SpendReason,
+  metadata: Record<string, unknown>
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("spend_gameplay_gold", {
+    p_amount:   amount,
+    p_reason:   reason,
+    p_metadata: metadata,
+  });
+  if (error) {
+    console.error("[gold] spend_gameplay_gold RPC error:", error);
+    return null;
+  }
+  if (data && typeof data === "object" && (data as { ok?: boolean }).ok) {
+    return Number((data as { gold: number }).gold);
+  }
+  console.warn("[gold] spend_gameplay_gold rejected:", data);
+  return null;
+}
+
+/* ── Public API ─────────────────────────────────────────────────────── */
+
+/**
+ * Pozitif değer ekler. Sonuçtaki (optimistic) toplamı senkron döner.
+ *
+ * Giriş yapmış kullanıcılarda arka planda RPC'ye gider; sunucu yeni
+ * bakiyeyi onayladığında cache server otoritesine reconcile edilir.
+ * RPC reddederse optimistic update geri alınır.
+ */
+export function addGold(
+  amount: number,
+  reason: AwardReason = "gameplay_award",
+  metadata: Record<string, unknown> = {}
+): number {
   const amt = Math.max(0, Math.floor(amount || 0));
   if (amt === 0) return cachedGold;
-  return applyDelta(amt);
+
+  const optimistic = setCache(cachedGold + amt);
+
+  if (activeProfileId) {
+    void rpcAward(amt, reason, metadata).then((serverGold) => {
+      if (serverGold === null) {
+        // Reddedildi (geçersiz reason / cap aşıldı / network): optimistic'i geri al.
+        setCache(Math.max(0, cachedGold - amt));
+      } else {
+        setCache(serverGold);
+      }
+    });
+  }
+
+  return optimistic;
 }
 
 /**
- * Gold harcar. Yeterli değilse false döner ve hiçbir state güncellenmez.
- * Başarıyla harcanırsa true döner.
+ * Gold harcar.
+ *
+ * Misafir kullanıcılarda yalnızca local cache kontrol edilir (yetersizse false).
+ * Giriş yapmış kullanıcılarda önce optimistic cache düşürülür; RPC reddederse
+ * (yetersiz bakiye / cap / geçersiz reason) optimistic geri alınır.
+ *
+ * Senkron sonuc — UI flow'unu kırmamak için. Sunucu tarafı reconciliation
+ * arka planda yapılır.
  */
-export function spendGold(amount: number): boolean {
+export function spendGold(
+  amount: number,
+  reason: SpendReason = "gameplay_spend",
+  metadata: Record<string, unknown> = {}
+): boolean {
   const amt = Math.max(0, Math.floor(amount || 0));
   if (amt === 0) return true;
   if (cachedGold < amt) return false;
-  applyDelta(-amt);
+
+  setCache(cachedGold - amt);
+
+  if (activeProfileId) {
+    void rpcSpend(amt, reason, metadata).then((serverGold) => {
+      if (serverGold === null) {
+        // Reddedildi: optimistic harcamayı geri yükle.
+        setCache(cachedGold + amt);
+      } else {
+        setCache(serverGold);
+      }
+    });
+  }
+
   return true;
 }
 
-/** Günlük bonus — her cihaz/oturumda lokal flag ile tutulur. */
+/**
+ * Günlük bonus için lokal hızlı kontrol — UI butonunu disable etmek için.
+ * Otorite server'dır; misafir kullanıcılarda localStorage flag kullanılır.
+ * Giriş yapmış kullanıcılarda da localStorage işaretini koruyoruz (yanlış
+ * pozitif gösterilse bile server reddedecek).
+ */
 export function canClaimDailyBonus(): boolean {
   try {
     const last = localStorage.getItem(GOLD_BONUS_KEY);
@@ -148,7 +251,18 @@ export function canClaimDailyBonus(): boolean {
   }
 }
 
-/** Bonus claim eder. Zaten alındıysa null, alındıysa yeni toplam döner. */
+/**
+ * Daily bonus claim.
+ *
+ *  - Misafir: hemen +50 local Gold, localStorage flag set.
+ *  - Login: claim_daily_gold_bonus RPC'sine git. Server zaten bugün alındıysa
+ *    null döner. Başarılıysa cache'i server'in döndürdüğü bakiyeye senkronize
+ *    eder.
+ *
+ * Senkron bir API'ydi — geriye dönük uyum için aynı imzayı tutuyoruz:
+ * dönen değer optimistic yeni toplam (veya zaten alındıysa null). RPC
+ * reddederse asenkron olarak cache geri alınır.
+ */
 export function claimDailyBonus(): number | null {
   if (!canClaimDailyBonus()) return null;
   try {
@@ -156,7 +270,39 @@ export function claimDailyBonus(): number | null {
   } catch {
     /* ignore */
   }
-  return addGold(DAILY_BONUS);
+
+  if (!activeProfileId) {
+    // Misafir: lokal mod, RPC yok.
+    return setCache(cachedGold + DAILY_BONUS);
+  }
+
+  const optimistic = setCache(cachedGold + DAILY_BONUS);
+
+  void supabase
+    .rpc("claim_daily_gold_bonus")
+    .then(({ data, error }) => {
+      if (error) {
+        console.error("[gold] claim_daily_gold_bonus RPC error:", error);
+        setCache(Math.max(0, cachedGold - DAILY_BONUS));
+        return;
+      }
+      if (data && typeof data === "object") {
+        const res = data as { ok?: boolean; gold?: number; code?: string };
+        if (res.ok && typeof res.gold === "number") {
+          setCache(res.gold);
+          return;
+        }
+        // already_claimed: server otorite, cache'i server bakiyesine cek.
+        if (res.code === "already_claimed" && typeof res.gold === "number") {
+          setCache(res.gold);
+          return;
+        }
+        // Diger durumlar: optimistic'i geri al.
+        setCache(Math.max(0, cachedGold - DAILY_BONUS));
+      }
+    });
+
+  return optimistic;
 }
 
 /**
