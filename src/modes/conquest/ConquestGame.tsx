@@ -178,7 +178,13 @@ interface Props {
   /** Persist a new gameplay snapshot to Supabase.  Called by transition
    *  handlers; realtime echo brings the row back to every client. */
   onPushGameState: (next: ConquestGameState) => Promise<void> | void;
-  onBackToLobby:   () => void;
+  /** Finished-panel "Lobiye Dön" — switches the local view to the lobby
+   *  without leaving the room and signals ready-for-next.  ConquestMode
+   *  handles late-return detection (info modal) on the other side. */
+  onReturnToLobby: () => void;
+  /** Mid-match "Odadan Ayrıl" — leaves the room.  Used by the in-progress
+   *  header back button and the leave-confirmation modal. */
+  onLeaveRoom:     () => void;
 }
 
 const ILLEGAL_FLASH_MS  = 900;
@@ -354,13 +360,36 @@ export default function ConquestGame({
   settings,
   players,
   lastSeenByPlayerId,
-  gameState,
+  gameState: liveGameState,
   isHost,
   myPlayerId,
   profile,
   onPushGameState,
-  onBackToLobby,
+  onReturnToLobby,
+  onLeaveRoom,
 }: Props) {
+  // ── Finished-panel snapshot lock ──────────────────────────────────────
+  // Once a match enters the "finished" phase we capture the gameplay
+  // state.  From then on, if the host writes a fresh state (rematch) for
+  // the next round WITHOUT including this client, we keep rendering from
+  // the locked snapshot so the standings UI doesn't blink to a half-
+  // broken new-game screen.  The snapshot is cleared implicitly by
+  // ConquestGame unmounting (ConquestMode switches us to lobby when the
+  // user clicks "Lobiye Dön", or to setup when they leave).
+  const lockedFinishedRef = useRef<ConquestGameState | null>(null);
+  if (liveGameState?.phase === "finished" && !lockedFinishedRef.current) {
+    lockedFinishedRef.current = liveGameState;
+  }
+  const isLateReturner =
+    !!lockedFinishedRef.current &&
+    !!liveGameState &&
+    liveGameState.phase !== "finished" &&
+    !!myPlayerId &&
+    !liveGameState.players.some(p => p.id === myPlayerId);
+  const gameState: ConquestGameState | null = isLateReturner
+    ? lockedFinishedRef.current
+    : liveGameState;
+
   const homeTheme  = readStoredHomeTheme();
   const themeStyle = getThemeBackgroundStyle(homeTheme);
   const themeAttr  = getThemeDataAttr(homeTheme);
@@ -1163,17 +1192,21 @@ export default function ConquestGame({
   const canActOnRegion    = !!gameState && gameState.phase === "action"    && isActionHolder;
 
   // ── Handlers ─────────────────────────────────────────────────────────
-  function handleBack() {
+  /* Finished-panel button — purely a view switch on the player's side;
+   * ConquestMode decides whether to accept (broadcast ready) or to
+   * surface the late-return modal because a new game already started. */
+  function handleReturnToLobby() {
     playSound("click");
-    onBackToLobby();
+    onReturnToLobby();
   }
 
   /* Mid-match leave guard.  A single active survivor wins automatically
    * (see conquestGameSync), so a stray tap on the back arrow can throw a
    * real match.  We gate every active-play exit through requestBack: it
    * opens the confirm modal only while a match is in progress, and falls
-   * through to handleBack on the setup / finished phases and on the
-   * pre-sync safety screens (where gameState is null). */
+   * through to onLeaveRoom on the pre-sync safety screens (where
+   * gameState is null).  The finished panel uses its own dedicated
+   * "Lobiye Dön" button — it never routes through this leave path. */
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
 
   function isMatchInProgress(): boolean {
@@ -1188,7 +1221,9 @@ export default function ConquestGame({
       setConfirmLeaveOpen(true);
       return;
     }
-    handleBack();
+    // Pre-sync / setup safety screen (gameState null) — straight out.
+    playSound("click");
+    onLeaveRoom();
   }
 
   function cancelLeave() {
@@ -1198,7 +1233,7 @@ export default function ConquestGame({
 
   function confirmLeave() {
     setConfirmLeaveOpen(false);
-    handleBack();
+    onLeaveRoom();
   }
 
   // ESC closes the confirm modal (treated as "Vazgeç").  Listener only
@@ -2056,9 +2091,9 @@ export default function ConquestGame({
     return (
       <div className="app duel-screen cq-screen conquest-war-bg" style={themeStyle} data-theme={themeAttr}>
         <div className="duel-header">
-          <button className="back-btn" onClick={handleBack}>
+          <button className="back-btn" onClick={() => { playSound("click"); onLeaveRoom(); }}>
             <span>←</span>
-            <span className="back-label">Lobi</span>
+            <span className="back-label">Çık</span>
           </button>
           <div className="duel-header-center">
             <span className="duel-mode-label">🛡️ Kuşatma</span>
@@ -2080,9 +2115,9 @@ export default function ConquestGame({
     return (
       <div className="app duel-screen cq-screen conquest-war-bg" style={themeStyle} data-theme={themeAttr}>
         <div className="duel-header">
-          <button className="back-btn" onClick={handleBack}>
+          <button className="back-btn" onClick={() => { playSound("click"); onLeaveRoom(); }}>
             <span>←</span>
-            <span className="back-label">Lobi</span>
+            <span className="back-label">Çık</span>
           </button>
           <div className="duel-header-center">
             <span className="duel-mode-label">🛡️ Kuşatma</span>
@@ -4029,7 +4064,7 @@ export default function ConquestGame({
             <button
               type="button"
               className="btn btn-accent cq-finished-back-btn"
-              onClick={handleBack}
+              onClick={handleReturnToLobby}
             >
               ← Lobiye Dön
             </button>
@@ -4381,10 +4416,10 @@ export default function ConquestGame({
         <button
           className="back-btn"
           onClick={requestBack}
-          title="Lobiye Dön"
+          title="Odadan Ayrıl"
         >
           <span>←</span>
-          <span className="back-label">Lobi</span>
+          <span className="back-label">Çık</span>
         </button>
 
         <div className="duel-header-center">
@@ -4824,7 +4859,7 @@ export default function ConquestGame({
             className="btn btn-ghost cq-game-back-btn"
             onClick={requestBack}
           >
-            ← Lobiye Dön
+            ← Odadan Ayrıl
           </button>
         )}
       </div>

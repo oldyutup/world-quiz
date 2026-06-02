@@ -75,6 +75,21 @@ interface Props {
   /** False for guest users — they can see chat but cannot write. */
   isLoggedIn:        boolean;
   bonusVotes:        ConquestLobbyVotes;
+  /** Players who have clicked "Lobiye Dön" after a finished match. Only
+   *  meaningful when `rematchMode` is true; in a fresh lobby this list may
+   *  still legitimately be empty even if some players are around. */
+  readyPlayerIds:    string[];
+  /** Explicit "this lobby is a post-match rematch lobby" flag driven by
+   *  ConquestMode (derived from the canonical room.gameplay_state, not from
+   *  the broadcast-driven readyPlayerIds). When false the lobby behaves as a
+   *  normal waiting room: every present player counts as active, the counter
+   *  is `X/Y` (not "Hazır X/Y"), and no chip gets the "Sonuç ekranında" tag.
+   *  When true only `readyPlayerIds` count as active. */
+  rematchMode:       boolean;
+  /** True for non-host viewers after a finished match when they've
+   *  signalled ready-for-next.  Drives a small "waiting for host"
+   *  hint under the start area. */
+  waitingForHost?:   boolean;
   onUpdateSettings:  (patch: Partial<ConquestRoomSettings>) => void;
   onChangeBonusDistribution: (mode: ConquestBonusDistribution) => void;
   onToggleBonusVote: (bonusType: ConquestRegionBonusType) => void;
@@ -93,6 +108,9 @@ export default function ConquestLobby({
   isHost,
   isLoggedIn,
   bonusVotes,
+  readyPlayerIds,
+  rematchMode,
+  waitingForHost = false,
   onUpdateSettings,
   onChangeBonusDistribution,
   onToggleBonusVote,
@@ -104,6 +122,11 @@ export default function ConquestLobby({
   const [chatOpen,    setChatOpen]    = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  /* Surfaces the "Oyuncu sayısı mevcut oyuncu sayısından düşük olamaz"
+   * warning ONLY after the host actively tries to pick a capacity below
+   * the current player count. Auto-clears so it never becomes ambient
+   * lobby noise. */
+  const [capacityWarn, setCapacityWarn] = useState<number | null>(null);
   /* Mobile-only: tapping a bonus chip opens a detail card instead of voting
    * directly.  Vote / Oyu Kaldır lives inside that card.  Desktop ignores
    * this state — its chips keep direct-click voting + hover tooltip. */
@@ -132,13 +155,33 @@ export default function ConquestLobby({
       });
   }
 
-  const canStart = players.length >= CONQUEST_MIN_PLAYERS;
+  /* Rematch mode is driven by the explicit prop from ConquestMode (which
+   * derives it from the canonical room.gameplay_state.phase === "finished"
+   * — see ConquestMode.tsx). We intentionally do NOT infer it from
+   * `readyPlayerIds.length > 0` here: that inference made a brand-new lobby
+   * flip into rematch mode whenever stale per-room ephemeral state leaked
+   * across rooms (e.g. host leaves a finished room and creates a new one,
+   * carrying the previous ready set in component state). The lobby simply
+   * trusts the prop now. In a non-rematch lobby every present player is
+   * active regardless of readyPlayerIds; in a rematch lobby only players
+   * whose ids appear in readyPlayerIds count as active. */
+  const readySet  = useMemo(() => new Set(readyPlayerIds), [readyPlayerIds]);
+  const isRematch = rematchMode;
+  const isPlayerReady = (p: ConquestPlayer) => !isRematch || readySet.has(p.id);
+  const activePlayers = useMemo(
+    () => isRematch ? players.filter(p => readySet.has(p.id)) : players,
+    [players, readySet, isRematch],
+  );
+  const activeCount = activePlayers.length;
+  const canStart = activeCount >= CONQUEST_MIN_PLAYERS;
+  const startBlockedHelper = !canStart
+    ? `Yeni oyun için en az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`
+    : null;
+  const countLabel = isRematch
+    ? `Hazır ${activeCount}/${settings.maxPlayers}`
+    : `${players.length}/${settings.maxPlayers}`;
   const visualSlotCount = Math.max(settings.maxPlayers, players.length);
   const totalRendered = Math.min(visualSlotCount, CONQUEST_VISUAL_SLOTS);
-
-  /* True when at least one lower player-count option is forced disabled
-   * because the room is already partially filled. */
-  const playerCountCapped = players.length > CONQUEST_PLAYER_COUNTS[0];
 
   /* Resolved color per player.  Slot-based fallback covers legacy rows that
    * pre-date the picker.  Same map is used both in lobby chips and the
@@ -218,6 +261,22 @@ export default function ConquestLobby({
     if (!playersOpen) setMobileBonusDetail(null);
   }, [playersOpen]);
 
+  /* Auto-clear the capacity warning so it doesn't linger if the host
+   * walks away or picks a valid value afterwards. */
+  useEffect(() => {
+    if (capacityWarn === null) return;
+    const t = setTimeout(() => setCapacityWarn(null), 4000);
+    return () => clearTimeout(t);
+  }, [capacityWarn]);
+
+  /* If the room state catches up (e.g. someone leaves) so the rejected
+   * choice would now be valid, drop the warning silently. */
+  useEffect(() => {
+    if (capacityWarn !== null && players.length <= capacityWarn) {
+      setCapacityWarn(null);
+    }
+  }, [players.length, capacityWarn]);
+
   function renderColorPopover() {
     if (!colorPickerOpen || !me) return null;
     return (
@@ -275,17 +334,31 @@ export default function ConquestLobby({
   function renderPlayerChip(p: ConquestPlayer, opts: { keyPrefix: string }) {
     const color = resolvedColors[p.id];
     const isMe  = p.id === myPlayerId;
+    const ready = isPlayerReady(p);
+    const passive = isRematch && !ready;
     const dotInteractive = isMe;
     return (
       <div
         key={`${opts.keyPrefix}-${p.id}`}
-        className={"duel-player-chip cq-player-chip" + (p.isHost ? " cq-player-chip--host" : "") + (isMe ? " cq-player-chip--me" : "")}
+        className={
+          "duel-player-chip cq-player-chip"
+          + (p.isHost ? " cq-player-chip--host" : "")
+          + (isMe    ? " cq-player-chip--me"   : "")
+          + (passive ? " cq-player-chip--inactive" : "")
+        }
         data-color={color}
+        aria-disabled={passive || undefined}
       >
         <div className="cq-player-chip-main">
           <span className="cq-player-name">{p.name}</span>
           {isMe && <span className="cq-player-you-tag">sen</span>}
           {p.isHost && <span className="duel-tag host">👑</span>}
+          {isRematch && ready && (
+            <span className="cq-player-status-tag cq-player-status-tag--ready">Hazır</span>
+          )}
+          {passive && (
+            <span className="cq-player-status-tag cq-player-status-tag--idle">Sonuç ekranında</span>
+          )}
         </div>
         {dotInteractive ? (
           <span className="cq-player-chip-dot-wrap">
@@ -550,9 +623,7 @@ export default function ConquestLobby({
         <div className="duel-lobby-card wgg-players-card cq-players-card">
           <div className="cq-players-head">
             <span className="cq-players-title">👥 Oyuncular</span>
-            <span className="cq-players-count">
-              {players.length}/{settings.maxPlayers}
-            </span>
+            <span className="cq-players-count">{countLabel}</span>
           </div>
 
           <div className="wgg-player-list">
@@ -581,11 +652,17 @@ export default function ConquestLobby({
 
           {renderBonusPanel("desktop")}
 
-          {players.length < CONQUEST_MIN_PLAYERS && (
-            <div className="cq-wait-chip" role="status">
-              En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli — {CONQUEST_MIN_PLAYERS - players.length} bekleniyor
-            </div>
-          )}
+          {isRematch
+            ? !canStart && (
+                <div className="cq-wait-chip" role="status">
+                  En az {CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli — {CONQUEST_MIN_PLAYERS - activeCount} bekleniyor
+                </div>
+              )
+            : players.length < CONQUEST_MIN_PLAYERS && (
+                <div className="cq-wait-chip" role="status">
+                  En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli — {CONQUEST_MIN_PLAYERS - players.length} bekleniyor
+                </div>
+              )}
         </div>
 
         {/* ══ MIDDLE: Oda durumu + ayarlar + aksiyon ══ */}
@@ -644,10 +721,18 @@ export default function ConquestLobby({
                   value={settings.maxPlayers}
                   disabled={!isHost}
                   style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => onUpdateSettings({ maxPlayers: Number(e.target.value) as ConquestMaxPlayers })}
+                  onChange={e => {
+                    const next = Number(e.target.value) as ConquestMaxPlayers;
+                    if (next < players.length) {
+                      setCapacityWarn(next);
+                      return;
+                    }
+                    setCapacityWarn(null);
+                    onUpdateSettings({ maxPlayers: next });
+                  }}
                 >
                   {CONQUEST_PLAYER_COUNTS.map(n => (
-                    <option key={n} value={n} disabled={n < players.length}>
+                    <option key={n} value={n}>
                       {n} Kişi
                     </option>
                   ))}
@@ -709,7 +794,7 @@ export default function ConquestLobby({
             </div>
           </div>
 
-          {isHost && playerCountCapped && (
+          {isHost && capacityWarn !== null && (
             <p className="cq-player-count-warn" role="status">
               Oyuncu sayısı mevcut oyuncu sayısından ({players.length}) düşük olamaz.
             </p>
@@ -719,15 +804,22 @@ export default function ConquestLobby({
 
           <div className="cq-actions">
             {isHost && (
-              <button
-                type="button"
-                className={canStart ? "btn btn-accent cq-start-btn" : "btn btn-ghost cq-start-btn"}
-                disabled={!canStart}
-                onClick={() => { playSound("click"); onStart(); }}
-                title={canStart ? "Oyunu başlat" : `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli`}
-              >
-                🚀 Oyunu Başlat
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={canStart ? "btn btn-accent cq-start-btn" : "btn btn-ghost cq-start-btn"}
+                  disabled={!canStart}
+                  onClick={() => { playSound("click"); onStart(); }}
+                  title={canStart
+                    ? "Oyunu başlat"
+                    : startBlockedHelper ?? `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli`}
+                >
+                  🚀 Oyunu Başlat
+                </button>
+                {startBlockedHelper && (
+                  <p className="cq-start-helper" role="status">{startBlockedHelper}</p>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -740,7 +832,9 @@ export default function ConquestLobby({
 
           {!isHost && (
             <p className="cq-host-note">
-              Sadece ev sahibi <strong>{hostName}</strong> başlatabilir.
+              {waitingForHost
+                ? "Yeni oyun için oda yöneticisi bekleniyor."
+                : <>Sadece ev sahibi <strong>{hostName}</strong> başlatabilir.</>}
             </p>
           )}
         </div>
@@ -779,7 +873,7 @@ export default function ConquestLobby({
         >
           <span>👥</span>
           <span>Oyuncular</span>
-          <span className="wgg-players-fab-badge">{players.length}/{settings.maxPlayers}</span>
+          <span className="wgg-players-fab-badge">{countLabel}</span>
         </button>
       )}
 
@@ -807,9 +901,7 @@ export default function ConquestLobby({
                 <span>👥</span>
                 <span>Oyuncular</span>
               </span>
-              <span className="cq-players-count">
-                {players.length}/{settings.maxPlayers}
-              </span>
+              <span className="cq-players-count">{countLabel}</span>
               <button
                 type="button"
                 className="wgg-ps-close"
@@ -843,9 +935,11 @@ export default function ConquestLobby({
                   return renderPlayerChip(p, { keyPrefix: "mobile" });
                 })}
               </div>
-              {players.length < CONQUEST_MIN_PLAYERS && (
+              {(isRematch ? !canStart : players.length < CONQUEST_MIN_PLAYERS) && (
                 <div className="wgg-ps-warning cq-ps-warning">
-                  En az {CONQUEST_MIN_PLAYERS} oyuncu gerekli.
+                  {isRematch
+                    ? `En az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`
+                    : `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli.`}
                 </div>
               )}
               {renderMobileBonusPanel()}

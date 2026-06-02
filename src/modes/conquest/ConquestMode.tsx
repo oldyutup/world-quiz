@@ -35,6 +35,7 @@ import ConquestGame from "./ConquestGame";
 import ConquestJoinByCode from "./ConquestJoinByCode";
 import {
   CONQUEST_DEFAULT_SETTINGS,
+  CONQUEST_MIN_PLAYERS,
   mapLabel,
   type ConquestBonusDistribution,
   type ConquestMapId,
@@ -59,7 +60,6 @@ import {
   heartbeatConquestPlayer,
   joinConquestRoomByCode,
   leaveConquestRoom,
-  markConquestRoomWaiting,
   updateConquestPlayerColor,
   updateConquestRoomSettings,
   type ConquestJoinResult,
@@ -68,7 +68,6 @@ import { subscribeToConquestRoom } from "./conquestRealtime";
 import { getConquestMapConfig } from "./maps";
 import { createInitialConquestGameState } from "./conquestGameplay";
 import {
-  clearConquestGameplayState,
   deserializeConquestGameState,
   initializeConquestGameplayState,
   updateConquestGameplayState,
@@ -121,6 +120,18 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   const [statusMsg,   setStatusMsg]   = useState<string | null>(null);
   const [hostClosed,  setHostClosed]  = useState(false);
 
+  // ── Post-match return-to-lobby flow ────────────────────────────────────
+  // Shown when a player still on the finished panel clicks "Lobiye Dön"
+  // AFTER the host has already started the next game without them.  The
+  // body offers Ana Menüye Dön / Tamam — no auto spectator (V1).
+  const [lateReturnModalOpen, setLateReturnModalOpen] = useState(false);
+  // Soft banner shown to the new host or remaining players when the host
+  // role transfers due to a leave.  Auto-clears after a few seconds.
+  const [hostTransferBanner, setHostTransferBanner] = useState<string | null>(null);
+  // Inline error surfaced when the host clicks "Yeni Oyunu Başlat" but
+  // fewer than CONQUEST_MIN_PLAYERS have returned to lobby.
+  const [startBlockedMsg, setStartBlockedMsg] = useState<string | null>(null);
+
   // Lobby-only ephemeral state: bonus distribution mode + per-player votes.
   // Synced via Supabase Realtime broadcast (see conquestLobbyBroadcast.ts).
   // Not persisted in any table and intentionally not wired into match start
@@ -134,8 +145,26 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // closures would otherwise trip us up.
   const myPlayerIdRef = useRef<string | null>(null);
   const phaseRef      = useRef<Phase>(initialPhase === "create" ? "joining" : initialPhase);
+  const roomRowRef    = useRef<ConquestRoomRow | null>(null);
   useEffect(() => { myPlayerIdRef.current = myPlayerId; }, [myPlayerId]);
   useEffect(() => { phaseRef.current      = phase;      }, [phase]);
+  useEffect(() => { roomRowRef.current    = roomRow;    }, [roomRow]);
+
+  // ── Per-room ephemeral state reset ──────────────────────────────────────
+  // `lobbyExtra` (rematch readyPlayerIds, bonus votes, bonus distribution)
+  // lives in component state, so without an explicit reset it would carry
+  // over when the same user leaves one room and joins/creates another in
+  // the same session. The bug surfaced as: brand-new room with all players
+  // tagged "Sonuç ekranında" because a stale readyPlayerIds from the
+  // previous room made ConquestLobby think it was in rematch mode.
+  const prevRoomIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const nextId = roomRow?.id ?? null;
+    if (prevRoomIdRef.current !== nextId) {
+      prevRoomIdRef.current = nextId;
+      setLobbyExtra(EMPTY_LOBBY_BROADCAST_STATE);
+    }
+  }, [roomRow?.id]);
 
   const isLoggedIn = !!profile?.username;
 
@@ -253,17 +282,46 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     channel = subscribeToConquestRoom(roomRow.id, {
       onRoomUpdate: (next) => {
         if (cancelled) return;
+
+        // ── New-game detection (rematch path) ─────────────────────────
+        // The host writes a fresh gameplay_state every match start, so a
+        // change in the inner `startedAt` tells us a new round began —
+        // regardless of whether room.status flipped.  Clients in lobby
+        // phase who are part of the new players list transition to game;
+        // clients on the (frozen) finished panel are handled by
+        // ConquestGame's snapshot lock and the late-return modal.
+        const prev      = roomRowRef.current;
+        const prevState = deserializeConquestGameState(prev?.gameplay_state);
+        const nextState = deserializeConquestGameState(next.gameplay_state);
+        const myId      = myPlayerIdRef.current;
+        const newMatchStarted =
+          !!nextState &&
+          nextState.phase !== "finished" &&
+          (!prevState || prevState.startedAt !== nextState.startedAt);
+
+        // Host transfer detection — surface a one-shot banner so the new
+        // host (and everyone else) knows who's in charge now.  Skipped
+        // when the host id is unchanged or when the room is being closed.
+        if (
+          prev &&
+          prev.host_player_id !== next.host_player_id &&
+          next.host_player_id != null &&
+          next.status !== "closed" &&
+          next.status !== "finished"
+        ) {
+          if (myId && next.host_player_id === myId) {
+            setHostTransferBanner("Yeni oda yöneticisi sensin.");
+          } else {
+            setHostTransferBanner(`Host ayrıldı. Yeni oda yöneticisi: ${next.host_name}`);
+          }
+        }
+
         setRoomRow(next);
 
         // Status-driven transitions
-        if (next.status === "playing" && phaseRef.current === "lobby") {
-          setPhase("game");
-        } else if (next.status === "waiting" && phaseRef.current === "game") {
-          // Host returned to lobby
-          setPhase("lobby");
-        } else if (
+        if (
           (next.status === "closed" || next.status === "finished") &&
-          next.host_player_id !== myPlayerIdRef.current
+          next.host_player_id !== myId
         ) {
           // Someone else closed the room — eject locally.
           setHostClosed(true);
@@ -271,6 +329,24 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           setPlayerRows([]);
           setMyPlayerId(null);
           setPhase("setup");
+          return;
+        }
+
+        // Fresh match started.
+        if (newMatchStarted && nextState) {
+          const meInNewGame = !!myId && nextState.players.some(p => p.id === myId);
+          if (meInNewGame) {
+            // I'm part of this round — go to game screen if I was waiting
+            // in lobby.  Clients already in game phase (e.g. host who
+            // just clicked start) just see their state update.
+            if (phaseRef.current === "lobby") setPhase("game");
+          } else {
+            // I'm NOT included in this round.  If I'm in lobby view,
+            // stay there with the start message; if I'm still on the
+            // finished panel, ConquestGame's snapshot lock keeps the
+            // old standings visible until I click "Lobiye Dön" and hit
+            // the late-return modal.
+          }
         }
       },
       onRoomDelete: () => {
@@ -311,8 +387,13 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   const isHostRef = useRef(false);
   useEffect(() => { isHostRef.current = !!me?.is_host; }, [me?.is_host]);
 
+  // Active during BOTH lobby and game phases: the post-match
+  // "Lobiye Dön" flow needs to broadcast ready-for-next while the
+  // sender is technically still in phase==='game' (rendering the
+  // finished panel) and the receiver may be in phase==='lobby'.
   useEffect(() => {
-    if (!roomRow?.id || phase !== "lobby") return;
+    if (!roomRow?.id) return;
+    if (phase !== "lobby" && phase !== "game") return;
 
     const handle = subscribeLobbyBroadcast({
       roomId:   roomRow.id,
@@ -332,6 +413,23 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         },
         onClearVotes:  (playerId) => {
           setLobbyExtra(prev => ({ ...prev, votes: clearPlayerVotes(prev.votes, playerId) }));
+        },
+        onReadyForNext: ({ playerId, ready }) => {
+          setLobbyExtra(prev => {
+            const has = prev.readyPlayerIds.includes(playerId);
+            if (ready && !has) {
+              return { ...prev, readyPlayerIds: [...prev.readyPlayerIds, playerId] };
+            }
+            if (!ready && has) {
+              return { ...prev, readyPlayerIds: prev.readyPlayerIds.filter(id => id !== playerId) };
+            }
+            return prev;
+          });
+        },
+        onClearReady: () => {
+          setLobbyExtra(prev => prev.readyPlayerIds.length === 0
+            ? prev
+            : { ...prev, readyPlayerIds: [] });
         },
         onRequestSnapshot: () => { /* host auto-responds inside the helper */ },
       },
@@ -490,49 +588,103 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     }
   }, [roomRow?.id, isHost]);
 
-  const handleBackToLobbyFromGame = useCallback(async () => {
-    if (!roomRow || !isHost) {
-      // Non-host can't pull the room back to waiting; treat as leave.
-      await handleLeaveLobby();
+  /**
+   * Finished-panel "Lobiye Dön" — solo transition.
+   *
+   * The player stays in the room (no DB delete, no status flip) and just
+   * switches their own view to the lobby.  A broadcast tells everyone
+   * (host included) that this player is ready to be folded into the next
+   * match.  If the host has already started the next game without us,
+   * surface the late-return info modal instead.
+   */
+  const handleReturnToLobby = useCallback(() => {
+    if (!myPlayerId) return;
+    playSound("click");
+
+    // Check the live gameplay_state, not stale closure state — by the time
+    // a slow player taps the button, the host's start may have landed.
+    const liveState = deserializeConquestGameState(roomRowRef.current?.gameplay_state);
+    const newRoundInFlight =
+      !!liveState &&
+      liveState.phase !== "finished" &&
+      !liveState.players.some(p => p.id === myPlayerId);
+
+    if (newRoundInFlight) {
+      setLateReturnModalOpen(true);
       return;
     }
-    // Host returning → flip room status to waiting AND wipe gameplay_state
-    // so the next start begins from scratch.  Realtime UPDATE brings every
-    // other client back to the lobby too.
-    const updated = await markConquestRoomWaiting(roomRow.id);
-    if (updated) setRoomRow(updated);
-    await clearConquestGameplayState(roomRow.id);
+
+    setLobbyExtra(prev => prev.readyPlayerIds.includes(myPlayerId)
+      ? prev
+      : { ...prev, readyPlayerIds: [...prev.readyPlayerIds, myPlayerId] });
+    lobbyChannelRef.current?.emitReadyForNext(myPlayerId);
+    setStartBlockedMsg(null);
     setPhase("lobby");
-  }, [roomRow, isHost, handleLeaveLobby]);
+  }, [myPlayerId]);
+
+  /**
+   * Mid-game "Odadan Ayrıl" — leaves the room outright.
+   *
+   * Used by the in-progress back button and the leave-confirmation modal.
+   * Host transfer is handled server-side by conquest_leave_room.
+   */
+  const handleLeaveRoomFromGame = useCallback(async () => {
+    await handleLeaveLobby();
+  }, [handleLeaveLobby]);
 
   const handleStartGame = useCallback(async () => {
     if (!roomRow || !isHost) return;
     const mapConfig = getConquestMapConfig(settings.map);
     if (!mapConfig) return;
-    // Vote-mode bonus selection: resolve top-N voted open bonuses (with
-    // deterministic tie-break + fallback) here on the host so the resulting
-    // list goes into the canonical initial state every client deserialises.
-    // Random mode leaves `selectedBonusTypes` undefined so the round-bonus
-    // builder keeps its legacy seeded random pick.
+
+    // ── Filter participants to "ready" players only ─────────────────
+    // First-start path: nobody is "ready" yet (no prior match), so we
+    // fall back to the full player roster — same as before.  Rematch
+    // path: only players who clicked "Lobiye Dön" from the finished
+    // panel make it in; stragglers on the result screen are skipped.
+    // The host gets into readyPlayerIds through their own
+    // handleReturnToLobby call, so no silent host-auto-include — that
+    // would make the UI roster (which uses the same set) drift from the
+    // actual game start filter.
+    const ready = new Set(lobbyExtra.readyPlayerIds);
+    const isRematch = ready.size > 0;
+    const includedPlayers = isRematch
+      ? uiPlayers.filter(p => ready.has(p.id))
+      : uiPlayers;
+
+    if (includedPlayers.length < CONQUEST_MIN_PLAYERS) {
+      setStartBlockedMsg(
+        `Yeni oyun için en az ${CONQUEST_MIN_PLAYERS} aktif oyuncu gerekli.`,
+      );
+      return;
+    }
+
+    setStartBlockedMsg(null);
+
     const selectedBonusTypes =
       lobbyExtra.bonusDistribution === "vote"
         ? resolveActiveBonusTypesFromVotes(
             lobbyExtra.votes,
-            uiPlayers.length,
+            includedPlayers.length,
             Date.now(),
           )
         : undefined;
-    // Seed the initial synced state from the current player roster so every
-    // client sees the same starting board / round-1 challenge.
     const initialState = createInitialConquestGameState(
       mapConfig,
-      uiPlayers,
+      includedPlayers,
       settings.rounds,
       selectedBonusTypes,
     );
     const updated = await initializeConquestGameplayState(roomRow.id, initialState);
     if (updated) {
       setRoomRow(updated);
+      // Clear the local ready set on the host immediately AND broadcast
+      // so every client drops the previous match's ready flags before
+      // the new finished panel can collect a fresh set.
+      setLobbyExtra(prev => prev.readyPlayerIds.length === 0
+        ? prev
+        : { ...prev, readyPlayerIds: [] });
+      lobbyChannelRef.current?.emitClearReady();
       setPhase("game");
     }
   }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers, lobbyExtra]);
@@ -558,6 +710,16 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     () => deserializeConquestGameState(roomRow?.gameplay_state),
     [roomRow?.gameplay_state],
   );
+
+  // ── Rematch lobby detection ────────────────────────────────────────────
+  // Drives the "Hazır X/Y" counter + per-player "Sonuç ekranında" tags in
+  // ConquestLobby. We derive it from the canonical row state rather than
+  // from `readyPlayerIds.length > 0`, so a stale ready-set carried in by
+  // bug or a transient broadcast cannot accidentally flip a fresh lobby
+  // into rematch mode. Reset to false the moment a new gameplay_state is
+  // initialized (initializeConquestGameplayState writes a non-finished
+  // phase), and re-armed automatically when the next match ends.
+  const rematchMode = syncedGameState?.phase === "finished";
 
   const handleChangeColor = useCallback(
     async (color: ConquestPlayerColor) => {
@@ -588,7 +750,9 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       setLobbyExtra(prev => {
         // Flipping back to "random" wipes votes so a future "vote" toggle
         // starts from a clean slate.
-        if (mode === "random") return { bonusDistribution: mode, votes: {} };
+        if (mode === "random") {
+          return { bonusDistribution: mode, votes: {}, readyPlayerIds: prev.readyPlayerIds };
+        }
         return { ...prev, bonusDistribution: mode };
       });
       const handle = lobbyChannelRef.current;
@@ -596,7 +760,11 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         handle.emitModeChange(mode);
         if (mode === "random") {
           // Reset votes everywhere too.
-          handle.emitSnapshot({ bonusDistribution: mode, votes: {} });
+          handle.emitSnapshot({
+            bonusDistribution: mode,
+            votes: {},
+            readyPlayerIds: lobbyExtraRef.current.readyPlayerIds,
+          });
         }
       }
     },
@@ -652,6 +820,13 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     [roomRow, isHost, playerRows.length],
   );
 
+  // Auto-clear the host-transfer banner so it doesn't linger forever.
+  useEffect(() => {
+    if (!hostTransferBanner) return;
+    const t = window.setTimeout(() => setHostTransferBanner(null), 6000);
+    return () => window.clearTimeout(t);
+  }, [hostTransferBanner]);
+
   // ── Initial phase prop change (e.g. Home → Browse) ──────────────────────
   useEffect(() => {
     if (phase === "lobby" || phase === "game" || phase === "joining") return;
@@ -671,19 +846,32 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // Game screen owns its own full-screen layout.
   if (phase === "game" && roomRow) {
     return (
-      <ConquestGame
-        roomCode={roomRow.room_code}
-        roomId={roomRow.id}
-        settings={settings}
-        players={uiPlayers}
-        lastSeenByPlayerId={lastSeenByPlayerId}
-        gameState={syncedGameState}
-        isHost={isHost}
-        myPlayerId={myPlayerId}
-        profile={profile}
-        onPushGameState={handlePushGameplayState}
-        onBackToLobby={handleBackToLobbyFromGame}
-      />
+      <>
+        <ConquestGame
+          roomCode={roomRow.room_code}
+          roomId={roomRow.id}
+          settings={settings}
+          players={uiPlayers}
+          lastSeenByPlayerId={lastSeenByPlayerId}
+          gameState={syncedGameState}
+          isHost={isHost}
+          myPlayerId={myPlayerId}
+          profile={profile}
+          onPushGameState={handlePushGameplayState}
+          onReturnToLobby={handleReturnToLobby}
+          onLeaveRoom={handleLeaveRoomFromGame}
+        />
+        {lateReturnModalOpen && (
+          <LateReturnModal
+            onHome={() => {
+              setLateReturnModalOpen(false);
+              void handleLeaveLobby();
+              setTimeout(onHome, 0);
+            }}
+            onDismiss={() => setLateReturnModalOpen(false)}
+          />
+        )}
+      </>
     );
   }
 
@@ -741,6 +929,42 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         </div>
       )}
 
+      {/* Host-transfer banner: shown briefly in the lobby after a leave-
+          driven promotion so the new admin (and everyone else) knows. */}
+      {phase === "lobby" && hostTransferBanner && (
+        <div className="cq-banner-wrap" role="status">
+          <div className="cq-banner">
+            <span className="cq-banner-msg">👑 {hostTransferBanner}</span>
+            <button
+              type="button"
+              className="cq-banner-close"
+              aria-label="Kapat"
+              onClick={() => setHostTransferBanner(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Start-blocked notice: host clicked "Yeni Oyunu Başlat" but the
+          ready-set has fewer than CONQUEST_MIN_PLAYERS active players. */}
+      {phase === "lobby" && startBlockedMsg && (
+        <div className="cq-banner-wrap" role="status">
+          <div className="cq-banner">
+            <span className="cq-banner-msg">⚠️ {startBlockedMsg}</span>
+            <button
+              type="button"
+              className="cq-banner-close"
+              aria-label="Kapat"
+              onClick={() => setStartBlockedMsg(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {phase === "setup" && (
         <ConquestSetup
           profile={profile}
@@ -787,6 +1011,9 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           isHost={isHost}
           isLoggedIn={isLoggedIn}
           bonusVotes={lobbyExtra.votes}
+          readyPlayerIds={lobbyExtra.readyPlayerIds}
+          rematchMode={rematchMode}
+          waitingForHost={!isHost && rematchMode && lobbyExtra.readyPlayerIds.includes(myPlayerId ?? "")}
           onUpdateSettings={handleUpdateSettings}
           onChangeBonusDistribution={handleChangeBonusDistribution}
           onToggleBonusVote={handleToggleBonusVote}
@@ -796,6 +1023,60 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         />
       )}
 
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LateReturnModal — shown when a player clicks "Lobiye Dön" from the finished
+// panel AFTER the host has already started the next game without them.
+// No spectator option in V1: the user either leaves to home or dismisses and
+// keeps idling on their frozen finished screen.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface LateReturnModalProps {
+  onHome:    () => void;
+  onDismiss: () => void;
+}
+
+function LateReturnModal({ onHome, onDismiss }: LateReturnModalProps) {
+  return (
+    <div
+      className="modal-backdrop cq-confirm-leave-backdrop"
+      role="presentation"
+      onClick={onDismiss}
+    >
+      <div
+        className="modal cq-confirm-leave-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="cq-late-return-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="cq-late-return-title" className="cq-confirm-leave-title">
+          Yeni oyun başladı
+        </h2>
+        <p className="cq-confirm-leave-desc">
+          Bu lobide yeni oyun başladı. Oyunun bitmesini bekleyebilir veya ana menüye dönebilirsin.
+        </p>
+        <div className="cq-confirm-leave-actions">
+          <button
+            type="button"
+            className="btn btn-accent cq-confirm-leave-cancel"
+            onClick={() => { playSound("click"); onDismiss(); }}
+            autoFocus
+          >
+            Tamam
+          </button>
+          <button
+            type="button"
+            className="btn cq-confirm-leave-confirm"
+            onClick={() => { playSound("click"); onHome(); }}
+          >
+            Ana Menüye Dön
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -9789,6 +9789,58 @@ body {
   letter-spacing: 0.02em;
 }
 .cq-start-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+.cq-start-helper {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--amber);
+  letter-spacing: 0.01em;
+}
+
+/* Rematch lobby — passive (still on finished panel) variant.  Keeps the
+   chip in place so the host can see the room is intact, but visibly drops
+   it out of the active roster.  Color glow + dot are muted; everything
+   else (name, host crown) stays legible. */
+.cq-player-chip--inactive {
+  opacity: 0.45;
+  filter: grayscale(0.85);
+}
+.cq-player-chip--inactive .cq-player-name {
+  color: rgba(255,255,255,0.55) !important;
+  font-style: italic;
+}
+.cq-player-chip--inactive .duel-player-dot {
+  background: rgba(255,255,255,0.25) !important;
+  box-shadow: none !important;
+}
+
+/* Small inline tag next to a player's name in the rematch lobby.  Two
+   flavours: "Hazır" for ready returners, "Sonuç ekranında" for stragglers. */
+.cq-player-status-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cq-player-status-tag--ready {
+  background: rgba(58,165,93,0.18);
+  border: 1px solid rgba(58,165,93,0.45);
+  color: var(--green);
+}
+.cq-player-status-tag--idle {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.7);
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
 .cq-leave-btn {
   width: 100%;
   min-height: 44px;

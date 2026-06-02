@@ -29,11 +29,17 @@ export type ConquestLobbyVotes = Record<string, ConquestRegionBonusType[]>;
 export interface ConquestLobbyBroadcastState {
   bonusDistribution: ConquestBonusDistribution;
   votes:             ConquestLobbyVotes;
+  /** Players who have clicked "Lobiye Dön" from the post-match screen and
+   *  want to be included in the next game.  Spans both lobby and game
+   *  phases so the host can see who's back while still in the finished
+   *  panel themselves. */
+  readyPlayerIds:    string[];
 }
 
 export const EMPTY_LOBBY_BROADCAST_STATE: ConquestLobbyBroadcastState = {
   bonusDistribution: "random",
   votes:             {},
+  readyPlayerIds:    [],
 };
 
 interface SnapshotPayload {
@@ -56,6 +62,14 @@ interface ClearVotesPayload {
   playerId: string;
 }
 
+interface ReadyForNextPayload {
+  playerId: string;
+  /** When false, the sender is retracting their ready-state (e.g. they
+   *  navigated back to the finished panel via browser back).  Currently
+   *  only `true` is emitted; field reserved for future use. */
+  ready:    boolean;
+}
+
 export interface ConquestLobbyBroadcastHandlers {
   /** Called when a snapshot arrives from another client. */
   onSnapshot:    (state: ConquestLobbyBroadcastState) => void;
@@ -65,6 +79,12 @@ export interface ConquestLobbyBroadcastHandlers {
   onVoteToggle:  (payload: VoteTogglePayload)         => void;
   /** Called when a client clears all their own votes (e.g. mode flip back). */
   onClearVotes:  (playerId: string)                   => void;
+  /** Called when a client reports they're back in the lobby and ready for
+   *  the next game.  Host aggregates this into the start filter. */
+  onReadyForNext: (payload: ReadyForNextPayload) => void;
+  /** Called when the host resets the ready set (typically after starting a
+   *  new game or returning to a fresh lobby). */
+  onClearReady:   () => void;
   /** Called when another client requests a snapshot — only the host
    *  responds (caller decides), but every client receives the ping so they
    *  could fall back if needed. */
@@ -141,6 +161,8 @@ export interface ConquestLobbyBroadcastHandle {
   emitModeChange:  (mode:  ConquestBonusDistribution)   => void;
   emitVoteToggle:  (payload: VoteTogglePayload)         => void;
   emitClearVotes:  (playerId: string)                   => void;
+  emitReadyForNext: (playerId: string) => void;
+  emitClearReady:  () => void;
   emitRequestSnapshot: ()                                => void;
   unsubscribe:     () => void;
 }
@@ -171,6 +193,13 @@ export function subscribeLobbyBroadcast(
     .on("broadcast", { event: "clear_votes" }, ({ payload }) => {
       const p = payload as ClearVotesPayload | undefined;
       if (p) handlers.onClearVotes(p.playerId);
+    })
+    .on("broadcast", { event: "ready_for_next" }, ({ payload }) => {
+      const p = payload as ReadyForNextPayload | undefined;
+      if (p) handlers.onReadyForNext(p);
+    })
+    .on("broadcast", { event: "clear_ready" }, () => {
+      handlers.onClearReady();
     })
     .on("broadcast", { event: "request_snapshot" }, () => {
       handlers.onRequestSnapshot();
@@ -219,6 +248,18 @@ export function subscribeLobbyBroadcast(
         type:    "broadcast",
         event:   "clear_votes",
         payload: { playerId } satisfies ClearVotesPayload,
+      }),
+    emitReadyForNext: (playerId) =>
+      void channel.send({
+        type:    "broadcast",
+        event:   "ready_for_next",
+        payload: { playerId, ready: true } satisfies ReadyForNextPayload,
+      }),
+    emitClearReady: () =>
+      void channel.send({
+        type:    "broadcast",
+        event:   "clear_ready",
+        payload: {},
       }),
     emitRequestSnapshot: () =>
       void channel.send({

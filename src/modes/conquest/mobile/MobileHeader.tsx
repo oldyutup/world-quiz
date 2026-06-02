@@ -56,8 +56,8 @@ export default function MobileHeader({
         type="button"
         className="mcq-header-back"
         onClick={handleBack}
-        aria-label="Lobiye Dön"
-        title="Lobiye Dön"
+        aria-label="Odadan Ayrıl"
+        title="Odadan Ayrıl"
       >
         ←
       </button>
