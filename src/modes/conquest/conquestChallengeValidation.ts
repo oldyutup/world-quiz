@@ -19,39 +19,27 @@
  */
 
 import type { ConquestChallenge } from "./types";
+import { normalizeCountryAnswer, areCountryAnswersEquivalent } from "../../data/countries";
 
 /**
  * Collapse a raw user-entered string into the canonical comparison form.
- * Idempotent: normaliseAnswer(normaliseAnswer(s)) === normaliseAnswer(s).
  *
- * Exported so tests / future server-side validation can share the exact
- * same rule set.  Keep this in sync with the answer set in
- * conquestChallengeBank.ts — the bank entries are normalised on read.
+ * Delegates to the central `normalizeCountryAnswer` so every Conquest
+ * answer obeys the same rules as Flag/Map/Silhouette modes:
+ * Unicode NFD, diacritic stripping, Turkish-letter folding, punctuation
+ * tolerance, whitespace collapse. Idempotent.
  */
 export function normaliseAnswer(raw: string): string {
-  if (!raw) return "";
-  let s = raw.toLowerCase().trim();
-  // Normalise Turkish capital İ first (its toLowerCase result varies by env).
-  s = s
-    .replace(/i̇/g, "i")  // U+0069 + combining dot, occasionally produced
-    .replace(/ı/g, "i")
-    .replace(/ş/g, "s")
-    .replace(/ğ/g, "g")
-    .replace(/ü/g, "u")
-    .replace(/ö/g, "o")
-    .replace(/ç/g, "c")
-    .replace(/â/g, "a")
-    .replace(/î/g, "i")
-    .replace(/û/g, "u");
-  // Collapse whitespace runs to a single space.
-  s = s.replace(/\s+/g, " ");
-  return s;
+  return normalizeCountryAnswer(raw);
 }
 
 /**
- * True iff `raw` matches any entry in the challenge's acceptedAnswers list
- * after normalisation.  Returns false for empty input or challenges that
- * carry no accepted-answer list (e.g. the legacy placeholder).
+ * True iff `raw` matches any entry in the challenge's acceptedAnswers list.
+ *
+ * Uses `areCountryAnswersEquivalent` so that when an acceptedAnswer is a
+ * country name (e.g. "Türkiye"), every alias of that country (Turkey,
+ * TÜRKİYE, turkiye, …) is accepted automatically. For non-country answers
+ * (capitals, mountains, …) it falls back to normalised string equality.
  */
 export function isChallengeAnswerCorrect(
   challenge: ConquestChallenge,
@@ -63,7 +51,7 @@ export function isChallengeAnswerCorrect(
   const candidate = normaliseAnswer(raw);
   if (!candidate) return false;
   for (const accepted of challenge.acceptedAnswers) {
-    if (normaliseAnswer(accepted) === candidate) return true;
+    if (areCountryAnswersEquivalent(raw, accepted)) return true;
   }
   return false;
 }

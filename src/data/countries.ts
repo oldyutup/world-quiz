@@ -32,22 +32,51 @@ export interface CountryEntry {
 /* ─────────────────────────────────────────────────
    NORMALIZER
 ───────────────────────────────────────────────── */
-export function normalizeInput(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/\u0131/g, "i")
-    .replace(/\u011f/g, "g")
-    .replace(/\xfc/g,   "u")
-    .replace(/\u015f/g, "s")
-    .replace(/\xf6/g,   "o")
-    .replace(/\xe7/g,   "c")
-    .replace(/\u0130/g, "i")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[-\u2013\u2014_]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+/**
+ * Central country answer canonicaliser.
+ *
+ * Rules:
+ *   1) Unicode NFD decomposition (splits "\u00fc" \u2192 u + combining diaeresis,
+ *      "\u015f" \u2192 s + combining cedilla, "\u0130" \u2192 I + combining dot, \u2026).
+ *   2) Strip every combining mark (the accent halves left behind).
+ *   3) Lowercase.
+ *   4) Manually map letters that have no canonical decomposition (\u0131 especially);
+ *      the rest are safety nets in case NFD is bypassed.
+ *   5) Apostrophes / dashes / dots / slashes become word breaks \u2192 spaces.
+ *      Lets "Cote d'Ivoire", "Bosnia-Herzegovina", "Washington D.C." match
+ *      their spaced variants.
+ *   6) Strip remaining non-[a-z0-9 ] noise (emoji, regional indicators, etc.).
+ *   7) Collapse whitespace runs, trim.
+ *
+ * Idempotent \u2014 safe on already-normalised text.
+ */
+export function normalizeCountryAnswer(raw: string): string {
+  if (!raw) return "";
+  let s = String(raw);
+  s = s.normalize("NFD");
+  s = s.replace(/[\u0300-\u036f]/g, "");
+  s = s.toLowerCase();
+  s = s
+    .replace(/\u0131/g, "i")   // \u0131 (dotless small i)
+    .replace(/\u0130/g, "i")   // \u0130 \u2014 covered by NFD but kept as safety net
+    .replace(/\u015f/g, "s")   // \u015f
+    .replace(/\u011f/g, "g")   // \u011f
+    .replace(/\xfc/g,   "u")   // \u00fc
+    .replace(/\xf6/g,   "o")   // \u00f6
+    .replace(/\xe7/g,   "c")   // \u00e7
+    .replace(/\xe2/g,   "a")   // \u00e2
+    .replace(/\xee/g,   "i")   // \u00ee
+    .replace(/\xfb/g,   "u")   // \u00fb
+    .replace(/\xdf/g,   "ss"); // \u00df \u2192 ss
+  s = s.replace(/['\u2018\u2019\u02bc\u2032`\xb4.,;:!?&]/g, " ");
+  s = s.replace(/[-\u2013\u2014_/\\]/g, " ");
+  s = s.replace(/[^a-z0-9 ]/g, "");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
 }
+
+/** Back-compat alias \u2014 historic name used across the codebase. */
+export const normalizeInput = normalizeCountryAnswer;
 
 /* ─────────────────────────────────────────────────
    COUNTRY LIST  (195 counted + bonus)
@@ -270,6 +299,32 @@ export const COUNTRIES: CountryEntry[] = [
 ];
 
 /* ─────────────────────────────────────────────────
+   EXTRA ALIASES
+   Multilingual / colloquial names that aren't in `COUNTRIES[i].names`
+   but should still resolve to the right country in every text-input mode.
+───────────────────────────────────────────────── */
+const EXTRA_COUNTRY_ALIASES: Record<string, string[]> = {
+  // ISO alpha-2 code → additional accepted answers
+  de: ["deutschland"],                              // Germany
+  gr: ["hellas", "ellada", "ελλαδα"],               // Greece
+  ru: ["russian federation"],                       // Russia
+  kr: ["republic of korea", "korea republic", "rok"], // South Korea
+  kp: ["dprk", "democratic people's republic of korea", "kuzey kore cumhuriyeti"],
+  cz: ["czech rep"],                                // Czechia
+  gb: ["great britain", "britanya"],                // United Kingdom
+  us: ["amerika birleşik devletleri"],              // USA
+  cy: ["kıbrıs cumhuriyeti", "kibris cumhuriyeti"], // Cyprus
+  ge: ["sakartvelo"],                               // Georgia
+  ba: ["bosna ve hersek", "bosnia & herzegovina"],  // Bosnia
+  ci: ["ivory coast", "côte d'ivoire", "republic of cote d'ivoire"], // Côte d’Ivoire
+  nl: ["niderlanda", "the netherlands"],            // Netherlands
+  va: ["holy see"],                                 // Vatican
+  mm: ["birmanya"],                                 // Myanmar
+  mk: ["makedonya", "north macedonia"],             // N. Macedonia
+  cd: ["zaire"],                                    // DR Congo
+};
+
+/* ─────────────────────────────────────────────────
    LOOKUP TABLES
 ───────────────────────────────────────────────── */
 export const NAME_TO_TOPOID:      Record<string, string>    = {};
@@ -277,27 +332,89 @@ export const TOPOID_TO_DISPLAY:   Record<string, string>    = {};
 export const TOPOID_TO_CONTINENT: Record<string, Continent> = {};
 export const CODE_TO_ENTRY:       Record<string, CountryEntry> = {};
 
+/** Every normalised accepted-answer string for a country (display + names + extras). */
+const ENTRY_TO_ACCEPTED: WeakMap<CountryEntry, Set<string>> = new WeakMap();
+
+function buildAcceptedFor(entry: CountryEntry): Set<string> {
+  const set = new Set<string>();
+  const add = (s: string | undefined) => {
+    if (!s) return;
+    const k = normalizeCountryAnswer(s);
+    if (k) set.add(k);
+  };
+  add(entry.display);
+  entry.names.forEach(add);
+  (EXTRA_COUNTRY_ALIASES[entry.code] ?? []).forEach(add);
+  return set;
+}
+
 COUNTRIES.forEach(entry => {
-  const { code, topoId, display, names, continent } = entry;
+  const { code, topoId, display, continent } = entry;
   if (topoId) TOPOID_TO_DISPLAY[topoId]   = display;
   if (topoId) TOPOID_TO_CONTINENT[topoId] = continent;
   CODE_TO_ENTRY[code] = entry;
-  names.forEach(n => {
-    const key = normalizeInput(n);
-    if (key && !(key in NAME_TO_TOPOID) && topoId) NAME_TO_TOPOID[key] = topoId;
-    // Also map name → code for flag mode
-    if (key && code) CODE_TO_ENTRY[key] = entry; // overwritten is fine
+
+  const accepted = buildAcceptedFor(entry);
+  ENTRY_TO_ACCEPTED.set(entry, accepted);
+
+  accepted.forEach(key => {
+    if (!(key in NAME_TO_TOPOID) && topoId) NAME_TO_TOPOID[key] = topoId;
+    CODE_TO_ENTRY[key] = entry; // overwritten is fine
   });
 });
 
-// Map normalised names → entry for flag mode lookup
+// Map normalised names → entry for flag/silhouette/type-write modes.
 export const NAME_TO_ENTRY: Record<string, CountryEntry> = {};
 COUNTRIES.forEach(entry => {
-  entry.names.forEach(n => {
-    const key = normalizeInput(n);
-    if (key) NAME_TO_ENTRY[key] = entry;
-  });
+  const accepted = ENTRY_TO_ACCEPTED.get(entry);
+  accepted?.forEach(key => { NAME_TO_ENTRY[key] = entry; });
 });
+
+/* ─────────────────────────────────────────────────
+   PUBLIC COUNTRY-ANSWER HELPERS
+   Every mode that asks the player to type a country name should
+   route through these — keep the validation logic in one place.
+───────────────────────────────────────────────── */
+
+/** All normalised accepted answers for a country (display + Turkish + English + extras). */
+export function getCountryAcceptedAnswers(entry: CountryEntry): string[] {
+  const cached = ENTRY_TO_ACCEPTED.get(entry);
+  if (cached) return [...cached];
+  return [...buildAcceptedFor(entry)];
+}
+
+/** Resolve any raw user input to a CountryEntry, or undefined for no match. */
+export function findCountryByAnswer(raw: string): CountryEntry | undefined {
+  const key = normalizeCountryAnswer(raw);
+  if (!key) return undefined;
+  return NAME_TO_ENTRY[key];
+}
+
+/** True iff the player's raw input matches the given country (any alias). */
+export function isCountryAnswerCorrect(raw: string, entry: CountryEntry): boolean {
+  if (!entry) return false;
+  const key = normalizeCountryAnswer(raw);
+  if (!key) return false;
+  const accepted = ENTRY_TO_ACCEPTED.get(entry);
+  return accepted ? accepted.has(key) : false;
+}
+
+/**
+ * True iff `raw` and `acceptedAnswer` resolve to the same country.
+ * Useful for the Conquest free-text bank where `acceptedAnswers` is a list
+ * of country names — calling this lets every alias of those countries pass.
+ * Falls back to plain normalised string equality when neither side maps to
+ * a known country (capitals, mountains, "Nile", etc.).
+ */
+export function areCountryAnswersEquivalent(raw: string, acceptedAnswer: string): boolean {
+  const a = normalizeCountryAnswer(raw);
+  const b = normalizeCountryAnswer(acceptedAnswer);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ea = NAME_TO_ENTRY[a];
+  const eb = NAME_TO_ENTRY[b];
+  return !!ea && !!eb && ea.code === eb.code;
+}
 
 export const TOTAL_COUNTRIES = COUNTRIES.filter(c => c.counted).length;
 
