@@ -70,7 +70,11 @@ export default function ConquestChallengePanel({
 
   const isEligible = !!myPlayerId
     && challenge.eligiblePlayerIds.includes(myPlayerId);
-  const canSubmit  = isActive && isEligible && !alreadyAnswered && msRemaining > 0;
+  // Submission gate keys off the synced `status` flag (authoritative) rather
+  // than the locally-ticking `msRemaining`. Otherwise a keystroke landing the
+  // same frame the timer renders 0 — but still inside the host's settle-grace
+  // window — is silently dropped because the form's submit handler bails.
+  const canSubmit  = isActive && isEligible && !alreadyAnswered;
 
   const [draft, setDraft] = useState("");
   // What the user *picked* this round — used purely for neutral "selected"

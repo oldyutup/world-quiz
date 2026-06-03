@@ -2780,7 +2780,7 @@ export default function ConquestGame({
   // the server timing unless the remaining window at firstSeen is
   // shorter than the floor; in that case the effective window opens
   // GUEST_LATE_PREP_MS after firstSeen and runs MIN_GUEST_ANSWER_WINDOW_MS.
-  const GUEST_LATE_PREP_MS         = 1_500;
+  const GUEST_LATE_PREP_MS         = 1_000;
   const MIN_GUEST_ANSWER_WINDOW_MS = 10_000;
 
   const serverStartedAt   = challengeState.startedAt;
