@@ -207,11 +207,19 @@ const GAME_INTRO_TOTAL_MS     = GAME_INTRO_TEXT_MS + GAME_INTRO_COUNTDOWN_MS;
 // slow client, the question's `startedAt` is still in the future when
 // the payload arrives — preventing the "panel flashes at 0 seconds and
 // the game teleports forward" symptom on PC guests with slow channels.
-// Kept short (2s) so total inter-round pacing only grows from 7s → 9s.
-// Total intro window = sum of the three.
-export const QUESTION_SYNC_BUFFER_MS = 2_000;
+// Total intro window = sum of the three.  Sync buffer is generous (6s) so
+// even a PC guest on a degraded realtime channel receives the new
+// challenge state with `startedAt` still in the future — the prior 2s was
+// too tight in the wild and caused the panel to open with 0 seconds left
+// on slow clients.
+export const QUESTION_SYNC_BUFFER_MS = 6_000;
 export const ROUND_INTRO_CARD_MS  = 4_000;
 export const ROUND_COUNTDOWN_MS   = 3_000;
+// Extra wall time after the synced `endsAt` before the host pushes the
+// expire write.  Gives late-arriving guests (whose effective answer
+// window starts after firstSeen rather than the server startedAt) a
+// chance to actually submit before the phase advances.
+export const GUEST_SETTLE_GRACE_MS = 3_000;
 const ROUND_INTRO_PACING_MS =
   QUESTION_SYNC_BUFFER_MS + ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS;
 

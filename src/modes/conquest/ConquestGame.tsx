@@ -97,6 +97,7 @@ import {
   getCurrentLegalTargets,
   getIntelNetworkOwnerId,
   getPlayerOwningAllRegions,
+  GUEST_SETTLE_GRACE_MS,
   isPlayerEliminated,
   LIMAN_INCOME_GOLD,
   placeHiddenConquestOnNeutralRegion,
@@ -1387,7 +1388,13 @@ export default function ConquestGame({
     if (gameState.round.challenge.status !== "active") return;
 
     const endsAt = gameState.round.challenge.endsAt;
-    const delay  = Math.max(0, endsAt - Date.now());
+    // Host holds the expire write for GUEST_SETTLE_GRACE_MS past the
+    // synced `endsAt` so late-arriving guests — whose effective answer
+    // window is reckoned from when they first saw the challenge rather
+    // than the host's startedAt — get a real chance to submit before
+    // the phase advances.  The "all answered" fast-path effect below
+    // still snaps to reveal the instant everyone has submitted.
+    const delay  = Math.max(0, endsAt + GUEST_SETTLE_GRACE_MS - Date.now());
     const t = window.setTimeout(() => {
       const expired = expireChallenge(gameState);
       if (expired !== gameState) void onPushGameState(expired);
@@ -2752,27 +2759,57 @@ export default function ConquestGame({
     };
   }
   const challengeFirstSeenAt = challengeFirstSeenRef.current.at;
-  // Minimum visible "panel hazırlanıyor" window after first-seen.  Kept
-  // short so on-time clients (host, healthy guests) only ever see this if
-  // they happen to first-see DURING the live window — and that's a much
-  // smaller harm than flashing a 0-second question on slow guests.
-  const LATE_ARRIVAL_GRACE_MS = 2_500;
-  const lateArrivalMsRemaining = Math.max(
-    0,
-    challengeFirstSeenAt + LATE_ARRIVAL_GRACE_MS - safeNow,
-  );
 
-  const serverRoundIntroMsRemaining = Math.max(0, challengeState.startedAt - safeNow);
-  // The intro window is the longer of:
-  //   (a) the synced server-side intro (host's startedAt - now), and
-  //   (b) the local late-arrival grace (firstSeenAt + grace - now)
-  // — but ONLY when the synced window has already elapsed (server side
-  // expects the question to be live).  This way fast clients still respect
-  // the host's intro pacing exactly; slow clients get a grace floor that
-  // prevents the 0-second flash.
-  const roundIntroMsRemaining = serverRoundIntroMsRemaining > 0
-    ? serverRoundIntroMsRemaining
-    : lateArrivalMsRemaining;
+  // ── Effective challenge timing ───────────────────────────────────────
+  // The host's `startedAt` / `endsAt` are wall-clock times set by the
+  // writer.  When realtime delivers the new challenge state late on a
+  // guest, both can already be in the past — and naive use would (a)
+  // flash the question at 0 seconds, (b) leave the input disabled the
+  // moment it appears, and (c) let any local "is it over?" check
+  // resolve true the moment the panel opens.  We derive ONE effective
+  // window and route every dependent piece of UI (intro overlay,
+  // timer label, progress bar, input disabled, submit disabled) through
+  // it so they stay coherent.
+  //
+  //   GUEST_LATE_PREP_MS         — short "hazırlanıyor" pad before the
+  //                                effective window opens.
+  //   MIN_GUEST_ANSWER_WINDOW_MS — minimum visible answer window.
+  //
+  // Host always uses the server values verbatim (its clock is the
+  // authority) so its behaviour is unchanged.  Guests fall through to
+  // the server timing unless the remaining window at firstSeen is
+  // shorter than the floor; in that case the effective window opens
+  // GUEST_LATE_PREP_MS after firstSeen and runs MIN_GUEST_ANSWER_WINDOW_MS.
+  const GUEST_LATE_PREP_MS         = 1_500;
+  const MIN_GUEST_ANSWER_WINDOW_MS = 10_000;
+
+  const serverStartedAt   = challengeState.startedAt;
+  const serverEndsAt      = challengeState.endsAt;
+  const serverTimeLeftMs  = Math.max(0, serverEndsAt - safeNow);
+  const remainingAtFirstSeen = serverEndsAt - challengeFirstSeenAt;
+  const guestNeedsGrace = !isHost && remainingAtFirstSeen < MIN_GUEST_ANSWER_WINDOW_MS;
+  const effectiveStartedAt = guestNeedsGrace
+    ? challengeFirstSeenAt + GUEST_LATE_PREP_MS
+    : serverStartedAt;
+  const effectiveEndsAt = guestNeedsGrace
+    ? Math.max(
+        serverEndsAt,
+        challengeFirstSeenAt + GUEST_LATE_PREP_MS + MIN_GUEST_ANSWER_WINDOW_MS,
+      )
+    : serverEndsAt;
+  const effectiveTimeLeftMs = Math.max(0, effectiveEndsAt - safeNow);
+  const canAnswerByServerTime    = challengeState.status === "active" && serverTimeLeftMs > 0;
+  const canAnswerByEffectiveTime = challengeState.status === "active"
+    && safeNow >= effectiveStartedAt
+    && effectiveTimeLeftMs > 0;
+
+  const serverRoundIntroMsRemaining = Math.max(0, serverStartedAt - safeNow);
+  // Intro pacing now lives on `effectiveStartedAt`.  For on-time clients
+  // (host, healthy guests) this is exactly the synced startedAt so the
+  // existing pacing is unchanged.  For late guests it becomes
+  // firstSeenAt + GUEST_LATE_PREP_MS — a brief readable "Hazırlanıyor"
+  // pad before the effective answer window opens.
+  const roundIntroMsRemaining = Math.max(0, effectiveStartedAt - safeNow);
   const showRoundIntro =
     phase === "challenge"
     && !showGameIntro
@@ -4034,10 +4071,15 @@ export default function ConquestGame({
         safeNow,
         dateNow:                 Date.now(),
         nowDrift:                Date.now() - now,
-        timeLeftMs:              Math.max(0, (challengeState?.endsAt ?? 0) - now),
+        serverTimeLeftMs,
+        effectiveStartedAt,
+        effectiveEndsAt,
+        effectiveTimeLeftMs,
+        usedClientGrace:         guestNeedsGrace,
+        isLateArrival:           !isHost && remainingAtFirstSeen < MIN_GUEST_ANSWER_WINDOW_MS,
+        remainingAtFirstSeen,
         roundIntroMsRemaining,
         serverRoundIntroMsRemaining,
-        lateArrivalMsRemaining,
         challengeFirstSeenAt,
         msSinceFirstSeen:        Date.now() - challengeFirstSeenAt,
         showGameIntro,
@@ -4046,10 +4088,12 @@ export default function ConquestGame({
         showDuelCountdown,
         showDuelPanel,
         shouldShowQuestionPanel,
+        canAnswerByServerTime,
+        canAnswerByEffectiveTime,
         canAnswer:
           shouldShowQuestionPanel
           && answeredChallengeId !== currentChallengeId
-          && challengeState?.status === "active",
+          && canAnswerByEffectiveTime,
         alreadyAnswered:         answeredChallengeId === currentChallengeId,
         answeredDuelId,
         answeredChallengeId,
@@ -4086,7 +4130,7 @@ export default function ConquestGame({
           alreadyAnswered={
             answeredChallengeId === challengeState.challenge.id
           }
-          msRemaining={Math.max(0, challengeState.endsAt - now)}
+          msRemaining={Math.max(0, effectiveEndsAt - now)}
           onSubmitAnswer={handleSubmitAnswer}
           eliminatedChoice={localEliminatedChoice}
         />
