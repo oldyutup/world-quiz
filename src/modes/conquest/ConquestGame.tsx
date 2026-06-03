@@ -448,9 +448,31 @@ export default function ConquestGame({
   // Surfaced by the ?debugConquest=1 log so we can correlate "how stale is
   // the panel" against "when did the last realtime payload land".
   const lastStateReceivedAtRef = useRef<number | null>(null);
+  // Monotonically incremented every time a new gameState identity arrives.
+  // Acts as a synthetic "version counter" we can grep in the debug log to
+  // pair host writes with guest receives in time-order.
+  const gameStateUpdateCounterRef = useRef<number>(0);
   useEffect(() => {
-    if (gameState) lastStateReceivedAtRef.current = Date.now();
+    if (gameState) {
+      lastStateReceivedAtRef.current = Date.now();
+      gameStateUpdateCounterRef.current += 1;
+    }
   }, [gameState]);
+
+  // Per-client "first time I saw this challenge id" timestamp.  Used both
+  // by the debug log (to surface staleness) and by the late-arrival grace
+  // gate below — so a PC guest who receives the realtime payload after the
+  // host's intro window already elapsed still gets a brief readable
+  // "Hazırlanıyor" pause instead of a flash of the question at 0 seconds.
+  const challengeFirstSeenRef = useRef<{ id: string | null; at: number }>({
+    id: null,
+    at: 0,
+  });
+  // Track previous challenge id and previous shouldShowQuestionPanel value
+  // so the debug log emits on TRANSITIONS (not every render).  Render-time
+  // refs are read/written below right next to where the values are derived.
+  const prevDebugChallengeIdRef = useRef<string | null>(null);
+  const prevDebugShouldShowPanelRef = useRef<boolean | null>(null);
 
   // Clock-skew anchors for host-only expire timers.  actionEndsAt and
   // duel.endsAt are wall-clock timestamps set on the WRITER's machine
@@ -2714,7 +2736,43 @@ export default function ConquestGame({
   // 3-2-1 countdown) gets airtime before the question and timer appear.
   // challengeState.endsAt = startedAt + duration, so no seconds tick away
   // during the intro.  Round 1 uses the game-intro flow instead.
-  const roundIntroMsRemaining = Math.max(0, challengeState.startedAt - safeNow);
+  //
+  // Stamp the first time THIS client saw the current challenge id.  When
+  // realtime delivers the new gameState late (a PC guest in particular),
+  // the host's `startedAt` may already lie in the past — without a grace
+  // floor below, `roundIntroMsRemaining` would clamp to 0 and the panel
+  // would flash the question at 0 seconds.  `firstSeenAt + grace` gives
+  // late-arriving clients a brief readable "Hazırlanıyor" window so they
+  // can register the question before the input is allowed.
+  const currentChallengeIdForSeen = challengeState.challenge.id;
+  if (challengeFirstSeenRef.current.id !== currentChallengeIdForSeen) {
+    challengeFirstSeenRef.current = {
+      id: currentChallengeIdForSeen,
+      at: Date.now(),
+    };
+  }
+  const challengeFirstSeenAt = challengeFirstSeenRef.current.at;
+  // Minimum visible "panel hazırlanıyor" window after first-seen.  Kept
+  // short so on-time clients (host, healthy guests) only ever see this if
+  // they happen to first-see DURING the live window — and that's a much
+  // smaller harm than flashing a 0-second question on slow guests.
+  const LATE_ARRIVAL_GRACE_MS = 2_500;
+  const lateArrivalMsRemaining = Math.max(
+    0,
+    challengeFirstSeenAt + LATE_ARRIVAL_GRACE_MS - safeNow,
+  );
+
+  const serverRoundIntroMsRemaining = Math.max(0, challengeState.startedAt - safeNow);
+  // The intro window is the longer of:
+  //   (a) the synced server-side intro (host's startedAt - now), and
+  //   (b) the local late-arrival grace (firstSeenAt + grace - now)
+  // — but ONLY when the synced window has already elapsed (server side
+  // expects the question to be live).  This way fast clients still respect
+  // the host's intro pacing exactly; slow clients get a grace floor that
+  // prevents the 0-second flash.
+  const roundIntroMsRemaining = serverRoundIntroMsRemaining > 0
+    ? serverRoundIntroMsRemaining
+    : lateArrivalMsRemaining;
   const showRoundIntro =
     phase === "challenge"
     && !showGameIntro
@@ -3933,54 +3991,85 @@ export default function ConquestGame({
   // right dock in landscape).
   const mobileToastsNode = <MobileToastSlot specs={mobileToastSpecs} />;
 
-  // ── Debug log (?debugConquest=1) ──────────────────────────────────
-  // Temporary diagnostic to compare desktop/mobile guest behaviour during
-  // the round-intro → challenge → result transitions. Disabled by default
-  // and only consulted at render time when the flag is on, so the cost
-  // outside of debugging is one boolean check per render.
   const shouldShowQuestionPanel =
     phase === "challenge" && !hiddenOpToast && !showGameIntro && !showRoundIntro;
+
+  // ── Debug log (?debugConquest=1) ──────────────────────────────────
+  // Diagnostic to compare desktop/mobile/guest behaviour during the
+  // round-intro → challenge → result transitions.  Disabled by default;
+  // when the flag is on we emit only on TRANSITIONS (new challenge id,
+  // panel visibility flip) so the console isn't flooded with per-render
+  // noise that hides the moments that matter.  An extra "ping" log fires
+  // on every render so we can still measure tick cadence if needed.
   if (debugConquestEnabled) {
     const ch = challengeState?.challenge;
-    // eslint-disable-next-line no-console
-    console.debug("[conquestPanel]", {
-      isHost,
-      isMobile,
-      phase,
-      roundNumber,
-      challengeId:             ch?.id ?? null,
-      challengeStatus:         challengeState?.status ?? null,
-      challengePrompt:         ch?.title ?? ch?.prompt ?? null,
-      challengeStartedAt:      challengeState?.startedAt ?? null,
-      challengeEndsAt:         challengeState?.endsAt ?? null,
-      duelId:                  duel?.id ?? null,
-      duelStartedAt:           duel?.startedAt ?? null,
-      duelQuestionVisibleAt:   duel?.questionVisibleAt ?? null,
-      duelEndsAt:              duel?.endsAt ?? null,
-      now,
-      safeNow,
-      dateNow:                 Date.now(),
-      nowDrift:                Date.now() - now,
-      timeLeftMs:              Math.max(0, (challengeState?.endsAt ?? 0) - now),
-      roundIntroMsRemaining,
-      showGameIntro,
-      showRoundIntro,
-      showDuelInfo,
-      showDuelCountdown,
-      showDuelPanel,
-      shouldShowQuestionPanel,
-      alreadyAnswered:         answeredChallengeId === (ch?.id ?? null),
-      answeredDuelId,
-      answeredChallengeId,
-      lastStateReceivedAt:     lastStateReceivedAtRef.current,
-      msSinceLastStateReceived:
-        lastStateReceivedAtRef.current
-          ? Date.now() - lastStateReceivedAtRef.current
-          : null,
-      hiddenOpToast:           !!hiddenOpToast,
-      actionHolderId:          gameState?.round.actionHolderId ?? null,
-      myPlayerId,
-    });
+    const currentChallengeId = ch?.id ?? null;
+    const challengeChanged = prevDebugChallengeIdRef.current !== currentChallengeId;
+    const panelVisibilityChanged =
+      prevDebugShouldShowPanelRef.current !== shouldShowQuestionPanel;
+    if (challengeChanged || panelVisibilityChanged) {
+      const reason = challengeChanged
+        ? (panelVisibilityChanged ? "challenge-change+panel-flip" : "challenge-change")
+        : "panel-flip";
+      // Single-line entry keyed by reason — easy to filter in DevTools.
+      // eslint-disable-next-line no-console
+      console.debug("[conquestPanel]", {
+        reason,
+        role:                    isHost ? "host" : "guest",
+        isMobile,
+        roomId,
+        playerId:                myPlayerId,
+        phase,
+        roundNumber,
+        challengeId:             currentChallengeId,
+        challengeStatus:         challengeState?.status ?? null,
+        challengePrompt:         ch?.title ?? ch?.prompt ?? null,
+        challengeStartedAt:      challengeState?.startedAt ?? null,
+        challengeEndsAt:         challengeState?.endsAt ?? null,
+        duelId:                  duel?.id ?? null,
+        duelStartedAt:           duel?.startedAt ?? null,
+        duelQuestionVisibleAt:   duel?.questionVisibleAt ?? null,
+        duelEndsAt:              duel?.endsAt ?? null,
+        now,
+        safeNow,
+        dateNow:                 Date.now(),
+        nowDrift:                Date.now() - now,
+        timeLeftMs:              Math.max(0, (challengeState?.endsAt ?? 0) - now),
+        roundIntroMsRemaining,
+        serverRoundIntroMsRemaining,
+        lateArrivalMsRemaining,
+        challengeFirstSeenAt,
+        msSinceFirstSeen:        Date.now() - challengeFirstSeenAt,
+        showGameIntro,
+        showRoundIntro,
+        showDuelInfo,
+        showDuelCountdown,
+        showDuelPanel,
+        shouldShowQuestionPanel,
+        canAnswer:
+          shouldShowQuestionPanel
+          && answeredChallengeId !== currentChallengeId
+          && challengeState?.status === "active",
+        alreadyAnswered:         answeredChallengeId === currentChallengeId,
+        answeredDuelId,
+        answeredChallengeId,
+        lastRealtimeReceivedAt:  lastStateReceivedAtRef.current,
+        msSinceLastRealtimeReceived:
+          lastStateReceivedAtRef.current
+            ? Date.now() - lastStateReceivedAtRef.current
+            : null,
+        gameStateUpdateCounter:  gameStateUpdateCounterRef.current,
+        // We only ever consume gameState from the realtime row in
+        // ConquestMode (no local optimistic apply), so the source is
+        // always realtime by construction.  Surfaced explicitly so the
+        // log line stays self-describing for whoever reads it later.
+        source:                  "realtime",
+        hiddenOpToast:           !!hiddenOpToast,
+        actionHolderId:          gameState?.round.actionHolderId ?? null,
+      });
+    }
+    prevDebugChallengeIdRef.current  = currentChallengeId;
+    prevDebugShouldShowPanelRef.current = shouldShowQuestionPanel;
   }
 
   // ── Phase panel body (shared between desktop floating card and the

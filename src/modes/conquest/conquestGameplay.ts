@@ -202,10 +202,18 @@ const GAME_INTRO_TOTAL_MS     = GAME_INTRO_TEXT_MS + GAME_INTRO_COUNTDOWN_MS;
 // re-deriving timings:
 //   - ROUND_INTRO_CARD_MS  : "Tur N Başlıyor" info card
 //   - ROUND_COUNTDOWN_MS   : "3 → 2 → 1" countdown
-// Total intro window = sum of the two.
+// Plus an explicit "sync buffer" tacked onto the front of the intro
+// card so even if the realtime payload lands a few seconds late on a
+// slow client, the question's `startedAt` is still in the future when
+// the payload arrives — preventing the "panel flashes at 0 seconds and
+// the game teleports forward" symptom on PC guests with slow channels.
+// Kept short (2s) so total inter-round pacing only grows from 7s → 9s.
+// Total intro window = sum of the three.
+export const QUESTION_SYNC_BUFFER_MS = 2_000;
 export const ROUND_INTRO_CARD_MS  = 4_000;
 export const ROUND_COUNTDOWN_MS   = 3_000;
-const ROUND_INTRO_PACING_MS = ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS;
+const ROUND_INTRO_PACING_MS =
+  QUESTION_SYNC_BUFFER_MS + ROUND_INTRO_CARD_MS + ROUND_COUNTDOWN_MS;
 
 export function createInitialConquestGameState(
   mapConfig:           ConquestMapConfig,
