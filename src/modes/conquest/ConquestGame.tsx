@@ -152,6 +152,18 @@ import {
 } from "../../lib/progression";
 import type { Profile } from "../../lib/auth";
 
+// Temporary diagnostic flag for desktop-vs-mobile guest panel timing.
+// Read once at module init so the per-render check is a cheap boolean.
+// Activate by appending `?debugConquest=1` to the URL.
+const debugConquestEnabled: boolean = (() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search).get("debugConquest") === "1";
+  } catch {
+    return false;
+  }
+})();
+
 interface Props {
   /** Room code — kept for future Supabase game-room linking and chat. */
   roomCode:        string;
@@ -432,6 +444,14 @@ export default function ConquestGame({
   useEffect(() => { gameStateRef.current   = gameState;       }, [gameState]);
   useEffect(() => { onPushStateRef.current = onPushGameState; }, [onPushGameState]);
 
+  // Wall-clock timestamp of the most recent gameState reference change.
+  // Surfaced by the ?debugConquest=1 log so we can correlate "how stale is
+  // the panel" against "when did the last realtime payload land".
+  const lastStateReceivedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (gameState) lastStateReceivedAtRef.current = Date.now();
+  }, [gameState]);
+
   // Clock-skew anchors for host-only expire timers.  actionEndsAt and
   // duel.endsAt are wall-clock timestamps set on the WRITER's machine
   // (whoever answered correctly / who initiated the duel).  When the writer's
@@ -697,11 +717,25 @@ export default function ConquestGame({
   const duelEndsAt        = gameState?.defenseDuel?.endsAt ?? null;
   const introEndsAtForTicker = gameState?.gameIntroEndsAt ?? null;
   const [now, setNow] = useState(() => Date.now());
+  // Ticker. Broadened on purpose:
+  //   - challenge phase ticks regardless of `status` (so round-intro pacing
+  //     for rounds 2+ stays live even if the new challenge briefly arrives
+  //     with a non-"active" status in transit, and so the intro window
+  //     itself — where status is set but `now` still has to march toward
+  //     `startedAt` — keeps re-rendering on guest clients).
+  //   - defense_duel phase ticks regardless of `endsAt` (the intro/countdown
+  //     window between phase entry and `questionVisibleAt` still needs `now`
+  //     to advance so the duel panel can appear).
+  // Previously this gated too tightly and could leave `now` frozen during a
+  // phase transition; some Chromium-based browsers (Brave) then never
+  // recovered, latching `showRoundIntro` / `showDuelPanel` and hiding the
+  // question UI until the very end of the window.  Always-on while a
+  // relevant phase is loaded is cheap and removes the failure mode.
   useEffect(() => {
-    const challengeTicking = phaseForTicker === "challenge"    && statusForTicker === "active";
+    const challengeTicking = phaseForTicker === "challenge";
     const revealTicking    = phaseForTicker === "reveal";
     const actionTicking    = phaseForTicker === "action"       && actionEndsAt !== null;
-    const duelTicking      = phaseForTicker === "defense_duel" && duelEndsAt   !== null;
+    const duelTicking      = phaseForTicker === "defense_duel";
     const introTicking     = introEndsAtForTicker !== null && Date.now() < introEndsAtForTicker;
     if (!challengeTicking && !revealTicking && !actionTicking && !duelTicking && !introTicking) return;
     const t = window.setInterval(() => setNow(Date.now()), 250);
@@ -2644,13 +2678,22 @@ export default function ConquestGame({
   const duelAttackerName = duel ? (players.find(p => p.id === duel.attackerId)?.name ?? "Saldıran") : "";
   const duelDefenderName = duel ? (players.find(p => p.id === duel.defenderId)?.name ?? "Savunan") : "";
 
+  // Safety clamp: ratchet `now` forward to real time when the React-state
+  // ticker lags (Chromium background-tab throttling, transient effect-cleanup
+  // race during phase change, etc.).  All "should the question/duel panel be
+  // visible yet?" gating reads `safeNow` instead of `now`, so even if a
+  // ticker tick is missed the gating can't latch in the "still waiting"
+  // state forever.  Countdown *numbers* still read `now` so the displayed
+  // seconds tick smoothly in lockstep with the setInterval cadence.
+  const safeNow = Math.max(now, Date.now());
+
   // Intro overlay: info card (4s) → 3-2-1 countdown (3s) → question panel.
   const DUEL_INFO_MS = 5000;
   const duelStartedAt = duel?.startedAt ?? 0;
   const duelQuestionVisibleAt = duel?.questionVisibleAt ?? duelStartedAt;
-  const showDuelInfo      = phase === "defense_duel" && !!duel && now < duelStartedAt + DUEL_INFO_MS;
-  const showDuelCountdown = phase === "defense_duel" && !!duel && now >= duelStartedAt + DUEL_INFO_MS && now < duelQuestionVisibleAt;
-  const showDuelPanel     = phase === "defense_duel" && !!duel && now >= duelQuestionVisibleAt;
+  const showDuelInfo      = phase === "defense_duel" && !!duel && safeNow < duelStartedAt + DUEL_INFO_MS;
+  const showDuelCountdown = phase === "defense_duel" && !!duel && safeNow >= duelStartedAt + DUEL_INFO_MS && safeNow < duelQuestionVisibleAt;
+  const showDuelPanel     = phase === "defense_duel" && !!duel && safeNow >= duelQuestionVisibleAt;
   const countdownNum      = showDuelCountdown ? Math.max(1, Math.ceil((duelQuestionVisibleAt - now) / 1000)) : 0;
 
   // Game-start intro overlay: info card (3s) → 3-2-1 countdown (3s) → first challenge.
@@ -2658,9 +2701,9 @@ export default function ConquestGame({
   // createInitialConquestGameState); pre-intro rooms have undefined → no overlay.
   const GAME_INTRO_COUNTDOWN_MS = 3_000;
   const gameIntroEndsAt         = gameState?.gameIntroEndsAt ?? 0;
-  const showGameIntro           = gameIntroEndsAt > 0 && phase === "challenge" && now < gameIntroEndsAt;
-  const showGameIntroText       = showGameIntro && now < gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
-  const showGameIntroCountdown  = showGameIntro && now >= gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
+  const showGameIntro           = gameIntroEndsAt > 0 && phase === "challenge" && safeNow < gameIntroEndsAt;
+  const showGameIntroText       = showGameIntro && safeNow < gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
+  const showGameIntroCountdown  = showGameIntro && safeNow >= gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
   const gameIntroCountdownNum   = showGameIntroCountdown
     ? Math.max(1, Math.ceil((gameIntroEndsAt - now) / 1000))
     : 0;
@@ -2671,7 +2714,7 @@ export default function ConquestGame({
   // 3-2-1 countdown) gets airtime before the question and timer appear.
   // challengeState.endsAt = startedAt + duration, so no seconds tick away
   // during the intro.  Round 1 uses the game-intro flow instead.
-  const roundIntroMsRemaining = Math.max(0, challengeState.startedAt - now);
+  const roundIntroMsRemaining = Math.max(0, challengeState.startedAt - safeNow);
   const showRoundIntro =
     phase === "challenge"
     && !showGameIntro
@@ -3890,12 +3933,62 @@ export default function ConquestGame({
   // right dock in landscape).
   const mobileToastsNode = <MobileToastSlot specs={mobileToastSpecs} />;
 
+  // ── Debug log (?debugConquest=1) ──────────────────────────────────
+  // Temporary diagnostic to compare desktop/mobile guest behaviour during
+  // the round-intro → challenge → result transitions. Disabled by default
+  // and only consulted at render time when the flag is on, so the cost
+  // outside of debugging is one boolean check per render.
+  const shouldShowQuestionPanel =
+    phase === "challenge" && !hiddenOpToast && !showGameIntro && !showRoundIntro;
+  if (debugConquestEnabled) {
+    const ch = challengeState?.challenge;
+    // eslint-disable-next-line no-console
+    console.debug("[conquestPanel]", {
+      isHost,
+      isMobile,
+      phase,
+      roundNumber,
+      challengeId:             ch?.id ?? null,
+      challengeStatus:         challengeState?.status ?? null,
+      challengePrompt:         ch?.title ?? ch?.prompt ?? null,
+      challengeStartedAt:      challengeState?.startedAt ?? null,
+      challengeEndsAt:         challengeState?.endsAt ?? null,
+      duelId:                  duel?.id ?? null,
+      duelStartedAt:           duel?.startedAt ?? null,
+      duelQuestionVisibleAt:   duel?.questionVisibleAt ?? null,
+      duelEndsAt:              duel?.endsAt ?? null,
+      now,
+      safeNow,
+      dateNow:                 Date.now(),
+      nowDrift:                Date.now() - now,
+      timeLeftMs:              Math.max(0, (challengeState?.endsAt ?? 0) - now),
+      roundIntroMsRemaining,
+      showGameIntro,
+      showRoundIntro,
+      showDuelInfo,
+      showDuelCountdown,
+      showDuelPanel,
+      shouldShowQuestionPanel,
+      alreadyAnswered:         answeredChallengeId === (ch?.id ?? null),
+      answeredDuelId,
+      answeredChallengeId,
+      lastStateReceivedAt:     lastStateReceivedAtRef.current,
+      msSinceLastStateReceived:
+        lastStateReceivedAtRef.current
+          ? Date.now() - lastStateReceivedAtRef.current
+          : null,
+      hiddenOpToast:           !!hiddenOpToast,
+      actionHolderId:          gameState?.round.actionHolderId ?? null,
+      myPlayerId,
+    });
+  }
+
   // ── Phase panel body (shared between desktop floating card and the
   //    mobile bottom sheet). The wrapper chrome differs per branch; this
   //    is just the panel content per phase. ────────────────────────────
   const phasePanelContent: ReactNode = (
     <>
-      {phase === "challenge" && !hiddenOpToast && !showGameIntro && !showRoundIntro && (
+      {shouldShowQuestionPanel && (
         <ConquestChallengePanel
           challengeState={challengeState}
           players={players}
