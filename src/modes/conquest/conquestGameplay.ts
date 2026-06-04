@@ -213,8 +213,8 @@ const GAME_INTRO_TOTAL_MS     = GAME_INTRO_TEXT_MS + GAME_INTRO_COUNTDOWN_MS;
 // challenge state with `startedAt` still in the future — the prior 2s was
 // too tight in the wild and caused the panel to open with 0 seconds left
 // on slow clients.
-export const QUESTION_SYNC_BUFFER_MS = 7_500;
-export const ROUND_INTRO_CARD_MS  = 4_000;
+export const QUESTION_SYNC_BUFFER_MS = 3_000;
+export const ROUND_INTRO_CARD_MS  = 2_000;
 export const ROUND_COUNTDOWN_MS   = 3_000;
 // Extra wall time after the synced `endsAt` before the host pushes the
 // expire write.  All clients share the same `challenge.endsAt`; this
