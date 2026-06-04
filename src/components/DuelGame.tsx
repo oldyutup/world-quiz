@@ -48,6 +48,7 @@ import {
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 
 /* ─── options ─── */
 const DURATION_OPTS = [
@@ -876,6 +877,20 @@ useEffect(() => {
     clearDuelSession();
   }, [room, myId]);
 
+  /* ── Server-clock sync ──
+   *  room.started_at server `now()` ile yazılıyor ama her client onu kendi
+   *  Date.now()'una göre okuyor → iki PC arasındaki saat farkı (5 sn'ye
+   *  kadar) timer'a doğrudan kayma olarak yansıyor. initServerClockSync()
+   *  bir RPC ile offset'i ölçer ve getSyncedNowMs() üzerinden tüm timer
+   *  hesapları aynı epoch referansına oturur. Sadece waiting/playing
+   *  fazlarında aktif — lobby'de gereksiz probe atmaz.
+   */
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "playing") return;
+    const handle = initServerClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   /* ── SERVER-AUTHORITATIVE TIMER ──
    *  Source of truth: room.started_at (written by server on game start).
    *  Every client independently computes remainingTime.
@@ -894,7 +909,7 @@ useEffect(() => {
 
     const tick = () => {
       if (done) return;
-      const now = Date.now();
+      const now = getSyncedNowMs();
 
 // start güvenli
 const safeStart = room.started_at
@@ -1087,16 +1102,18 @@ setTimeLeft(safeRem);
   ? new Date(opp.last_seen_at).getTime()
   : 0;
 
+const nowSynced = getSyncedNowMs();
+
 const started = room.started_at
   ? new Date(room.started_at).getTime()
-  : Date.now();
+  : nowSynced;
 
-const justStarted = Date.now() - started < 10000;
+const justStarted = nowSynced - started < 10000;
 
 const stale =
   !justStarted &&
   lastSeen > 0 &&
-  (Date.now() - lastSeen) > 45000;
+  (nowSynced - lastSeen) > 45000;
 
       dbg("opp monitor", { oppId: opp.id, lastSeen: opp.last_seen_at, stale });
 
