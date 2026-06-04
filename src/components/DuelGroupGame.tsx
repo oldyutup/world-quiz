@@ -78,6 +78,7 @@ import {
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
   DUEL_GROUP_COLORS,
   DUEL_GROUP_COLOR_LABEL,
@@ -713,6 +714,20 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, room?.id]);
 
+  /* ── Server-clock sync ──
+   *  room.started_at server `now()` ile yazılıyor; her client onu kendi
+   *  Date.now()'una göre okuyunca PC saatleri arasındaki fark (5 sn'ye
+   *  kadar) timer'a doğrudan kayma olarak yansıyor. initServerClockSync()
+   *  bir RPC ile offset'i ölçüp getSyncedNowMs() üzerinden tüm hesapları
+   *  aynı epoch referansına oturtuyor. Waiting/playing fazlarında aktif —
+   *  lobby'de gereksiz probe atmaz.
+   */
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "playing") return;
+    const handle = initServerClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   /* ── Server-authoritative timer (1v1 ile aynı mantık) ── */
   useEffect(() => {
     if (phase !== "playing") return;
@@ -723,7 +738,7 @@ useEffect(() => {
 
     const tick = () => {
       if (done) return;
-      const now      = Date.now();
+      const now      = getSyncedNowMs();
       const startMs  = room.started_at ? new Date(room.started_at).getTime() : now;
       const endMs    = startMs + totalMs;
       const remMs    = Math.max(0, endMs - now);
@@ -1158,9 +1173,11 @@ if (!code) {
     }
 
     setClaims([]);
-    // Realtime ile zaten gelecek; ama yine de hızlı geçiş için yerel set
+    // Realtime ile zaten gelecek; ama yine de hızlı geçiş için yerel set.
+    // started_at fallback'i synced clock ile yazılır → host local clock'u
+    // drift olsa bile timer ilk frame'de yanlış başlamaz.
     const r = startedRoom as GroupRoom | null;
-    setRoom(prev => prev ? { ...prev, ...(r ?? { status: "playing" as const, started_at: new Date().toISOString() }) } : prev);
+    setRoom(prev => prev ? { ...prev, ...(r ?? { status: "playing" as const, started_at: new Date(getSyncedNowMs()).toISOString() }) } : prev);
     setPhase("playing");
   };
 
