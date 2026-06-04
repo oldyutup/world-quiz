@@ -45,6 +45,7 @@ import {
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 
 /* ═══════════════════════════════════════════════════════════════
    SEÇENEKLER (offline mod ile aynı isimler)
@@ -1021,13 +1022,17 @@ const runHostRematchReset = useCallback(async () => {
 
   // Optimistic: realtime UPDATE'i beklemeden host'un UI'sı taze tura geçsin.
   // Non-host'un room state'i realtime UPDATE ile aynı değerlere oturacak.
+  // Synced clock kullanıyoruz — server bu değerleri RPC içinde now() ile
+  // üzerine yazacak, ama host'un local clock'u 5 sn driftliyse arada timer
+  // o farkla başlamasın.
+  const optimisticNowIso = new Date(getSyncedNowMs()).toISOString();
   const optimistic: FlagDuelRoom = {
     ...currentRoom,
     status:              "playing",
-    started_at:          new Date().toISOString(),
+    started_at:          optimisticNowIso,
     current_round:       1,
     current_flag:        firstFlag.code,
-    current_flag_at:     new Date().toISOString(),
+    current_flag_at:     optimisticNowIso,
     is_golden_round:     false,
     finished_reason:     null,
     winner_player_id:    null,
@@ -1120,15 +1125,17 @@ const declineRematch = useCallback(() => {
 
       // Stale-room guard. A "fresh" quick-match room is created by the RPC
       // with status='playing' and started_at = now()+3s, so for any real
-      // match Date.now() - startedAtMs is in [-3000, +small] ms. Anything
+      // match syncedNow - startedAtMs is in [-3000, +small] ms. Anything
       // older than 30s OR with a non-playing status is leftover from a
       // previous game — silently ignore and keep polling so a real match
       // can still come through (or the user can cancel from the UI).
+      // Synced clock kullanıyoruz; 5 sn'lik client drift 30 sn eşiğinde
+      // taze odaları stale göstermesin.
       const startedAtMs = r.started_at ? new Date(r.started_at).getTime() : 0;
       const isStaleRoom =
         r.status !== "playing" ||
         !startedAtMs ||
-        Date.now() - startedAtMs > 30_000;
+        getSyncedNowMs() - startedAtMs > 30_000;
       if (isStaleRoom) {
         dbgErr("joinQuickMatchRoom: stale matched_room_id, skipping silently", {
           status: r.status,
@@ -1191,9 +1198,11 @@ const declineRematch = useCallback(() => {
       saveSession(r.id, r.code, playerId, claimTokenRef.current);
       buildPool(r.region);
 
-      // Quick match countdown başlat (started_at - now() farkı)
+      // Quick match countdown başlat (started_at - now() farkı). started_at
+      // server tarafında now()+3s; client clock drift olunca buffer negatif
+      // veya fazlasıyla büyük görünebilir → synced clock kullanıyoruz.
       const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
-      const now = Date.now();
+      const now = getSyncedNowMs();
       const remainMs = Math.max(0, startMs - now);
       setCountdownSeconds(Math.ceil(remainMs / 1000));
 
@@ -1203,7 +1212,7 @@ const declineRematch = useCallback(() => {
       }
       if (remainMs > 0) {
         const tick = () => {
-          const remaining = Math.max(0, startMs - Date.now());
+          const remaining = Math.max(0, startMs - getSyncedNowMs());
           setCountdownSeconds(Math.ceil(remaining / 1000));
           if (remaining <= 0 && quickMatchCountdownRef.current) {
             clearInterval(quickMatchCountdownRef.current);
@@ -1621,6 +1630,20 @@ const declineRematch = useCallback(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ── Server-clock sync ──
+   *  current_flag_at / started_at server `now()` ile yazılıyor; her client
+   *  kendi Date.now()'una göre okuyunca PC saatleri arasındaki fark (5 sn'ye
+   *  kadar) timer ve quick-match countdown'a doğrudan kayma olarak yansıyor.
+   *  initServerClockSync() bir RPC ile offset'i ölçüp tüm hesapları aynı
+   *  epoch referansına oturtuyor. Searching/waiting/playing fazlarında
+   *  aktif — lobby'de gereksiz probe atmaz.
+   */
+  useEffect(() => {
+    if (phase !== "searching" && phase !== "waiting" && phase !== "playing") return;
+    const handle = initServerClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   /* ════════════════════════════════════════════════════════════════
      BAYRAK ZAMANLAYICISI
      - Her iki client da room.current_flag_at'e bakar → senkron sayaç
@@ -1651,7 +1674,7 @@ const declineRematch = useCallback(() => {
 
     const tick = async () => {
       if (cancelled) return;
-      const elapsed   = Date.now() - startMs;
+      const elapsed   = getSyncedNowMs() - startMs;
       const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
       setTimeLeft(remaining);
 
