@@ -42,6 +42,7 @@ import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
   supabase,
   type WheelGroupRoom,
@@ -729,6 +730,20 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     [penaltyUntilMs],
   );
 
+  /* ── Server-clock sync ──
+   *  room.started_at server `now()` ile yazılıyor; her client onu kendi
+   *  Date.now()'una göre okuyunca PC saatleri arasındaki fark (5 sn'ye
+   *  kadar) timer ve host-finish kontrolüne doğrudan kayma olarak yansıyor.
+   *  initServerClockSync() bir RPC ile offset'i ölçüp getSyncedNowMs()
+   *  üzerinden tüm hesapları aynı epoch referansına oturtuyor. Lobby/
+   *  playing fazlarında aktif — setup ekranında gereksiz probe atmaz.
+   */
+  useEffect(() => {
+    if (phase !== "lobby" && phase !== "playing") return;
+    const handle = initServerClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   /* ═══════════════════════════════════════════════════════════
      TIMER (clients independent, anchored to room.started_at)
   ═══════════════════════════════════════════════════════════ */
@@ -744,7 +759,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     if (!(duration > 0)) return;
 
     const tick = () => {
-      const elapsed = (Date.now() - startMs) / 1000;
+      const elapsed = (getSyncedNowMs() - startMs) / 1000;
       const remaining = Math.max(0, Math.min(duration, Math.ceil(duration - elapsed)));
       setTimeLeft(remaining);
     };
@@ -788,7 +803,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
     const check = () => {
       if (endingRef.current) return;
-      const elapsedMs = Date.now() - startMs;
+      const elapsedMs = getSyncedNowMs() - startMs;
       if (elapsedMs < durationMs) return;
       finishGame("timeout");
     };
