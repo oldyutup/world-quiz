@@ -29,6 +29,7 @@ import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
+import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
   supabase,
   type WheelDuelRoom,
@@ -612,8 +613,10 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       if (!r || r.status !== "playing") return;
       if (!r.current_target_topoid) return;
       if (timeLeftRef.current <= 0) return;
-      // Quick match countdown buffer'ı içinde tıklamayı engelle.
-      if (r.started_at && Date.now() < new Date(r.started_at).getTime()) return;
+      // Quick match countdown buffer'ı içinde tıklamayı engelle. started_at
+      // server now()+3s; client drift olunca buffer içinde tıklama erken
+      // geçer → synced clock kullanıyoruz.
+      if (r.started_at && getSyncedNowMs() < new Date(r.started_at).getTime()) return;
 
       if (topoId !== r.current_target_topoid) {
         // Yanlış: lokal kırmızı flash, DB yok
@@ -663,6 +666,21 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   }, [timeLeft]);
   useEffect(() => { finishGameRef.current = finishGame; }, [finishGame]);
 
+  /* ── Server-clock sync ──
+   *  room.started_at server `now()` ile yazılıyor; client onu kendi
+   *  Date.now()'una göre okuyunca PC saatleri arasındaki fark (5 sn'ye
+   *  kadar) timer, quick-match countdown buffer'ı ve host-finish hesabına
+   *  doğrudan kayma olarak yansıyor. initServerClockSync() bir RPC ile
+   *  offset'i ölçüp getSyncedNowMs() üzerinden tüm hesapları aynı epoch
+   *  referansına oturtuyor. Searching/lobby/playing fazlarında aktif —
+   *  setup ekranında gereksiz probe atmaz.
+   */
+  useEffect(() => {
+    if (phase !== "searching" && phase !== "lobby" && phase !== "playing") return;
+    const handle = initServerClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   /* ───────────────────────────────────────────────────────────
      TIMER (clients independent, anchored to room.started_at)
   ─────────────────────────────────────────────────────────── */
@@ -693,7 +711,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     let firstTickLogged = false;
     const tick = () => {
-      const elapsed = (Date.now() - startMs) / 1000;
+      const elapsed = (getSyncedNowMs() - startMs) / 1000;
       // Quick match'te started_at = now() + 3s (gelecekte) → elapsed negatif
       // olur, raw remaining > duration olur. Min(duration) ile cap'le ki
       // countdown sırasında timer "duration" değerinde sabit gözüksün.
@@ -790,7 +808,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
     const check = () => {
       if (endingRef.current) return;
-      const elapsedMs = Date.now() - startMs;
+      const elapsedMs = getSyncedNowMs() - startMs;
       if (elapsedMs < durationMs) return;
 
       console.log("[WD/finish] FINISH_TRIGGERED_TIMEOUT", {
@@ -1272,9 +1290,11 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       setPlayers((ps ?? []) as WheelDuelPlayer[]);
       saveRoomSession(room.id, room.code, playerId);
 
-      // Quick match countdown başlat (started_at - now() fark)
+      // Quick match countdown başlat (started_at - now() fark). started_at
+      // server tarafında now()+3s; client clock drift olunca buffer negatif
+      // veya fazlasıyla büyük görünebilir → synced clock kullanıyoruz.
       const startMs = room.started_at ? new Date(room.started_at).getTime() : 0;
-      const now = Date.now();
+      const now = getSyncedNowMs();
       const remainMs = Math.max(0, startMs - now);
       setCountdownSeconds(Math.ceil(remainMs / 1000));
 
@@ -1284,7 +1304,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       }
       if (remainMs > 0) {
         const tick = () => {
-          const r = Math.max(0, startMs - Date.now());
+          const r = Math.max(0, startMs - getSyncedNowMs());
           setCountdownSeconds(Math.ceil(r / 1000));
           if (r <= 0 && quickMatchCountdownRef.current) {
             clearInterval(quickMatchCountdownRef.current);
