@@ -22,6 +22,7 @@ import {
   getLegalActionsForPlayer,
   isLegalTarget,
 } from "./conquestActions";
+import { getConquestSyncedNowMs } from "./conquestClock";
 import {
   CONQUEST_CHALLENGE_DURATION_MS,
   CONQUEST_REVEAL_DURATION_MS,
@@ -231,7 +232,7 @@ export function createInitialConquestGameState(
   selectedBonusTypes?: readonly ConquestRegionBonusType[],
 ): ConquestGameState {
   const safeRounds = Math.max(1, Math.floor(totalRounds));
-  const now        = Date.now();
+  const now        = getConquestSyncedNowMs();
   // `now` doubles as the per-match seed for the controlled-random region
   // allocator. The host computes this once and uploads the result, so the
   // seed itself doesn't need to be persisted or shared with guests.
@@ -361,7 +362,7 @@ export function resolveChallengeWithWinner(
     return state;
   }
 
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const winningEntry: ConquestChallengeAnswer | null = answer
     ? {
         playerId:   winnerId,
@@ -519,7 +520,7 @@ export function submitChallengeAnswer(
   }
 
   const submitter = state.players.find(p => p.id === submitterId);
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const answerEntry: ConquestChallengeAnswer = {
     playerId:   submitterId,
     playerName: submitter?.name ?? "Oyuncu",
@@ -566,7 +567,7 @@ export function expireChallenge(state: ConquestGameState): ConquestGameState {
   if (state.phase !== "challenge") return state;
   if (state.round.challenge.status !== "active") return state;
 
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const firstCorrectPlayerId = state.round.challenge.firstCorrectPlayerId ?? null;
   const hasWinner = !!firstCorrectPlayerId
     && state.round.challenge.challenge.eligiblePlayerIds.includes(firstCorrectPlayerId);
@@ -605,7 +606,7 @@ export function expireChallenge(state: ConquestGameState): ConquestGameState {
 export function finalizeReveal(state: ConquestGameState): ConquestGameState {
   if (state.phase !== "reveal") return state;
 
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const winnerId = state.round.challenge.winnerPlayerId ?? null;
 
   if (winnerId
@@ -690,7 +691,7 @@ export function finalizeReveal(state: ConquestGameState): ConquestGameState {
  */
 export function skipChallenge(state: ConquestGameState): ConquestGameState {
   if (state.phase !== "challenge") return state;
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const skippedResult: ConquestActionResult = {
     ok:       true,
     action:   "skip",
@@ -1134,7 +1135,7 @@ export function applyActionToGame(
       action.regionId,
       action.playerId,
       attackerName,
-      Date.now(),
+      getConquestSyncedNowMs(),
     );
     if (ambushTrigger) {
       const blockResult: ConquestActionResult = {
@@ -1325,7 +1326,7 @@ export function applyActionToGame(
   let postIntelReport      = state.lastIntelReport;
   if (action.type === "capture_neutral" || action.type === "attack_region") {
     const actorName = state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
-    const now = Date.now();
+    const now = getConquestSyncedNowMs();
     const bonusOut = triggerCaptureBonus(
       postRegionStates,
       postPlayerBonuses,
@@ -1398,7 +1399,7 @@ export function applyActionToGame(
   // screen can rank eliminated players honestly and downstream phases (next
   // challenge / action holder) can skip them.
   const elimDiff = action.type !== "skip"
-    ? computeEliminationDiff(state, postRegionStates, Date.now())
+    ? computeEliminationDiff(state, postRegionStates, getConquestSyncedNowMs())
     : {
         eliminatedPlayerIds:  state.eliminatedPlayerIds ?? [],
         eliminations:         state.eliminations ?? {},
@@ -1437,7 +1438,7 @@ export function applyActionToGame(
       state: {
         ...state,
         phase:                 "finished",
-        finishedAt:            Date.now(),
+        finishedAt:            getConquestSyncedNowMs(),
         regionStates:          postRegionStates,
         playerBonuses:         postPlayerBonuses,
         lastBonusToast:        postToast ?? state.lastBonusToast,
@@ -1595,7 +1596,7 @@ export function placeHiddenShieldOnOwnRegion(
   // report.  Carries the target region so the intel owner learns WHERE the
   // secret cloak landed; renderer suppresses for non-intel-owners.
   const intelReport = buildGizliOpIntelReport(
-    playerId, playerName, regionId, Date.now(),
+    playerId, playerName, regionId, getConquestSyncedNowMs(),
   );
 
   return {
@@ -1729,7 +1730,7 @@ export function placeHiddenConquestOnNeutralRegion(
     regionId,
     playerId,
     state.players.find(p => p.id === playerId)?.name ?? "Oyuncu",
-    Date.now(),
+    getConquestSyncedNowMs(),
   );
   if (ambushTriggerHidden) {
     const blockResult: ConquestActionResult = {
@@ -1812,7 +1813,7 @@ export function placeHiddenConquestOnNeutralRegion(
   // bonus on this region is collected by the placer just like any other
   // first-capture.  Opponent-facing toast copy never names the region, so
   // the cloak is not undermined by the toast itself.
-  const nowForHb = Date.now();
+  const nowForHb = getConquestSyncedNowMs();
   const hb = tryClaimHiddenBonus(
     state.hiddenBonusPlacements,
     state.playerHiddenBonuses,
@@ -1852,7 +1853,7 @@ export function placeHiddenConquestOnNeutralRegion(
       state: {
         ...state,
         phase:                 "finished",
-        finishedAt:            Date.now(),
+        finishedAt:            getConquestSyncedNowMs(),
         regionStates:          nextRegionStates,
         playerBonuses:         nextPlayerBonuses,
         hiddenBonusPlacements: postHiddenPlacements,
@@ -1949,7 +1950,7 @@ function startDefenseDuel(
   kocbasiBypass:  boolean = false,
   mancinikBypass: boolean = false,
 ): ConquestGameState {
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
   const usedSoFar = state.usedChallengeKeys ?? [];
   const lastType  = state.lastChallengeType;
   const picked    = pickRandomConquestChallenge(
@@ -2044,7 +2045,7 @@ export function submitDuelAnswer(
   const defenderBonus = duel.defenderTimeBonusMs ?? 0;
   if (defenderBonus > 0 && submitterId === duel.attackerId) {
     const attackerEndsAt = duel.endsAt - defenderBonus;
-    if (Date.now() >= attackerEndsAt) {
+    if (getConquestSyncedNowMs() >= attackerEndsAt) {
       return { ok: false, winning: false, state };
     }
   }
@@ -2073,7 +2074,7 @@ function resolveDuelWithWinner(
 ): ConquestGameState {
   const duel = state.defenseDuel;
   if (!duel || duel.status !== "active") return state;
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
 
   const attackerName = state.players.find(p => p.id === duel.attackerId)?.name ?? "Saldıran";
   const defenderName = state.players.find(p => p.id === duel.defenderId)?.name ?? "Savunan";
@@ -2379,7 +2380,7 @@ export function advanceToNextRound(
     return {
       ...bereketApplied,
       phase:      "finished",
-      finishedAt: Date.now(),
+      finishedAt: getConquestSyncedNowMs(),
     };
   }
 
@@ -2410,7 +2411,7 @@ export function advanceToNextRound(
     eligiblePlayerIds: activeIds,
   };
   const bankId = picked.bankId;
-  const now = Date.now();
+  const now = getConquestSyncedNowMs();
 
   // Refresh the Kâhin preview for the round AFTER the one we're about to
   // mount, unless this transition completes the match.  Skipped when the
@@ -2547,7 +2548,7 @@ export function applyBereketRoundHarvest(
   };
 
   const ownerName = state.players.find(p => p.id === ownerId)?.name ?? "Oyuncu";
-  const now       = Date.now();
+  const now       = getConquestSyncedNowMs();
   const toast: ConquestBonusToast = {
     id:         `bereket_harvest-${bereketRegionId}-${now}-${ownerId}`,
     bonusType:  "cukurova_score",
@@ -2639,7 +2640,7 @@ export function applyLimanRoundIncome(
   };
 
   const ownerName = state.players.find(p => p.id === ownerId)?.name ?? "Oyuncu";
-  const now       = Date.now();
+  const now       = getConquestSyncedNowMs();
   const toast: ConquestBonusToast = {
     id:         `liman_income-${limanRegionId}-${nextTicks}-${ownerId}`,
     bonusType:  "liman",
@@ -2711,7 +2712,7 @@ export function applySuikastHiddenBonus(
     targetId,
     targetName:         target.name,
     targetCurrentScore,
-    now:                Date.now(),
+    now:                getConquestSyncedNowMs(),
   });
   if (!diff) return state;
 
@@ -2780,7 +2781,7 @@ export function applyLanetMuhruHiddenBonus(
     targetId,
     targetName:    target.name,
     currentRound:  state.round.roundNumber,
-    now:           Date.now(),
+    now:           getConquestSyncedNowMs(),
   });
   if (!diff) return state;
 
@@ -2835,7 +2836,7 @@ export function applyPusuHiddenBonus(
     ownerName:    owner.name,
     regionId,
     currentRound: state.round.roundNumber,
-    now:          Date.now(),
+    now:          getConquestSyncedNowMs(),
   });
   if (!diff) return state;
 
@@ -2923,7 +2924,7 @@ export function getActivePlayers(state: ConquestGameState): ConquestPlayer[] {
 export function computeEliminationDiff(
   state:            ConquestGameState,
   nextRegionStates: ConquestRegionState[],
-  now:              number = Date.now(),
+  now:              number = getConquestSyncedNowMs(),
 ): {
   eliminatedPlayerIds: string[];
   eliminations:        Record<string, { at: number; round: number }>;

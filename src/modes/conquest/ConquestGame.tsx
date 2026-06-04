@@ -83,6 +83,11 @@ import {
 import { getQuestionPreviewLabel } from "./conquestChallenges";
 import { CAPITAL_REGION_IDS, CAPITAL_REVEAL_HOLD_MS } from "./conquestCapital";
 import {
+  getConquestClockOffsetMs,
+  getConquestSyncedNowMs,
+  isConquestClockSynced,
+} from "./conquestClock";
+import {
   actionHolderHasNoMoves,
   advanceToNextRound,
   applyActionToGame,
@@ -455,7 +460,7 @@ export default function ConquestGame({
   const gameStateUpdateCounterRef = useRef<number>(0);
   useEffect(() => {
     if (gameState) {
-      lastStateReceivedAtRef.current = Date.now();
+      lastStateReceivedAtRef.current = getConquestSyncedNowMs();
       gameStateUpdateCounterRef.current += 1;
     }
   }, [gameState]);
@@ -475,16 +480,16 @@ export default function ConquestGame({
   const prevDebugChallengeIdRef = useRef<string | null>(null);
   const prevDebugShouldShowPanelRef = useRef<boolean | null>(null);
 
-  // Clock-skew anchors for host-only expire timers.  actionEndsAt and
-  // duel.endsAt are wall-clock timestamps set on the WRITER's machine
-  // (whoever answered correctly / who initiated the duel).  When the writer's
-  // Date.now() runs behind the host's, naive `endsAt - Date.now()` is small
-  // or negative and fires the expire immediately — exactly the cross-browser
-  // "Süre doldu — hamle yapılamadı" symptom.  These refs capture the first
-  // moment the HOST observed each endsAt so we can floor the delay at
-  // (observedAt + duration) and refuse to fire earlier than the writer
-  // intended in host-local time.  Floor only — never short-circuits long
-  // naive delays, so a writer clock that runs ahead still works correctly.
+  // Belt-and-suspenders host-local floor for action/duel expire timers.
+  // actionEndsAt / duel.endsAt are stamped by the WRITER (whoever answered
+  // correctly / who initiated the duel) in server-synced time, and the host
+  // also reads them in server-synced time, so the naive delay should agree.
+  // Before the server-clock fix landed, a writer whose `Date.now()` ran behind
+  // the host's would cause the expire to fire immediately ("Süre doldu —
+  // hamle yapılamadı").  We keep the host-local observedAt anchor as a
+  // floor against any residual probe-RTT noise or a brief pre-sync window:
+  // never fires before (observedAt + duration); never short-circuits a
+  // longer naive delay.
   const actionExpireAnchorRef = useRef<{ endsAt: number; observedAt: number } | null>(null);
   const duelExpireAnchorRef   = useRef<{ endsAt: number; observedAt: number } | null>(null);
 
@@ -634,7 +639,7 @@ export default function ConquestGame({
             regionLabel:  region?.displayLabel ?? region?.name ?? lr.regionId,
             attackerName: attacker?.name ?? "Saldıran",
             defenderName: defender?.name ?? "Savunan",
-            at:           Date.now(),
+            at:           getConquestSyncedNowMs(),
           });
           // Pair the toast with its audio cue. Stable key prevents a
           // re-render of the same attack from re-firing the sound; the
@@ -739,7 +744,7 @@ export default function ConquestGame({
   const actionEndsAt      = gameState?.round.actionEndsAt ?? null;
   const duelEndsAt        = gameState?.defenseDuel?.endsAt ?? null;
   const introEndsAtForTicker = gameState?.gameIntroEndsAt ?? null;
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => getConquestSyncedNowMs());
   // Ticker. Broadened on purpose:
   //   - challenge phase ticks regardless of `status` (so round-intro pacing
   //     for rounds 2+ stays live even if the new challenge briefly arrives
@@ -759,9 +764,9 @@ export default function ConquestGame({
     const revealTicking    = phaseForTicker === "reveal";
     const actionTicking    = phaseForTicker === "action"       && actionEndsAt !== null;
     const duelTicking      = phaseForTicker === "defense_duel";
-    const introTicking     = introEndsAtForTicker !== null && Date.now() < introEndsAtForTicker;
+    const introTicking     = introEndsAtForTicker !== null && getConquestSyncedNowMs() < introEndsAtForTicker;
     if (!challengeTicking && !revealTicking && !actionTicking && !duelTicking && !introTicking) return;
-    const t = window.setInterval(() => setNow(Date.now()), 250);
+    const t = window.setInterval(() => setNow(getConquestSyncedNowMs()), 250);
     return () => window.clearInterval(t);
   }, [phaseForTicker, statusForTicker, challengeId, actionEndsAt, duelEndsAt, introEndsAtForTicker]);
 
@@ -803,7 +808,7 @@ export default function ConquestGame({
       return;
     }
     const fresh: Record<string, { value: number; epoch: number }> = {};
-    const epoch = Date.now();
+    const epoch = getConquestSyncedNowMs();
     for (const pid of Object.keys(playerPoints)) {
       const before = prev[pid] ?? 0;
       const after  = playerPoints[pid] ?? 0;
@@ -954,7 +959,7 @@ export default function ConquestGame({
   // ── DEV-ONLY: inject a hidden bonus directly into local player's inventory ─
   const handleDebugGiveBonus = useCallback((type: ConquestHiddenBonusType) => {
     if (!gameState || !myPlayerId) return;
-    const now = Date.now();
+    const now = getConquestSyncedNowMs();
     const entry: ConquestPlayerHiddenBonus = {
       id:              `hb-debug-${type}-${now}-${myPlayerId}`,
       type,
@@ -1377,10 +1382,13 @@ export default function ConquestGame({
 
   // ── Host-only: drive challenge expiry from the synced endsAt ─────────
   // Only the host pushes the expire write so two clients don't race.  The
-  // timeout is computed from `endsAt - Date.now()` so every client agrees
-  // on when it fires (host's clock is authoritative).  expireChallenge
-  // transitions the round into the "reveal" sub-phase (see gameplay.ts);
-  // the next effect below schedules the reveal → action/round_result step.
+  // timeout is computed from `endsAt - getConquestSyncedNowMs()` so every
+  // client agrees on when it fires — both `endsAt` and the local clock
+  // resolve in the same server-synced reference frame, so PCs with skewed
+  // wall clocks no longer disagree on when the timer hits zero.
+  // expireChallenge transitions the round into the "reveal" sub-phase
+  // (see gameplay.ts); the next effect below schedules the
+  // reveal → action/round_result step.
   useEffect(() => {
     if (!isHost) return;
     if (!gameState) return;
@@ -1394,7 +1402,7 @@ export default function ConquestGame({
     // than the host's startedAt — get a real chance to submit before
     // the phase advances.  The "all answered" fast-path effect below
     // still snaps to reveal the instant everyone has submitted.
-    const delay  = Math.max(0, endsAt + GUEST_SETTLE_GRACE_MS - Date.now());
+    const delay  = Math.max(0, endsAt + GUEST_SETTLE_GRACE_MS - getConquestSyncedNowMs());
     const t = window.setTimeout(() => {
       const expired = expireChallenge(gameState);
       if (expired !== gameState) void onPushGameState(expired);
@@ -1454,7 +1462,7 @@ export default function ConquestGame({
     const endsAt = gameState.round.revealEndsAt;
     if (typeof endsAt !== "number") return;
 
-    const delay = Math.max(0, endsAt - Date.now());
+    const delay = Math.max(0, endsAt - getConquestSyncedNowMs());
     const t = window.setTimeout(() => {
       const next = finalizeReveal(gameState);
       if (next !== gameState) void onPushGameState(next);
@@ -1472,12 +1480,12 @@ export default function ConquestGame({
   // holder commits a move before the timer fires, the next gameState will
   // be in a different phase and expireActionPhase becomes a no-op.
   //
-  // Cross-browser clock-skew guard: actionEndsAt is stamped by whoever won
-  // the challenge.  If their Date.now() runs behind the host's, the naive
-  // delay can be ~0 and the host would fire expireActionPhase immediately,
-  // robbing the holder of their move.  We anchor a host-local floor at
-  // observation: the timer never fires before host_observedAt + duration,
-  // so writer-side clock skew can only ever GRANT extra time, never steal it.
+  // Defensive host-local floor.  actionEndsAt is stamped by whoever won the
+  // challenge in server-synced time and the host reads it in the same frame,
+  // so naive delays should agree.  We still anchor at observation as a floor
+  // (timer never fires before host_observedAt + duration) so any residual
+  // pre-sync window or RTT-probe noise can only ever GRANT extra time, never
+  // steal it.
   useEffect(() => {
     if (!isHost) return;
     if (!gameState || !mapConfig) return;
@@ -1490,13 +1498,13 @@ export default function ConquestGame({
     if (actionExpireAnchorRef.current?.endsAt === endsAt) {
       observedAt = actionExpireAnchorRef.current.observedAt;
     } else {
-      observedAt = Date.now();
+      observedAt = getConquestSyncedNowMs();
       actionExpireAnchorRef.current = { endsAt, observedAt };
     }
 
-    const naiveDelay = endsAt - Date.now();
+    const naiveDelay = endsAt - getConquestSyncedNowMs();
     const anchorDelay = (typeof startedAt === "number" && endsAt > startedAt)
-      ? (observedAt + (endsAt - startedAt)) - Date.now()
+      ? (observedAt + (endsAt - startedAt)) - getConquestSyncedNowMs()
       : naiveDelay;
     const delay = Math.max(0, naiveDelay, anchorDelay);
 
@@ -1537,13 +1545,13 @@ export default function ConquestGame({
     if (duelExpireAnchorRef.current?.endsAt === endsAt) {
       observedAt = duelExpireAnchorRef.current.observedAt;
     } else {
-      observedAt = Date.now();
+      observedAt = getConquestSyncedNowMs();
       duelExpireAnchorRef.current = { endsAt, observedAt };
     }
 
-    const naiveDelay  = endsAt - Date.now();
+    const naiveDelay  = endsAt - getConquestSyncedNowMs();
     const anchorDelay = endsAt > startedAt
-      ? (observedAt + (endsAt - startedAt)) - Date.now()
+      ? (observedAt + (endsAt - startedAt)) - getConquestSyncedNowMs()
       : naiveDelay;
     const delay = Math.max(0, naiveDelay, anchorDelay);
 
@@ -1645,7 +1653,7 @@ export default function ConquestGame({
       const gs = gameStateRef.current;
       if (!gs) return;
       if (gs.phase === "finished" || gs.phase === "setup") return;
-      const now = Date.now();
+      const now = getConquestSyncedNowMs();
       const presentIds = new Set(players.map(p => p.id));
       const active = gs.players.filter(p => {
         if (!presentIds.has(p.id)) return false; // explicit leave → removed from roster
@@ -1705,7 +1713,7 @@ export default function ConquestGame({
     const next: ConquestGameState = {
       ...gs,
       phase:      "finished",
-      finishedAt: Date.now(),
+      finishedAt: getConquestSyncedNowMs(),
       round: {
         ...gs.round,
         lastResult: {
@@ -2022,7 +2030,7 @@ export default function ConquestGame({
     setFateCardSpending(true);
     const player = gs.players.find(p => p.id === myPlayerId);
     const card   = drawRandomFateCard();
-    const now    = Date.now();
+    const now    = getConquestSyncedNowMs();
 
     let spent = false;
     let success = false;
@@ -2707,14 +2715,18 @@ export default function ConquestGame({
   const duelAttackerName = duel ? (players.find(p => p.id === duel.attackerId)?.name ?? "Saldıran") : "";
   const duelDefenderName = duel ? (players.find(p => p.id === duel.defenderId)?.name ?? "Savunan") : "";
 
-  // Safety clamp: ratchet `now` forward to real time when the React-state
-  // ticker lags (Chromium background-tab throttling, transient effect-cleanup
-  // race during phase change, etc.).  All "should the question/duel panel be
-  // visible yet?" gating reads `safeNow` instead of `now`, so even if a
-  // ticker tick is missed the gating can't latch in the "still waiting"
-  // state forever.  Countdown *numbers* still read `now` so the displayed
-  // seconds tick smoothly in lockstep with the setInterval cadence.
-  const safeNow = Math.max(now, Date.now());
+  // Safety clamp: ratchet `now` forward to the server-synced wall clock
+  // when the React-state ticker lags (Chromium background-tab throttling,
+  // transient effect-cleanup race during phase change, etc.).  All "should
+  // the question/duel panel be visible yet?" gating reads `safeNow` instead
+  // of `now`, so even if a ticker tick is missed the gating can't latch in
+  // the "still waiting" state forever.  Countdown *numbers* still read
+  // `now` so the displayed seconds tick smoothly in lockstep with the
+  // setInterval cadence.  `getConquestSyncedNowMs()` already adds the
+  // server offset (see conquestClock.ts), so this comparison stays in the
+  // same reference frame as `challenge.startedAt` / `endsAt` even when the
+  // local OS clock drifts vs. other clients.
+  const safeNow = Math.max(now, getConquestSyncedNowMs());
 
   // Intro overlay: info card (4s) → 3-2-1 countdown (3s) → question panel.
   const DUEL_INFO_MS = 5000;
@@ -2754,7 +2766,7 @@ export default function ConquestGame({
   if (challengeFirstSeenRef.current.id !== currentChallengeIdForSeen) {
     challengeFirstSeenRef.current = {
       id: currentChallengeIdForSeen,
-      at: Date.now(),
+      at: getConquestSyncedNowMs(),
     };
   }
   const challengeFirstSeenAt = challengeFirstSeenRef.current.at;
@@ -2874,7 +2886,7 @@ export default function ConquestGame({
   useEffect(() => {
     if (!lastBonusToast) return;
     if (dismissedToastId === lastBonusToast.id) return;
-    const remaining = lastBonusToast.at + BONUS_TOAST_MS - Date.now();
+    const remaining = lastBonusToast.at + BONUS_TOAST_MS - getConquestSyncedNowMs();
     if (remaining <= 0) {
       setDismissedToastId(lastBonusToast.id);
       return;
@@ -2907,7 +2919,7 @@ export default function ConquestGame({
       setBonusToastReadyId(lastBonusToast.id);
       return;
     }
-    const remaining = lastBonusToast.at + CAPITAL_REVEAL_HOLD_MS - Date.now();
+    const remaining = lastBonusToast.at + CAPITAL_REVEAL_HOLD_MS - getConquestSyncedNowMs();
     if (remaining <= 0) {
       setBonusToastReadyId(lastBonusToast.id);
       return;
@@ -2935,7 +2947,7 @@ export default function ConquestGame({
   useEffect(() => {
     if (!lastHiddenBonusToast) return;
     if (dismissedHiddenToastId === lastHiddenBonusToast.id) return;
-    const remaining = lastHiddenBonusToast.at + HIDDEN_BONUS_TOAST_MS - Date.now();
+    const remaining = lastHiddenBonusToast.at + HIDDEN_BONUS_TOAST_MS - getConquestSyncedNowMs();
     if (remaining <= 0) {
       setDismissedHiddenToastId(lastHiddenBonusToast.id);
       return;
@@ -2976,7 +2988,7 @@ export default function ConquestGame({
   useEffect(() => {
     if (!lastIntelReport) return;
     if (dismissedIntelReportId === lastIntelReport.id) return;
-    const remaining = lastIntelReport.at + INTEL_REPORT_TOAST_MS - Date.now();
+    const remaining = lastIntelReport.at + INTEL_REPORT_TOAST_MS - getConquestSyncedNowMs();
     if (remaining <= 0) {
       setDismissedIntelReportId(lastIntelReport.id);
       return;
@@ -3067,7 +3079,7 @@ export default function ConquestGame({
     // Guard against stale toasts replayed on mount (e.g. rejoining a match
     // after the first capture already happened): ignore anything that is no
     // longer fresh enough to be the live capture event.
-    if (Date.now() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
+    if (getConquestSyncedNowMs() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
 
     majorBonusHandledIdRef.current = lastBonusToast.id;
 
@@ -3120,7 +3132,7 @@ export default function ConquestGame({
     if (lastBonusToast.bonusType !== "cukurova_score") return;
     if (!lastBonusToast.id.startsWith("bereket_harvest-")) return;
     if (majorBonusHandledIdRef.current === lastBonusToast.id) return;
-    if (Date.now() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
+    if (getConquestSyncedNowMs() - lastBonusToast.at > MAJOR_BONUS_NOTICE_FRESH_MS) return;
     majorBonusHandledIdRef.current = lastBonusToast.id;
 
     const notice = {
@@ -4049,14 +4061,23 @@ export default function ConquestGame({
         duelEndsAt:              duel?.endsAt ?? null,
         now,
         safeNow,
-        dateNow:                 Date.now(),
-        nowDrift:                Date.now() - now,
+        // Local wall clock vs server-synced clock.  After the per-tab clock
+        // sync wires up, `syncedNow ≈ localDateNow + serverOffsetMs`; before
+        // the first probe lands they're equal.  Diffing host + guest log
+        // lines should show matching syncedNow values for the same payload
+        // even when their local clocks drift seconds apart.
+        localDateNow:            Date.now(),
+        syncedNow:               getConquestSyncedNowMs(),
+        serverOffsetMs:          getConquestClockOffsetMs(),
+        clockSynced:             isConquestClockSynced(),
+        nowDrift:                getConquestSyncedNowMs() - now,
         serverTimeLeftMs,
         isLateArrival,
         remainingAtFirstSeen,
         roundIntroMsRemaining,
+        msRemaining:             Math.max(0, (challengeState?.endsAt ?? 0) - getConquestSyncedNowMs()),
         challengeFirstSeenAt,
-        msSinceFirstSeen:        Date.now() - challengeFirstSeenAt,
+        msSinceFirstSeen:        getConquestSyncedNowMs() - challengeFirstSeenAt,
         showGameIntro,
         showRoundIntro,
         showDuelInfo,
@@ -4074,7 +4095,7 @@ export default function ConquestGame({
         lastRealtimeReceivedAt:  lastStateReceivedAtRef.current,
         msSinceLastRealtimeReceived:
           lastStateReceivedAtRef.current
-            ? Date.now() - lastStateReceivedAtRef.current
+            ? getConquestSyncedNowMs() - lastStateReceivedAtRef.current
             : null,
         gameStateUpdateCounter:  gameStateUpdateCounterRef.current,
         // We only ever consume gameState from the realtime row in

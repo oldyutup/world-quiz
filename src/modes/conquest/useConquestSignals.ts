@@ -43,6 +43,7 @@ import type {
   ConquestPlayerColor,
 } from "./types";
 import { CAPITAL_REGION_IDS } from "./conquestCapital";
+import { getConquestSyncedNowMs } from "./conquestClock";
 
 export type ConquestSignalTier = "minor" | "major" | "critical";
 
@@ -112,7 +113,7 @@ export function useConquestSignals(
       if (ownerId) afterCounts[ownerId] = (afterCounts[ownerId] ?? 0) + 1;
     }
 
-    const now = Date.now();
+    const now = getConquestSyncedNowMs();
 
     // ── Capital fell (major) ─────────────────────────────────────────
     // Any capital region whose owner changed to a non-null player this
@@ -223,7 +224,7 @@ export function useConquestSignals(
   useEffect(() => {
     if (queue.length === 0) return;
     const head = queue[0];
-    const elapsed   = Date.now() - head.at;
+    const elapsed   = getConquestSyncedNowMs() - head.at;
     const remaining = Math.max(80, head.ttlMs - elapsed);
     const t = window.setTimeout(() => {
       setQueue(q => q.slice(1));

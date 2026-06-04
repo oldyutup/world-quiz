@@ -51,6 +51,7 @@ import {
   REGION_BONUSES,
 } from "./regionBonuses";
 import { buildFinalStandings } from "./conquestGameplay";
+import { getConquestSyncedNowMs } from "./conquestClock";
 
 /** Hidden-operation bonus type — matched verbatim against the dynamic
  *  assignment OR legacy static catalog so the cue stays tied to the bonus,
@@ -151,7 +152,7 @@ export function useConquestSound(
     // First snapshot for this client.  Play only if this is a fresh
     // match (round 1 with a game intro overlay still active).
     const introEnds = gameState.gameIntroEndsAt ?? 0;
-    if (round === 1 && introEnds > 0 && Date.now() < introEnds) {
+    if (round === 1 && introEnds > 0 && getConquestSyncedNowMs() < introEnds) {
       const key = `round-start:${round}:${gameState.startedAt}`;
       if (!seenIdsRef.current.has(key)) {
         seenIdsRef.current.add(key);

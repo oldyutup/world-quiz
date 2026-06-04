@@ -20,6 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ConquestFateCardEvent } from "./types";
 import { FATE_REVEAL_MS } from "./conquestFateCards";
+import { getConquestSyncedNowMs } from "./conquestClock";
 
 interface Props {
   event: ConquestFateCardEvent | null;
@@ -37,7 +38,7 @@ export default function ConquestFateCardReveal({ event }: Props) {
     seenIdRef.current = event.id;
     // Skip echoes that arrived too late to still be in their reveal window —
     // a reconnecting client should not replay a draw that already finished.
-    if (Date.now() - event.createdAt > FATE_REVEAL_MS + 500) return;
+    if (getConquestSyncedNowMs() - event.createdAt > FATE_REVEAL_MS + 500) return;
 
     const eventId = event.id;
     setShownEvent(event);

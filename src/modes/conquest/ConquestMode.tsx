@@ -73,6 +73,11 @@ import { subscribeToConquestRoom } from "./conquestRealtime";
 import { getConquestMapConfig } from "./maps";
 import { createInitialConquestGameState } from "./conquestGameplay";
 import {
+  fetchConquestServerTimeOffset,
+  initConquestClockSync,
+  isConquestClockSynced,
+} from "./conquestClock";
+import {
   deserializeConquestGameState,
   initializeConquestGameplayState,
   updateConquestGameplayState,
@@ -401,6 +406,20 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     };
   }, [roomRow?.id, phase]);
 
+  // ── Server-clock sync ──────────────────────────────────────────────────
+  // Kuşatma's per-match timeline (challenge.startedAt/endsAt, gameIntroEndsAt,
+  // duel/action timers) is interpreted on every client.  Local Date.now()
+  // drift across machines used to land host and guest on different
+  // roundIntroMsRemaining values.  initConquestClockSync samples
+  // public.get_server_time_ms() so every client converges on the same epoch
+  // reference.  Active while the user is in lobby or game; torn down on
+  // leave so unrelated screens don't pay the periodic probe cost.
+  useEffect(() => {
+    if (phase !== "lobby" && phase !== "game") return;
+    const handle = initConquestClockSync();
+    return () => handle.dispose();
+  }, [phase]);
+
   // ── Lobby-only broadcast channel (bonus mode + votes) ───────────────────
   // Owns its own Supabase channel separate from the postgres_changes one so
   // ephemeral lobby state never touches the DB.  Only active while phase
@@ -701,6 +720,17 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     }
 
     setStartBlockedMsg(null);
+
+    // Best-effort: make sure the server-clock offset is fresh before we
+    // stamp the initial gameplay state's wall-clock timestamps.  The init
+    // effect already started a periodic refresh when the host entered the
+    // lobby, so by this point we almost always have a value; the await is
+    // a defensive top-up for tabs that just resumed from background.  If
+    // the probe fails, we fall through to Date.now() — same as pre-fix for
+    // this one tab, with a console.warn surfacing the regression.
+    if (!isConquestClockSynced()) {
+      await fetchConquestServerTimeOffset();
+    }
 
     const selectedBonusTypes =
       lobbyExtra.bonusDistribution === "vote"
