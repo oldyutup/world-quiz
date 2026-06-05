@@ -392,7 +392,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   /* ── Refs that callbacks read ── */
   const roomRef = useRef<WheelGroupRoom | null>(null);
   const playersRef = useRef<WheelGroupPlayer[]>([]);
-  const finishGameRef = useRef<((reason: "timeout" | "pool") => Promise<void>) | null>(null);
+  const finishGameRef = useRef<((reason: "timeout" | "pool" | "alone") => Promise<void>) | null>(null);
 
   /* ── Sound guards ── */
   const countdownPlayedRef = useRef(false);
@@ -651,7 +651,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     }
   }, [buildTargetPool]);
 
-  const finishGame = useCallback(async (reason: "timeout" | "pool") => {
+  const finishGame = useCallback(async (reason: "timeout" | "pool" | "alone") => {
     const r = roomRef.current;
     if (!r) return;
     if (r.host_player_id !== myIdRef.current) return;
@@ -674,6 +674,21 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   }, []);
 
   useEffect(() => { finishGameRef.current = finishGame; }, [finishGame]);
+
+  /* ── Solo-win-by-abandon: aktif maçta tek oyuncu kalırsa oyun bitsin ──
+   *  wheel_group_leave_room host-transfer yaptığı için kalan oyuncu
+   *  her zaman host olur → finishGame'in host guard'ı geçer.
+   *  endingRef ve server status='playing' guard'ı tekrar tetiklenmeyi
+   *  engelliyor (idempotent).
+   */
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!room || room.status !== "playing") return;
+    if (players.length !== 1) return;
+    if (players[0].id !== myIdRef.current) return;
+    if (endingRef.current) return;
+    finishGameRef.current?.("alone");
+  }, [phase, players, room]);
 
   const handleMapClick = useCallback(
     async (topoId: string) => {
@@ -2122,10 +2137,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
         const me = board.find(b => b.playerId === myIdRef.current);
         const myScore = me?.score ?? 0;
         const top = board[0]?.score ?? 0;
-        const iWon = myScore > 0 && myScore === top;
-        const reasonText = room.finished_reason === "pool"
-          ? "Tüm ülkeler kullanıldı."
-          : "Süre doldu.";
+        const isAlone = room.finished_reason === "alone";
+        const iWon = isAlone || (myScore > 0 && myScore === top);
+        const reasonText =
+          room.finished_reason === "pool"
+            ? "Tüm ülkeler kullanıldı."
+            : isAlone
+              ? "Odada tek kaldın, oyun bitti."
+              : "Süre doldu.";
         const titleText = iWon ? "KAZANDIN!" : "OYUN BİTTİ";
         const emoji = iWon ? "🏆" : "🏁";
 
