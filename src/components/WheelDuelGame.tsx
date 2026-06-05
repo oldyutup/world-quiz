@@ -2600,7 +2600,9 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
         const reasonText =
           room.finished_reason === "pool"
             ? "Tüm ülkeler kullanıldı."
-            : "Süre doldu.";
+            : room.finished_reason === "opponent_left"
+              ? "Rakip maçtan ayrıldı."
+              : "Süre doldu.";
         const titleText = isTie ? "BERABERE" : iWon ? "KAZANDIN!" : "KAYBETTİN";
         const emoji = isTie ? "🤝" : iWon ? "🏆" : "💀";
 
