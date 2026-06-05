@@ -7488,6 +7488,57 @@ body {
   .wd-player-name { font-size: 11.5px; }
   .wd-player-score { font-size: 12px; }
 }
+
+/* ─── WheelGroup HUD modifier ─────────────────────────────────────
+   Sol slot (Pas Geç) WheelGroup'ta yok ama duel ile aynı 3-kolon
+   geometrisini koruyup hedefi geometrik olarak ortalıyoruz. */
+.wd-hud.wd-hud--group {
+  grid-template-columns: minmax(64px, auto) 1fr minmax(64px, auto);
+  column-gap: 14px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.wd-hud.wd-hud--group > .wd-hud-left { min-width: 0; }
+@media (max-width: 520px) {
+  .wd-hud.wd-hud--group {
+    grid-template-columns: minmax(40px, auto) 1fr minmax(48px, auto);
+    column-gap: 8px;
+  }
+}
+
+/* ─── WheelGroup floating player card (çok oyunculu varyant) ─────
+   10 oyuncuya kadar liste sığar. Kart geneli pointer-events:none
+   kalır (harita tıklamasını engellemez); scroll için sadece liste
+   alanı pointer alır. overflow:hidden parent'ta scrollbar'ı rounded
+   köşelere düzgün clip'ler. Çift alt padding fix: liste kendi
+   breathing room'unu yönetir, parent'ın padding-bottom'u 0'lanır. */
+.wd-player-card--group {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.wd-player-card--group .wd-player-card-list {
+  pointer-events: auto;
+  max-height: min(52vh, 360px);
+  overflow-y: auto;
+  padding: 0 0 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.wd-player-card--group .wd-player-card-list::-webkit-scrollbar {
+  width: 6px;
+}
+.wd-player-card--group .wd-player-card-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.14);
+  border-radius: 4px;
+}
+.wd-player-card--group .wd-player-card-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+@media (max-width: 520px) {
+  .wd-player-card--group .wd-player-card-list {
+    max-height: min(42vh, 240px);
+  }
+}
 .wd-hud-back { white-space: nowrap; }
 .wd-hud-center { text-align: center; min-width: 0; }
 .wd-hud-right  { text-align: right; min-width: 64px; }

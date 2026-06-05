@@ -2035,24 +2035,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
         return (
           <div className="wd-screen">
-            {/* HUD top bar */}
-            <div className="wd-hud">
-              <button
-                className="back-btn wd-hud-back"
-                onClick={() => {
-                  playSound("click");
-                  if (phase === "playing") {
-                    setQuitModal(true);
-                    setQuitStep("idle");
-                    return;
-                  }
-                  leaveRoom();
-                }}
-                title="Lobiden Çık"
-              >
-                <span>←</span>
-                <span className="back-label">Çık</span>
-              </button>
+            {/* Hedef HUD: ince tek satır — boş sol slot · 🎯 Hedef · ⏱ Süre.
+                Skor listesi haritanın sol üstündeki floating
+                .wd-player-card--group içine taşındı. Header'daki Menü
+                butonu zaten quit modal'i tetikliyor; HUD içindeki
+                ikinci Çık butonu kaldırıldı. */}
+            <div className="wd-hud wd-hud--group">
+              <div className="wd-hud-left" aria-hidden="true" />
 
               <div className="wd-hud-center">
                 {targetDisplay ? (
@@ -2079,48 +2068,6 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
               </div>
             </div>
 
-            {/* Compact live leaderboard */}
-            <div
-              className="dgg-leaderboard"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 6,
-                justifyContent: "center",
-                padding: "4px 8px 8px",
-              }}
-            >
-              {leaderboard.slice(0, 10).map((entry, idx) => (
-                <div
-                  key={entry.playerId}
-                  className={"dgg-lb-row" + (entry.isMe ? " mine" : "")}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background: entry.isMe
-                      ? "rgba(79,139,255,0.18)"
-                      : "rgba(255,255,255,0.06)",
-                    border: entry.isMe
-                      ? "1px solid rgba(79,139,255,0.55)"
-                      : "1px solid rgba(255,255,255,0.08)",
-                    fontSize: 13,
-                    lineHeight: 1.2,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span style={{ opacity: 0.7, fontWeight: 700 }}>#{idx + 1}</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {entry.name}
-                    {entry.isHost && <span style={{ marginLeft: 4 }}>👑</span>}
-                  </span>
-                  <span style={{ fontWeight: 800, marginLeft: 4 }}>{entry.score}</span>
-                </div>
-              ))}
-            </div>
-
             {room.penalty_enabled && penaltyRemain > 0 && (
               <div
                 style={{
@@ -2136,6 +2083,45 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
             {/* Map */}
             <div className="wheel-map-area wd-map">
+              {/* Sol floating oyuncu kartı — Kuşatma'daki cq-players-panel
+                  hissinde, WheelDuel ile paylaşılan .wd-player-card
+                  + grup modifier'ı: max-height + overflow-y, böylece
+                  10 oyuncuya kadar liste taşmadan scroll edebilir. */}
+              <div
+                className="wd-player-card wd-player-card--group"
+                aria-label="Oyuncular"
+              >
+                <div className="wd-player-card-title" aria-hidden="true">
+                  Oyuncular
+                </div>
+                <div className="wd-player-card-list">
+                  {leaderboard.map(entry => (
+                    <div
+                      key={entry.playerId}
+                      className={
+                        "wd-player-row " +
+                        (entry.isMe
+                          ? "wd-player-row--me"
+                          : "wd-player-row--opponent")
+                      }
+                    >
+                      <span className="wd-player-name" title={entry.name}>
+                        {entry.name}
+                        {entry.isHost && (
+                          <span
+                            aria-hidden="true"
+                            style={{ marginLeft: 4, opacity: 0.85 }}
+                          >
+                            👑
+                          </span>
+                        )}
+                      </span>
+                      <span className="wd-player-score">{entry.score}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <WorldMap
                 guessedISOs={usedSet}
                 lastGuessed={lastClaimedTopoId}
