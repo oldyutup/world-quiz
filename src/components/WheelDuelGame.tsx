@@ -2431,25 +2431,10 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
         return (
           <div className="wd-screen">
-            {/* HUD top bar */}
-            <div className="wd-hud">
-              <button
-                className="back-btn wd-hud-back"
-                onClick={() => {
-                  playSound("click");
-                  if (phase === "playing") {
-                    setQuitModal(true);
-                    setQuitStep("idle");
-                    return;
-                  }
-                  leaveRoom();
-                }}
-                title="Lobiden Çık"
-              >
-                <span>←</span>
-                <span className="back-label">Çık</span>
-              </button>
-
+            {/* HUD top bar — tek çıkış tuşu duel-header'daki "← Menü"de;
+                dolayısıyla HUD'de back-btn yok. wd-hud--solo modifier'ı
+                .wd-hud grid'ini iki sütuna düşürür (center + timer). */}
+            <div className="wd-hud wd-hud--solo">
               <div className="wd-hud-center">
                 {targetDisplay ? (
                   <>

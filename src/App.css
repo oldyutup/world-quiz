@@ -7373,6 +7373,12 @@ body {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
 }
+/* WheelDuel HUD'inde tek çıkış tuşu artık üst app header'ında ("← Menü").
+   HUD'de geri butonu yok → grid'i center+timer'a düşürüyoruz. WheelGroup
+   hâlâ üç sütunlu .wd-hud kullanıyor; modifier sadece WheelDuel'e iliştirili. */
+.wd-hud.wd-hud--solo {
+  grid-template-columns: 1fr auto;
+}
 .wd-hud-back { white-space: nowrap; }
 .wd-hud-center { text-align: center; min-width: 0; }
 .wd-hud-right  { text-align: right; min-width: 64px; }
