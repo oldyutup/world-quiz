@@ -2102,6 +2102,11 @@ setXpResult(null); xpAwardedRef.current = false;
   className="back-btn"
   onClick={() => {
     playSound("click");
+    if (phase === "playing") {
+      setQuitModal(true);
+      setQuitStep("idle");
+      return;
+    }
     onHome();
   }}
 >
