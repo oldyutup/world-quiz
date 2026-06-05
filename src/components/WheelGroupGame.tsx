@@ -232,6 +232,10 @@ function describeWheelGroupRpcError(
   if (!error) return null;
   const msg = (error.message ?? "").toLowerCase();
   if (msg.includes("code_taken"))         return "Bu oda kodu az önce kullanıldı. Tekrar dene.";
+  // NOT: 'registered_username_taken' check'i 'name_taken' check'inden ÖNCE
+  // gelmeli — substring olarak içerdiği için aksi halde yanlış dala düşer.
+  if (msg.includes("registered_username_taken"))
+                                          return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
   if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
   if (msg.includes("name_invalid"))       return "Oyuncu adı en az 2 karakter olmalı.";
   if (msg.includes("room_full"))          return "Oda dolu.";
