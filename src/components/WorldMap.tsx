@@ -59,6 +59,12 @@ interface MapProps {
   onCountryClick?: (topoId: string) => void;
   /** Optional id to flash red — used by Wheel Mode. */
   wrongId?: string;
+  /** Opt-in: once the user pans, zooms, or pinches, suppress auto-refit when
+   *  the parent re-renders with new activeIds identities or container dims
+   *  shift by a pixel. Region changes and resetKey bumps still re-fit. Used by
+   *  WheelDuel where between-round HUD/score layout shifts were re-firing the
+   *  auto-fit effect and snapping the map back to the region framing. */
+  preserveUserView?: boolean;
 }
 
 interface ComputedFeature {
@@ -389,7 +395,7 @@ function fitRegion(
   return { k, tx: w / 2 - cx * k, ty: h / 2 - cy * k };
 }
 
-export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region, onCountryClick, wrongId }: MapProps) {
+export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region, onCountryClick, wrongId, preserveUserView }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const rawRef       = useRef<Feature<Geometry>[]>([]);
@@ -415,6 +421,15 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   // otherwise re-fire the auto-fit effect and snap the user's pan/zoom back to
   // the framed region after every score tick or room update.
   const lastFitKeyRef = useRef<string>("");
+  // Region we last auto-fitted under. Lets `preserveUserView` callers detect
+  // "region truly changed" vs "dims drifted by a pixel because the HUD/score
+  // row reflowed" — the former is a legitimate re-fit, the latter should be
+  // suppressed once the user has manually adjusted their view.
+  const lastFitRegionRef = useRef<string | undefined>(undefined);
+  // Set true the first time the user pans, zooms, or pinches. Cleared on
+  // resetKey bumps and when a new region is auto-fitted. Only consulted when
+  // `preserveUserView` is on, so other callers keep their existing behaviour.
+  const userInteractedRef = useRef(false);
   const dimsRef = useRef({ w: 0, h: 0 });
   dimsRef.current = dims;
   // Track pointer movement so a drag never fires onCountryClick.
@@ -470,6 +485,8 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     if (resetKey === 0) return;
     // Allow a manual reset to re-fit the active region on the next pass.
     lastFitKeyRef.current = "";
+    lastFitRegionRef.current = undefined;
+    userInteractedRef.current = false;
     const reset = initialTransform(dimsRef.current.w, dimsRef.current.h);
     xfRef.current = reset;
     setXf(reset);
@@ -491,17 +508,30 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   // combination — not on every activeIds identity flip — so user pan/zoom
   // survives subsequent parent re-renders. Re-fits if the user resizes /
   // rotates the device, or when region changes.
+  //
+  // `preserveUserView` callers: after the user has manually panned/zoomed,
+  // we no longer auto-refit on dims-only changes (e.g. WheelDuel's HUD swaps
+  // between "🎯 Hedef <country>" / "✓ Doğru <country>" / "… seçiliyor" or
+  // score widening reflowing the map container by a pixel). The region-change
+  // path still re-fits because lastFitRegionRef differs.
   useEffect(() => {
     if (!region || region === "world" || computed.length === 0 || dims.w === 0) return;
+    if (
+      preserveUserView &&
+      userInteractedRef.current &&
+      lastFitRegionRef.current === region
+    ) return;
     const key = `${region}|${Math.round(dims.w)}x${Math.round(dims.h)}`;
     if (lastFitKeyRef.current === key) return;
     const fit = fitRegion(activeIds, computed, dims.w, dims.h);
     if (!fit) return;
     lastFitKeyRef.current = key;
+    lastFitRegionRef.current = region;
+    userInteractedRef.current = false;
     xfRef.current = fit;
     setXf({ ...fit });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [region, activeIds, computed, dims]);
+  }, [region, activeIds, computed, dims, preserveUserView]);
 
   const applyZoom = useCallback((newK: number, focalX?: number, focalY?: number) => {
     const old = xfRef.current;
@@ -511,6 +541,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     const ratio = k / old.k;
     const { tx, ty } = clampPan(fx - ratio*(fx-old.tx), fy - ratio*(fy-old.ty), k, dims.w, dims.h);
     const next  = { k, tx, ty };
+    userInteractedRef.current = true;
     xfRef.current = next; setXf({ ...next });
   }, [dims]);
 
@@ -533,6 +564,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
       // 0 and 1 both jump back to the initial world view (mobile-aware).
       if (e.key === "0" || e.key === "1") {
         const reset = initialTransform(dimsRef.current.w, dimsRef.current.h);
+        userInteractedRef.current = true;
         xfRef.current = reset; setXf(reset);
         e.preventDefault();
         return;
@@ -596,6 +628,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
         newK, dims.w, dims.h,
       );
       const next = { k: newK, tx, ty };
+      userInteractedRef.current = true;
       xfRef.current = next; setXf({ ...next });
       return;
     }
@@ -613,6 +646,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
       k, dims.w, dims.h,
     );
     const next  = { k, tx, ty };
+    if (wasDragRef.current) userInteractedRef.current = true;
     xfRef.current = next; setXf({ ...next });
   };
   const onPU = (e: ReactPointerEvent<SVGSVGElement>) => {

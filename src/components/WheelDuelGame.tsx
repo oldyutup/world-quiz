@@ -2541,6 +2541,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                 region={regionDenorm}
                 onCountryClick={handleMapClick}
                 wrongId={wrongId || undefined}
+                preserveUserView
               />
             </div>
           </div>
