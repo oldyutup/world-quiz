@@ -2431,10 +2431,48 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
         return (
           <div className="wd-screen">
-            {/* HUD top bar — tek çıkış tuşu duel-header'daki "← Menü"de;
-                dolayısıyla HUD'de back-btn yok. wd-hud--solo modifier'ı
-                .wd-hud grid'ini iki sütuna düşürür (center + timer). */}
-            <div className="wd-hud wd-hud--solo">
+            {/* Hedef HUD: tek satır — [Pas Geç] | 🎯 Hedef + ülke | ⏱ Süre.
+                Skorlar buradan çıktı; haritanın üstüne floating
+                .wd-player-card olarak taşındı (Kuşatma stilinde kompakt). */}
+            <div className="wd-hud wd-hud--duel">
+              <div className="wd-hud-left">
+                {/* Pas Geç — sadece aktif hedef varken görünür */}
+                {currentTarget && (() => {
+                  const myId = myIdRef.current;
+                  const passMatches =
+                    room.pass_target_topoid === currentTarget;
+                  const passList = passMatches
+                    ? (room.pass_requested_by ?? [])
+                    : [];
+                  const iVotedDb = passList.includes(myId);
+                  const iVoted = iVotedDb || iPressedLocally;
+                  const oppVoted = passList.some(id => id !== myId);
+
+                  let label = "🟡 Pas Geç";
+                  let disabled = false;
+                  if (iVoted && oppVoted) {
+                    label = "Geçiliyor…";
+                    disabled = true;
+                  } else if (iVoted) {
+                    label = "Pas Bekleniyor…";
+                    disabled = true;
+                  } else if (oppVoted) {
+                    label = "🟠 Rakip pas · Onayla";
+                  }
+
+                  return (
+                    <button
+                      className="btn btn-ghost wd-pass-btn"
+                      onClick={requestPass}
+                      disabled={disabled}
+                      title="Aktif hedefi her iki oyuncu da pas geçerse atlanır"
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
+              </div>
+
               <div className="wd-hud-center">
                 {targetDisplay ? (
                   <>
@@ -2464,59 +2502,29 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                   {timeLeft}
                 </div>
               </div>
-            </div>
 
-            {/* Score row + Pas butonu */}
-            <div className="wd-scores">
-              <div className={"wd-score wd-score-me" + (myScore >= oppScore ? " lead" : "")}>
-                <span className="wd-score-name">{me?.name ?? "Sen"}</span>
-                <span className="wd-score-val">{myScore}</span>
-              </div>
-              <span className="wd-score-sep">vs</span>
-              <div className={"wd-score wd-score-opp" + (oppScore > myScore ? " lead" : "")}>
-                <span className="wd-score-name">{opp?.name ?? "Rakip"}</span>
-                <span className="wd-score-val">{oppScore}</span>
-              </div>
-
-              {/* Pas Geç — sadece aktif hedef varken görünür */}
-              {currentTarget && (() => {
-                const myId = myIdRef.current;
-                const passMatches =
-                  room.pass_target_topoid === currentTarget;
-                const passList = passMatches
-                  ? (room.pass_requested_by ?? [])
-                  : [];
-                const iVotedDb = passList.includes(myId);
-                const iVoted = iVotedDb || iPressedLocally;
-                const oppVoted = passList.some(id => id !== myId);
-
-                let label = "🟡 Pas Geç";
-                let disabled = false;
-                if (iVoted && oppVoted) {
-                  label = "Geçiliyor…";
-                  disabled = true;
-                } else if (iVoted) {
-                  label = "Pas Bekleniyor…";
-                  disabled = true;
-                } else if (oppVoted) {
-                  label = "🟠 Rakip pas istedi · Sen de bas";
-                }
-
-                return (
-                  <button
-                    className="btn btn-ghost wd-pass-btn"
-                    onClick={requestPass}
-                    disabled={disabled}
-                    title="Aktif hedefi her iki oyuncu da pas geçerse atlanır"
-                  >
-                    {label}
-                  </button>
-                );
-              })()}
             </div>
 
             {/* Map */}
             <div className="wheel-map-area wd-map">
+              {/* Sol floating oyuncu kartı — Kuşatma'daki cq-players-panel
+                  hissinde, ama WheelDuel'a özel ayrı class. Kart kendisi
+                  pointer-events:none, sadece içerik:auto — harita
+                  tıklamalarını engellemez. */}
+              <div className="wd-player-card" aria-label="Oyuncular">
+                <div className="wd-player-card-title" aria-hidden="true">
+                  Oyuncular
+                </div>
+                <div className="wd-player-row wd-player-row--me">
+                  <span className="wd-player-name">{me?.name ?? "Sen"}</span>
+                  <span className="wd-player-score">{myScore}</span>
+                </div>
+                <div className="wd-player-row wd-player-row--opponent">
+                  <span className="wd-player-name">{opp?.name ?? "Rakip"}</span>
+                  <span className="wd-player-score">{oppScore}</span>
+                </div>
+              </div>
+
               <WorldMap
                 guessedISOs={usedSet}
                 lastGuessed={lastClaimedTopoId}

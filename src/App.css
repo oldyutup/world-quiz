@@ -7373,11 +7373,120 @@ body {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.08));
 }
-/* WheelDuel HUD'inde tek çıkış tuşu artık üst app header'ında ("← Menü").
-   HUD'de geri butonu yok → grid'i center+timer'a düşürüyoruz. WheelGroup
-   hâlâ üç sütunlu .wd-hud kullanıyor; modifier sadece WheelDuel'e iliştirili. */
-.wd-hud.wd-hud--solo {
-  grid-template-columns: 1fr auto;
+/* WheelDuel HUD: tek satır — [Pas slot] | 🎯 Hedef | ⏱ Süre. Skorlar
+   buradan çıkarılıp .wd-player-card'a taşındığı için ikinci grid satırı
+   yok; HUD ince ve nefes alır. Outer rails minmax ile simetrik → Hedef
+   geometrik olarak ortalanır. WheelGroupGame paylaşılan .wd-hud'i
+   değiştirmiyor; modifier sadece WheelDuelGame'e iliştirili. */
+.wd-hud.wd-hud--duel {
+  grid-template-columns: minmax(96px, auto) 1fr minmax(64px, auto);
+  column-gap: 14px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.wd-hud.wd-hud--duel > .wd-hud-left   { min-width: 0; }
+/* Pas Geç slot'u kompakt: hedefi ezmemeli, ghost vocab korunuyor. */
+.wd-hud.wd-hud--duel .wd-pass-btn {
+  font-size: 13px;
+  padding: 6px 12px;
+  height: auto;
+  line-height: 1.2;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 520px) {
+  .wd-hud.wd-hud--duel {
+    grid-template-columns: minmax(78px, auto) 1fr minmax(48px, auto);
+    column-gap: 8px;
+  }
+  .wd-hud.wd-hud--duel .wd-pass-btn { font-size: 12px; padding: 5px 9px; }
+}
+
+/* ─── WheelDuel floating player card ─────────────────────────────
+   Kuşatma'daki .cq-players-panel hissinde, ama kendi class'ı.
+   Haritanın sol üstüne floating; pointer-events:none ile ülke
+   tıklamalarını engellemez (içerik:auto). 2 satır: kendi (yeşil isim)
+   ve rakip (kırmızı isim); skorlar beyaz, tabular-nums. */
+.wd-player-card {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  width: 210px;
+  background: rgba(7, 10, 18, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  padding: 0 0 4px;
+  pointer-events: none;
+}
+.wd-player-card-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: oklch(0.58 0.008 220);
+  margin: 0;
+  padding: 7px 10px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.wd-player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  margin: 2px 4px 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  min-width: 0;
+}
+.wd-player-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wd-player-score {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: oklch(0.96 0.005 220);
+  min-width: 16px;
+  text-align: right;
+  flex-shrink: 0;
+}
+/* Kendi oyuncu: yeşil/teal vurgu */
+.wd-player-row--me {
+  background: rgba(34, 197, 94, 0.10);
+  border-color: rgba(34, 197, 94, 0.32);
+}
+.wd-player-row--me .wd-player-name {
+  color: oklch(0.78 0.14 150);
+}
+/* Rakip oyuncu: kırmızı vurgu */
+.wd-player-row--opponent {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.32);
+}
+.wd-player-row--opponent .wd-player-name {
+  color: oklch(0.72 0.16 25);
+}
+@media (max-width: 520px) {
+  .wd-player-card {
+    top: 8px;
+    left: 8px;
+    width: 168px;
+    border-radius: 8px;
+  }
+  .wd-player-card-title { font-size: 9px; padding: 6px 8px 5px; }
+  .wd-player-row { padding: 4px 8px; margin: 2px 3px 0; }
+  .wd-player-name { font-size: 11.5px; }
+  .wd-player-score { font-size: 12px; }
 }
 .wd-hud-back { white-space: nowrap; }
 .wd-hud-center { text-align: center; min-width: 0; }
@@ -7402,21 +7511,9 @@ body {
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.wd-scores {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
-  /* Pas Geç butonu sadece currentTarget varken render olur (40px height). Tur
-     geçişlerinde butonun kaybolması bu satırı daraltıyor, .wd-map { flex:1 }
-     uzuyor, WorldMap'in ResizeObserver'ı dims'i değiştiriyor ve auto-fit
-     effect (region|w×h key'i ile) yeniden tetiklenip kullanıcının zoom/pan'ını
-     reset ediyordu. Min-height ile satır yüksekliğini sabitleyerek WorldMap'in
-     boyutu turlar arası stabil kalır. */
-  min-height: 56px;
-}
+/* Eski .wd-scores barı (skor + pas geç) kaldırıldı — içerik wd-hud--duel'in
+   ikinci grid satırına taşındı. WorldMap'in preserveUserView guard'ı dims
+   shift'lerini bastırdığı için min-height zoom-fix'ine de gerek kalmadı. */
 .wd-score {
   display: inline-flex;
   align-items: baseline;
@@ -7430,6 +7527,19 @@ body {
 .wd-score-val  { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .wd-score-sep  { opacity: 0.5; font-size: 13px; }
 .wd-map { flex: 1; min-height: 0; }
+/* Çark 1v1'e özel: harita kontrollerini ekran dibinden uzaklaştır.
+   HUD üstte olduğu için alt kenar hedef HUD/Pas Geç ile çakışmaz; ancak
+   yeni oyuncular kartı ve mobil safe-area ile kontroller dibe yapışıyordu.
+   Sadece .wd-map altındaki WorldMap kontrolleri etkilenir — diğer modlar
+   (Çark çok oyunculu, Düello, Bayrak vs.) WorldMap'i farklı wrapper'larla
+   render ediyor, bu yüzden bu override scoped kalır. */
+.wd-map .map-container-inner .zoom-controls   { bottom: 80px; }
+.wd-map .map-container-inner .map-theme-picker { bottom: 80px; }
+.wd-map .map-container-inner .map-theme-panel  { max-height: calc(100vh - 220px); overflow-y: auto; }
+@media (max-width: 768px) {
+  .wd-map .map-container-inner .zoom-controls   { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  .wd-map .map-container-inner .map-theme-picker { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+}
 .wd-result-scores {
   display: flex;
   align-items: center;
@@ -7442,7 +7552,6 @@ body {
   .wd-target { font-size: 18px; }
   .wd-timer  { font-size: 22px; }
   .wd-hud-label { font-size: 10px; }
-  .wd-scores { gap: 10px; padding: 6px 10px; }
   .wd-score-val { font-size: 16px; }
 }
 
