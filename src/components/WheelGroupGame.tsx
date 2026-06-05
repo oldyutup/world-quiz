@@ -47,6 +47,7 @@ import {
   supabase,
   type WheelGroupRoom,
   type WheelGroupPlayer,
+  type WheelGroupPassVote,
 } from "../lib/supabase";
 import {
   playSound,
@@ -342,6 +343,15 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
    *  olmadan handleMapClick early return. Sadece bu oyuncu için lokal. */
   const [penaltyUntilMs, setPenaltyUntilMs] = useState<number>(0);
 
+  /** Aktif odadaki tüm pas oyları. Realtime INSERT'lerle güncellenir, oda
+   *  değişince temizlenir. UI hedef-filtreli sayım yapar; eski hedeflere
+   *  ait kayıtlar inert (yeni hedefte sayıma girmez). */
+  const [passVotes, setPassVotes] = useState<WheelGroupPassVote[]>([]);
+  /** Optimistic "ben oy verdim" bayrağı. Realtime echo gelene kadar UI'da
+   *  hemen "Pas Bekleniyor…" gösterir. roomRef.current?.current_target_topoid
+   *  değişince effect üzerinden sıfırlanır. */
+  const [pressedPassTarget, setPressedPassTarget] = useState<string | null>(null);
+
   /* ── Final leaderboard (sonuç ekranında dondurulur) ─── */
   const [finalLeaderboard, setFinalLeaderboard] = useState<
     Array<{ playerId: string; name: string; score: number }> | null
@@ -597,7 +607,37 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
             });
         },
       )
+      .on(
+        // Pas oyları realtime — her INSERT'te tüm oda için listeyi yenile.
+        // Tek INSERT olduğu için tam fetch maliyeti ihmal edilebilir,
+        // ama tutarlılık (DELETE / start_game reset) için en sağlam yol.
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "wheel_group_pass_votes",
+          filter: `room_id=eq.${roomId}`,
+        },
+        () => {
+          supabase
+            .from("wheel_group_pass_votes")
+            .select("*")
+            .eq("room_id", roomId)
+            .then(({ data }) => {
+              if (data) setPassVotes(data as WheelGroupPassVote[]);
+            });
+        },
+      )
       .subscribe();
+
+    // İlk yükleme — abone olunduğunda mevcut oyları çek.
+    supabase
+      .from("wheel_group_pass_votes")
+      .select("*")
+      .eq("room_id", roomId)
+      .then(({ data }) => {
+        if (data) setPassVotes(data as WheelGroupPassVote[]);
+      });
 
     return () => {
       supabase.removeChannel(chan);
@@ -632,6 +672,43 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       .filter((id): id is string => !!id)
       .filter(id => !WHEEL_GROUP_EXCLUDED_TOPOIDS.has(id));
   }, []);
+
+  /** Mevcut hedef için pas oyumu DB'ye yaz. Idempotent (sunucu unique
+   *  constraint sayesinde ikinci çağrı no-op). Optimistic flag UI'yi
+   *  "Pas Bekleniyor…" durumuna geçirir; realtime echo gelince DB-sourced
+   *  bilgi onu doğrular. Eşik dolduysa server aynı RPC içinde
+   *  current_target_topoid'i null'a düşürür → host'taki mevcut
+   *  pickNextTarget effect'i yeni hedefi seçer. */
+  const requestPass = useCallback(async () => {
+    const r = roomRef.current;
+    if (!r) return;
+    if (r.status !== "playing") return;
+    const target = r.current_target_topoid;
+    if (!target) return;
+    const myId = myIdRef.current;
+    if (!myId) return;
+
+    // Optimistic
+    setPressedPassTarget(target);
+
+    const { error } = await supabase.rpc("wheel_group_vote_pass", {
+      p_room_id:     r.id,
+      p_player_id:   myId,
+      p_claim_token: myClaimTokenRef.current,
+      p_target:      target,
+    });
+    if (error) {
+      console.error("[WheelGroup] vote_pass RPC failed", error);
+      // Optimistic'i geri al → kullanıcı tekrar deneyebilsin
+      setPressedPassTarget(prev => (prev === target ? null : prev));
+    }
+  }, []);
+
+  /** Hedef değişince optimistic flag'i temizle. */
+  useEffect(() => {
+    const curr = room?.current_target_topoid ?? null;
+    setPressedPassTarget(prev => (prev && prev === curr ? prev : null));
+  }, [room?.current_target_topoid]);
 
   /** Host: yeni hedef seç. Atomic guard server-side
    *  (status='playing' + current_target_topoid IS NULL). */
@@ -2041,7 +2118,46 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 butonu zaten quit modal'i tetikliyor; HUD içindeki
                 ikinci Çık butonu kaldırıldı. */}
             <div className="wd-hud wd-hud--group">
-              <div className="wd-hud-left" aria-hidden="true" />
+              <div className="wd-hud-left">
+                {currentTarget && room.status === "playing" && (() => {
+                  const myId = myIdRef.current;
+                  const votesForTarget = passVotes.filter(
+                    v => v.target_topoid === currentTarget,
+                  );
+                  const voteCount = votesForTarget.length;
+                  const iVotedDb = votesForTarget.some(v => v.player_id === myId);
+                  const iVoted = iVotedDb || pressedPassTarget === currentTarget;
+                  const othersVoted = votesForTarget.some(v => v.player_id !== myId);
+                  const requiredVotes = Math.max(
+                    2,
+                    Math.ceil(players.length * 0.6),
+                  );
+                  const thresholdMet = voteCount >= requiredVotes;
+
+                  let label = "🟡 Pas Geç";
+                  let disabled = false;
+                  if (thresholdMet) {
+                    label = "Geçiliyor…";
+                    disabled = true;
+                  } else if (iVoted) {
+                    label = `Pas Bekleniyor… ${voteCount}/${requiredVotes}`;
+                    disabled = true;
+                  } else if (othersVoted) {
+                    label = `🟠 Pas Oyu ${voteCount}/${requiredVotes}`;
+                  }
+
+                  return (
+                    <button
+                      className="btn btn-ghost wd-pass-btn"
+                      onClick={requestPass}
+                      disabled={disabled}
+                      title="Yeterli oy toplanırsa mevcut hedef pas geçilir"
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
+              </div>
 
               <div className="wd-hud-center">
                 {targetDisplay ? (
