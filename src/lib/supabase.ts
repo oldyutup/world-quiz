@@ -160,6 +160,14 @@ export interface WheelGroupPlayer {
   last_seen_at: string;
 }
 
+export interface WheelGroupPassVote {
+  id:            string;
+  room_id:       string;
+  target_topoid: string;
+  player_id:     string;
+  created_at:    string;
+}
+
 /* ── Conquest (Kuşatma) — Phase 5: Supabase-backed rooms & players ── */
 export interface ConquestRoomRow {
   id:               string;
