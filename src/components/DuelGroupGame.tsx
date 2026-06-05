@@ -358,6 +358,11 @@ export default function DuelGroupGame({
   const [finalLeaderboard, setFinalLeaderboard] =
     useState<Array<{ playerId: string; name: string; score: number }> | null>(null);
 
+  // Diğer oyuncular oyun sırasında ayrıldı, kalan tek kişi otomatik kazandı.
+  // Süre doldu yerine "Odada tek kaldın" başlığı için ayrı bayrak tutuyoruz —
+  // kalan kişinin hiç skor yapmamış olabileceği iWon=score>0 mantığını bypass eder.
+  const [soloWinByAbandon, setSoloWinByAbandon] = useState(false);
+
   /* refs */
   const inputRef     = useRef<HTMLInputElement>(null);
   const rafRef       = useRef<number | null>(null);
@@ -595,6 +600,7 @@ useEffect(() => {
             // dinlediği için diğer client'lar stale claims taşıyor; burada düşürüyoruz.
             setClaims([]);
             setFinalLeaderboard(null);
+            setSoloWinByAbandon(false);
             gameEndedRef.current = false;
             setPhase("playing");
           }
@@ -622,6 +628,7 @@ useEffect(() => {
           setClaims([]);
           setIsHost(false);
           setFinalLeaderboard(null);
+          setSoloWinByAbandon(false);
           setErrorMsg(null);
           setStatusMsg(null);
           setQuitModal(false);
@@ -675,6 +682,7 @@ useEffect(() => {
         // Realtime kaçırılmış olabilir; yeni maçta önceki claim state'i hayatta kalmasın.
         setClaims([]);
         setFinalLeaderboard(null);
+        setSoloWinByAbandon(false);
         gameEndedRef.current = false;
         setPhase("playing");
       }
@@ -874,6 +882,47 @@ useEffect(() => {
     clearGroupSession();
   }, [room, freezeLeaderboard]);
 
+  /* ── Tek kişi kaldıysa oyunu sonlandır (solo win by abandon) ──
+   *  finishGameByTimeout ile aynı RPC'yi kullanır: duel_group_finish_game
+   *  idempotent (status='playing' guard'lı) — kalan tek client tetikler.
+   *  XP/gold akışı bu fonksiyonda da yok: zaten süre bitişi de XP vermiyor.
+   */
+  const finishGameSoloWin = useCallback(async () => {
+    if (gameEndedRef.current || !room) return;
+    gameEndedRef.current = true;
+    setSoloWinByAbandon(true);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
+
+    await freezeLeaderboard(room.id, room.started_at);
+
+    const { error } = await supabase.rpc("duel_group_finish_game", {
+      p_room_id:     room.id,
+      p_player_id:   myIdRef.current,
+      p_claim_token: claimTokenRef.current,
+    });
+    if (error) dbgErr("duel_group_finish_game (solo) failed", error);
+
+    setRoom(prev => prev ? { ...prev, status: "finished" } : prev);
+    setPhase("finished");
+    clearGroupSession();
+  }, [room, freezeLeaderboard]);
+
+  /* — SOLO DETECTION: aktif oyunda tek kişi kaldıysa otomatik bitir —
+   *  Sadece phase==='playing' iken; lobi/finished'ta çalışmaz. gameEndedRef
+   *  guard'ı re-entry ve sonsuz loop'u engeller. players realtime ile
+   *  güncellendiği için bu effect onun değişiminde yeniden çalışır ama
+   *  ilk başarıdan sonra ref true olur ve early-return olur.
+   */
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (gameEndedRef.current) return;
+    if (!room || !myIdRef.current) return;
+    if (players.length !== 1) return;
+    if (players[0].id !== myIdRef.current) return;
+    finishGameSoloWin();
+  }, [phase, players, room, finishGameSoloWin]);
+
   /* — KICKED CHECK: odadan silinen oyuncuyu lobby ekranına düşür — */
 useEffect(() => {
   if (!room) return;
@@ -891,6 +940,7 @@ useEffect(() => {
     setClaims([]);
     setIsHost(false);
     setFinalLeaderboard(null);
+    setSoloWinByAbandon(false);
     setErrorMsg(null);
     setStatusMsg(null);
     setKickedNoticeOpen(true);
@@ -1310,6 +1360,7 @@ const kickPlayer = useCallback(
       setClaims([]);
       setIsHost(false);
       setFinalLeaderboard(null);
+      setSoloWinByAbandon(false);
       setErrorMsg(null);
       setStatusMsg(null);
       setQuitModal(false);
@@ -1347,6 +1398,7 @@ const returnToRoom = useCallback(async () => {
   // Oyunun geçici state'lerini temizle ama ODAYI ve OYUNCULARI KORU
   setClaims([]);
   setFinalLeaderboard(null);
+  setSoloWinByAbandon(false);
   setErrorMsg(null);
   setStatusMsg(null);
   setQuitModal(false);
@@ -2076,10 +2128,13 @@ const returnToRoom = useCallback(async () => {
         const me = board.find(b => b.playerId === myIdRef.current);
         const myFinalScore = me?.score ?? 0;
         const top = board[0]?.score ?? 0;
-        const iWon = myFinalScore > 0 && myFinalScore === top;
+        // soloWinByAbandon: diğerleri çıktıysa skor=0 da olsa kazanan biziz
+        const iWon = soloWinByAbandon || (myFinalScore > 0 && myFinalScore === top);
         const titleText = iWon ? "KAZANDIN!" : "OYUN BİTTİ";
         const emoji = iWon ? "🏆" : "🏁";
-        const reasonText = "Süre doldu.";
+        const reasonText = soloWinByAbandon
+          ? "Odada tek kaldın, oyun bitti."
+          : "Süre doldu.";
         const podium = board.slice(0, 3);
         const totalClaims = board.reduce((s, b) => s + b.score, 0);
 
