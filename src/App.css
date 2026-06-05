@@ -7403,6 +7403,13 @@ body {
   gap: 16px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  /* Pas Geç butonu sadece currentTarget varken render olur (40px height). Tur
+     geçişlerinde butonun kaybolması bu satırı daraltıyor, .wd-map { flex:1 }
+     uzuyor, WorldMap'in ResizeObserver'ı dims'i değiştiriyor ve auto-fit
+     effect (region|w×h key'i ile) yeniden tetiklenip kullanıcının zoom/pan'ını
+     reset ediyordu. Min-height ile satır yüksekliğini sabitleyerek WorldMap'in
+     boyutu turlar arası stabil kalır. */
+  min-height: 56px;
 }
 .wd-score {
   display: inline-flex;
