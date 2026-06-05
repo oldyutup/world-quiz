@@ -926,7 +926,7 @@ useEffect(() => {
    *  fazlarında aktif — lobby'de gereksiz probe atmaz.
    */
   useEffect(() => {
-    if (phase !== "waiting" && phase !== "playing") return;
+    if (phase !== "searching" && phase !== "waiting" && phase !== "playing") return;
     const handle = initServerClockSync();
     return () => handle.dispose();
   }, [phase]);
@@ -1487,6 +1487,7 @@ ${shareLink}`
   const joinQuickMatchRoom = useCallback(
     async (roomId: string, playerId: string, opponentName?: string) => {
       if (quickMatchJoinedRef.current) return;
+      if (quickMatchAbortRef.current) return;
 
       // VALIDATE BEFORE COMMITTING. Önce odanın taze QM oda olduğunu doğrula
       // ki stale matched_room_id (cancel RPC matched satırları silmiyor)
