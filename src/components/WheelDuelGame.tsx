@@ -324,6 +324,19 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [hostClosedRoom, setHostClosedRoom] = useState(false);
 
+  /* ── Quit confirm modal (only during active match) ────────── */
+  type QuitStep = "idle" | "leave" | "menu";
+  const [quitModal, setQuitModal] = useState(false);
+  const [quitStep, setQuitStep] = useState<QuitStep>("idle");
+
+  // Phase 'playing' dışına çıkarsa (finished/lobby/setup/...) modal sızmasın.
+  useEffect(() => {
+    if (phase !== "playing") {
+      setQuitModal(false);
+      setQuitStep("idle");
+    }
+  }, [phase]);
+
   /* ── Lobby state (Supabase-bound) ─────────────────────────── */
   const [room, setRoom] = useState<WheelDuelRoom | null>(null);
   const [players, setPlayers] = useState<WheelDuelPlayer[]>([]);
@@ -1855,6 +1868,11 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           className="back-btn"
           onClick={() => {
             playSound("click");
+            if (phase === "playing") {
+              setQuitModal(true);
+              setQuitStep("idle");
+              return;
+            }
             if (room) {
               leaveRoom();
             }
@@ -2419,6 +2437,11 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                 className="back-btn wd-hud-back"
                 onClick={() => {
                   playSound("click");
+                  if (phase === "playing") {
+                    setQuitModal(true);
+                    setQuitStep("idle");
+                    return;
+                  }
                   leaveRoom();
                 }}
                 title="Lobiden Çık"
@@ -2719,6 +2742,96 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
             >
               ← Lobiye Dön
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ QUIT CONFIRM MODAL — sadece aktif maçta ════════ */}
+      {quitModal && (
+        <div
+          className="duel-quit-backdrop"
+          onClick={() => { setQuitModal(false); setQuitStep("idle"); }}
+        >
+          <div className="duel-quit-modal" onClick={e => e.stopPropagation()}>
+            {quitStep === "idle" && (
+              <>
+                <h3 className="duel-quit-title">Maçtan çıkmak istiyor musun?</h3>
+                <p className="duel-quit-sub">Çıkış yapan oyuncu maçı bırakmış sayılır.</p>
+                <div className="duel-quit-actions">
+                  <button
+                    className="btn duel-quit-action forfeit"
+                    onClick={() => setQuitStep("leave")}
+                  >
+                    🏳️ Maçtan Çık
+                  </button>
+                  <button
+                    className="btn duel-quit-action menu"
+                    onClick={() => setQuitStep("menu")}
+                  >
+                    🏠 Ana Menüye Dön
+                  </button>
+                  <button
+                    className="btn duel-quit-action cancel"
+                    onClick={() => { setQuitModal(false); setQuitStep("idle"); }}
+                  >
+                    ↩ İptal
+                  </button>
+                </div>
+              </>
+            )}
+
+            {quitStep === "leave" && (
+              <>
+                <h3 className="duel-quit-title">Maçtan çıkmak istediğine emin misin?</h3>
+                <p className="duel-quit-sub">Bu maçı bırakacaksın.</p>
+                <div className="duel-quit-actions">
+                  <button
+                    className="btn duel-quit-action forfeit"
+                    onClick={() => {
+                      setQuitModal(false);
+                      setQuitStep("idle");
+                      leaveRoom();
+                    }}
+                  >
+                    🏳️ Evet, Çık
+                  </button>
+                  <button
+                    className="btn duel-quit-action cancel"
+                    onClick={() => setQuitStep("idle")}
+                  >
+                    ↩ Vazgeç
+                  </button>
+                </div>
+              </>
+            )}
+
+            {quitStep === "menu" && (
+              <>
+                <h3 className="duel-quit-title">Ana Menüye Dön?</h3>
+                <p className="duel-quit-sub">
+                  Maç devam ediyor. Ana menüye dönersen bu maçı bırakmış sayılacaksın.
+                </p>
+                <div className="duel-quit-actions">
+                  <button
+                    className="btn duel-quit-action forfeit"
+                    onClick={() => {
+                      setQuitModal(false);
+                      setQuitStep("idle");
+                      leaveRoom();
+                      onHome();
+                    }}
+                  >
+                    ✓ Evet, çık
+                  </button>
+                  <button
+                    className="btn duel-quit-action cancel"
+                    onClick={() => setQuitStep("idle")}
+                  >
+                    ↩ Geri
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
