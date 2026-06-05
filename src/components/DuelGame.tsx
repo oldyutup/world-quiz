@@ -236,7 +236,23 @@ function buildAllowedSet(region: string): Set<string> | null {
 }
 
 /* ─── phase ─── */
-type DuelPhase = "lobby" | "creating" | "waiting" | "playing" | "finished";
+type DuelPhase = "lobby" | "creating" | "searching" | "waiting" | "playing" | "finished";
+
+/* ─── HIZLI EŞLEŞ ───
+ *  Bayrak/Çark deseni ile birebir simetrik:
+ *  - 3 sn aralıkla country_duel_quick_match RPC çağrısı
+ *  - Bekleme süresine göre bracket genişler
+ *  - RPC tarafı LEAST(caller, candidate) uygular → simetrik kabul
+ */
+const QUICK_MATCH_TICK_MS = 3000;
+
+function quickMatchBracket(searchSeconds: number): number {
+  if (searchSeconds < 10) return 0;
+  if (searchSeconds < 20) return 2;
+  if (searchSeconds < 30) return 5;
+  if (searchSeconds < 60) return 15;
+  return 9999;
+}
 
 interface DuelGameProps {
   onHome: () => void;
@@ -301,6 +317,22 @@ export default function DuelGame({
   // Rematch state
   type RematchState = "idle" | "requested" | "received" | "declined";
   const [rematch, setRematch] = useState<RematchState>("idle");
+
+  /* ── Hızlı Eşleş state + ref'ler (Bayrak/Çark deseni) ──
+   *  searching → polling RPC ile rakip arar; bracket genişler.
+   *  Eşleşince RPC matched_room_id UPDATE yapar (bekleyen client realtime
+   *  ile yakalar) veya RPC dönüşünden caller direkt joinQuickMatchRoom çağırır.
+   *  Sonra phase 'playing' olur; started_at gelecekte (now()+3s) iken
+   *  countdown overlay 3sn boyunca gösterilir.
+   */
+  const [searchSeconds,    setSearchSeconds]    = useState(0);
+  const [countdownSeconds, setCountdownSeconds] = useState(0);
+  const quickMatchTickRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quickMatchSecondsRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const quickMatchStartMsRef   = useRef<number>(0);
+  const quickMatchAbortRef     = useRef(false);
+  const quickMatchJoinedRef    = useRef(false);
+  const quickMatchCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Frozen scores at game end — prevent late realtime claims from changing result display
   const [finalScores, setFinalScores] = useState<{ my: number; opp: number } | null>(null);
@@ -553,6 +585,14 @@ useEffect(() => {
   const timerPct   = (timeLeft / gameDuration) * 100;
   const timerColor = timeLeft > gameDuration * 0.33 ? "var(--accent)" : timeLeft > gameDuration * 0.13 ? "#f59e0b" : "#ef4444";
   const gameOver = gameEndedRef.current || timeLeft <= 0 || phase === "finished";
+  // QM countdown buffer aktif mi? handleGuess'in client-side fairness guard'ı
+  // ile birebir eşleşmeli (server-side started_at kontrolü yok).
+  const qmCountdownActive =
+    !!room
+    && room.room_source === "quick_match"
+    && countdownSeconds > 0;
+  // Input/submit tarafı için kompozit: gameOver olmasa bile countdown'da kilit.
+  const inputLocked = gameOver || qmCountdownActive;
   const inputCls = ["duel-input",
     feedback === "ok"  ? "ok"  : "",
     feedback === "err" || feedback === "dup" || feedback === "region" ? "err" : "",
@@ -1329,6 +1369,20 @@ if (!code) {
     // ── GUARD: must be playing, have a room, and have time left ──
     if (phaseRef.current !== "playing") return;
     if (gameEndedRef.current) return;
+
+    // ── QM COUNTDOWN GUARD (fairness) ──
+    // Quick match odası RPC tarafından started_at = now() + 3s ile kuruluyor;
+    // bu sırada phase 'playing' ama saat henüz başlamadı. Server-side claim
+    // RPC'si started_at kontrolü yapmadığından, client guard koymazsak iki
+    // oyuncudan biri buffer'da yazıp Enter'a basıp puan kayıt edebilir.
+    // serverClock üzerinden okuyoruz; lokal saat kayması yansımasın.
+    if (
+      room?.room_source === "quick_match" &&
+      room.started_at &&
+      getSyncedNowMs() < new Date(room.started_at).getTime()
+    ) {
+      return;
+    }
     if (activePlayerIdRef.current && claimTokenRef.current) {
   const now = Date.now();
 
@@ -1418,212 +1472,359 @@ ${shareLink}`
   };
 
 
-  /* ── QUICK MATCH ── */
-  // findOrCreateQuickMatchRoom:
-  //   1. Search Supabase for waiting rooms with matching settings, oldest first.
-  //   2. For each candidate, fetch player count (not using head:true to avoid RLS issues).
-  //   3. If count === 1, join that room and start the game.
-  //   4. If no suitable room found, create a new one and wait.
-  //
-  // Region normalization: UI uses "north-america"/"south-america" (with hyphen)
-  // but DB stores "north_america"/"south_america" (with underscore) for consistent queries.
-  const quickMatch = async () => {
-    // When called from result screen, playerName may be empty — fall back to last known name
-    const name = effectivePlayerName.trim();
-const usernameError = validateUsername(name);
+  /* ════════════════════════════════════════════════════════════════
+     HIZLI EŞLEŞ — startQuickMatch / cancelQuickMatch / join
+     ────────────────────────────────────────────────────────────────
+     Backend: country_duel_quick_match / cancel / reset RPC'leri
+     (supabase/migrations/20260701120000_country_duel_quick_match.sql).
+     Akış Bayrak/Çark ile birebir simetrik. Giriş zorunlu — misafir
+     kullanılamaz; lobby butonu auth check'i UI tarafında yapıyor.
+  ════════════════════════════════════════════════════════════════ */
 
-if (usernameError) {
-  setErrorMsg(usernameError);
-  setStatusMsg(null);
-  setPhase("lobby");
-  return;
-}
+  /** RPC dönüşünden veya realtime UPDATE'inden sonra çağrılır.
+   *  Odayı + iki player'ı yükler, lokal state'i set eder, phase 'playing'.
+   *  Tek seferlik: quickMatchJoinedRef ile guard'lı. */
+  const joinQuickMatchRoom = useCallback(
+    async (roomId: string, playerId: string, opponentName?: string) => {
+      if (quickMatchJoinedRef.current) return;
 
-    setErrorMsg(null);
-    setStatusMsg("Rakip aranıyor…");
-    setPhase("creating");
-    setRematch("idle");  // reset rematch state
+      // VALIDATE BEFORE COMMITTING. Önce odanın taze QM oda olduğunu doğrula
+      // ki stale matched_room_id (cancel RPC matched satırları silmiyor)
+      // search state'i bozmasın. Bayrak'taki self-heal yaklaşımıyla aynı.
+      const { data: roomData, error: roomErr } = await supabase
+        .from("duel_rooms")
+        .select("*")
+        .eq("id", roomId)
+        .maybeSingle();
 
-    await supabase.rpc("cleanup_expired_duel_lobbies");
-
-    // Always generate a fresh identity for quick match
-    clearDuelSession();
-    const freshId    = freshPlayerId();
-    const freshToken = freshClaimToken();
-    myIdRef.current        = freshId;
-    claimTokenRef.current  = freshToken;
-    const { profileId, guestId } = getIdentityArgs();
-
-    // Normalize region for DB consistency
-    const dbRegion   = normalizeRegion(hostRegion);
-    const dbDuration = hostDuration;
-    const freshRoomLimit = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    const freshPlayerLimit = new Date(Date.now() - 45 * 1000).toISOString();
-
-    console.log("[QM] normalizedRegion:", dbRegion, "normalizedDuration:", dbDuration, "freshId:", freshId);
-
-    // ─── Step 1: Find a suitable waiting room ───────────────────────────────
-    // Fetch all waiting rooms matching our settings, oldest first.
-    // We deliberately select full rows (not head:count) to avoid RLS issues.
-    const { data: waitingRooms, error: searchErr } = await supabase
-      .from("duel_rooms")
-      .select("id, code, status, duration_seconds, region, created_at")
-      .eq("status", "waiting")
-.eq("region", dbRegion)
-.eq("duration_seconds", dbDuration)
-.gte("created_at", freshRoomLimit)
-.order("created_at", { ascending: true })
-.limit(20);
-
-    if (searchErr) {
-      console.error("[QM] search error:", searchErr);
-    }
-
-    console.log("[QM] waiting rooms found:", waitingRooms?.map(r => r.code) ?? []);
-
-    let targetRoom: DuelRoom | null = null;
-
-    if (waitingRooms && waitingRooms.length > 0) {
-      // Check each room's player count
-      for (const candidate of waitingRooms) {
-        console.log("[QM] checking room:", candidate.code, candidate.id);
-
-        const { data: roomPlayers, error: pErr } = await supabase
-  .from("duel_players")
-  .select("id")
-  .eq("room_id", candidate.id)
-  .gte("last_seen_at", freshPlayerLimit);
-
-        const pCount = roomPlayers?.length ?? 0;
-        console.log("[QM] player count for", candidate.code, ":", pCount, pErr ? "(error: " + pErr.message + ")" : "");
-
-        if (pErr) continue; // skip on error
-
-        if (pCount === 1) {
-          // Perfect: exactly one player waiting
-          targetRoom = candidate as DuelRoom;
-          console.log("[QM] selected room:", candidate.code);
-          break;
-        }
-        // pCount === 0 → orphan room (skip)
-        // pCount >= 2 → full (skip)
-      }
-    }
-
-    // ─── Step 2a: JOIN existing room ────────────────────────────────────────
-    if (targetRoom) {
-      console.log("[QM] joining existing room:", targetRoom.code);
-
-      // Final race-condition guard: re-check count right before inserting
-      const { data: preCheckPs } = await supabase
-        .from("duel_players")
-        .select("id")
-        .eq("room_id", targetRoom.id);
-
-      const preCount = preCheckPs?.length ?? 0;
-      console.log("[QM] pre-insert player count:", preCount);
-
-      if (preCount !== 1) {
-        // Room was taken between our search and now — fall through to create
-        console.log("[QM] race condition: room taken, will create new one");
-        targetRoom = null;
-      }
-    }
-
-    if (targetRoom) {
-      // duel_join_room RPC: kapasite + isim çakışması + insert tek transaction.
-      // RPC name_taken / room_full / room_in_progress / room_finished hatalarını
-      // PG raise ile döner; fall-through ile create yoluna düşeriz.
-      const { data: joinedRoom, error: joinErr } = await supabase.rpc("duel_join_room", {
-        p_code:        targetRoom.code,
-        p_player_id:   freshId,
-        p_profile_id:  profileId,
-        p_guest_id:    guestId,
-        p_name:        name,
-        p_claim_token: freshToken,
-      });
-
-      if (joinErr || !joinedRoom) {
-        console.warn("[QM] duel_join_room failed, falling through to create:", joinErr);
-        targetRoom = null;
-      } else {
-        // ── Joiner state'i set; status='playing'i biz YAZMIYORUZ.
-        //    Host realtime'da 2. player'ı görünce duel_start_game atar.
-        const joined = joinedRoom as DuelRoom;
-        const { data: afterPs } = await supabase
-          .from("duel_players").select("*").eq("room_id", joined.id);
-
-        const { data: cs } = await supabase
-          .from("duel_claims").select("*").eq("room_id", joined.id);
-
-        saveRoomSession(joined.id, joined.code, freshId, freshToken);
-        setRoom(joined);
-        setPlayers(afterPs ?? []);
-        setClaims(cs ?? []);
-        setIsHost(false);
-        setIsQuickMatch(true);
-        setTimeLeft(joined.duration_seconds);
-        setStatusMsg(null);
-        // Joiner için phase: status='playing' realtime UPDATE'iyle gelecek;
-        // başlangıçta "waiting" tut, RT host'tan playing UPDATE'i alınca geçer.
-        setPhase(joined.status === "playing" ? "playing" : "waiting");
-        console.log("[QM] joined ✓ (host will auto-start)", joined.code);
+      if (roomErr || !roomData) {
+        dbgErr("joinQuickMatchRoom: room fetch failed, will retry on next tick", roomErr);
         return;
       }
+
+      const r = roomData as DuelRoom;
+
+      // Stale-room guard: QM odası RPC tarafından status='playing' + started_at
+      // = now()+3s ile kurulur. 30sn'den taze değilse veya status != playing
+      // ise önceki bir maçtan kalmış → sessizce atla ki polling devam etsin.
+      const startedAtMs = r.started_at ? new Date(r.started_at).getTime() : 0;
+      const isStaleRoom =
+        r.status !== "playing" ||
+        !startedAtMs ||
+        getSyncedNowMs() - startedAtMs > 30_000;
+      if (isStaleRoom) {
+        dbgErr("joinQuickMatchRoom: stale matched_room_id, skipping silently", {
+          status: r.status,
+          started_at: r.started_at,
+        });
+        return;
+      }
+
+      // OK, fresh match — commit to join.
+      quickMatchJoinedRef.current = true;
+
+      // Polling/heartbeat'i durdur
+      if (quickMatchTickRef.current) {
+        clearInterval(quickMatchTickRef.current);
+        quickMatchTickRef.current = null;
+      }
+      if (quickMatchSecondsRef.current) {
+        clearInterval(quickMatchSecondsRef.current);
+        quickMatchSecondsRef.current = null;
+      }
+      quickMatchAbortRef.current = true;
+
+      myIdRef.current = playerId;
+      activePlayerIdRef.current = playerId;
+      // QM-country: country_duel_quick_match RPC duel_player_claims kaydı atmaz;
+      // auth duel_authorize_player'ın profile_id branch'inden geçiyor (PR-1
+      // migration duel_players.profile_id'yi caller/waiter için doldurur).
+      // claim_token yine de fresh üretelim — DuelGame'in submit/heartbeat RPC
+      // parametreleri uuid bekliyor (boş string PostgREST'te uuid_in('') hatası
+      // verir); değer authorize'a girmiyor ama parametre formatı için gerekli.
+      claimTokenRef.current = freshClaimToken();
+
+      const { data: ps } = await supabase
+        .from("duel_players")
+        .select("*")
+        .eq("room_id", roomId)
+        .order("joined_at", { ascending: true });
+
+      const playerList = (ps ?? []) as DuelPlayer[];
+      // Host kararı DB'deki host_player_id üzerinden (QM RPC waiter'ı host
+      // olarak set ediyor — deterministic). NULL ise fallback player_id sort.
+      const hostId =
+        (r.host_player_id ?? "") ||
+        [...playerList].sort((a, b) => a.id.localeCompare(b.id))[0]?.id ||
+        "";
+      const isMeHost = hostId === playerId;
+
+      saveRoomSession(r.id, r.code, playerId, claimTokenRef.current);
+
+      // XP idempotency için fresh state
+      setXpResult(null);
+      xpAwardedRef.current = false;
+      gameEndedRef.current = false;
+      setFinalScores(null);
+
+      setRoom(r);
+      setPlayers(playerList);
+      setClaims([]);
+      setIsHost(isMeHost);
+      setIsQuickMatch(true);
+      setTimeLeft(r.duration_seconds);
+
+      // Quick match countdown başlat (started_at - now() farkı). started_at
+      // server tarafında now()+3s; client clock drift olunca buffer negatif
+      // veya büyük görünebilir → synced clock kullanıyoruz.
+      const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
+      const now = getSyncedNowMs();
+      const remainMs = Math.max(0, startMs - now);
+      setCountdownSeconds(Math.ceil(remainMs / 1000));
+
+      if (quickMatchCountdownRef.current) {
+        clearInterval(quickMatchCountdownRef.current);
+        quickMatchCountdownRef.current = null;
+      }
+      if (remainMs > 0) {
+        const tick = () => {
+          const remaining = Math.max(0, startMs - getSyncedNowMs());
+          setCountdownSeconds(Math.ceil(remaining / 1000));
+          if (remaining <= 0 && quickMatchCountdownRef.current) {
+            clearInterval(quickMatchCountdownRef.current);
+            quickMatchCountdownRef.current = null;
+          }
+        };
+        quickMatchCountdownRef.current = setInterval(tick, 200);
+      }
+
+      if (opponentName) setStatusMsg(`Rakip bulundu: ${opponentName}`);
+      else              setStatusMsg(null);
+      setErrorMsg(null);
+      setPhase("playing");
+      dbg("joinQuickMatchRoom: switched to playing ✓", { roomId, isMeHost });
+    },
+    [],
+  );
+
+  // Forward ref pattern — quickMatchTick içinden cancel'a erişim için
+  const cancelQuickMatchRef = useRef<(() => void) | null>(null);
+
+  /** Polling tick — SELECT-first guard sonra RPC. */
+  const quickMatchTick = useCallback(async () => {
+    if (quickMatchAbortRef.current) return;
+    if (!profile?.id) return;
+
+    const myProfileId = profile.id;
+
+    // SELECT-first guard: realtime UPDATE jitter olabilir VE RPC UPSERT'ü
+    // matched_room_id'yi NULL'a çekiyor (caller path için doğru, bekleyen
+    // için yan etki). Önce kendi queue satırımı oku, matched_room_id doluysa
+    // join'e geç.
+    const { data: selfRow } = await supabase
+      .from("country_duel_queue")
+      .select("matched_room_id, player_id")
+      .eq("profile_id", myProfileId)
+      .maybeSingle();
+
+    if (quickMatchAbortRef.current) return;
+
+    if (selfRow?.matched_room_id && selfRow.player_id) {
+      await joinQuickMatchRoom(selfRow.matched_room_id, selfRow.player_id);
+      // joinQuickMatchRoom stale guard ile no-op'a düşmüş olabilir → o zaman
+      // RPC'ye düşmeye devam etmeliyiz (stale row self-heal RPC içinde).
+      if (quickMatchJoinedRef.current) return;
     }
 
-    // ─── Step 2b: CREATE new room and wait ──────────────────────────────────
-    console.log("[QM] creating new room (no suitable room found)");
-    const code = makeCode();
-    const { data: roomData, error: roomErr } = await supabase.rpc("duel_create_room", {
-      p_player_id:   freshId,
-      p_profile_id:  profileId,
-      p_guest_id:    guestId,
-      p_name:        name,
-      p_code:        code,
-      p_duration:    dbDuration,
-      p_region:      dbRegion,
-      p_claim_token: freshToken,
+    const elapsed = Math.floor((Date.now() - quickMatchStartMsRef.current) / 1000);
+    const bracket = quickMatchBracket(elapsed);
+    const myPlayerId = myIdRef.current;
+    const myName     = (profile.username ?? "").trim();
+    const code       = makeCode();
+
+    const { data, error } = await supabase.rpc("country_duel_quick_match", {
+      p_profile_id:     myProfileId,
+      p_player_id:      myPlayerId,
+      p_player_name:    myName,
+      p_duration:       hostDuration,
+      p_region:         normalizeRegion(hostRegion),
+      p_max_level_diff: bracket,
+      p_room_code:      code,
     });
 
-    if (roomErr || !roomData) {
-      console.error("[QM] failed to create room:", roomErr);
-      setErrorMsg(describeDuelRpcError(roomErr));
-      setStatusMsg(null); setPhase("lobby"); return;
+    if (quickMatchAbortRef.current) return;
+
+    if (error) {
+      dbgErr("country_duel_quick_match RPC error", error);
+      setErrorMsg("Hızlı eşleş hatası: " + (error.message ?? "Bilinmeyen"));
+      cancelQuickMatchRef.current?.();
+      return;
     }
-    const newRoom = roomData as DuelRoom;
 
-    const { data: initPs } = await supabase
-      .from("duel_players").select("*").eq("room_id", newRoom.id);
+    const res = data as {
+      matched:             boolean;
+      room_id?:            string;
+      my_player_id?:       string;
+      opponent_name?:      string | null;
+      search_age_seconds?: number;
+    };
 
-    saveRoomSession(newRoom.id, newRoom.code, freshId, freshToken);
-    setRoom(newRoom);
-    setPlayers(initPs ?? []);
-    setClaims([]);
-    setIsHost(true);
-    setIsQuickMatch(true);
-    setTimeLeft(dbDuration);
+    if (res?.matched && res.room_id && res.my_player_id) {
+      await joinQuickMatchRoom(res.room_id, res.my_player_id, res.opponent_name ?? undefined);
+      return;
+    }
+    // Henüz eşleşme yok — searchSeconds zaten ayrı interval ile artıyor.
+  }, [profile?.id, profile?.username, hostDuration, hostRegion, joinQuickMatchRoom]);
+
+  const cancelQuickMatch = useCallback(async () => {
+    quickMatchAbortRef.current = true;
+
+    if (quickMatchTickRef.current) {
+      clearInterval(quickMatchTickRef.current);
+      quickMatchTickRef.current = null;
+    }
+    if (quickMatchSecondsRef.current) {
+      clearInterval(quickMatchSecondsRef.current);
+      quickMatchSecondsRef.current = null;
+    }
+    if (quickMatchCountdownRef.current) {
+      clearInterval(quickMatchCountdownRef.current);
+      quickMatchCountdownRef.current = null;
+    }
+
+    setSearchSeconds(0);
     setStatusMsg(null);
-    setPhase("waiting");
-    console.log("[QM] created new room, waiting for opponent:", newRoom.code);
-  };
+    setPhase("lobby");
 
-    /* ── CANCEL QUICK MATCH ── */
-  const cancelQuickMatch = async () => {
-    if (room && claimTokenRef.current) {
-      // duel_leave_room RPC: host ise oda+player'lar cascade delete; misafir
-      // ise kendi satırı + oda boşaldıysa oda da silinir.
-      const { error } = await supabase.rpc("duel_leave_room", {
-        p_room_id:     room.id,
-        p_player_id:   myIdRef.current,
-        p_claim_token: claimTokenRef.current,
-      });
-      if (error) dbgErr("cancelQuickMatch leave_room failed", error);
-      else dbg("cancelQuickMatch: cleaned up room", room.id);
+    if (profile?.id) {
+      try {
+        await supabase.rpc("country_duel_cancel_quick_match", {
+          p_profile_id: profile.id,
+        });
+      } catch (e) {
+        console.warn("[DuelGame] cancel_quick_match RPC failed", e);
+      }
     }
+  }, [profile?.id]);
+
+  useEffect(() => {
+    cancelQuickMatchRef.current = cancelQuickMatch;
+  }, [cancelQuickMatch]);
+
+  const startQuickMatch = useCallback(async () => {
+    playSound("click");
+    setErrorMsg(null);
+
+    if (!profile?.id || !profile.username) {
+      setErrorMsg("Hızlı eşleş için giriş gerekli.");
+      return;
+    }
+
+    // Quick match identity: her aramada fresh player UUID
+    clearDuelSession();
+    const freshId = freshPlayerId();
+    myIdRef.current = freshId;
+    claimTokenRef.current = "";
+
+    // Önceki maç state'ini temizle (sonuç ekranından gelinmiş olabilir)
+    setRoom(null);
+    setPlayers([]);
+    setClaims([]);
+    setIsHost(false);
     setIsQuickMatch(false);
-    backToLobby();
-  };
+    setRematch("idle");
+    setXpResult(null);
+    xpAwardedRef.current = false;
+    gameEndedRef.current = false;
+    setFinalScores(null);
+
+    // Reset guards & timers
+    quickMatchAbortRef.current  = false;
+    quickMatchJoinedRef.current = false;
+    quickMatchStartMsRef.current = Date.now();
+    setSearchSeconds(0);
+    setCountdownSeconds(0);
+    setPhase("searching");
+
+    // Önceki maçtan kalan country_duel_queue satırını sil. Cancel RPC yalnız
+    // matched_room_id=NULL siliyor; reset koşulsuz siler → SELECT-first guard
+    // önceki tamamlanmış maça yapışmasın.
+    try {
+      const { error: resetErr } = await supabase.rpc(
+        "country_duel_reset_quick_match",
+        { p_profile_id: profile.id },
+      );
+      if (resetErr) console.warn("[DuelGame] reset_quick_match RPC error:", resetErr);
+    } catch (e) {
+      console.warn("[DuelGame] reset_quick_match RPC threw:", e);
+    }
+
+    // Saniye sayacı (UI display + bracket)
+    quickMatchSecondsRef.current = setInterval(() => {
+      const s = Math.floor((Date.now() - quickMatchStartMsRef.current) / 1000);
+      setSearchSeconds(s);
+    }, 1000);
+
+    // İlk RPC çağrısı + polling.
+    // İlk tick eşleşmeyle dönerse joinQuickMatchRoom abort+joined flag'lerini
+    // true yapmış olur; bu durumda interval'i HİÇ kurmuyoruz (aksi halde
+    // no-op tick'ler component lifetime boyunca leak'ler).
+    await quickMatchTick();
+    if (!quickMatchAbortRef.current && !quickMatchJoinedRef.current) {
+      quickMatchTickRef.current = setInterval(() => {
+        quickMatchTick();
+      }, QUICK_MATCH_TICK_MS);
+    }
+  }, [profile?.id, profile?.username, quickMatchTick]);
+
+  /* Realtime: bekleyen oyuncu kendi queue satırının matched_room_id UPDATE'ini
+     dinler. Caller RPC dönüşünde direkt join eder; listener güvenlik ağı. */
+  useEffect(() => {
+    if (phase !== "searching") return;
+    if (!profile?.id) return;
+
+    const myProfileId = profile.id;
+    const chan = supabase
+      .channel(`country-duel-queue:${myProfileId}`)
+      .on(
+        "postgres_changes",
+        {
+          event:  "UPDATE",
+          schema: "public",
+          table:  "country_duel_queue",
+          filter: `profile_id=eq.${myProfileId}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            matched_room_id: string | null;
+            player_id:       string;
+          };
+          if (!row.matched_room_id) return;
+          if (quickMatchJoinedRef.current) return;
+          joinQuickMatchRoom(row.matched_room_id, row.player_id);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chan);
+    };
+  }, [phase, profile?.id, joinQuickMatchRoom]);
+
+  /* Component unmount'ta searching ise queue satırını temizle. */
+  useEffect(() => {
+    return () => {
+      if (quickMatchTickRef.current)      clearInterval(quickMatchTickRef.current);
+      if (quickMatchSecondsRef.current)   clearInterval(quickMatchSecondsRef.current);
+      if (quickMatchCountdownRef.current) clearInterval(quickMatchCountdownRef.current);
+      if (profile?.id && !quickMatchJoinedRef.current) {
+        supabase.rpc("country_duel_cancel_quick_match", {
+          p_profile_id: profile.id,
+        }).then(() => {});
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
     /* ── FORFEIT ──
    *  The forfeiting player ALWAYS loses, regardless of score.
@@ -2032,20 +2233,84 @@ setXpResult(null); xpAwardedRef.current = false;
               </div>
             </div>
 
-            {/* Quick Match */}
+            {/* Quick Match — Bayrak/Çark deseni: auth zorunlu */}
             <div className="duel-section-divider">veya hızlı eşleş</div>
-            <button
-              className="btn duel-quickmatch-btn"
-              onClick={quickMatch}
-              disabled={phase === "creating"}
-            >
-              {phase === "creating" && statusMsg?.includes("Rakip")
-                ? <><span className="qm-spinner"/>Rakip aranıyor…</>
-                : <>⚡ Hızlı Eşleş</>}
-            </button>
+            {!profile?.username ? (
+              <button
+                className="btn duel-quickmatch-btn"
+                disabled
+                title="Hızlı eşleş için giriş gerekli"
+              >
+                ⚡ Hızlı Eşleş{" "}
+                <span style={{ opacity: 0.65 }}>(Giriş Gerekli)</span>
+              </button>
+            ) : (
+              <button
+                className="btn btn-accent duel-quickmatch-btn"
+                onClick={startQuickMatch}
+                disabled={phase === "creating"}
+                title="Aynı süre + bölge seçen biriyle otomatik eşleş"
+              >
+                ⚡ Hızlı Eşleş
+              </button>
+            )}
 
             {errorMsg  && <p className="duel-error">{errorMsg}</p>}
             {statusMsg && !statusMsg.includes("Rakip") && <p className="duel-status">{statusMsg}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ════════ SEARCHING (Quick Match) ════════ */}
+      {phase === "searching" && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
+            <h2 className="duel-lobby-title">⚡ Hızlı Eşleş</h2>
+            <p className="duel-lobby-desc">
+              Aynı süre ve bölgeyi seçen, seviyene yakın bir rakip aranıyor…
+            </p>
+
+            <div style={{
+              display: "flex", flexDirection: "column",
+              gap: 6, margin: "16px 0", fontSize: 14,
+            }}>
+              <div>
+                <strong>Süre:</strong> {DURATION_OPTS.find(d => d.value === hostDuration)?.label ?? `${hostDuration}sn`}{" "}
+                <span style={{ opacity: 0.5 }}>·</span>{" "}
+                <strong>Bölge:</strong>{" "}
+                {REGION_OPTS.find(r => r.value === hostRegion)?.label ?? "🌍 Dünya"}
+              </div>
+              <div style={{ opacity: 0.85 }}>
+                Bekleme: {Math.floor(searchSeconds / 60)}:
+                {String(searchSeconds % 60).padStart(2, "0")}
+                <span style={{ opacity: 0.5 }}> · </span>
+                Aralık:{" "}
+                {(() => {
+                  const b = quickMatchBracket(searchSeconds);
+                  return b >= 9999 ? "her seviye" : `±${b} lv`;
+                })()}
+              </div>
+            </div>
+
+            <div style={{
+              fontSize: 36, margin: "8px 0 16px",
+              animation: "wd-spin 1.4s linear infinite",
+              display: "inline-block",
+            }}>
+              ⌨️
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => { playSound("click"); cancelQuickMatch(); }}
+            >
+              ✕ Aramayı İptal Et
+            </button>
+
+            {errorMsg && (
+              <p className="duel-error" style={{ marginTop: 12 }}>{errorMsg}</p>
+            )}
           </div>
         </div>
       )}
@@ -2055,20 +2320,8 @@ setXpResult(null); xpAwardedRef.current = false;
         <div className="duel-lobby">
             <div className="duel-lobby-with-chat duel-1v1-room-layout">
             <div className="duel-lobby-card duel-1v1-room-card">
-            {isQuickMatch ? (
-              /* ── Quick match waiting UI ── */
-              <div className="qm-waiting">
-                <div className="qm-spinner-lg"/>
-                <h2 className="duel-lobby-title">Rakip Aranıyor…</h2>
-                <p className="duel-lobby-desc">Uygun bir rakip bulunduğunda otomatik başlayacak.</p>
-                <div className="duel-settings-summary">
-                  <span>⏱ {durationLabel}</span>
-                  <span className="duel-sum-dot">·</span>
-                  <span>{regionLabel}</span>
-                </div>
-                <button className="btn btn-ghost" onClick={cancelQuickMatch}>✕ İptal</button>
-              </div>
-            ) : (
+              {/* QM akışı artık `phase === "searching"` üzerinden işliyor;
+                  waiting fazına yalnız manuel oda akışı düşüyor. */}
               <>
                 <h2 className="duel-lobby-title" style={{ fontSize: 22, margin: "0 0 14px" }}>
   Rakip Bekleniyor…
@@ -2311,19 +2564,16 @@ setXpResult(null); xpAwardedRef.current = false;
 
 {errorMsg && <p className="duel-error">{errorMsg}</p>}
               </>
-            )}
           </div>
-       {!isQuickMatch && (
-  <div className="duel-wait-chat-align">
-    <LobbyChat
-      roomCode={room.code}
-      playerName={effectivePlayerName}
-      sendMode="duel"
-      playerId={myIdRef.current}
-      claimToken={claimTokenRef.current}
-    />
-  </div>
-)}
+          <div className="duel-wait-chat-align">
+            <LobbyChat
+              roomCode={room.code}
+              playerName={effectivePlayerName}
+              sendMode="duel"
+              playerId={myIdRef.current}
+              claimToken={claimTokenRef.current}
+            />
+          </div>
           </div>
         </div>
       )}
@@ -2345,6 +2595,48 @@ setXpResult(null); xpAwardedRef.current = false;
         </div>
       )}
       
+      {/* ════════ QUICK MATCH COUNTDOWN — playing UI'ın üstüne overlay ════════ */}
+      {phase === "playing"
+        && room
+        && room.room_source === "quick_match"
+        && countdownSeconds > 0 && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1500,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.55)",
+              backdropFilter: "blur(6px)",
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                textAlign: "center",
+                color: "var(--accent, #facc15)",
+                fontWeight: 800,
+                lineHeight: 1.1,
+                userSelect: "none",
+              }}
+            >
+              <div style={{ fontSize: 18, opacity: 0.85, marginBottom: 6 }}>
+                Hazırlan…
+              </div>
+              <div
+                style={{
+                  fontSize: 96,
+                  textShadow: "0 4px 24px rgba(0,0,0,0.6)",
+                }}
+              >
+                {countdownSeconds}
+              </div>
+            </div>
+          </div>
+      )}
+
       {/* ════════ PLAYING (finished'da da render — arka plan blur'lansın) ════════ */}
       {(phase === "playing" || phase === "finished") && (
         <>
@@ -2407,18 +2699,22 @@ setXpResult(null); xpAwardedRef.current = false;
               ref={inputRef}
               type="text"
               className={inputCls}
-              disabled={gameOver}
-              placeholder={gameOver
-                ? "Süre bitti"
-                : allowedIds
-                  ? `${regionLabel} ülkesi yaz… (Enter)`
-                  : "Ülke adı yaz… (Enter)"}
-              value={gameOver ? "" : input}
-              onChange={e => { if (!gameOver) setInput(e.target.value); }}
-              onKeyDown={e => { if (e.key === "Enter" && !gameOver) handleGuess(); }}
+              disabled={inputLocked}
+              placeholder={
+                gameOver
+                  ? "Süre bitti"
+                  : qmCountdownActive
+                    ? "Hazırlan…"
+                    : allowedIds
+                      ? `${regionLabel} ülkesi yaz… (Enter)`
+                      : "Ülke adı yaz… (Enter)"
+              }
+              value={inputLocked ? "" : input}
+              onChange={e => { if (!inputLocked) setInput(e.target.value); }}
+              onKeyDown={e => { if (e.key === "Enter" && !inputLocked) handleGuess(); }}
               autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
             />
-            <button className="btn btn-accent" onClick={handleGuess} disabled={gameOver}>Gir</button>
+            <button className="btn btn-accent" onClick={handleGuess} disabled={inputLocked}>Gir</button>
             <div className="duel-fb-slot">
               {feedback === "ok"     && <span className="fb fb-ok">✓ Alındı!</span>}
               {feedback === "err"    && <span className="fb fb-no">✗ Bulunamadı</span>}
@@ -2571,9 +2867,26 @@ setXpResult(null); xpAwardedRef.current = false;
 
             {/* ── Actions ── */}
             <div className="duel-result-actions">
-              <button className="btn btn-accent" onClick={quickMatch}>
-                ⚡ Hızlı Eşleş
-              </button>
+              {!profile?.username ? (
+                <button
+                  className="btn btn-accent"
+                  disabled
+                  title="Hızlı eşleş için giriş gerekli"
+                >
+                  ⚡ Hızlı Eşleş <span style={{ opacity: 0.65 }}>(Giriş Gerekli)</span>
+                </button>
+              ) : (
+                <button
+                  className="btn btn-accent"
+                  onClick={() => {
+                    // Sonuç ekranından doğrudan yeni aramaya geç.
+                    // setState batch'inden sonra startQuickMatch tetiklensin.
+                    Promise.resolve().then(() => startQuickMatch());
+                  }}
+                >
+                  ⚡ Hızlı Eşleş
+                </button>
+              )}
               <button className="btn btn-ghost" onClick={onHome}>
                 ⌂ Ana Menü
               </button>

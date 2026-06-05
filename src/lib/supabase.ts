@@ -44,10 +44,16 @@ export interface DuelRoom {
   /** Timestamp when the disconnect was recorded — used to compute remaining grace */
   disconnect_at:          string | null;
 
+  /** Host kararı için server-side authoritative kolon. Manuel akışta
+   *  duel_create_room caller'ı host yapar; QM akışında country_duel_quick_match
+   *  waiter'ı host yapar. Eski satırlarda NULL kalabilir. */
+  host_player_id?:     string | null;
+
   /** Oda nasıl oluşturuldu:
    *   - 'manual'      → createRoom + kod ile katıl + host startGame (lobby)
-   *   - 'quick_match' → flag_duel_quick_match RPC (lobby YOK, started_at +3s)
-   *  Default 'manual'; country DuelGame manuel akışı bu varsayılan ile çalışır. */
+   *   - 'quick_match' → country_duel_quick_match / flag_duel_quick_match RPC
+   *                     (lobby YOK, started_at +3s buffer ile direkt 'playing')
+   *  Default 'manual'; mevcut satırlar bu varsayılan ile çalışır. */
   room_source?:           "manual" | "quick_match";
 }
 
