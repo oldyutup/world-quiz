@@ -52,7 +52,9 @@ import {
   type ConquestHiddenBonusType,
   type ConquestPendingAction,
   type ConquestPlayer,
+  type ConquestPlayerBonusState,
   type ConquestPlayerHiddenBonus,
+  type ConquestRegionBonusType,
   type ConquestRegionId,
   type ConquestRoomSettings,
 } from "./types";
@@ -65,12 +67,17 @@ import {
 import { getPlayerTotalPoints, getNeutralRegionPoints } from "./regionPoints";
 import {
   buildHiddenOpPlacedDetail,
+  createEmptyPlayerBonusState,
   getBonusToastCopyForViewer,
   getBonusTypePresentation,
   getPlayerBonusState,
   HIDDEN_OP_PLACED_MESSAGE_PREFIX,
   HIDDEN_OP_PLACED_TITLE,
+  KARADENIZ_BONUS_MS,
 } from "./regionBonuses";
+import { BONUS_POOL } from "./bonusPool";
+import { getHiddenBonusLabel, HIDDEN_BONUS_TYPES } from "./conquestHiddenBonuses";
+import { isCoastalRegion } from "./coastalRegions";
 import {
   findRegionIdForBonusType,
   getActiveBonusEntries,
@@ -127,9 +134,12 @@ import {
   applyFateCardEffectToBonuses,
   applyFateCardEffectToRound,
   drawRandomFateCard,
+  FATE_CARDS,
   FATE_REVEAL_MS,
+  getFateCardById,
   playerCanDrawFateCard,
 } from "./conquestFateCards";
+import { BEREKET_CAPTURE_POINTS } from "./conquestGameplay";
 import DefenseDuelPanel from "./DefenseDuelPanel";
 import TurkeyConquestMap from "./TurkeyConquestMap";
 import MobileConquestLayout from "./mobile/MobileConquestLayout";
@@ -372,6 +382,30 @@ function pickEliminatedWrongChoice(
   const rng = eliminatorRng(djb2Hash(`${challenge.id}:${viewerId}`));
   return wrongChoices[Math.floor(rng() * wrongChoices.length)];
 }
+
+// ── DEV-ONLY: open-bonus simulation strategy map ─────────────────────────
+// Used only by the dev test panel below; production code paths never read
+// this map.  Unknown types (future additions to BONUS_POOL without a
+// strategy entry here) fall back to "unsupported" — the panel button is
+// disabled and click is a no-op.  Module-scope const keeps the reference
+// stable across renders so it can safely cross the useCallback boundary.
+type DevBonusStrategy = "selfState" | "regionTied" | "unsupported";
+const DEV_BONUS_STRATEGY: Partial<Record<ConquestRegionBonusType, DevBonusStrategy>> = {
+  // Saf player state — directly mutate playerBonuses[myPlayerId].
+  ankara_hidden_shield: "selfState",
+  karadeniz_extra_time: "selfState",
+  cukurova_score:       "selfState",
+  eleme_yetkisi:        "selfState",
+  mancinik:             "selfState",
+  // Bölge-bağlı — attach bonus to one of the player's owned regions via
+  // roundBonuses; istanbul_defense also stamps shielded:true on the region.
+  istanbul_defense:     "regionTied",
+  mevzi_bekcisi:        "regionTied",
+  kocbasi:              "regionTied",
+  kahin:                "regionTied",
+  istihbarat_agi:       "regionTied",
+  liman:                "regionTied",
+};
 
 export default function ConquestGame({
   roomCode: _roomCode,
@@ -1059,6 +1093,7 @@ export default function ConquestGame({
 
   // ── DEV-ONLY: inject a hidden bonus directly into local player's inventory ─
   const handleDebugGiveBonus = useCallback((type: ConquestHiddenBonusType) => {
+    if (!import.meta.env.DEV) return;
     if (!gameState || !myPlayerId) return;
     const now = getConquestSyncedNowMs();
     const entry: ConquestPlayerHiddenBonus = {
@@ -1078,6 +1113,165 @@ export default function ConquestGame({
       },
     };
     void onPushGameState(next);
+  }, [gameState, myPlayerId, onPushGameState]);
+
+  // ── DEV-ONLY: grant a normal open bonus to the local player ─────────────
+  // Two strategies (see DEV_BONUS_STRATEGY):
+  //   - selfState  → mutate playerBonuses[myPlayerId] directly, no region.
+  //   - regionTied → pick the first owned region (preferring coastal for
+  //                  liman) and write roundBonuses[regionId] = bonusType so
+  //                  the existing runtime hooks (intel network owner lookup,
+  //                  liman income, mevzi protection, kahin preview, etc.)
+  //                  observe the bonus exactly as if the region had been
+  //                  captured with it assigned for the round.
+  //                  For istanbul_defense also flip regionStates[i].shielded
+  //                  so the open-shield visual + duel intercept fires.
+  const handleDevGrantBonus = useCallback((type: ConquestRegionBonusType) => {
+    if (!import.meta.env.DEV) return;
+    if (!gameState || !myPlayerId) return;
+
+    const strategy = DEV_BONUS_STRATEGY[type] ?? "unsupported";
+    if (strategy === "unsupported") {
+      console.warn(`[conquest dev] no test strategy for bonus type: ${type}`);
+      return;
+    }
+
+    const currentBonuses = gameState.playerBonuses ?? {};
+    const pb: ConquestPlayerBonusState = {
+      ...(currentBonuses[myPlayerId] ?? createEmptyPlayerBonusState()),
+    };
+
+    if (strategy === "selfState") {
+      switch (type) {
+        case "ankara_hidden_shield": pb.pendingHiddenShield = true; break;
+        case "karadeniz_extra_time": pb.extraNextMoveMs     = KARADENIZ_BONUS_MS; break;
+        case "cukurova_score":       pb.bonusPoints         = pb.bonusPoints + BEREKET_CAPTURE_POINTS; break;
+        case "eleme_yetkisi":        pb.eliminatorCharges   = 1; break;
+        case "mancinik":             pb.mancinikCharges     = 1; break;
+        default:
+          console.warn(`[conquest dev] selfState bonus has no apply branch: ${type}`);
+          return;
+      }
+      const next: ConquestGameState = {
+        ...gameState,
+        playerBonuses: { ...currentBonuses, [myPlayerId]: pb },
+      };
+      void onPushGameState(next);
+      return;
+    }
+
+    // regionTied — pick a player-owned region.  Liman prefers coastal.
+    const ownedRegions = gameState.regionStates.filter(
+      rs => rs.ownerPlayerId === myPlayerId,
+    );
+    if (ownedRegions.length === 0) {
+      console.warn(`[conquest dev] no owned region for region-tied bonus: ${type}`);
+      return;
+    }
+    let pickedRegionId: ConquestRegionId | null = null;
+    if (type === "liman" && mapConfig) {
+      const coastalOwned = ownedRegions.find(
+        rs => isCoastalRegion(mapConfig.id, rs.regionId),
+      );
+      pickedRegionId = coastalOwned?.regionId ?? ownedRegions[0].regionId;
+    } else {
+      pickedRegionId = ownedRegions[0].regionId;
+    }
+
+    const nextRoundBonuses = {
+      ...(gameState.roundBonuses ?? {}),
+      [pickedRegionId]: type,
+    };
+    const nextRegionStates = type === "istanbul_defense"
+      ? gameState.regionStates.map(rs =>
+          rs.regionId === pickedRegionId ? { ...rs, shielded: true } : rs,
+        )
+      : gameState.regionStates;
+
+    const next: ConquestGameState = {
+      ...gameState,
+      roundBonuses: nextRoundBonuses,
+      regionStates: nextRegionStates,
+    };
+    void onPushGameState(next);
+  }, [gameState, myPlayerId, mapConfig, onPushGameState]);
+
+  // ── DEV-ONLY: simulate a Kader Kartı draw without spending Gold ─────────
+  // Mirrors the real `handleDrawFateCard` flow but:
+  //   - skips spendGoldAsync / addGold entirely;
+  //   - does NOT mark fateCardsUsedByPlayerId so the same card stays
+  //     replayable for testing;
+  //   - reuses applyFateCardEffectToBonuses + applyFateCardEffectToRound +
+  //     lastFateCardEvent so the reveal overlay and point/time effects fire
+  //     exactly as in production.
+  //   - For `bolge_kalkani`, opens the existing selection mode by setting
+  //     fateShieldPlacement — handlePlaceFateShield stamps shielded:true.
+  const handleDevGrantFateCard = useCallback((cardId: string) => {
+    if (!import.meta.env.DEV) return;
+    if (!myPlayerId) return;
+    // Prefer the freshest synced snapshot (matches handleDrawFateCard's
+    // ref-read) so a double-click can't push two `next` states based on
+    // a stale render-time gameState.
+    const latest = gameStateRef.current ?? gameState;
+    if (!latest) return;
+    const card = getFateCardById(cardId);
+    if (!card) return;
+    const player = latest.players.find(p => p.id === myPlayerId);
+    const now = getConquestSyncedNowMs();
+
+    const nextBonuses = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+
+    // Mirror prod's reveal pause: shove actionEndsAt/actionStartedAt forward
+    // by FATE_REVEAL_MS so the overlay backdrop freezes the move timer
+    // visibly.  No-op outside action phase or when the timer isn't set.
+    const pausedRound = (latest.phase === "action"
+      && typeof latest.round.actionEndsAt    === "number"
+      && typeof latest.round.actionStartedAt === "number")
+      ? {
+          ...latest.round,
+          actionStartedAt: latest.round.actionStartedAt + FATE_REVEAL_MS,
+          actionEndsAt:    latest.round.actionEndsAt    + FATE_REVEAL_MS,
+        }
+      : latest.round;
+    const nextRound = applyFateCardEffectToRound(pausedRound, latest.phase, card.id, now);
+
+    const next: ConquestGameState = {
+      ...latest,
+      round:          nextRound,
+      playerBonuses:  nextBonuses,
+      // fateCardsUsedByPlayerId intentionally untouched — same card replayable.
+      lastFateCardEvent: {
+        id:          `fate-dev-${now}-${myPlayerId}`,
+        playerId:    myPlayerId,
+        playerName:  player?.name ?? "Bir oyuncu",
+        cardId:      card.id,
+        cardName:    card.name,
+        cardType:    card.type,
+        description: card.description,
+        createdAt:   now,
+        round:       latest.round.roundNumber,
+      },
+    };
+
+    playSound("click");
+    void onPushGameState(next);
+
+    if (card.id === "bolge_kalkani") {
+      const hasCandidate = latest.regionStates.some(rs =>
+        rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
+      );
+      if (hasCandidate) {
+        setFateShieldPlacement({
+          roundNumber:    latest.round.roundNumber,
+          actionHolderId: myPlayerId,
+        });
+      } else {
+        setFateShieldNotice({
+          title:  "🛡️ Bölge Kalkanı",
+          detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
+        });
+      }
+    }
   }, [gameState, myPlayerId, onPushGameState]);
 
   // Derived shield ownership maps — drive the per-player panel chips without
@@ -5309,33 +5503,121 @@ export default function ConquestGame({
       {overlaysNode}
 
 
-      {/* ── DEV-ONLY: hidden bonus test panel ──────────────────── */}
-      {import.meta.env.DEV && myPlayerId && gameState && (
-        <div className="cq-debug-panel" aria-label="Dev: Gizli Bonus Test">
-          <div className="cq-debug-panel-title">🧪 Gizli Bonus Test</div>
-          <button
-            type="button"
-            className="cq-debug-panel-btn"
-            onClick={() => handleDebugGiveBonus("suikast")}
-          >
-            🗡️ Bana Suikast Ver
-          </button>
-          <button
-            type="button"
-            className="cq-debug-panel-btn"
-            onClick={() => handleDebugGiveBonus("lanet_muhru")}
-          >
-            🧿 Bana Lanet Mührü Ver
-          </button>
-          <button
-            type="button"
-            className="cq-debug-panel-btn"
-            onClick={() => handleDebugGiveBonus("pusu")}
-          >
-            🪤 Bana Pusu Ver
-          </button>
-        </div>
-      )}
+      {/* ── DEV-ONLY: hidden bonus + bonus + fate card test panel ──────
+       *
+       * Render guard: `import.meta.env.DEV` is statically replaced with
+       * `false` in production builds, so the entire block tree-shakes out
+       * of the Vercel bundle.  Each handler also re-checks the same flag
+       * defensively.  Buttons are auto-generated from the canonical
+       * catalogs (HIDDEN_BONUS_TYPES, BONUS_POOL, FATE_CARDS) so adding
+       * a new entry to any catalog surfaces here with no extra wiring.
+       */}
+      {import.meta.env.DEV && myPlayerId && gameState && (() => {
+        const isActionHolder = gameState.phase === "action"
+          && gameState.round.actionHolderId === myPlayerId;
+        const holderTitle = isActionHolder
+          ? undefined
+          : "Action phase'de holder olmalısın";
+        const ownedCount = gameState.regionStates.reduce(
+          (n, rs) => rs.ownerPlayerId === myPlayerId ? n + 1 : n,
+          0,
+        );
+        // Icon has no canonical source today (conquestHiddenBonuses exports
+        // labels but not icons), so keep the inline icon map with a safe
+        // fallback so a newly-added HIDDEN_BONUS_TYPES entry never renders
+        // an `undefined` glyph.  Label comes from `getHiddenBonusLabel` and
+        // also falls back to the raw type string.
+        const HIDDEN_BONUS_ICON: Partial<Record<ConquestHiddenBonusType, string>> = {
+          suikast:      "🗡️",
+          lanet_muhru:  "🧿",
+          pusu:         "🪤",
+        };
+        const getHiddenIcon  = (type: ConquestHiddenBonusType): string =>
+          HIDDEN_BONUS_ICON[type] ?? "🎁";
+        const getHiddenLabel = (type: ConquestHiddenBonusType): string => {
+          try { return getHiddenBonusLabel(type) || String(type); }
+          catch { return String(type); }
+        };
+        return (
+          <div className="cq-debug-panel" aria-label="Dev: Bonus & Kart Test">
+            {/* ── 1) Gizli Bonus Test (auto from HIDDEN_BONUS_TYPES) ───── */}
+            <div className="cq-debug-panel-title">🧪 Gizli Bonus Test</div>
+            {HIDDEN_BONUS_TYPES.map(type => (
+              <button
+                key={`hb-${type}`}
+                type="button"
+                className="cq-debug-panel-btn"
+                onClick={() => handleDebugGiveBonus(type)}
+              >
+                {getHiddenIcon(type)} Bana {getHiddenLabel(type)} Ver
+              </button>
+            ))}
+
+            {/* ── 2) Normal Bonus Test (auto from BONUS_POOL) ─────────── */}
+            <div className="cq-debug-panel-title" style={{ marginTop: 6 }}>
+              🎁 Bonus Test
+            </div>
+            {BONUS_POOL.filter(e => e.implemented).map(entry => {
+              const strategy = DEV_BONUS_STRATEGY[entry.type] ?? "unsupported";
+              const isUnsupported = strategy === "unsupported";
+              const isRegionTied  = strategy === "regionTied";
+              const noOwnedRegion = isRegionTied && ownedCount === 0;
+              const disabled = !isActionHolder || isUnsupported || noOwnedRegion;
+              const title = isUnsupported
+                ? "Dev test desteği eklenmeli"
+                : noOwnedRegion
+                  ? "Uygun bölgen yok."
+                  : holderTitle;
+              return (
+                <button
+                  key={`bonus-${entry.type}`}
+                  type="button"
+                  className="cq-debug-panel-btn"
+                  disabled={disabled}
+                  title={title}
+                  onClick={() => handleDevGrantBonus(entry.type)}
+                  style={disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                >
+                  {entry.icon} Bana {entry.label} Ver
+                </button>
+              );
+            })}
+
+            {/* ── 3) Kader Kartı Test (auto from FATE_CARDS) ──────────── */}
+            <div className="cq-debug-panel-title" style={{ marginTop: 6 }}>
+              🎴 Kader Kartı Test
+            </div>
+            {FATE_CARDS.map(card => {
+              const isBolgeKalkani = card.id === "bolge_kalkani";
+              const hasShieldCandidate = isBolgeKalkani
+                ? gameState.regionStates.some(rs =>
+                    rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
+                  )
+                : true;
+              const disabled = !isActionHolder
+                || (isBolgeKalkani && !hasShieldCandidate);
+              const title = !isActionHolder
+                ? holderTitle
+                : (isBolgeKalkani && !hasShieldCandidate
+                  ? "Korunacak uygun bölgen yok."
+                  : undefined);
+              return (
+                <button
+                  key={`fate-${card.id}`}
+                  type="button"
+                  className="cq-debug-panel-btn"
+                  disabled={disabled}
+                  title={title}
+                  onClick={() => handleDevGrantFateCard(card.id)}
+                  style={disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                >
+                  🎴 Bana {card.name} Ver
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Footer notice ──────────────────────────────────────── */}
       <div className="cq-game-footer">
