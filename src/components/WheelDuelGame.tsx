@@ -28,6 +28,7 @@ import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
+import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
@@ -328,6 +329,13 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   const [hostDuration, setHostDuration] = useState<number>(120);
   const [hostRegion, setHostRegion] = useState<Region>("world");
   const [joinCode, setJoinCode] = useState<string>("");
+  /** Davet linkinden gelen oda kodu + isim override. joinRoomByCode setState
+   *  flush'unu bekleyemediği için (useInviteJoin setJoinCode + triggerJoin'i
+   *  aynı tick'te tetikler) ve playerName mount-init'inde profile gecikmiş
+   *  olabilir; her ikisini ref üzerinden geçiriyoruz. joinRoomByCode okur
+   *  okumaz tüketir. */
+  const inviteOverrideCodeRef = useRef<string | null>(null);
+  const inviteOverrideNameRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [hostClosedRoom, setHostClosedRoom] = useState(false);
@@ -421,14 +429,21 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   const lobbyDuration = room?.duration_seconds ?? hostDuration;
   const lobbyRegionDb = room?.region ?? normalizeRegion(hostRegion);
 
-  /* ── URL param: ?wheelDuel=KOD ───────────────────────────── */
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const wheelCode = params.get("wheelDuel");
-    if (wheelCode) {
-      setJoinCode(normalizeRoomCode(wheelCode));
-    }
-  }, []);
+  /* ── Davet linki: ?wheelDuel=KOD prefill + giriş yapmışsa auto-join.
+   *  Auto-join sırasında playerName state'i profile.username'i henüz
+   *  yansıtmamış olabilir (mount-init seed'i + sync effect yok); bu
+   *  yüzden inviteOverrideNameRef'e profile.username'i koyup
+   *  joinRoomByCode'a doğrudan iletiyoruz. */
+  useInviteJoin({
+    paramKey: "wheelDuel",
+    setJoinCode,
+    canAutoJoin: !!profile?.username && phase === "setup" && !room,
+    triggerJoin: (code) => {
+      inviteOverrideCodeRef.current = code;
+      inviteOverrideNameRef.current = profile?.username ?? null;
+      void joinRoomByCode();
+    },
+  });
 
   /* ── Davet linki ─────────────────────────────────────────── */
   const shareLink = useMemo(() => {
@@ -1635,12 +1650,17 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
 
   async function joinRoomByCode() {
     playSound("click");
-    const nameErr = validateName(playerName);
+    const overrideCode = inviteOverrideCodeRef.current;
+    const overrideName = inviteOverrideNameRef.current;
+    inviteOverrideCodeRef.current = null;
+    inviteOverrideNameRef.current = null;
+    const effectiveName = overrideName ?? playerName;
+    const nameErr = validateName(effectiveName);
     if (nameErr) {
       setErrorMsg(nameErr);
       return;
     }
-    const normalized = normalizeRoomCode(joinCode);
+    const normalized = normalizeRoomCode(overrideCode ?? joinCode);
     if (normalized.length !== 6) {
       setErrorMsg("Oda kodu 6 karakter olmalı.");
       return;
@@ -1657,7 +1677,7 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     myIdRef.current = freshId;
     myClaimTokenRef.current = claimToken;
 
-    const trimmedName = playerName.trim();
+    const trimmedName = effectiveName.trim();
     const profileId = profile?.id ?? null;
     const guestId = profileId ? null : freshId;
 

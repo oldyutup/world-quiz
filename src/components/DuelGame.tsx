@@ -47,6 +47,7 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 
@@ -293,6 +294,11 @@ export default function DuelGame({
   const isLoggedInPlayer = !!loggedInUsername;
 
   const [joinCode,     setJoinCode]     = useState("");
+  /** Davet linkinden gelen oda kodu override. joinRoom çağrıldığında
+   *  joinCode state'i henüz flush olmamış olabileceği için (useInviteJoin
+   *  setJoinCode + triggerJoin'i aynı tick'te tetikler) ref üzerinden
+   *  geçiyoruz. joinRoom okur okumaz tüketir ve null'a çeker. */
+  const inviteOverrideCodeRef = useRef<string | null>(null);
   const [hostDuration, setHostDuration] = useState(60);
   const [hostRegion,   setHostRegion]   = useState("world");
 
@@ -655,11 +661,16 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Read ?duel=CODE from URL ── */
-  useEffect(() => {
-    const code = new URLSearchParams(location.search).get("duel");
-    if (code) setJoinCode(code.toUpperCase());
-  }, []);
+  /* ── Davet linki: ?duel=KOD prefill + giriş yapmışsa tek atış auto-join ── */
+  useInviteJoin({
+    paramKey: "duel",
+    setJoinCode,
+    canAutoJoin: !!profile?.username && phase === "lobby" && !room,
+    triggerJoin: (code) => {
+      inviteOverrideCodeRef.current = code;
+      void joinRoom();
+    },
+  });
 
   /* ── Realtime subscriptions ── */
 
@@ -1258,7 +1269,9 @@ if (usernameError) {
   /* ── JOIN ROOM ── */
   const joinRoom = async () => {
    const name = effectivePlayerName.trim();
-const code = joinCode.trim().toUpperCase();
+const overrideCode = inviteOverrideCodeRef.current;
+inviteOverrideCodeRef.current = null;
+const code = (overrideCode ?? joinCode).trim().toUpperCase();
 
 const usernameError = validateUsername(name);
 

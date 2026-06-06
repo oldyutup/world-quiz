@@ -77,6 +77,7 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
@@ -318,6 +319,8 @@ export default function DuelGroupGame({
   const effectivePlayerName = loggedInUsername || playerName;
   const isLoggedInPlayer = !!loggedInUsername;
   const [joinCode,     setJoinCode]     = useState("");
+  /** Davet linkinden gelen oda kodu override (auto-join akışı için). */
+  const inviteOverrideCodeRef = useRef<string | null>(null);
   const [hostDuration, setHostDuration] = useState(120);
   const [hostRegion,   setHostRegion]   = useState("world");
   const [hostMaxPlayers, setHostMaxPlayers] = useState(10);
@@ -537,11 +540,25 @@ useEffect(() => {
     fbTimerRef.current = setTimeout(() => setFeedback(null), 900);
   }, []);
 
-  /* ── ?duelGroup=CODE URL paramı ── */
-  useEffect(() => {
-    const code = new URLSearchParams(location.search).get("duelGroup");
-    if (code) setJoinCode(code.toUpperCase());
-  }, []);
+  /* ── Davet linki: ?duelGroup=KOD prefill + giriş yapmışsa auto-join.
+   *  Mount sırasında localStorage'da saved session varsa "Session restore"
+   *  effect'i async olarak setRoom + setPhase çağıracak; aynı tick'te
+   *  auto-join'i de tetiklersek iki yol setRoom için yarışır. Saved
+   *  session olduğu mount'larda otomatik join'i baskıla — kullanıcı
+   *  manuel "Katıl"a basarsa joinRoom içindeki isResume guard'ı (kod
+   *  saved roomCode ile eşleşirse resume, eşleşmezse fresh) zaten
+   *  tek yola düşürür. Hesap mount'ta tek seferlik. */
+  const hasSavedSessionAtMount = useMemo(() => loadRoomSession() !== null, []);
+  useInviteJoin({
+    paramKey: "duelGroup",
+    setJoinCode,
+    canAutoJoin:
+      !!profile?.username && phase === "lobby" && !room && !hasSavedSessionAtMount,
+    triggerJoin: (code) => {
+      inviteOverrideCodeRef.current = code;
+      void joinRoom();
+    },
+  });
 
   /* ── Session restore ── */
   useEffect(() => {
@@ -1045,7 +1062,9 @@ if (usernameError) {
   /* ── JOIN ROOM ── */
   const joinRoom = async () => {
     const name = effectivePlayerName.trim();
-const code = joinCode.trim().toUpperCase();
+const overrideCode = inviteOverrideCodeRef.current;
+inviteOverrideCodeRef.current = null;
+const code = (overrideCode ?? joinCode).trim().toUpperCase();
 
 const usernameError = validateUsername(name);
 

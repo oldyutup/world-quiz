@@ -44,6 +44,7 @@ import {
   type CountryEntry,
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 
@@ -441,6 +442,8 @@ export default function FlagDuelGame({
   /* lobi formu */
   const [playerName, setPlayerName] = useState("");
   const [joinCode,   setJoinCode]   = useState("");
+  /** Davet linkinden gelen oda kodu override (auto-join akışı için). */
+  const inviteOverrideCodeRef = useRef<string | null>(null);
   const loggedInUsername = profile?.username ?? "";
   const effectivePlayerName = loggedInUsername || playerName;
   const isLoggedInPlayer = !!loggedInUsername;
@@ -484,6 +487,18 @@ useEffect(() => {
 
   /* oda durumu */
   const [room,    setRoom]    = useState<FlagDuelRoom | null>(null);
+  /* ── Davet linki: ?flagDuel=KOD prefill + giriş yapmışsa auto-join.
+   *  joinRoom ileride tanımlı; closure call-time'da çözüldüğü için TDZ riski
+   *  yok (effect render commit'inden sonra çalışır). */
+  useInviteJoin({
+    paramKey: "flagDuel",
+    setJoinCode,
+    canAutoJoin: !!profile?.username && phase === "lobby" && !room,
+    triggerJoin: (code) => {
+      inviteOverrideCodeRef.current = code;
+      void joinRoom();
+    },
+  });
   const [players, setPlayers] = useState<DuelPlayer[]>([]);
   const [claims,  setClaims]  = useState<DuelClaim[]>([]);
   const [isHost,  setIsHost]  = useState(false);
@@ -1781,7 +1796,9 @@ if (usernameError) {
   ════════════════════════════════════════════════════════════════ */
   const joinRoom = async () => {
     const name = effectivePlayerName.trim();
-const code = joinCode.trim().toUpperCase();
+const overrideCode = inviteOverrideCodeRef.current;
+inviteOverrideCodeRef.current = null;
+const code = (overrideCode ?? joinCode).trim().toUpperCase();
 
 const usernameError = validateUsername(name);
 

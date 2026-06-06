@@ -41,6 +41,7 @@ import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
+import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
@@ -322,6 +323,11 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   const [hostRegion, setHostRegion] = useState<Region>("world");
   const [hostPenalty, setHostPenalty] = useState<boolean>(false);
   const [joinCode, setJoinCode] = useState<string>("");
+  /** Davet linkinden gelen oda kodu override (auto-join akışı için).
+   *  WheelGroup'ta playerName profile.username ile sync ediliyor, o yüzden
+   *  isim için ayrı override gerekmiyor — joinRoomByCode zaten loginli
+   *  kullanıcı için profile.username üzerinden gidiyor. */
+  const inviteOverrideCodeRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [hostClosedRoom, setHostClosedRoom] = useState(false);
@@ -466,12 +472,19 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* ── URL param: ?wheelGroup=KOD ───────────────────────────── */
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("wheelGroup");
-    if (code) setJoinCode(normalizeRoomCode(code));
-  }, []);
+  /* ── Davet linki: ?wheelGroup=KOD prefill + giriş yapmışsa auto-join.
+   *  playerName ↔ profile.username sync effect'i yukarıda zaten var, bu
+   *  yüzden joinRoomByCode loginli yolda profile.username'i kullanır;
+   *  isim için ayrı override gerekmez. */
+  useInviteJoin({
+    paramKey: "wheelGroup",
+    setJoinCode,
+    canAutoJoin: !!profile?.username && phase === "setup" && !room,
+    triggerJoin: (code) => {
+      inviteOverrideCodeRef.current = code;
+      void joinRoomByCode();
+    },
+  });
 
   /* ── Share/invite ──────────────────────────────────────────
    *  Davet linkini origin + pathname + tek query param ile uretiyoruz.
@@ -1199,13 +1212,15 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
   async function joinRoomByCode() {
     playSound("click");
+    const overrideCode = inviteOverrideCodeRef.current;
+    inviteOverrideCodeRef.current = null;
     // Loginli kullanici icin daima profile.username; misafir icin manuel input.
     const effectiveName = isLoggedInPlayer
       ? (profile?.username ?? "").trim()
       : playerName.trim();
     const nameErr = validateName(effectiveName);
     if (nameErr) { setErrorMsg(nameErr); return; }
-    const normalized = normalizeRoomCode(joinCode);
+    const normalized = normalizeRoomCode(overrideCode ?? joinCode);
     if (normalized.length !== 6) {
       setErrorMsg("Oda kodu 6 karakter olmalı.");
       return;
