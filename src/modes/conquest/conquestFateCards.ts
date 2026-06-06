@@ -1,7 +1,7 @@
 /**
  * Conquest — Kader Kartı V2 catalog + pure helpers.
  *
- * V2 expands the pool to 12 cards (6 good / 6 bad) while keeping the system
+ * V2 expands the pool to 13 cards (7 good / 6 bad) while keeping the system
  * intentionally conservative — every effect collapses to one of two safe
  * primitives:
  *   • bonusPoints delta on `playerBonuses[playerId]` (clamped so the visible
@@ -15,6 +15,14 @@
  * simplified to a flat +1 bonusPoints for this V2 — stability first; the
  * effect copy still reads naturally, and the unique behaviours can be
  * layered back in later without touching the catalog shape.
+ *
+ * Exception: `bolge_kalkani` (V2.1) is a placement-style card — it has no
+ * bonusPoints / time delta of its own.  `getCardPointDelta` returns 0 and
+ * `applyFateCardEffectToRound` is a no-op for it; the actual effect (stamp
+ * `shielded:true` on a self-owned region) is wired into the draw flow in
+ * `ConquestGame.tsx` via a local selection mode that mirrors the Pusu
+ * placement pattern.  No new state field — reuses `ConquestRegionState.shielded`
+ * which already drives the duel intercept (shield consumed on attacker-win).
  *
  * Random draw is category-first: a coin flip picks good vs bad (always
  * 50/50, independent of pool sizes), then a uniform pick within the chosen
@@ -72,7 +80,7 @@ export interface ConquestFateCardDef {
 }
 
 /**
- * V2 catalog — 12 cards, 6 good / 6 bad.  Each effect is dispatched by `id`
+ * V2 catalog — 13 cards, 7 good / 6 bad.  Each effect is dispatched by `id`
  * in the helpers below; adding a card means appending here and registering
  * a delta in `getCardPointDelta` (and/or a branch in
  * `applyFateCardEffectToRound`).  No external order dependency.
@@ -111,9 +119,15 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
   },
   {
     id:          "kalkan",
-    name:        "Kalkan",
+    name:        "Muhafız Desteği",
     type:        "good",
-    description: "Kendini güvenceye aldın. +1 puan.",
+    description: "Muhafız desteği geldi. +1 puan.",
+  },
+  {
+    id:          "bolge_kalkani",
+    name:        "Bölge Kalkanı",
+    type:        "good",
+    description: "Kendi bölgelerinden birine kalkan bas. Rakibin ilk başarılı saldırısı bölgeyi ele geçiremez, kalkan kırılır.",
   },
 
   // ── Bad ─────────────────────────────────────────────────────────────

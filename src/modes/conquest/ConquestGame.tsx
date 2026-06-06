@@ -942,6 +942,107 @@ export default function ConquestGame({
     void onPushGameState(next);
   }, [gameState, myPlayerId, pusuPlacementEntryId, pusuPlacementCandidates, onPushGameState]);
 
+  // ── Kader Kartı — Bölge Kalkanı placement mode ─────────────────────
+  // V1 placement flow for the "bolge_kalkani" fate card.  Mirrors the
+  // Pusu placement pattern: a local-only entry flips on when the card
+  // is drawn, the map's legal-affordance set is swapped to "self-owned
+  // and not-already-shielded" candidates, and a click on a candidate
+  // stamps `shielded:true` directly on the region state.  No new
+  // synced state field — the existing `ConquestRegionState.shielded`
+  // flag already drives the duel intercept (attacker-win breaks the
+  // shield, region stays with the defender).  Placement is FREE: it
+  // does not consume the action holder's hamle hakkı.
+  //
+  // Lifetime: scoped to the action phase + roundNumber the card was
+  // drawn in, and to the local viewer being the action holder during
+  // that window.  If any of those slip (phase changes, action holder
+  // changes, round advances, candidates run out) the entry auto-closes
+  // and the card goes to waste — V1 has no refund.  This keeps the
+  // affordance from leaking into opponent turns or future rounds.
+  const [fateShieldPlacement, setFateShieldPlacement] = useState<{
+    roundNumber:    number;
+    actionHolderId: string;
+  } | null>(null);
+  const fateShieldPlacementActive = fateShieldPlacement !== null;
+
+  /** Region ids the local viewer may stamp a Bölge Kalkanı on RIGHT NOW.
+   *  Must be owned by the viewer AND not already shielded.  Derived from
+   *  REAL regionStates (the viewer is the owner, no projection needed). */
+  const fateShieldPlacementCandidates = useMemo(() => {
+    if (!gameState || !myPlayerId) return new Set<ConquestRegionId>();
+    const out = new Set<ConquestRegionId>();
+    for (const rs of gameState.regionStates) {
+      if (rs.ownerPlayerId !== myPlayerId) continue;
+      if (rs.shielded === true)            continue;
+      out.add(rs.regionId);
+    }
+    return out;
+  }, [gameState, myPlayerId]);
+
+  // Center notice surfaced when bolge_kalkani is drawn but no own region
+  // is eligible (zero candidates).  Mirrors the `hiddenOpToast` shape so
+  // the existing overlay slot in `toastsNode` renders it with no chrome
+  // changes.  Auto-dismisses after FATE_SHIELD_NOTICE_MS.
+  const [fateShieldNotice, setFateShieldNotice] = useState<{
+    title: string; detail: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!fateShieldNotice) return;
+    const t = window.setTimeout(() => setFateShieldNotice(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [fateShieldNotice]);
+
+  // Auto-exit placement mode whenever the entry's snapshot stops matching
+  // live state.  Any of these conditions ends the placement window:
+  //   - match finished
+  //   - phase no longer "action" (timer expired, duel started, etc.)
+  //   - action holder is no longer the drawer (turn passed)
+  //   - round advanced past the snapshot
+  //   - candidate set drained (region lost or all already shielded)
+  // No toast/refund — per spec the card simply goes to waste.
+  const placementRoundNumber    = fateShieldPlacement?.roundNumber    ?? null;
+  const placementActionHolderId = fateShieldPlacement?.actionHolderId ?? null;
+  const candidateCount          = fateShieldPlacementCandidates.size;
+  useEffect(() => {
+    if (!fateShieldPlacement) return;
+    if (!gameState) return;
+    if (gameState.phase === "finished")                                  { setFateShieldPlacement(null); return; }
+    if (gameState.phase !== "action")                                    { setFateShieldPlacement(null); return; }
+    if (gameState.round.actionHolderId !== placementActionHolderId)      { setFateShieldPlacement(null); return; }
+    if (gameState.round.roundNumber    !== placementRoundNumber)         { setFateShieldPlacement(null); return; }
+    if (candidateCount === 0)                                            { setFateShieldPlacement(null); return; }
+  }, [
+    fateShieldPlacement,
+    gameState,
+    placementActionHolderId,
+    placementRoundNumber,
+    candidateCount,
+  ]);
+
+  const handlePlaceFateShield = useCallback((regionId: ConquestRegionId) => {
+    if (!gameState || !myPlayerId)             return;
+    if (!fateShieldPlacementActive)            return;
+    if (!fateShieldPlacementCandidates.has(regionId)) {
+      flashIllegalRef.current?.(regionId);
+      return;
+    }
+    const next: ConquestGameState = {
+      ...gameState,
+      regionStates: gameState.regionStates.map(rs =>
+        rs.regionId === regionId ? { ...rs, shielded: true } : rs,
+      ),
+    };
+    setFateShieldPlacement(null);
+    playSound("click");
+    void onPushGameState(next);
+  }, [
+    gameState,
+    myPlayerId,
+    fateShieldPlacementActive,
+    fateShieldPlacementCandidates,
+    onPushGameState,
+  ]);
+
   /** Region ids the local viewer has armed with a Pusu.  Used to render an
    *  owner-only marker on the map — opponents NEVER see these.  Empty when
    *  no ambush is armed by this viewer (the common case for non-Pusu
@@ -1753,6 +1854,17 @@ export default function ConquestGame({
       return;
     }
 
+    // 🛡️ Bölge Kalkanı placement short-circuit — runs right after Pusu so
+    // Pusu keeps priority when both are somehow active.  Selection mode is
+    // owner-local and only ever flips on after a successful "bolge_kalkani"
+    // draw; clicking a candidate stamps `shielded:true` and exits the mode.
+    // Invalid taps (rakip/sahipsiz/zaten kalkanlı) flash-flag and keep mode
+    // open so the player can pick again.
+    if (fateShieldPlacementActive) {
+      handlePlaceFateShield(regionId);
+      return;
+    }
+
     if (gameState.phase !== "action") return;
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
@@ -1981,7 +2093,7 @@ export default function ConquestGame({
     const { state: nextState } = applyActionToGame(gameState, mapConfig, pending);
     void onPushGameState(nextState);
     playSound("click");
-  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId, pusuPlacementEntryId, handlePlaceAmbush]);
+  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId, pusuPlacementEntryId, handlePlaceAmbush, fateShieldPlacementActive, handlePlaceFateShield]);
 
   const handleSkipAction = useCallback(() => {
     if (!gameState || !mapConfig) return;
@@ -2119,6 +2231,31 @@ export default function ConquestGame({
       } catch (err) {
         console.error("[conquest] fate card state push failed:", err);
         failureReason = "state_push_failed";
+      }
+
+      // Bölge Kalkanı — placement kartı.  Kart efekti puana ya da zamana
+      // dokunmaz; bunun yerine oyuncu reveal sonrasi kendi bolgesine
+      // kalkan basmak icin selection mode'a alinir.  Mevcut roundNumber +
+      // actionHolderId snapshot'i ile bu pencere kartı çeken oyuncunun
+      // mevcut action phase'i ile sınırlanır (rakip turuna taşmaz).
+      // Aday bolge yoksa (oyuncunun tum bolgeleri zaten kalkanlı veya hic
+      // bolgesi yok) selection mode acilmaz; bunun yerine kullanıcıya kısa
+      // bir bildirim gösterilir.  V1'de refund yok, kart bos gidebilir.
+      if (success && card.id === "bolge_kalkani") {
+        const hasCandidate = latest.regionStates.some(rs =>
+          rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
+        );
+        if (hasCandidate) {
+          setFateShieldPlacement({
+            roundNumber:    latest.round.roundNumber,
+            actionHolderId: myPlayerId,
+          });
+        } else {
+          setFateShieldNotice({
+            title:  "🛡️ Bölge Kalkanı",
+            detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
+          });
+        }
       }
     } finally {
       // Gold dustu ama kart efekti uygulanamadi → refund. Tek source of
@@ -3280,10 +3417,22 @@ export default function ConquestGame({
   // phase, and the click handler is attached unconditionally so the
   // owner can arm an ambush mid-challenge or mid-reveal.
   const inAmbushMode      = pusuPlacementEntryId !== null;
-  const mapLegalTargets   = inAmbushMode ? pusuPlacementCandidates : legalTargets;
-  const mapViewerIsHolder = inAmbushMode ? true                    : isActionHolder;
-  const mapBoardDisabled  = inAmbushMode ? false                   : boardDisabled;
-  const mapClickHandler   = inAmbushMode
+  // Bölge Kalkanı selection mode shares the same "owner-local placement
+  // override" semantics as Pusu: the map's legal-affordance set is swapped
+  // to the candidate set, the viewer is forced into holder mode so the
+  // affordance renders, the board is enabled regardless of phase, and the
+  // click handler is attached unconditionally.  Pusu keeps priority when
+  // both are somehow active (matches the handleRegionClick short-circuit).
+  const inFateShieldMode  = !inAmbushMode && fateShieldPlacementActive;
+  const inPlacementMode   = inAmbushMode || inFateShieldMode;
+  const mapLegalTargets   = inAmbushMode
+    ? pusuPlacementCandidates
+    : inFateShieldMode
+      ? fateShieldPlacementCandidates
+      : legalTargets;
+  const mapViewerIsHolder = inPlacementMode ? true  : isActionHolder;
+  const mapBoardDisabled  = inPlacementMode ? false : boardDisabled;
+  const mapClickHandler   = inPlacementMode
     ? handleRegionClick
     : (phase === "action" ? handleRegionClick : undefined);
   const mapNode = settings.map === "turkey" ? (
@@ -3715,6 +3864,23 @@ export default function ConquestGame({
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">{hiddenOpToast.title}</div>
             <div className="cq-bonus-toast-detail">{hiddenOpToast.detail}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Bölge Kalkanı — local-only notice when the drawer has no eligible
+       *  region.  Same overlay chrome as hiddenOpToast so we inherit the
+       *  centered placement without introducing new CSS. */}
+      {fateShieldNotice && (
+        <div
+          className="cq-duel-overlay-toast cq-hidden-op-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🛡️</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{fateShieldNotice.title}</div>
+            <div className="cq-bonus-toast-detail">{fateShieldNotice.detail}</div>
           </div>
         </div>
       )}
@@ -5003,6 +5169,20 @@ export default function ConquestGame({
           >
             İptal
           </button>
+        </div>
+      )}
+
+      {/* Bölge Kalkanı placement-mode hint banner — owner-local, mirrors the
+       *  Pusu banner's chrome so the player has a consistent placement-mode
+       *  affordance.  No İptal/refund button per V1 spec; the only way out is
+       *  to pick a candidate region (or let the card go to waste). */}
+      {inFateShieldMode && (
+        <div className="cq-pusu-placement-banner" role="status" aria-live="polite">
+          <span aria-hidden="true">🛡️</span>
+          <span className="cq-pusu-placement-banner-text">
+            Bölge Kalkanı: Korumak istediğin kendi bölgeni seç.
+            Sahipsiz, rakip veya zaten kalkanlı bölgelere kalkan basılamaz.
+          </span>
         </div>
       )}
 
