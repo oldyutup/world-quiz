@@ -132,6 +132,7 @@ import ConquestFateCardWidget from "./ConquestFateCardWidget";
 import ConquestFateCardReveal from "./ConquestFateCardReveal";
 import {
   applyFateCardEffectToBonuses,
+  applyFateCardEffectToNextMove,
   applyFateCardEffectToRound,
   drawRandomFateCard,
   FATE_CARDS,
@@ -1198,12 +1199,17 @@ export default function ConquestGame({
 
   // ── DEV-ONLY: simulate a Kader Kartı draw without spending Gold ─────────
   // Mirrors the real `handleDrawFateCard` flow but:
-  //   - skips spendGoldAsync / addGold entirely;
+  //   - skips spendGoldAsync / addGold entirely (NO real account gold is
+  //     written for Talih Kuşu / Hazine Sandığı in dev simulation — dev
+  //     panel only renders the reveal + point/time/next-move effects so
+  //     repeated clicks never inflate the tester's profiles.gold or
+  //     pollute the gold_transactions log);
   //   - does NOT mark fateCardsUsedByPlayerId so the same card stays
   //     replayable for testing;
-  //   - reuses applyFateCardEffectToBonuses + applyFateCardEffectToRound +
-  //     lastFateCardEvent so the reveal overlay and point/time effects fire
-  //     exactly as in production.
+  //   - reuses applyFateCardEffectToBonuses + applyFateCardEffectToNextMove
+  //     + applyFateCardEffectToRound + lastFateCardEvent so the reveal
+  //     overlay and point/time/next-move effects fire exactly as in
+  //     production.
   //   - For `bolge_kalkani`, opens the existing selection mode by setting
   //     fateShieldPlacement — handlePlaceFateShield stamps shielded:true.
   const handleDevGrantFateCard = useCallback((cardId: string) => {
@@ -1219,7 +1225,12 @@ export default function ConquestGame({
     const player = latest.players.find(p => p.id === myPlayerId);
     const now = getConquestSyncedNowMs();
 
-    const nextBonuses = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+    const bonusesAfterPoints = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+    const nextBonuses        = applyFateCardEffectToNextMove(
+      { ...latest, playerBonuses: bonusesAfterPoints },
+      myPlayerId,
+      card.id,
+    );
 
     // Mirror prod's reveal pause: shove actionEndsAt/actionStartedAt forward
     // by FATE_REVEAL_MS so the overlay backdrop freezes the move timer
@@ -2373,7 +2384,15 @@ export default function ConquestGame({
         return;
       }
 
-      const nextBonuses = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+      const bonusesAfterPoints = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
+      // Moral Üstünlüğü layers a next-move time bonus on top of the +1 points.
+      // Chain through a synthetic state so the helper sees the freshly written
+      // bonusPoints; Math.max preserves a pending Karadeniz +5s if present.
+      const nextBonuses = applyFateCardEffectToNextMove(
+        { ...latest, playerBonuses: bonusesAfterPoints },
+        myPlayerId,
+        card.id,
+      );
 
       // Pause the move clock while the reveal overlay is up.  We do this by
       // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
@@ -2450,6 +2469,30 @@ export default function ConquestGame({
             detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
           });
         }
+      }
+
+      // Talih Kuşu (+50G) / Hazine Sandığı (+100G) — gold ödülü gameplay
+      // state'inden tamamen bağımsız bir side-effect: pure helper'lar
+      // playerBonuses.bonusPoints'i yazıyor, hesap-seviyesi gold ise
+      // `addGold` üzerinden ayrıca veriliyor (matchGoldEarned bu turda
+      // değiştirilmiyor — sadece kişisel hesap bakiyesi artıyor).
+      // `success` true olduğunda çağrılır → kart efekti push edilemediyse
+      // (state_push_failed) refund branch'i devreye girer ve gold ödülü
+      // de verilmez.  Reason olarak mevcut `gameplay_award` kullanılıyor
+      // (yeni reason eklemek server RPC whitelist'inde değişiklik gerektirirdi).
+      if (success && (card.id === "talih_kusu" || card.id === "hazine_sandigi")) {
+        const goldAward = card.id === "talih_kusu" ? 50 : 100;
+        addGold(
+          goldAward,
+          "gameplay_award",
+          {
+            source:   "conquest_fate_card",
+            roomId,
+            playerId: myPlayerId,
+            cardId:   card.id,
+            cardName: card.name,
+          },
+        );
       }
     } finally {
       // Gold dustu ama kart efekti uygulanamadi → refund. Tek source of
@@ -5503,7 +5546,7 @@ export default function ConquestGame({
       {overlaysNode}
 
 
-      {/* ── DEV-ONLY: hidden bonus + bonus + fate card test panel ──────
+      {/* ── DEV-ONLY: three separate dev test panels ───────────────────
        *
        * Render guard: `import.meta.env.DEV` is statically replaced with
        * `false` in production builds, so the entire block tree-shakes out
@@ -5511,6 +5554,15 @@ export default function ConquestGame({
        * defensively.  Buttons are auto-generated from the canonical
        * catalogs (HIDDEN_BONUS_TYPES, BONUS_POOL, FATE_CARDS) so adding
        * a new entry to any catalog surfaces here with no extra wiring.
+       *
+       * Layout: three boxes positioned independently via inline style
+       * overrides on top of the shared `.cq-debug-panel` base.  Same
+       * visual chrome (purple frame, dark glass) — separated by location,
+       * not appearance, so they read as one toolset spread across the
+       * viewport instead of one tall stack on the right.
+       *   • 🎁 Bonus Test       → bottom-left
+       *   • 🧪 Gizli Bonus Test → bottom-right (preserves prior anchor)
+       *   • 🎴 Kader Kartı Test → middle-right, scrollable
        */}
       {import.meta.env.DEV && myPlayerId && gameState && (() => {
         const isActionHolder = gameState.phase === "action"
@@ -5538,84 +5590,128 @@ export default function ConquestGame({
           try { return getHiddenBonusLabel(type) || String(type); }
           catch { return String(type); }
         };
+
+        // Position overrides per panel.  Each value cancels the conflicting
+        // default from `.cq-debug-panel` so the three boxes anchor cleanly
+        // to their respective corners without inheriting `right: 12` etc.
+        const bonusPanelStyle: React.CSSProperties = {
+          left:      12,
+          right:     "auto",
+          bottom:    70,
+          maxWidth:  240,
+          maxHeight: "calc(100vh - 140px)",
+          overflowY: "auto",
+        };
+        const hiddenPanelStyle: React.CSSProperties = {
+          maxWidth: 240,
+        };
+        const fatePanelStyle: React.CSSProperties = {
+          right:     12,
+          left:      "auto",
+          top:       "50%",
+          bottom:    "auto",
+          transform: "translateY(-50%)",
+          maxWidth:  240,
+          maxHeight: "70vh",
+          overflowY: "auto",
+        };
+        const disabledBtnStyle: React.CSSProperties = {
+          opacity:   0.4,
+          cursor:    "not-allowed",
+        };
+
         return (
-          <div className="cq-debug-panel" aria-label="Dev: Bonus & Kart Test">
-            {/* ── 1) Gizli Bonus Test (auto from HIDDEN_BONUS_TYPES) ───── */}
-            <div className="cq-debug-panel-title">🧪 Gizli Bonus Test</div>
-            {HIDDEN_BONUS_TYPES.map(type => (
-              <button
-                key={`hb-${type}`}
-                type="button"
-                className="cq-debug-panel-btn"
-                onClick={() => handleDebugGiveBonus(type)}
-              >
-                {getHiddenIcon(type)} Bana {getHiddenLabel(type)} Ver
-              </button>
-            ))}
-
-            {/* ── 2) Normal Bonus Test (auto from BONUS_POOL) ─────────── */}
-            <div className="cq-debug-panel-title" style={{ marginTop: 6 }}>
-              🎁 Bonus Test
+          <>
+            {/* ── 🎁 Bonus Test — bottom-left ───────────────────────── */}
+            <div
+              className="cq-debug-panel"
+              aria-label="Dev: Bonus Test"
+              style={bonusPanelStyle}
+            >
+              <div className="cq-debug-panel-title">🎁 Bonus Test</div>
+              {BONUS_POOL.filter(e => e.implemented).map(entry => {
+                const strategy = DEV_BONUS_STRATEGY[entry.type] ?? "unsupported";
+                const isUnsupported = strategy === "unsupported";
+                const isRegionTied  = strategy === "regionTied";
+                const noOwnedRegion = isRegionTied && ownedCount === 0;
+                const disabled = !isActionHolder || isUnsupported || noOwnedRegion;
+                const title = isUnsupported
+                  ? "Dev test desteği eklenmeli"
+                  : noOwnedRegion
+                    ? "Uygun bölgen yok."
+                    : holderTitle;
+                return (
+                  <button
+                    key={`bonus-${entry.type}`}
+                    type="button"
+                    className="cq-debug-panel-btn"
+                    disabled={disabled}
+                    title={title}
+                    onClick={() => handleDevGrantBonus(entry.type)}
+                    style={disabled ? disabledBtnStyle : undefined}
+                  >
+                    {entry.icon} Bana {entry.label} Ver
+                  </button>
+                );
+              })}
             </div>
-            {BONUS_POOL.filter(e => e.implemented).map(entry => {
-              const strategy = DEV_BONUS_STRATEGY[entry.type] ?? "unsupported";
-              const isUnsupported = strategy === "unsupported";
-              const isRegionTied  = strategy === "regionTied";
-              const noOwnedRegion = isRegionTied && ownedCount === 0;
-              const disabled = !isActionHolder || isUnsupported || noOwnedRegion;
-              const title = isUnsupported
-                ? "Dev test desteği eklenmeli"
-                : noOwnedRegion
-                  ? "Uygun bölgen yok."
-                  : holderTitle;
-              return (
+
+            {/* ── 🧪 Gizli Bonus Test — bottom-right (default anchor) ── */}
+            <div
+              className="cq-debug-panel"
+              aria-label="Dev: Gizli Bonus Test"
+              style={hiddenPanelStyle}
+            >
+              <div className="cq-debug-panel-title">🧪 Gizli Bonus Test</div>
+              {HIDDEN_BONUS_TYPES.map(type => (
                 <button
-                  key={`bonus-${entry.type}`}
+                  key={`hb-${type}`}
                   type="button"
                   className="cq-debug-panel-btn"
-                  disabled={disabled}
-                  title={title}
-                  onClick={() => handleDevGrantBonus(entry.type)}
-                  style={disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                  onClick={() => handleDebugGiveBonus(type)}
                 >
-                  {entry.icon} Bana {entry.label} Ver
+                  {getHiddenIcon(type)} Bana {getHiddenLabel(type)} Ver
                 </button>
-              );
-            })}
-
-            {/* ── 3) Kader Kartı Test (auto from FATE_CARDS) ──────────── */}
-            <div className="cq-debug-panel-title" style={{ marginTop: 6 }}>
-              🎴 Kader Kartı Test
+              ))}
             </div>
-            {FATE_CARDS.map(card => {
-              const isBolgeKalkani = card.id === "bolge_kalkani";
-              const hasShieldCandidate = isBolgeKalkani
-                ? gameState.regionStates.some(rs =>
-                    rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
-                  )
-                : true;
-              const disabled = !isActionHolder
-                || (isBolgeKalkani && !hasShieldCandidate);
-              const title = !isActionHolder
-                ? holderTitle
-                : (isBolgeKalkani && !hasShieldCandidate
-                  ? "Korunacak uygun bölgen yok."
-                  : undefined);
-              return (
-                <button
-                  key={`fate-${card.id}`}
-                  type="button"
-                  className="cq-debug-panel-btn"
-                  disabled={disabled}
-                  title={title}
-                  onClick={() => handleDevGrantFateCard(card.id)}
-                  style={disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
-                >
-                  🎴 Bana {card.name} Ver
-                </button>
-              );
-            })}
-          </div>
+
+            {/* ── 🎴 Kader Kartı Test — middle-right, scrollable ──── */}
+            <div
+              className="cq-debug-panel"
+              aria-label="Dev: Kader Kartı Test"
+              style={fatePanelStyle}
+            >
+              <div className="cq-debug-panel-title">🎴 Kader Kartı Test</div>
+              {FATE_CARDS.map(card => {
+                const isBolgeKalkani = card.id === "bolge_kalkani";
+                const hasShieldCandidate = isBolgeKalkani
+                  ? gameState.regionStates.some(rs =>
+                      rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
+                    )
+                  : true;
+                const disabled = !isActionHolder
+                  || (isBolgeKalkani && !hasShieldCandidate);
+                const title = !isActionHolder
+                  ? holderTitle
+                  : (isBolgeKalkani && !hasShieldCandidate
+                    ? "Korunacak uygun bölgen yok."
+                    : undefined);
+                return (
+                  <button
+                    key={`fate-${card.id}`}
+                    type="button"
+                    className="cq-debug-panel-btn"
+                    disabled={disabled}
+                    title={title}
+                    onClick={() => handleDevGrantFateCard(card.id)}
+                    style={disabled ? disabledBtnStyle : undefined}
+                  >
+                    🎴 Bana {card.name} Ver
+                  </button>
+                );
+              })}
+            </div>
+          </>
         );
       })()}
 

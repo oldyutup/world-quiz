@@ -71,6 +71,17 @@ const FATE_TIME_GAIN_MS = 5000;
 /** "Sis Çöktü" action-time penalty (subject to the floor above). */
 const FATE_TIME_LOSS_MS = 5000;
 
+/**
+ * "Moral Üstünlüğü" next-move bonus.  Layered onto
+ * `playerBonuses[playerId].extraNextMoveMs` via Math.max so that a pending
+ * Karadeniz bonus (+5s) is preserved if it's already larger.  Consumed by
+ * `consumeMoveTimeBonus` when the holder's next action phase starts — same
+ * channel Karadeniz uses, so the chip render and one-shot reset come for
+ * free.  Distinct from `son_hamle`, which extends the CURRENT action's
+ * `actionEndsAt` immediately.
+ */
+const FATE_NEXT_MOVE_GAIN_MS = 3000;
+
 export interface ConquestFateCardDef {
   id:          string;
   name:        string;
@@ -91,19 +102,19 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "talih_kusu",
     name:        "Talih Kuşu",
     type:        "good",
-    description: "+1 puan kazandın.",
+    description: "+1 puan ve +50 Gold kazandın.",
   },
   {
     id:          "hazine_sandigi",
     name:        "Hazine Sandığı",
     type:        "good",
-    description: "+2 puan kazandın.",
+    description: "+2 puan ve +100 Gold kazandın.",
   },
   {
     id:          "moral_ustunlugu",
     name:        "Moral Üstünlüğü",
     type:        "good",
-    description: "Moral kazandın. +1 puan.",
+    description: "+1 puan kazandın. Sıradaki hamlende +3 saniye avantaj.",
   },
   {
     id:          "son_hamle",
@@ -317,6 +328,41 @@ export function applyFateCardEffectToRound(
     return { ...round, actionEndsAt: nextEndsAt };
   }
   return round;
+}
+
+/**
+ * Apply a card's next-move time effect to `playerBonuses[playerId].extraNextMoveMs`.
+ *
+ * Moral Üstünlüğü → Math.max(prev, FATE_NEXT_MOVE_GAIN_MS).  We deliberately
+ * do NOT overwrite (the Karadeniz pattern) because the two sources share the
+ * same channel: if a player already has Karadeniz's +5s pending and draws
+ * Moral Üstünlüğü, a flat overwrite would silently DOWNGRADE their bonus to
+ * +3s.  Math.max keeps whichever is larger.  Either way `consumeMoveTimeBonus`
+ * resets the field to 0 after the next action phase starts, so there is no
+ * leak across rounds.
+ *
+ * No-op for any other card id (the caller passes the drawn card unconditionally).
+ *
+ * Returns a fresh `playerBonuses` map.  Caller should chain this AFTER
+ * `applyFateCardEffectToBonuses` so a single card that touches both
+ * `bonusPoints` and `extraNextMoveMs` lands atomically on the same pb entry.
+ */
+export function applyFateCardEffectToNextMove(
+  state:    ConquestGameState,
+  playerId: string,
+  cardId:   string,
+): Record<string, ConquestPlayerBonusState> {
+  const currentBonuses = state.playerBonuses ?? {};
+  if (cardId !== "moral_ustunlugu") return currentBonuses;
+
+  const pb        = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
+  const nextExtra = Math.max(pb.extraNextMoveMs, FATE_NEXT_MOVE_GAIN_MS);
+  if (nextExtra === pb.extraNextMoveMs) return currentBonuses;
+
+  return {
+    ...currentBonuses,
+    [playerId]: { ...pb, extraNextMoveMs: nextExtra },
+  };
 }
 
 /** True when the player has not yet drawn their once-per-match fate card. */
