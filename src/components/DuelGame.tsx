@@ -205,6 +205,10 @@ function describeDuelRpcError(err: DuelRpcError | null | undefined): string {
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
+  // display_name_forbidden ve registered_username_taken, name_taken/name_invalid'dan
+  // ÖNCE kontrol edilmeli — helper bu hataları RPC body'sinin başında fırlatıyor.
+  if (m.includes("display_name_forbidden"))   return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
+  if (m.includes("registered_username_taken"))return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
   if (m.includes("name_taken"))               return "Bu odada bu isim zaten kullanılıyor.";
   if (m.includes("room_full"))                return "Oda dolu (2 oyuncu mevcut).";
   if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
@@ -216,7 +220,7 @@ function describeDuelRpcError(err: DuelRpcError | null | undefined): string {
   if (m.includes("room_not_waiting"))         return "Oda artık bekleme aşamasında değil.";
   if (m.includes("room_not_playing"))         return "Oda artık oyunda değil.";
   if (m.includes("not_enough_players"))       return "Yeterli oyuncu yok.";
-  if (m.includes("name_invalid"))             return "Geçersiz isim.";
+  if (m.includes("name_invalid"))             return "Oyuncu adı 2–16 karakter olmalı.";
   if (m.includes("profile_mismatch"))         return "Oturum doğrulaması başarısız.";
   if (m.includes("player_room_mismatch"))     return "Bu odada oyuncun yok.";
   if (m.includes("room_code_mismatch"))       return "Oda doğrulaması başarısız.";
