@@ -327,6 +327,8 @@ function describeFlagDuelRpcError(err: FlagDuelRpcError | null | undefined): str
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
+  if (m.includes("registered_username_taken")) return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+  if (m.includes("display_name_forbidden"))   return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
   if (m.includes("name_taken"))               return "Bu odada bu isim zaten kullanılıyor.";
   if (m.includes("room_full"))                return "Oda dolu (2 oyuncu mevcut).";
   if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
@@ -336,7 +338,7 @@ function describeFlagDuelRpcError(err: FlagDuelRpcError | null | undefined): str
   if (m.includes("room_not_playing"))         return "Oda artık oyunda değil.";
   if (m.includes("room_not_rematchable"))     return "Bu oda rövanşa uygun değil.";
   if (m.includes("not_enough_players"))       return "Yeterli oyuncu yok.";
-  if (m.includes("name_invalid"))             return "Geçersiz isim.";
+  if (m.includes("name_invalid"))             return "Oyuncu adı 2–16 karakter olmalı.";
   if (m.includes("total_rounds_invalid"))     return "Geçersiz tur sayısı.";
   if (m.includes("region_invalid"))           return "Geçersiz bölge.";
   if (m.includes("first_flag_required"))      return "Bayrak seçilemedi. Tekrar dene.";
