@@ -373,6 +373,11 @@ function flipOwnership(
        * has to hold the region for BEREKET_HARVEST_INTERVAL fresh rounds
        * before the next harvest fires.  Harmless on non-bereket regions. */
       bereketHarvestTurns: 0,
+      /* Sınır Karakolu: any outpost on the region is structurally tied to
+       * the previous (neutral) state.  Capture clears it unconditionally
+       * so a newly-owned region can never carry a stale outpost flag.
+       * Harmless on regions that never carried one. */
+      borderOutpostOwnerId: undefined,
     };
   });
   return {

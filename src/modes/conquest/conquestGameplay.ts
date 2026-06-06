@@ -1263,6 +1263,7 @@ export function applyActionToGame(
         targetShielded && !kocbasiBypass,
         kocbasiBypass,
         mancinikBypassUsed,
+        false,
       );
       const startResult: ConquestActionResult = {
         ok:       true,
@@ -1270,6 +1271,58 @@ export function applyActionToGame(
         playerId: action.playerId,
         regionId: action.regionId,
         message:  "Savunma Düellosu başladı!",
+      };
+      return {
+        state: duelState,
+        result: startResult,
+      };
+    }
+  }
+
+  // ── Sınır Karakolu intercept ──────────────────────────────────────────
+  // Neutral capture attempt against a region carrying a defender's border
+  // outpost: instead of a direct flip, open a defense duel between the
+  // attacker and the outpost owner.  Region's `ownerPlayerId` is null and
+  // stays null until duel resolution — both outcomes clear the outpost
+  // field; attacker-win additionally flips ownership to the attacker via
+  // a deferred capture_neutral.
+  //
+  // Edge: if the outpost owner is already eliminated, the duel is skipped
+  // entirely — the attacker captures the region normally (capture_neutral
+  // flow below) and `flipOwnership` clears the stale outpost field.  The
+  // attacker still owns the action, so eliminated defenders can never
+  // contest from beyond the grave.
+  if (action.type === "capture_neutral") {
+    const target = state.regionStates.find(r => r.regionId === action.regionId);
+    const outpostOwner = target?.borderOutpostOwnerId;
+    if (
+      target
+      && outpostOwner
+      && outpostOwner !== action.playerId
+      && !isPlayerEliminated(state, outpostOwner)
+    ) {
+      // Mancınık behaves the same here — charge consumed at duel start
+      // (the shot WAS launched); the duel attacker-win branch forwards
+      // it back into `applyConquestAction` adjacency check.
+      const stateForDuel = mancinikBypassUsed
+        ? { ...state, playerBonuses: consumeMancinikCharge(state.playerBonuses, action.playerId) }
+        : state;
+      const duelState = startDefenseDuel(
+        stateForDuel,
+        action.playerId,
+        outpostOwner,
+        action.regionId,
+        false,   // shieldActive — neutral regions never carry the open shield
+        false,   // kocbasiBypass — no shield to bypass
+        mancinikBypassUsed,
+        true,    // outpostBreak
+      );
+      const startResult: ConquestActionResult = {
+        ok:       true,
+        action:   "capture_neutral",
+        playerId: action.playerId,
+        regionId: action.regionId,
+        message:  "🏯 Sınır Karakolu savunması! Düello başladı.",
       };
       return {
         state: duelState,
@@ -1949,6 +2002,7 @@ function startDefenseDuel(
   shieldActive:   boolean,
   kocbasiBypass:  boolean = false,
   mancinikBypass: boolean = false,
+  outpostBreak:   boolean = false,
 ): ConquestGameState {
   const now = getConquestSyncedNowMs();
   const usedSoFar = state.usedChallengeKeys ?? [];
@@ -1989,6 +2043,7 @@ function startDefenseDuel(
     submittedAnswers: [],
     kocbasiBypass:    kocbasiBypass || undefined,
     mancinikBypass:   mancinikBypass || undefined,
+    outpostBreak:     outpostBreak  || undefined,
   };
 
   return {
@@ -2081,6 +2136,112 @@ function resolveDuelWithWinner(
   const regionLabel  = mapConfig.regions.find(r => r.id === duel.regionId)?.displayLabel
                    ?? mapConfig.regions.find(r => r.id === duel.regionId)?.name
                    ?? duel.regionId;
+
+  // ── Sınır Karakolu — outpost duel branch ──────────────────────────────
+  // Region is NEUTRAL; defender does not own it.  Both outcomes clear the
+  // outpost field; attacker-win additionally flips ownership to attacker.
+  // Capture-side bonus chains (mevzi/koçbaşı/hidden bonus claim) are
+  // skipped — the region's bonus payload belongs to no current owner so
+  // calling them would produce wrong toasts.
+  if (duel.outpostBreak) {
+    if (winnerId === duel.defenderId) {
+      const cleared = state.regionStates.map(rs =>
+        rs.regionId === duel.regionId
+          ? { ...rs, borderOutpostOwnerId: undefined }
+          : rs,
+      );
+      const result: ConquestActionResult = {
+        ok:       true,
+        action:   "defend_region",
+        playerId: duel.defenderId,
+        regionId: duel.regionId,
+        message:  `🏯 Sınır Karakolu saldırıyı durdurdu. ${regionLabel} boş kaldı.`,
+      };
+      return {
+        ...finishDuelIntoRoundResult(state, result),
+        regionStates: cleared,
+      };
+    }
+
+    // Attacker wins → neutral → attacker, outpost cleared.  Use
+    // applyConquestAction's capture_neutral flip so all the usual side
+    // effects (lastCapturedBy, turnCaptured, captureCount, shielded/
+    // limanIncomeTicks/bereketHarvestTurns reset, and our new
+    // borderOutpostOwnerId reset inside flipOwnership) all happen in one
+    // place.  Mancınık bypass forwarded to keep long-range outpost takes
+    // valid; adjacency was checked when the player clicked.
+    const flipApplied = applyConquestAction(
+      mapConfig,
+      state.regionStates,
+      state.players,
+      state.round.roundNumber,
+      { type: "capture_neutral", playerId: duel.attackerId, regionId: duel.regionId },
+      duel.mancinikBypass === true,
+    );
+    if (!flipApplied.result.ok) {
+      // Shouldn't happen — adjacency was valid when the duel started — but
+      // stay defensive: treat as defender-wins so the region survives.
+      const cleared = state.regionStates.map(rs =>
+        rs.regionId === duel.regionId
+          ? { ...rs, borderOutpostOwnerId: undefined }
+          : rs,
+      );
+      const result: ConquestActionResult = {
+        ok:       true,
+        action:   "defend_region",
+        playerId: duel.defenderId,
+        regionId: duel.regionId,
+        message:  `🏯 Sınır Karakolu saldırıyı durdurdu. ${regionLabel} boş kaldı.`,
+      };
+      return {
+        ...finishDuelIntoRoundResult(state, result),
+        regionStates: cleared,
+      };
+    }
+    const flipResult: ConquestActionResult = {
+      ok:                 true,
+      action:             "capture_neutral",
+      playerId:           duel.attackerId,
+      regionId:           duel.regionId,
+      message:            `🏯 ${attackerName} Sınır Karakolunu yıktı ve ${regionLabel} bölgesini ele geçirdi.`,
+      mancinikBypassUsed: duel.mancinikBypass === true || undefined,
+    };
+
+    // Hidden bonus claim — outpost attacker-win is a real fetih on a
+    // neutral region, so the "first capture pockets the bonus" rule must
+    // still apply.  Mevzi / Koçbaşı / defender-region bonus chains stay
+    // intentionally skipped on this branch (region had no current owner —
+    // those bonuses would route through wrong payloads); hidden bonuses
+    // live on a SEPARATE state channel and only depend on the region's
+    // placement + the first capture flipping ownership.  Defender-win
+    // and timeout branches above never reach this code, so neither path
+    // claims the bonus — region stays neutral, placement untouched, the
+    // attacker who eventually captures the region later collects it.
+    const hb = tryClaimHiddenBonus(
+      state.hiddenBonusPlacements,
+      state.playerHiddenBonuses,
+      duel.regionId,
+      duel.attackerId,
+      attackerName,
+      state.round.roundNumber,
+      now,
+    );
+    const postHiddenPlacements = hb ? hb.hiddenBonusPlacements : state.hiddenBonusPlacements;
+    const postPlayerHidden     = hb ? hb.playerHiddenBonuses   : state.playerHiddenBonuses;
+    const postHiddenToast      = hb ? hb.lastHiddenBonusToast  : state.lastHiddenBonusToast;
+    const postIntelReport      = hb
+      ? buildHiddenClaimIntelReport(duel.attackerId, attackerName, hb.lastHiddenBonusToast.type, now)
+      : state.lastIntelReport;
+
+    return {
+      ...finishDuelIntoRoundResult(state, flipResult),
+      regionStates:          flipApplied.regionStates,
+      hiddenBonusPlacements: postHiddenPlacements,
+      playerHiddenBonuses:   postPlayerHidden,
+      lastHiddenBonusToast:  postHiddenToast,
+      lastIntelReport:       postIntelReport,
+    };
+  }
 
   // ── Defender wins → region preserved, shield untouched. ──
   if (winnerId === duel.defenderId) {
@@ -2309,6 +2470,29 @@ export function expireDuel(
                    ?? mapConfig.regions.find(r => r.id === duel.regionId)?.name
                    ?? duel.regionId;
   const defenderName = state.players.find(p => p.id === duel.defenderId)?.name ?? "Savunan";
+
+  // Sınır Karakolu — timeout still favours the defender (region stays
+  // neutral), but the outpost is consumed and the message reflects the
+  // outpost flavour instead of the standard duel copy.  No bonus chain
+  // runs (neutral region; matches the resolveDuelWithWinner branch).
+  if (duel.outpostBreak) {
+    const cleared = state.regionStates.map(rs =>
+      rs.regionId === duel.regionId
+        ? { ...rs, borderOutpostOwnerId: undefined }
+        : rs,
+    );
+    const result: ConquestActionResult = {
+      ok:       true,
+      action:   "defend_region",
+      playerId: duel.defenderId,
+      regionId: duel.regionId,
+      message:  `⏰ Süre doldu — Sınır Karakolu saldırıyı durdurdu. ${regionLabel} boş kaldı.`,
+    };
+    return {
+      ...finishDuelIntoRoundResult(state, result),
+      regionStates: cleared,
+    };
+  }
 
   const result: ConquestActionResult = {
     ok:       true,

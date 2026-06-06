@@ -265,6 +265,16 @@ export interface ConquestRegionState {
    * Optional for back-compat with pre-bereket-harvest saves.
    */
   bereketHarvestTurns?: number;
+  /**
+   * Sınır Karakolu (Kuşatma fate card) — id of the player who placed a
+   * border outpost on this NEUTRAL region.  Region ownerPlayerId stays
+   * null; an enemy capture attempt opens a defense duel between the
+   * attacker and this outpost owner instead of flipping ownership.
+   * Cleared on duel resolution (any outcome), on an eliminated-owner
+   * direct capture, and on any flipOwnership write.  Absent / undefined
+   * when no outpost is present.  Optional for back-compat.
+   */
+  borderOutpostOwnerId?: string;
 }
 
 /**
@@ -889,6 +899,19 @@ export interface ConquestDefenseDuelState {
    * attacker-wins-flip path.  Absent on normal duels.
    */
   mancinikBypass?:  boolean;
+  /**
+   * Sınır Karakolu — true when this duel was triggered by an attacker
+   * targeting a NEUTRAL region carrying a defender's border outpost.
+   * Region's `ownerPlayerId` is null and `defenderId` is the outpost
+   * owner (not the region owner).  Resolution diverges from the standard
+   * duel: attacker-win flips neutral → attacker; defender-win / expire
+   * keeps region neutral; both outcomes clear `borderOutpostOwnerId` on
+   * the target region.  Capture-side bonus chains (mevzi/koçbaşı/hidden
+   * bonus claim) are intentionally skipped on this branch because the
+   * region's bonus payload belongs to no current owner.  Absent on
+   * normal duels.
+   */
+  outpostBreak?:    boolean;
 }
 
 /** Snapshot of an in-progress round. */

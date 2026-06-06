@@ -56,6 +56,7 @@ import {
   type ConquestPlayerHiddenBonus,
   type ConquestRegionBonusType,
   type ConquestRegionId,
+  type ConquestRegionState,
   type ConquestRoomSettings,
 } from "./types";
 import { getConquestMapConfig } from "./maps";
@@ -1078,6 +1079,122 @@ export default function ConquestGame({
     onPushGameState,
   ]);
 
+  // ── Kader Kartı — Sınır Karakolu placement mode ────────────────────
+  // Sınır Desteği kartı çekilince açılan placement modu.  Mirrors the
+  // Bölge Kalkanı pattern (lifetime guard, click short-circuit, dev
+  // panel hook) but writes a different region-state field:
+  // `borderOutpostOwnerId`.  Region's `ownerPlayerId` stays null; the
+  // attack-side intercept in `applyActionToGame` converts opponent
+  // capture attempts into a defense duel between the attacker and the
+  // outpost owner.  Placement is FREE — does not consume hamle hakkı.
+  //
+  // V1 per-player cap: at most 1 active outpost per player.  Candidate
+  // set drains to empty when the player already has an outpost, so the
+  // lifetime guard auto-closes the mode and the card silently goes to
+  // waste (no refund; same UX as bolge_kalkani with no eligible region).
+  const [fateOutpostPlacement, setFateOutpostPlacement] = useState<{
+    roundNumber:    number;
+    actionHolderId: string;
+  } | null>(null);
+  const fateOutpostPlacementActive = fateOutpostPlacement !== null;
+
+  /** Region ids the local viewer may stamp a Sınır Karakolu on RIGHT NOW.
+   *  Must be neutral, NOT already carry an outpost, AND share an
+   *  adjacency with at least one region the viewer owns.  Derived from
+   *  REAL regionStates (placement is a viewer-local owner op). */
+  const fateOutpostPlacementCandidates = useMemo(() => {
+    if (!gameState || !myPlayerId) return new Set<ConquestRegionId>();
+    if (!mapConfig)                return new Set<ConquestRegionId>();
+    // Per-player cap: drop the entire candidate set if the viewer already
+    // has an outpost somewhere.  Mode auto-closes and the card is wasted.
+    const viewerAlreadyHasOutpost = gameState.regionStates.some(
+      rs => rs.borderOutpostOwnerId === myPlayerId,
+    );
+    if (viewerAlreadyHasOutpost) return new Set<ConquestRegionId>();
+
+    const ownedIds = new Set<ConquestRegionId>();
+    for (const rs of gameState.regionStates) {
+      if (rs.ownerPlayerId === myPlayerId) ownedIds.add(rs.regionId);
+    }
+    const stateById = new Map<ConquestRegionId, ConquestRegionState>(
+      gameState.regionStates.map(rs => [rs.regionId, rs]),
+    );
+    const out = new Set<ConquestRegionId>();
+    for (const ownedId of ownedIds) {
+      const ownedRegion = mapConfig.regions.find(r => r.id === ownedId);
+      if (!ownedRegion) continue;
+      for (const nbId of ownedRegion.neighbors) {
+        const nbRs = stateById.get(nbId);
+        if (!nbRs)                                continue;
+        if (nbRs.ownerPlayerId !== null)          continue; // must be neutral
+        if (nbRs.borderOutpostOwnerId)            continue; // not already an outpost
+        out.add(nbRs.regionId);
+      }
+    }
+    return out;
+  }, [gameState, myPlayerId, mapConfig]);
+
+  // Center notice surfaced when sinir_destegi is drawn but no eligible
+  // neighbour exists OR the player already owns an outpost.  Mirrors the
+  // fateShieldNotice shape so the same toast slot renders it.
+  const [fateOutpostNotice, setFateOutpostNotice] = useState<{
+    title: string; detail: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!fateOutpostNotice) return;
+    const t = window.setTimeout(() => setFateOutpostNotice(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [fateOutpostNotice]);
+
+  // Lifetime guard mirrors fateShieldPlacement: closes on phase change,
+  // holder change, round advance, finished, or empty candidate set.
+  const outpostPlacementRoundNumber    = fateOutpostPlacement?.roundNumber    ?? null;
+  const outpostPlacementActionHolderId = fateOutpostPlacement?.actionHolderId ?? null;
+  const outpostCandidateCount          = fateOutpostPlacementCandidates.size;
+  useEffect(() => {
+    if (!fateOutpostPlacement) return;
+    if (!gameState) return;
+    if (gameState.phase === "finished")                                       { setFateOutpostPlacement(null); return; }
+    if (gameState.phase !== "action")                                         { setFateOutpostPlacement(null); return; }
+    if (gameState.round.actionHolderId !== outpostPlacementActionHolderId)    { setFateOutpostPlacement(null); return; }
+    if (gameState.round.roundNumber    !== outpostPlacementRoundNumber)       { setFateOutpostPlacement(null); return; }
+    if (outpostCandidateCount === 0)                                          { setFateOutpostPlacement(null); return; }
+  }, [
+    fateOutpostPlacement,
+    gameState,
+    outpostPlacementActionHolderId,
+    outpostPlacementRoundNumber,
+    outpostCandidateCount,
+  ]);
+
+  const handlePlaceFateOutpost = useCallback((regionId: ConquestRegionId) => {
+    if (!gameState || !myPlayerId)              return;
+    if (!fateOutpostPlacementActive)            return;
+    if (!fateOutpostPlacementCandidates.has(regionId)) {
+      flashIllegalRef.current?.(regionId);
+      return;
+    }
+    // Region stays neutral; we only stamp the outpost owner field.  No
+    // ownership change, no point award, no hamle hakkı consumed.
+    const next: ConquestGameState = {
+      ...gameState,
+      regionStates: gameState.regionStates.map(rs =>
+        rs.regionId === regionId
+          ? { ...rs, borderOutpostOwnerId: myPlayerId }
+          : rs,
+      ),
+    };
+    setFateOutpostPlacement(null);
+    playSound("click");
+    void onPushGameState(next);
+  }, [
+    gameState,
+    myPlayerId,
+    fateOutpostPlacementActive,
+    fateOutpostPlacementCandidates,
+    onPushGameState,
+  ]);
+
   /** Region ids the local viewer has armed with a Pusu.  Used to render an
    *  owner-only marker on the map — opponents NEVER see these.  Empty when
    *  no ambush is armed by this viewer (the common case for non-Pusu
@@ -1283,7 +1400,57 @@ export default function ConquestGame({
         });
       }
     }
-  }, [gameState, myPlayerId, onPushGameState]);
+
+    if (card.id === "sinir_destegi") {
+      // V1 cap: at most 1 outpost per player.  Skip mode entirely (notice
+      // + wasted card) when one already exists.
+      const alreadyHasOutpost = latest.regionStates.some(
+        rs => rs.borderOutpostOwnerId === myPlayerId,
+      );
+      // Eligible candidates: neutral neighbour to a viewer-owned region
+      // that does not already carry an outpost.  Mirrors
+      // fateOutpostPlacementCandidates so the dev path matches prod.
+      const ownedIds = new Set<ConquestRegionId>();
+      for (const rs of latest.regionStates) {
+        if (rs.ownerPlayerId === myPlayerId) ownedIds.add(rs.regionId);
+      }
+      const stateById = new Map<ConquestRegionId, ConquestRegionState>(
+        latest.regionStates.map(rs => [rs.regionId, rs]),
+      );
+      let hasCandidate = false;
+      if (!alreadyHasOutpost && mapConfig) {
+        for (const ownedId of ownedIds) {
+          const ownedRegion = mapConfig.regions.find(r => r.id === ownedId);
+          if (!ownedRegion) continue;
+          for (const nbId of ownedRegion.neighbors) {
+            const nbRs = stateById.get(nbId);
+            if (!nbRs) continue;
+            if (nbRs.ownerPlayerId !== null) continue;
+            if (nbRs.borderOutpostOwnerId)   continue;
+            hasCandidate = true;
+            break;
+          }
+          if (hasCandidate) break;
+        }
+      }
+      if (alreadyHasOutpost) {
+        setFateOutpostNotice({
+          title:  "🏯 Sınır Karakolu",
+          detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
+        });
+      } else if (!hasCandidate) {
+        setFateOutpostNotice({
+          title:  "🏯 Sınır Karakolu",
+          detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
+        });
+      } else {
+        setFateOutpostPlacement({
+          roundNumber:    latest.round.roundNumber,
+          actionHolderId: myPlayerId,
+        });
+      }
+    }
+  }, [gameState, myPlayerId, mapConfig, onPushGameState]);
 
   // Derived shield ownership maps — drive the per-player panel chips without
   // adding new fields to playerBonuses (single source of truth = regionStates).
@@ -2070,6 +2237,19 @@ export default function ConquestGame({
       return;
     }
 
+    // 🏯 Sınır Karakolu placement short-circuit — mirrors Bölge Kalkanı.
+    // Legal targets are neutral neighbour regions with no existing outpost
+    // (see fateOutpostPlacementCandidates).  Clicking a candidate stamps
+    // borderOutpostOwnerId on the region; ownership stays null.  Invalid
+    // taps flash and keep mode open.  Pusu / Bölge Kalkanı keep priority
+    // — their candidate sets and this set are mutually exclusive by
+    // construction (Pusu = owned/neutral, Bölge Kalkanı = owned,
+    // Outpost = neutral-only), so the order is also a defensive default.
+    if (fateOutpostPlacementActive) {
+      handlePlaceFateOutpost(regionId);
+      return;
+    }
+
     if (gameState.phase !== "action") return;
     const holderId = gameState.round.actionHolderId;
     if (!holderId) return;
@@ -2298,7 +2478,7 @@ export default function ConquestGame({
     const { state: nextState } = applyActionToGame(gameState, mapConfig, pending);
     void onPushGameState(nextState);
     playSound("click");
-  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId, pusuPlacementEntryId, handlePlaceAmbush, fateShieldPlacementActive, handlePlaceFateShield]);
+  }, [gameState, mapConfig, canActOnRegion, flashIllegal, onPushGameState, legalTargets, myPlayerId, pusuPlacementEntryId, handlePlaceAmbush, fateShieldPlacementActive, handlePlaceFateShield, fateOutpostPlacementActive, handlePlaceFateOutpost]);
 
   const handleSkipAction = useCallback(() => {
     if (!gameState || !mapConfig) return;
@@ -2471,6 +2651,57 @@ export default function ConquestGame({
         }
       }
 
+      // Sınır Desteği — Sınır Karakolu placement.  Aynı yaşam döngüsü
+      // pattern'i (Bölge Kalkanı): kart efektinin puan/zaman delta'sı yok,
+      // reveal sonrası komşu boş bir bölgeye karakol koymak için seçim
+      // moduna alınır.  Per-player cap = 1; oyuncunun zaten outpost'u
+      // varsa veya uygun komşu boş bölge yoksa kart boşa gider.  V1'de
+      // refund yok.
+      if (success && card.id === "sinir_destegi") {
+        const alreadyHasOutpost = latest.regionStates.some(
+          rs => rs.borderOutpostOwnerId === myPlayerId,
+        );
+        const ownedIds = new Set<ConquestRegionId>();
+        for (const rs of latest.regionStates) {
+          if (rs.ownerPlayerId === myPlayerId) ownedIds.add(rs.regionId);
+        }
+        const stateById = new Map<ConquestRegionId, ConquestRegionState>(
+          latest.regionStates.map(rs => [rs.regionId, rs]),
+        );
+        let hasCandidate = false;
+        if (!alreadyHasOutpost && mapConfig) {
+          for (const ownedId of ownedIds) {
+            const ownedRegion = mapConfig.regions.find(r => r.id === ownedId);
+            if (!ownedRegion) continue;
+            for (const nbId of ownedRegion.neighbors) {
+              const nbRs = stateById.get(nbId);
+              if (!nbRs) continue;
+              if (nbRs.ownerPlayerId !== null) continue;
+              if (nbRs.borderOutpostOwnerId)   continue;
+              hasCandidate = true;
+              break;
+            }
+            if (hasCandidate) break;
+          }
+        }
+        if (alreadyHasOutpost) {
+          setFateOutpostNotice({
+            title:  "🏯 Sınır Karakolu",
+            detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
+          });
+        } else if (!hasCandidate) {
+          setFateOutpostNotice({
+            title:  "🏯 Sınır Karakolu",
+            detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
+          });
+        } else {
+          setFateOutpostPlacement({
+            roundNumber:    latest.round.roundNumber,
+            actionHolderId: myPlayerId,
+          });
+        }
+      }
+
       // Talih Kuşu (+50G) / Hazine Sandığı (+100G) — gold ödülü gameplay
       // state'inden tamamen bağımsız bir side-effect: pure helper'lar
       // playerBonuses.bonusPoints'i yazıyor, hesap-seviyesi gold ise
@@ -2513,7 +2744,7 @@ export default function ConquestGame({
       fateCardDrawingRef.current = false;
       setFateCardSpending(false);
     }
-  }, [myPlayerId, onPushGameState, roomId]);
+  }, [myPlayerId, mapConfig, onPushGameState, roomId]);
 
   const eligibleForFateCardDraw = playerCanDrawFateCard(gameState, myPlayerId);
   const fateCardAlreadyUsed = !!(
@@ -3661,17 +3892,34 @@ export default function ConquestGame({
   // click handler is attached unconditionally.  Pusu keeps priority when
   // both are somehow active (matches the handleRegionClick short-circuit).
   const inFateShieldMode  = !inAmbushMode && fateShieldPlacementActive;
-  const inPlacementMode   = inAmbushMode || inFateShieldMode;
+  // Sınır Karakolu mode — Pusu and Bölge Kalkanı keep priority when more
+  // than one is somehow active.  Candidate sets are mutually exclusive
+  // by construction (neutral-only) so the order is also a defensive
+  // default.
+  const inFateOutpostMode = !inAmbushMode && !inFateShieldMode && fateOutpostPlacementActive;
+  const inPlacementMode   = inAmbushMode || inFateShieldMode || inFateOutpostMode;
   const mapLegalTargets   = inAmbushMode
     ? pusuPlacementCandidates
     : inFateShieldMode
       ? fateShieldPlacementCandidates
-      : legalTargets;
+      : inFateOutpostMode
+        ? fateOutpostPlacementCandidates
+        : legalTargets;
   const mapViewerIsHolder = inPlacementMode ? true  : isActionHolder;
   const mapBoardDisabled  = inPlacementMode ? false : boardDisabled;
   const mapClickHandler   = inPlacementMode
     ? handleRegionClick
     : (phase === "action" ? handleRegionClick : undefined);
+  // Sınır Karakolu — public-visible set of regions carrying an outpost.
+  // Derived from REAL regionStates because the field is intentionally not
+  // viewer-filtered (every player sees every outpost).
+  const borderOutpostRegions = useMemo(() => {
+    const out = new Set<ConquestRegionId>();
+    for (const rs of gameState.regionStates) {
+      if (rs.borderOutpostOwnerId) out.add(rs.regionId);
+    }
+    return out;
+  }, [gameState.regionStates]);
   const mapNode = settings.map === "turkey" ? (
     <>
       {/* SVG map: primary interaction on all screens */}
@@ -3687,6 +3935,7 @@ export default function ConquestGame({
         roundBonuses={gameState.roundBonuses}
         onRegionClick={mapClickHandler}
         myAmbushRegionIds={myAmbushRegionIds}
+        borderOutpostRegions={borderOutpostRegions}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
       <div className="cq-map-card-fallback">
@@ -4118,6 +4367,22 @@ export default function ConquestGame({
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">{fateShieldNotice.title}</div>
             <div className="cq-bonus-toast-detail">{fateShieldNotice.detail}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Sınır Karakolu — local-only notice when the drawer can't place
+       *  (no eligible neutral neighbour or per-player cap already hit). */}
+      {fateOutpostNotice && (
+        <div
+          className="cq-duel-overlay-toast cq-hidden-op-overlay"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="cq-bonus-toast-icon" aria-hidden="true">🏯</span>
+          <div className="cq-bonus-toast-text">
+            <div className="cq-bonus-toast-title">{fateOutpostNotice.title}</div>
+            <div className="cq-bonus-toast-detail">{fateOutpostNotice.detail}</div>
           </div>
         </div>
       )}
@@ -5423,6 +5688,17 @@ export default function ConquestGame({
         </div>
       )}
 
+      {/* Sınır Karakolu placement hint banner — mirrors Bölge Kalkanı. */}
+      {inFateOutpostMode && (
+        <div className="cq-pusu-placement-banner" role="status" aria-live="polite">
+          <span aria-hidden="true">🏯</span>
+          <span className="cq-pusu-placement-banner-text">
+            Sınır Karakolu: Bölgene komşu boş bir bölgeye karakol kur.
+            Sahipli veya zaten karakollu bölgelere kurulamaz; bölge senin olmaz.
+          </span>
+        </div>
+      )}
+
       {/* Suikast target picker — modal overlay.  Lists opponents only; the
        *  local viewer is filtered out so self-targeting is impossible at the
        *  UI layer too (gameplay rejects it as a second guard). */}
@@ -5684,18 +5960,54 @@ export default function ConquestGame({
               <div className="cq-debug-panel-title">🎴 Kader Kartı Test</div>
               {FATE_CARDS.map(card => {
                 const isBolgeKalkani = card.id === "bolge_kalkani";
+                const isSinirDestegi = card.id === "sinir_destegi";
                 const hasShieldCandidate = isBolgeKalkani
                   ? gameState.regionStates.some(rs =>
                       rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
                     )
                   : true;
+                // Sınır Karakolu — dev panel disable check mirrors the
+                // prod candidate predicate: viewer must not already have
+                // an outpost AND at least one neutral neighbour must exist.
+                let sinirDestegiBlockerTitle: string | undefined;
+                if (isSinirDestegi) {
+                  const alreadyHasOutpost = gameState.regionStates.some(
+                    rs => rs.borderOutpostOwnerId === myPlayerId,
+                  );
+                  if (alreadyHasOutpost) {
+                    sinirDestegiBlockerTitle = "Zaten kurulmuş bir karakolun var.";
+                  } else if (mapConfig && myPlayerId) {
+                    const ownedIds = new Set<ConquestRegionId>();
+                    for (const rs of gameState.regionStates) {
+                      if (rs.ownerPlayerId === myPlayerId) ownedIds.add(rs.regionId);
+                    }
+                    const sb = new Map<ConquestRegionId, ConquestRegionState>(
+                      gameState.regionStates.map(rs => [rs.regionId, rs]),
+                    );
+                    let any = false;
+                    outer: for (const ownedId of ownedIds) {
+                      const ownedRegion = mapConfig.regions.find(r => r.id === ownedId);
+                      if (!ownedRegion) continue;
+                      for (const nbId of ownedRegion.neighbors) {
+                        const nbRs = sb.get(nbId);
+                        if (!nbRs) continue;
+                        if (nbRs.ownerPlayerId !== null) continue;
+                        if (nbRs.borderOutpostOwnerId)   continue;
+                        any = true;
+                        break outer;
+                      }
+                    }
+                    if (!any) sinirDestegiBlockerTitle = "Uygun komşu boş bölge yok.";
+                  }
+                }
                 const disabled = !isActionHolder
-                  || (isBolgeKalkani && !hasShieldCandidate);
+                  || (isBolgeKalkani && !hasShieldCandidate)
+                  || (isSinirDestegi && !!sinirDestegiBlockerTitle);
                 const title = !isActionHolder
                   ? holderTitle
                   : (isBolgeKalkani && !hasShieldCandidate
                     ? "Korunacak uygun bölgen yok."
-                    : undefined);
+                    : (isSinirDestegi ? sinirDestegiBlockerTitle : undefined));
                 return (
                   <button
                     key={`fate-${card.id}`}

@@ -126,7 +126,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "sinir_destegi",
     name:        "Sınır Desteği",
     type:        "good",
-    description: "Sınır desteği geldi. +1 puan.",
+    description: "Komşu olduğun boş bir bölgeye Sınır Karakolu kurarsın. Rakip saldırırsa bölgeyi doğrudan alamaz; seninle düello yapmak zorunda kalır.",
   },
   {
     id:          "kalkan",
@@ -234,7 +234,9 @@ function getCardPointDelta(cardId: string): number {
     case "talih_kusu":      return +1;
     case "hazine_sandigi":  return +2;
     case "moral_ustunlugu": return +1;
-    case "sinir_destegi":   return +1;
+    // sinir_destegi → placement card; no bonusPoints delta.  Effect lives in
+    // the ConquestGame.tsx selection mode that stamps borderOutpostOwnerId
+    // on a neutral neighbour region.
     case "kalkan":          return +1;
     // Bad
     case "lanetli_zar":     return -1;
@@ -252,8 +254,8 @@ function getCardPointDelta(cardId: string): number {
  * `playerBonuses[playerId].bonusPoints` so the existing scoreboard / event-
  * feed / XP surfaces pick it up unchanged.
  *
- * Positive deltas (Talih Kuşu, Hazine Sandığı, Moral Üstünlüğü, Sınır
- * Desteği, Kalkan) add straight.  Negative deltas (Lanetli Zar, Vergi
+ * Positive deltas (Talih Kuşu, Hazine Sandığı, Moral Üstünlüğü, Kalkan)
+ * add straight.  Negative deltas (Lanetli Zar, Vergi
  * Baskını, Kara Haber, Ters Rüzgar, İç Karışıklık) are clamped so the
  * player's visible total (regionPoints + bonusPoints) never drops below 0.
  * The bonusPoints field itself may legitimately go negative, matching how

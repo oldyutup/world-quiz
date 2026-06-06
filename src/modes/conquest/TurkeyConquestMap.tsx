@@ -191,6 +191,13 @@ interface Props {
    * previews) at full strength.
    */
   viewerIsHolder?: boolean;
+  /**
+   * Sınır Karakolu (Kuşatma fate card) — region ids currently carrying
+   * an outpost.  Public information: every viewer sees the same set, no
+   * owner colouring or owner-only filtering applied.  Empty / undefined
+   * keeps the layer dormant for matches with no outpost in play.
+   */
+  borderOutpostRegions?: Set<ConquestRegionId>;
 }
 
 interface OwnershipFxEntry {
@@ -268,6 +275,7 @@ export default function TurkeyConquestMap({
   viewerIsHolder = true,
   roundBonuses,
   myAmbushRegionIds,
+  borderOutpostRegions,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -933,6 +941,48 @@ export default function TurkeyConquestMap({
                       className="cq-map-ambush-owner-icon"
                     >
                       🕳️
+                    </text>
+                  </g>
+                );
+              })}
+          </g>
+        )}
+
+        {/* ── Layer 5.55: Sınır Karakolu (public outpost) chip ─────────
+             Painted at the region's label anchor so it sits visually
+             where the player would expect a "this region has something
+             special" badge.  Public: identical layer for every viewer,
+             no owner-side filter.  Distinct glyph (🏯) keeps it from
+             being confused with the open shield (🛡️ via Layer 4a path
+             overlay) or the Pusu owner chip (🕳️, owner-only).  Never
+             intercepts pointer events. */}
+        {borderOutpostRegions && borderOutpostRegions.size > 0 && (
+          <g
+            className="cq-map-outpost-layer"
+            pointerEvents="none"
+            aria-hidden="true"
+          >
+            {regionEntries
+              .filter(e => borderOutpostRegions.has(e.id as ConquestRegionId))
+              .map(({ id, labelPos }) => {
+                const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
+                // Anchor above the label so we don't fight the value
+                // badge (offset 0,0) or the bonus chip (+26).  16px up
+                // keeps it readable against owned + neutral fills.
+                const cx  = labelPos.x + off.dx;
+                const cy  = labelPos.y + off.dy - 18;
+                return (
+                  <g key={`outpost-${id}`} className="cq-map-outpost-chip">
+                    <circle cx={cx} cy={cy} r={10} className="cq-map-bonus-chip-bg" />
+                    <circle cx={cx} cy={cy} r={6.5} className="cq-map-bonus-chip-inner" />
+                    <text
+                      x={cx}
+                      y={cy + 0.5}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="cq-map-bonus-icon"
+                    >
+                      🏯
                     </text>
                   </g>
                 );
