@@ -236,8 +236,12 @@ function describeWheelGroupRpcError(
   // gelmeli — substring olarak içerdiği için aksi halde yanlış dala düşer.
   if (msg.includes("registered_username_taken"))
                                           return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+  // 'display_name_forbidden' name_invalid/name_taken'den ÖNCE kontrol edilmeli;
+  // helper bu etiketi yasaklı/rezerv/küfürlü nick'ler için fırlatıyor.
+  if (msg.includes("display_name_forbidden"))
+                                          return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
   if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
-  if (msg.includes("name_invalid"))       return "Oyuncu adı en az 2 karakter olmalı.";
+  if (msg.includes("name_invalid"))       return "Oyuncu adı 2–16 karakter olmalı.";
   if (msg.includes("room_full"))          return "Oda dolu.";
   if (msg.includes("room_finished"))      return "Bu oda kapanmış.";
   if (msg.includes("room_in_progress"))   return "Maç başlamış. Katılamazsın.";
