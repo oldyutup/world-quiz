@@ -16,8 +16,13 @@
  * effect copy still reads naturally, and the unique behaviours can be
  * layered back in later without touching the catalog shape.
  *
- * Random draw stays uniform — adding/removing cards is a one-line change
- * here and the picker, reveal overlay, and event feed pick it up unchanged.
+ * Random draw is category-first: a coin flip picks good vs bad (always
+ * 50/50, independent of pool sizes), then a uniform pick within the chosen
+ * pool selects the card.  Adding/removing cards stays a one-line change
+ * here; the picker, reveal overlay, and event feed pick it up unchanged.
+ * The "%50 iyi, %50 kötü" widget promise is now algorithmic rather than
+ * incidental, so the catalog no longer has to be hand-balanced 6/6 to keep
+ * the contract honest.
  *
  * Cards are server-blind: the random draw runs on whichever client issues
  * the action, the resulting card is written into `lastFateCardEvent` on
@@ -154,11 +159,42 @@ export function getFateCardById(id: string): ConquestFateCardDef | null {
   return FATE_CARDS.find(c => c.id === id) ?? null;
 }
 
-/** Uniform random pick over the V2 pool.  Caller supplies the rng so tests
- *  can drive a deterministic seed; production passes `Math.random`. */
+/**
+ * Category-first random pick.  First rng() call selects the category with a
+ * fixed 50/50 split (good vs bad), independent of the catalog's good/bad
+ * counts.  Second rng() call picks uniformly within the chosen category's
+ * pool.  This makes the widget's "%50 iyi, %50 kötü" promise algorithmic
+ * rather than incidental: adding more cards in one category dilutes that
+ * category's per-card probability but keeps the category-level odds at 50/50.
+ *
+ * With today's 6 good / 6 bad catalog every card still resolves to 1/12
+ * end-to-end (0.5 * 1/6), so the V2 balance is statistically unchanged from
+ * the prior uniform-over-pool draw.  Tests that pinned a deterministic seed
+ * may surface different cards, since the rng is now consumed up to twice
+ * per draw instead of once — the `rng` parameter is still the only knob.
+ *
+ * Fallback: if either category pool is empty (e.g. catalog edited so that
+ * one side has no cards), the picker degrades to uniform-over-pool over the
+ * whole catalog — matching the prior behaviour so the player is never
+ * stuck.  This consumes the rng exactly once.  Throws only if FATE_CARDS
+ * itself is empty, which would already have produced `undefined` under the
+ * old code and indicates a packaging bug, not a runtime condition.
+ */
 export function drawRandomFateCard(rng: () => number = Math.random): ConquestFateCardDef {
-  const idx = Math.min(FATE_CARDS.length - 1, Math.max(0, Math.floor(rng() * FATE_CARDS.length)));
-  return FATE_CARDS[idx];
+  const goodCards = FATE_CARDS.filter(c => c.type === "good");
+  const badCards  = FATE_CARDS.filter(c => c.type === "bad");
+
+  if (goodCards.length === 0 || badCards.length === 0) {
+    if (FATE_CARDS.length === 0) {
+      throw new Error("FATE_CARDS catalog is empty");
+    }
+    const idx = Math.min(FATE_CARDS.length - 1, Math.max(0, Math.floor(rng() * FATE_CARDS.length)));
+    return FATE_CARDS[idx];
+  }
+
+  const pool = rng() < 0.5 ? goodCards : badCards;
+  const idx  = Math.min(pool.length - 1, Math.max(0, Math.floor(rng() * pool.length)));
+  return pool[idx];
 }
 
 /**
