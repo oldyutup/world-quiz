@@ -252,6 +252,8 @@ function describeDuelGroupRpcError(err: DuelGroupRpcError | null | undefined): s
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
+  if (m.includes("display_name_forbidden"))   return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
+  if (m.includes("registered_username_taken"))return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
   if (m.includes("name_taken"))               return "Bu isim bu odada kullanılıyor. Farklı bir isim seç.";
   if (m.includes("room_full"))                return "Oda dolu.";
   if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
@@ -263,7 +265,7 @@ function describeDuelGroupRpcError(err: DuelGroupRpcError | null | undefined): s
   if (m.includes("not_enough_players"))       return "En az 3 oyuncu gerekli.";
   if (m.includes("max_players_invalid"))      return "Geçersiz oyuncu sayısı (3–10).";
   if (m.includes("max_players_too_low"))      return "Maksimum oyuncu sayısı şu an odada olan kişi sayısından düşük olamaz.";
-  if (m.includes("name_invalid"))             return "Geçersiz isim.";
+  if (m.includes("name_invalid"))             return "Oyuncu adı 2–16 karakter olmalı.";
   if (m.includes("profile_mismatch"))         return "Oturum doğrulaması başarısız.";
   if (m.includes("player_room_mismatch"))     return "Bu odada oyuncun yok.";
   if (m.includes("cannot_kick_self"))         return "Kendini odadan çıkaramazsın.";
