@@ -1389,15 +1389,22 @@ export default function ConquestGame({
         rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
       );
       if (hasCandidate) {
+        // Selection mode opens immediately — the reveal backdrop covers the
+        // map for FATE_REVEAL_MS so the candidate hover state is invisible
+        // until the overlay closes.  Notices, however, must wait: rendering
+        // the "boşa gitti" toast underneath the reveal would stack two
+        // overlays in the same slot.
         setFateShieldPlacement({
           roundNumber:    latest.round.roundNumber,
           actionHolderId: myPlayerId,
         });
       } else {
-        setFateShieldNotice({
-          title:  "🛡️ Bölge Kalkanı",
-          detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
-        });
+        window.setTimeout(() => {
+          setFateShieldNotice({
+            title:  "🛡️ Bölge Kalkanı",
+            detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
+          });
+        }, FATE_REVEAL_MS);
       }
     }
 
@@ -1434,15 +1441,19 @@ export default function ConquestGame({
         }
       }
       if (alreadyHasOutpost) {
-        setFateOutpostNotice({
-          title:  "🏯 Sınır Karakolu",
-          detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
-        });
+        window.setTimeout(() => {
+          setFateOutpostNotice({
+            title:  "🏯 Sınır Karakolu",
+            detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
+          });
+        }, FATE_REVEAL_MS);
       } else if (!hasCandidate) {
-        setFateOutpostNotice({
-          title:  "🏯 Sınır Karakolu",
-          detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
-        });
+        window.setTimeout(() => {
+          setFateOutpostNotice({
+            title:  "🏯 Sınır Karakolu",
+            detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
+          });
+        }, FATE_REVEAL_MS);
       } else {
         setFateOutpostPlacement({
           roundNumber:    latest.round.roundNumber,
@@ -2639,15 +2650,22 @@ export default function ConquestGame({
           rs.ownerPlayerId === myPlayerId && rs.shielded !== true,
         );
         if (hasCandidate) {
+          // Selection mode opens immediately — the reveal backdrop covers
+          // the map for FATE_REVEAL_MS so the candidate hover state stays
+          // invisible until the overlay closes.  The "boşa gitti" notice
+          // path is delayed below so it does NOT stack underneath the
+          // reveal in the shared toast slot.
           setFateShieldPlacement({
             roundNumber:    latest.round.roundNumber,
             actionHolderId: myPlayerId,
           });
         } else {
-          setFateShieldNotice({
-            title:  "🛡️ Bölge Kalkanı",
-            detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
-          });
+          window.setTimeout(() => {
+            setFateShieldNotice({
+              title:  "🛡️ Bölge Kalkanı",
+              detail: "Korunacak uygun bölgen yok. Bölge Kalkanı boşa gitti.",
+            });
+          }, FATE_REVEAL_MS);
         }
       }
 
@@ -2685,15 +2703,19 @@ export default function ConquestGame({
           }
         }
         if (alreadyHasOutpost) {
-          setFateOutpostNotice({
-            title:  "🏯 Sınır Karakolu",
-            detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
-          });
+          window.setTimeout(() => {
+            setFateOutpostNotice({
+              title:  "🏯 Sınır Karakolu",
+              detail: "Zaten kurulmuş bir karakolun var. Sınır Desteği boşa gitti.",
+            });
+          }, FATE_REVEAL_MS);
         } else if (!hasCandidate) {
-          setFateOutpostNotice({
-            title:  "🏯 Sınır Karakolu",
-            detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
-          });
+          window.setTimeout(() => {
+            setFateOutpostNotice({
+              title:  "🏯 Sınır Karakolu",
+              detail: "Uygun komşu boş bölge yok. Sınır Desteği boşa gitti.",
+            });
+          }, FATE_REVEAL_MS);
         } else {
           setFateOutpostPlacement({
             roundNumber:    latest.round.roundNumber,
@@ -4991,7 +5013,7 @@ export default function ConquestGame({
         {phasePanelContent}
       </div>
       <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
-      <ConquestFateCardReveal event={lastFateCardEvent} />
+      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
       {bonusGuideNode}
     </>
   );
@@ -5182,7 +5204,7 @@ export default function ConquestGame({
       </MobileBottomSheet>
       {/* Kader Kartı reveal stays full-overlay on mobile so it isn't
        *  clipped by the bottom sheet or the map fit. */}
-      <ConquestFateCardReveal event={lastFateCardEvent} />
+      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
       {bonusGuideNode}
     </>
   );

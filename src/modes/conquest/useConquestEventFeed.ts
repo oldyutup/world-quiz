@@ -28,6 +28,7 @@ import type {
   ConquestPlayerColor,
   ConquestRegionId,
 } from "./types";
+import { getFateCardViewerCopy } from "./conquestFateCards";
 
 export interface ConquestEventFeedEntry {
   id:        string;
@@ -267,14 +268,18 @@ export function useConquestEventFeed(
     if (seenIdsRef.current.has(key)) return;
     seenIdsRef.current.add(key);
 
-    const isMine  = myPlayerId === fc.playerId;
-    const isGood  = fc.cardType === "good";
-    // V2 catalog has +1/+2 / -1/-2 / time-effect cards, so the per-card
-    // description carries the actual delta.  Falling back to the card name
-    // keeps old saves readable if `description` ever ends up missing.
-    const text    = fc.description
-      ? `${fc.playerName} Kader Kartı çekti: ${fc.cardName} — ${fc.description}`
-      : `${fc.playerName} Kader Kartı çekti: ${fc.cardName}`;
+    const isMine = myPlayerId === fc.playerId;
+    const isGood = fc.cardType === "good";
+    // Viewer-aware copy: the drawer sees "{cardName}: kazandın" (2nd person),
+    // everyone else sees "{actorName} {cardName} ile kazandı" (3rd person,
+    // self-contained, already starts with the actor's name so we don't add
+    // a separate "X Kader Kartı çekti:" prefix and double up the attribution).
+    // Unknown card ids fall back to the catalog description inside the
+    // helper, so older clients reading a newer event still surface a sentence.
+    const copy = getFateCardViewerCopy(fc.cardId, isMine, { actorName: fc.playerName });
+    const text = isMine
+      ? `${copy.title}: ${copy.detail}`
+      : copy.detail;
     setEvents(prev => prependBounded(prev, [{
       id:       key,
       at:       fc.createdAt,

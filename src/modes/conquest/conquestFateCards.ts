@@ -55,8 +55,18 @@ export type ConquestFateCardType = "good" | "bad";
  * freezes for the duration of the overlay).  Keep these two consumers in
  * lockstep — bumping one without the other re-introduces the "timer keeps
  * draining behind the backdrop" bug.
+ *
+ * V2 split: the overlay sequences a short intro slate ("Kader Kartı çekildi!")
+ * for FATE_REVEAL_INTRO_MS, then crossfades into the viewer-aware detail
+ * slate for the remainder.  The total stays = FATE_REVEAL_MS so the
+ * action-clock freeze math is unchanged — the action handler still bumps
+ * `actionStartedAt`/`actionEndsAt` by exactly FATE_REVEAL_MS, the host's
+ * auto-skip timeout shifts by the same amount, and the Sis Çöktü floor
+ * (`now + FATE_REVEAL_MS + 5000`) scales automatically.
  */
-export const FATE_REVEAL_MS = 3000;
+export const FATE_REVEAL_MS       = 3500;
+/** Length of the dramatic intro slate before the detail card swaps in. */
+export const FATE_REVEAL_INTRO_MS = 1200;
 
 /**
  * Minimum remaining action time (after the reveal closes) that a "time loss"
@@ -365,6 +375,151 @@ export function applyFateCardEffectToNextMove(
     ...currentBonuses,
     [playerId]: { ...pb, extraNextMoveMs: nextExtra },
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Viewer-aware copy — V2 reveal + event-feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Output of `getFateCardViewerCopy` — a small {title, detail} pair the reveal
+ * overlay and the event feed share.  `title` is always the card's display
+ * name (matches what the catalog renders elsewhere); `detail` is the
+ * viewer-aware sentence ("kazandın" for the drawer, "kazandı" for everyone
+ * else).  Two fields rather than one so the renderer can format them
+ * independently — the reveal stacks title above detail in different
+ * typographic weights; the event feed combines them on one line for the
+ * actor and falls through to `detail` alone for the opponent (whose detail
+ * already starts with the actor name and so doesn't need the title prefix).
+ */
+export interface ConquestFateCardViewerCopy {
+  title:  string;
+  detail: string;
+}
+
+export interface ConquestFateCardViewerCopyContext {
+  /** Display name of the player who drew the card.  Used in opponent-view
+   *  copy ("Ahmet Talih Kuşu ile +1 puan kazandı.").  Defaults to "Rakibin"
+   *  when omitted — exceedingly unlikely since the event always carries
+   *  `playerName`, but cheap insurance against a future caller that passes
+   *  only the cardId. */
+  actorName?: string;
+}
+
+/**
+ * Viewer-aware copy for a fate-card draw event.
+ *
+ * `viewerIsActor` lets the renderer pick between 2nd-person ("kazandın",
+ * "hamlende") and 3rd-person ("kazandı", "hamlesinde") copy without
+ * re-deriving the comparison everywhere the event surfaces.  The catalog
+ * `description` strings stay 2nd-person and are intentionally left
+ * untouched — older code paths and any future surfaces that want a
+ * single-perspective sentence still get a sensible fallback.
+ *
+ * Unknown card ids fall through to the catalog description so a client
+ * running an older catalog against a newer event continues to render a
+ * non-empty sentence (the opponent variant still prefixes the actor name).
+ *
+ * Pure — no React imports, no time reads, no randomness.  Safe to call from
+ * the event-feed hook, the reveal component, and any future surface that
+ * needs to display a draw event.
+ */
+export function getFateCardViewerCopy(
+  cardId:        string,
+  viewerIsActor: boolean,
+  ctx?:          ConquestFateCardViewerCopyContext,
+): ConquestFateCardViewerCopy {
+  const def       = getFateCardById(cardId);
+  const cardName  = def?.name ?? cardId;
+  // Defensive fallback for missing actorName.  Subject case ("Rakip") so the
+  // opponent-view template ("${actorName} Talih Kuşu ile … kazandı.") reads
+  // as grammatical Turkish.  An earlier revision used the possessive form
+  // ("Rakibin") which produced "Rakibin Talih Kuşu ile … kazandı." — parses
+  // as "your opponent's Talih Kuşu won" rather than "a rival won via …".
+  // In practice never hits since the event always carries playerName.
+  const actorName = ctx?.actorName ?? "Rakip";
+
+  switch (cardId) {
+    // ── Good ────────────────────────────────────────────────────────────
+    case "talih_kusu":
+      return viewerIsActor
+        ? { title: cardName, detail: "+1 puan ve +50 Gold kazandın." }
+        : { title: cardName, detail: `${actorName} Talih Kuşu ile +1 puan ve +50 Gold kazandı.` };
+
+    case "hazine_sandigi":
+      return viewerIsActor
+        ? { title: cardName, detail: "+2 puan ve +100 Gold kazandın." }
+        : { title: cardName, detail: `${actorName} Hazine Sandığı ile +2 puan ve +100 Gold kazandı.` };
+
+    case "moral_ustunlugu":
+      return viewerIsActor
+        ? { title: cardName, detail: "+1 puan kazandın. Sıradaki hamlende +3 saniye avantaj alacaksın." }
+        : { title: cardName, detail: `${actorName} Moral Üstünlüğü ile +1 puan kazandı. Sıradaki hamlesinde +3 saniye avantaj alacak.` };
+
+    case "son_hamle":
+      return viewerIsActor
+        ? { title: cardName, detail: "Bu hamle için +5 saniye kazandın." }
+        : { title: cardName, detail: `${actorName} Son Hamle ile bu hamle için +5 saniye kazandı.` };
+
+    case "sinir_destegi":
+      return viewerIsActor
+        ? { title: cardName, detail: "Komşu olduğun boş bir bölgeye Sınır Karakolu kurabilirsin." }
+        : { title: cardName, detail: `${actorName} Sınır Desteği çekti. Komşu boş bir bölgeye Sınır Karakolu kurabilecek.` };
+
+    case "kalkan":
+      return viewerIsActor
+        ? { title: cardName, detail: "Muhafız desteği geldi. +1 puan kazandın." }
+        : { title: cardName, detail: `${actorName} Muhafız Desteği ile +1 puan kazandı.` };
+
+    case "bolge_kalkani":
+      return viewerIsActor
+        ? { title: cardName, detail: "Kendi bölgelerinden birine kalkan yerleştirebilirsin." }
+        : { title: cardName, detail: `${actorName} Bölge Kalkanı çekti. Bir bölgesine kalkan yerleştirecek.` };
+
+    // ── Bad ─────────────────────────────────────────────────────────────
+    case "lanetli_zar":
+      return viewerIsActor
+        ? { title: cardName, detail: "Lanetli zar düştü. -1 puan kaybettin." }
+        : { title: cardName, detail: `${actorName} Lanetli Zar yüzünden -1 puan kaybetti.` };
+
+    case "vergi_baskini":
+      return viewerIsActor
+        ? { title: cardName, detail: "Vergi baskını yaşandı. -2 puan kaybettin." }
+        : { title: cardName, detail: `${actorName} Vergi Baskını yüzünden -2 puan kaybetti.` };
+
+    case "sis_coktu":
+      return viewerIsActor
+        ? { title: cardName, detail: "Sis çöktü. Hamle süren 5 saniye azaldı." }
+        : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Hamle süresi 5 saniye azaldı.` };
+
+    case "kara_haber":
+      return viewerIsActor
+        ? { title: cardName, detail: "Kara haber geldi. -1 puan kaybettin." }
+        : { title: cardName, detail: `${actorName} Kara Haber yüzünden -1 puan kaybetti.` };
+
+    case "ters_ruzgar":
+      return viewerIsActor
+        ? { title: cardName, detail: "Ters rüzgar esti. -1 puan kaybettin." }
+        : { title: cardName, detail: `${actorName} Ters Rüzgar yüzünden -1 puan kaybetti.` };
+
+    case "ic_karisiklik":
+      return viewerIsActor
+        ? { title: cardName, detail: "İç karışıklık çıktı. -1 puan kaybettin." }
+        : { title: cardName, detail: `${actorName} İç Karışıklık yüzünden -1 puan kaybetti.` };
+
+    default: {
+      // Unknown card id — fall through to the catalog description so a
+      // mismatched catalog still produces a legible sentence.  For the
+      // opponent we prepend the actor name so the row is still attributable.
+      const fallback = def?.description ?? "";
+      return {
+        title:  cardName,
+        detail: viewerIsActor
+          ? fallback
+          : `${actorName} ${cardName}: ${fallback}`.trimEnd(),
+      };
+    }
+  }
 }
 
 /** True when the player has not yet drawn their once-per-match fate card. */
