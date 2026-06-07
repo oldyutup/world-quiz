@@ -400,6 +400,7 @@ export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
     mancinikCharges:     0,
     guardianShieldBypassCharges: 0,
     matchGoldEarned:     0,
+    fogActive:           false,
   };
 }
 

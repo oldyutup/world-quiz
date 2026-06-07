@@ -47,6 +47,7 @@ import {
   findRegionIdForBonusType,
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
+import { clearFogOnCapture } from "./conquestFateCards";
 import {
   buildGizliOpIntelReport,
   buildHiddenBonusPlacements,
@@ -1509,6 +1510,13 @@ export function applyActionToGame(
         now,
       );
     }
+
+    // Sis Çöktü 🌫️ — a real capture clears the drawer's fog veil.  Branch
+    // gated on action.type so skip / defend never reach this clear.  Failed
+    // captures (illegal target, ambush) already returned above with
+    // !applied.result.ok, so we only get here after a successful flip.
+    // Reference-equal no-op when the actor wasn't foggy.
+    postPlayerBonuses = clearFogOnCapture(postPlayerBonuses, action.playerId).playerBonuses;
   }
 
   const historyEntry = {
@@ -2305,9 +2313,17 @@ function resolveDuelWithWinner(
       ? buildHiddenClaimIntelReport(duel.attackerId, attackerName, hb.lastHiddenBonusToast.type, now)
       : state.lastIntelReport;
 
+    // Sis Çöktü 🌫️ — outpost-break attacker-win is a real neutral capture
+    // (region flipped to the attacker via the capture_neutral call above),
+    // so the attacker's fog veil clears here too.  Reference-equal no-op
+    // when the attacker wasn't foggy.  Defender-win and timeout branches
+    // never reach this code path (region stays neutral).
+    const postPlayerBonuses = clearFogOnCapture(state.playerBonuses, duel.attackerId).playerBonuses;
+
     return {
       ...finishDuelIntoRoundResult(state, flipResult),
       regionStates:          flipApplied.regionStates,
+      playerBonuses:         postPlayerBonuses,
       hiddenBonusPlacements: postHiddenPlacements,
       playerHiddenBonuses:   postPlayerHidden,
       lastHiddenBonusToast:  postHiddenToast,
@@ -2418,6 +2434,13 @@ function resolveDuelWithWinner(
   );
   const postBonusToast = kocbasiOut.toast ?? mevziOut.toast ?? bonusOut.toast;
 
+  // Sis Çöktü 🌫️ — duel attacker-win with a real flip clears the attacker's
+  // fog veil.  The shield-active branch above never reaches here (it
+  // returns inside the `if (duel.shieldActive)` block), so this clear only
+  // fires on real ownership changes.  Reference-equal no-op when the
+  // attacker wasn't foggy.
+  const fogClearedBonuses = clearFogOnCapture(kocbasiOut.playerBonuses, duel.attackerId).playerBonuses;
+
   // Hidden bonus claim — a duel flip is a fetih, so the attacker collects
   // any unclaimed hidden bonus on the captured region.  Layered after the
   // open-bonus chain; lives on a separate state channel so it never affects
@@ -2484,7 +2507,7 @@ function resolveDuelWithWinner(
       phase:                 "finished",
       finishedAt:            now,
       regionStates:          mevziOut.regionStates,
-      playerBonuses:         kocbasiOut.playerBonuses,
+      playerBonuses:         fogClearedBonuses,
       lastBonusToast:        postBonusToast ?? state.lastBonusToast,
       hiddenBonusPlacements: postHiddenPlacements,
       playerHiddenBonuses:   postPlayerHidden,
@@ -2514,7 +2537,7 @@ function resolveDuelWithWinner(
   return {
     ...base,
     regionStates:          mevziOut.regionStates,
-    playerBonuses:         kocbasiOut.playerBonuses,
+    playerBonuses:         fogClearedBonuses,
     lastBonusToast:        postBonusToast ?? state.lastBonusToast,
     hiddenBonusPlacements: postHiddenPlacements,
     playerHiddenBonuses:   postPlayerHidden,

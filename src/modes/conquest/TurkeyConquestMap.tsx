@@ -198,6 +198,29 @@ interface Props {
    * keeps the layer dormant for matches with no outpost in play.
    */
   borderOutpostRegions?: Set<ConquestRegionId>;
+  /**
+   * Sis Çöktü 🌫️ — when true, the region point badges render "?" and the
+   * tooltip's "N puan" slot swaps to "? puan" so the local viewer must act
+   * blind.  Pure UI veil: ownership colours, bonus icons, outposts, and
+   * legal-target affordance are deliberately left untouched in this PR
+   * (V1 scope).  Defaults to false so non-foggy viewers and lobby previews
+   * stay unchanged.
+   */
+  obscureRegionPoints?: boolean;
+  /**
+   * Sis Çöktü 🌫️ (PR-4B) — when true the parent has already masked every
+   * region the local viewer does NOT own (ownerPlayerId → null, shielded →
+   * false, borderOutpostOwnerId / hiddenShield* → undefined).  This flag
+   * is the signal to:
+   *   - swap owner suffix copy from "Tarafsız" / "(Owner)" to "Bilinmiyor"
+   *     on non-own regions so the player doesn't read masked regions as
+   *     truly neutral;
+   *   - reseed the ownership / shield diff baselines on the toggle edges
+   *     so opening or lifting the fog never floods the map with phantom
+   *     capture / capital / shield-break FX.
+   * Defaults to false; non-foggy viewers stay on the standard render path.
+   */
+  fogMaskOwnership?: boolean;
 }
 
 interface OwnershipFxEntry {
@@ -276,6 +299,8 @@ export default function TurkeyConquestMap({
   roundBonuses,
   myAmbushRegionIds,
   borderOutpostRegions,
+  obscureRegionPoints = false,
+  fogMaskOwnership = false,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -303,6 +328,17 @@ export default function TurkeyConquestMap({
   const prevShieldsRef = useRef<Record<string, { open: boolean; hidden: boolean }> | null>(null);
   const [shieldBreakFx, setShieldBreakFx] = useState<ShieldBreakFxEntry[]>([]);
   const shieldFxTimeoutsRef = useRef<Map<string, number>>(new Map());
+
+  // Sis Çöktü 🌫️ (PR-4B) — per-effect "previous fogMaskOwnership" refs.
+  // When the mask toggles, the next regionStates the ownership / shield
+  // effects see is a wholesale projection switch (real owners ↔ null for
+  // every non-own region).  Without a guard, every owned opponent region
+  // would fire a phantom capture glow + capital pulse + shield-break FX
+  // on each transition.  We instead reseed each effect's baseline on the
+  // toggle edge so the very next diff has nothing to compare against,
+  // and resume normal diffing on the tick after that.
+  const ownerFogPrevRef  = useRef<boolean>(fogMaskOwnership);
+  const shieldFogPrevRef = useRef<boolean>(fogMaskOwnership);
 
   // ── Capital reveal FX (Ankara / future capitals) ───────────────────
   // Watches the same ownership diff as the standard capture glow, but
@@ -389,6 +425,16 @@ export default function TurkeyConquestMap({
     const current: Record<string, string | null> = {};
     for (const rs of regionStates) current[rs.regionId] = rs.ownerPlayerId;
 
+    // Fog mask just flipped — reseed the baseline and emit no FX this tick.
+    // Without this guard the projection toggle would read as "every opponent
+    // region just changed hands" and paint the whole map with capture +
+    // capital ceremony on both fog enter and fog exit.
+    if (ownerFogPrevRef.current !== fogMaskOwnership) {
+      prevOwnersRef.current = current;
+      ownerFogPrevRef.current = fogMaskOwnership;
+      return;
+    }
+
     const prev = prevOwnersRef.current;
     if (!prev) {
       prevOwnersRef.current = current;
@@ -436,7 +482,7 @@ export default function TurkeyConquestMap({
     }
 
     prevOwnersRef.current = current;
-  }, [regionStates, playerColors]);
+  }, [regionStates, playerColors, fogMaskOwnership]);
 
   useEffect(() => {
     const current: Record<string, { open: boolean; hidden: boolean }> = {};
@@ -445,6 +491,15 @@ export default function TurkeyConquestMap({
         open:   rs.shielded === true,
         hidden: !!rs.hiddenShieldOwnerId,
       };
+    }
+
+    // Fog mask just flipped — reseed the shield baseline so the projection
+    // switch (real shields ↔ false for every non-own region) does not fire
+    // a shield-break overlay on every opponent shield as fog activates.
+    if (shieldFogPrevRef.current !== fogMaskOwnership) {
+      prevShieldsRef.current = current;
+      shieldFogPrevRef.current = fogMaskOwnership;
+      return;
     }
 
     const prev = prevShieldsRef.current;
@@ -484,7 +539,7 @@ export default function TurkeyConquestMap({
       }
     }
     prevShieldsRef.current = current;
-  }, [regionStates]);
+  }, [regionStates, fogMaskOwnership]);
 
   // Bonus-intro pulse trigger.  Watches the *set* of bonus region ids
   // (sorted + joined) so re-renders with the same assignment never
@@ -560,7 +615,16 @@ export default function TurkeyConquestMap({
     const bereketHarvested = bereketTurns !== null && bereketTurns >= BEREKET_HARVEST_INTERVAL;
     // Native browser tooltip line: "İstanbul — 5 puan · 🛡️ Kale Surları"
     // Desktop hover only; touch devices ignore the SVG <title>.
-    const ownerSuffix = owner ? ` (${owner.name})` : "";
+    // Under fog the parent has already masked non-own regions to look
+    // neutral — without copy support the tooltip would silently read as
+    // "Tarafsız" / no-owner, encouraging the wrong inference.  Swap in
+    // "(Bilinmiyor)" instead so non-own regions read as deliberately
+    // hidden rather than confirmed-neutral.
+    const ownerSuffix = owner
+      ? ` (${owner.name})`
+      : fogMaskOwnership
+        ? ` (Bilinmiyor)`
+        : "";
     const limanSuffix = limanTicks !== null ? ` (${limanTicks}/10)` : "";
     const bereketSuffix = bereketTurns !== null
       ? (bereketHarvested
@@ -568,7 +632,11 @@ export default function TurkeyConquestMap({
           : ` (Hasat ${bereketTurns}/${BEREKET_HARVEST_INTERVAL})`)
       : "";
     const bonusSuffix = bonus ? ` · ${bonus.icon} ${bonus.label}${limanSuffix}${bereketSuffix}` : "";
-    const tooltip   = `${label}${ownerSuffix} — ${points} puan${bonusSuffix}`;
+    // Sis Çöktü 🌫️ — swap the point number with "?" so the tooltip never
+    // leaks the badge value through hover.  Ownership / bonus copy stays
+    // intact (V1 scope obscures points only).
+    const tooltipPoints = obscureRegionPoints ? "?" : points;
+    const tooltip   = `${label}${ownerSuffix} — ${tooltipPoints} puan${bonusSuffix}`;
     return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, limanTicks, bereketTurns, bereketHarvested, tooltip };
   });
 
@@ -640,7 +708,7 @@ export default function TurkeyConquestMap({
             onKeyDown={interactive ? (e) => handleKey(e, rid) : undefined}
             role={interactive ? "button" : undefined}
             tabIndex={interactive ? (isLegal ? 0 : -1) : undefined}
-            aria-label={`${REGION_LABELS[id] ?? id}${owner ? ` — ${owner.name}` : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
+            aria-label={`${REGION_LABELS[id] ?? id}${owner ? ` — ${owner.name}` : fogMaskOwnership ? " — Bilinmiyor" : " — Tarafsız"}${isLegal ? " (hedef)" : ""}`}
           >
             <title>{tooltip}{isLegal ? " (hedef)" : ""}</title>
           </path>
@@ -902,8 +970,9 @@ export default function TurkeyConquestMap({
                   textAnchor="middle"
                   dominantBaseline="middle"
                   className="cq-map-point-badge-text"
+                  data-fog={obscureRegionPoints ? "" : undefined}
                 >
-                  {points}
+                  {obscureRegionPoints ? "?" : points}
                 </text>
               </g>
             );

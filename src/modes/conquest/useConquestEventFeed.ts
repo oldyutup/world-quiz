@@ -282,6 +282,7 @@ export function useConquestEventFeed(
       karaHaberFallbackPointLoss:    fc.karaHaberFallbackPointLoss,
       affectedRegionName:            fc.affectedRegionName,
       icKarisiklikFallbackPointLoss: fc.icKarisiklikFallbackPointLoss,
+      fogActivated:                  fc.fogActivated,
     });
     const text = isMine
       ? `${copy.title}: ${copy.detail}`

@@ -135,6 +135,7 @@ import ConquestFateCardReveal from "./ConquestFateCardReveal";
 import {
   applyFateCardEffectToBonuses,
   applyFateCardEffectToBonusLoss,
+  applyFateCardEffectToFog,
   applyFateCardEffectToNextMove,
   applyFateCardEffectToRebellion,
   applyFateCardEffectToRound,
@@ -226,6 +227,10 @@ interface Props {
 
 const ILLEGAL_FLASH_MS  = 900;
 const AUTO_ADVANCE_MS   = 3_500;
+/** Sis Çöktü 🌫️ — module-level empty set the map receives in place of the
+ *  real legal-target set while the local viewer is foggy.  Frozen + shared
+ *  so re-renders don't churn the prop's identity. */
+const EMPTY_FOG_LEGAL_TARGETS: Set<ConquestRegionId> = new Set();
 const DUEL_RESULT_TOAST_MS = 5500;
 /** How long the Attack Focus intro lingers for non-duel attacks on enemy
  *  regions.  Fits inside the AUTO_ADVANCE_MS round_result window so the
@@ -1384,12 +1389,21 @@ export default function ConquestGame({
       card.id,
     );
     const icKarisiklikFallback = card.id === "ic_karisiklik" && !rebellion.droppedAny;
-    const nextBonuses = icKarisiklikFallback
+    const bonusesAfterIcKarisiklik = icKarisiklikFallback
       ? applyIcKarisiklikFallbackPointLoss(
           { ...latest, playerBonuses: bonusesAfterKaraHaber },
           myPlayerId,
         )
       : bonusesAfterKaraHaber;
+    // Sis Çöktü dev simulation — mirrors prod chain.  Tester can re-fire
+    // the card; the helper's "already foggy" guard keeps the flip idempotent
+    // so fogActivated only reads true on the first click while fog is off.
+    const fog = applyFateCardEffectToFog(
+      bonusesAfterIcKarisiklik,
+      myPlayerId,
+      card.id,
+    );
+    const nextBonuses = fog.playerBonuses;
     const nextRegionStates = rebellion.regionStates;
     const affectedRegionName = rebellion.affectedRegionId && mapConfig
       ? (mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.displayLabel
@@ -1434,6 +1448,7 @@ export default function ConquestGame({
         affectedRegionName,
         rebellionDroppedRegion:    rebellion.droppedAny ? true : undefined,
         icKarisiklikFallbackPointLoss: icKarisiklikFallback ? true : undefined,
+        fogActivated:              fog.fogActivated ? true : undefined,
       },
     };
 
@@ -2686,12 +2701,23 @@ export default function ConquestGame({
         card.id,
       );
       const icKarisiklikFallback = card.id === "ic_karisiklik" && !rebellion.droppedAny;
-      const nextBonuses = icKarisiklikFallback
+      const bonusesAfterIcKarisiklik = icKarisiklikFallback
         ? applyIcKarisiklikFallbackPointLoss(
             { ...latest, playerBonuses: bonusesAfterKaraHaber },
             myPlayerId,
           )
         : bonusesAfterKaraHaber;
+      // Sis Çöktü 🌫️ — V1 fog veil.  No-op for any other card id; for
+      // sis_coktu, flips the drawer's playerBonuses.fogActive to true.
+      // Idempotent: re-fires (dev panel) return fogActivated: false so the
+      // event metadata only claims newly-activated fog once.  Reference-equal
+      // when the helper is a no-op so non-fog draws don't churn the diff.
+      const fog = applyFateCardEffectToFog(
+        bonusesAfterIcKarisiklik,
+        myPlayerId,
+        card.id,
+      );
+      const nextBonuses = fog.playerBonuses;
       const nextRegionStates = rebellion.regionStates;
       const affectedRegionName = rebellion.affectedRegionId && mapConfig
         ? (mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.displayLabel
@@ -2750,6 +2776,7 @@ export default function ConquestGame({
           affectedRegionName,
           rebellionDroppedRegion:    rebellion.droppedAny ? true : undefined,
           icKarisiklikFallbackPointLoss: icKarisiklikFallback ? true : undefined,
+          fogActivated:              fog.fogActivated ? true : undefined,
         },
       };
 
@@ -4078,13 +4105,55 @@ export default function ConquestGame({
   // default.
   const inFateOutpostMode = !inAmbushMode && !inFateShieldMode && fateOutpostPlacementActive;
   const inPlacementMode   = inAmbushMode || inFateShieldMode || inFateOutpostMode;
-  const mapLegalTargets   = inAmbushMode
+  // Sis Çöktü 🌫️ — local-viewer fog flag.  Read from the *real* playerBonuses
+  // (not a projection) because the flag is per-player and never masked from
+  // its owner.  Drives the map's `obscureRegionPoints` and the empty
+  // legal-target override below.  Placement modes (Pusu / Bölge Kalkanı /
+  // Sınır Karakolu) keep the placement candidate set visible — fog only
+  // veils the regular "this is where you can attack/capture" set so the
+  // drawer can still finish a card-driven placement they already started.
+  const myFogActive       = !!(myPlayerId && gameState.playerBonuses?.[myPlayerId]?.fogActive);
+  const baseMapLegalTargets = inAmbushMode
     ? pusuPlacementCandidates
     : inFateShieldMode
       ? fateShieldPlacementCandidates
       : inFateOutpostMode
         ? fateOutpostPlacementCandidates
         : legalTargets;
+  // Fog suppresses the action-phase legal-target highlight by handing the
+  // map an empty set.  Placement modes are exempt so the card's selection UI
+  // still functions.  Gameplay legality (`legalTargets`, `noMovesLeft`,
+  // `inferActionFromRegionClick`) continues to read the REAL set, so
+  // illegal-target flash + uyarı feedback stays intact for blind taps.
+  const mapLegalTargets   = (myFogActive && !inPlacementMode)
+    ? EMPTY_FOG_LEGAL_TARGETS
+    : baseMapLegalTargets;
+  // Sis Çöktü 🌫️ — map-only owner mask.  When the local viewer is foggy we
+  // strip ownership / shield / outpost colour data from every region they
+  // don't own so opponent vs. neutral becomes indistinguishable on the SVG.
+  // Score / regionCounts / playerPoints / legalTargets keep reading the real
+  // `visibleRegionStates`; this projection only feeds the map renderer.
+  const mapRegionStates = useMemo(() => {
+    if (!myFogActive || !myPlayerId) return visibleRegionStates;
+    return visibleRegionStates.map(rs => {
+      if (rs.ownerPlayerId === myPlayerId) return rs;
+      // Also zero per-tenure counters (Liman ticks, Bereket harvest turns)
+      // so the tooltip suffix can't reveal "an opponent has held this region
+      // for N ticks" and the Liman income halo pulse can't re-fire on the
+      // foggy viewer's map when an opponent earns an income tick.  Fresh
+      // object — the real `gameState.regionStates` is left untouched.
+      return {
+        ...rs,
+        ownerPlayerId:         null,
+        shielded:              false,
+        borderOutpostOwnerId:  undefined,
+        hiddenShieldOwnerId:   undefined,
+        hiddenShieldKind:      undefined,
+        limanIncomeTicks:      0,
+        bereketHarvestTurns:   0,
+      };
+    });
+  }, [visibleRegionStates, myFogActive, myPlayerId]);
   const mapViewerIsHolder = inPlacementMode ? true  : isActionHolder;
   const mapBoardDisabled  = inPlacementMode ? false : boardDisabled;
   const mapClickHandler   = inPlacementMode
@@ -4104,7 +4173,7 @@ export default function ConquestGame({
     <>
       {/* SVG map: primary interaction on all screens */}
       <TurkeyConquestMap
-        regionStates={visibleRegionStates}
+        regionStates={mapRegionStates}
         players={players}
         playerColors={playerColors}
         legalTargetIds={mapLegalTargets}
@@ -4115,7 +4184,9 @@ export default function ConquestGame({
         roundBonuses={gameState.roundBonuses}
         onRegionClick={mapClickHandler}
         myAmbushRegionIds={myAmbushRegionIds}
-        borderOutpostRegions={borderOutpostRegions}
+        borderOutpostRegions={myFogActive ? undefined : borderOutpostRegions}
+        obscureRegionPoints={myFogActive}
+        fogMaskOwnership={myFogActive}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
       <div className="cq-map-card-fallback">
@@ -5009,6 +5080,10 @@ export default function ConquestGame({
               !!actionHolder
               && (gameState.playerBonuses?.[actionHolder.id]?.mancinikCharges ?? 0) > 0
             }
+            fogActive={
+              !!actionHolder
+              && gameState.playerBonuses?.[actionHolder.id]?.fogActive === true
+            }
             onSkip={handleSkipAction}
           />
           {/* Mobile-only fate-card surface — desktop already shows the
@@ -5673,6 +5748,18 @@ export default function ConquestGame({
               title: isMe
                 ? "Muhafız Desteği hazır: bir sonraki kalkanlı bölge saldırında kalkanı aşarsın."
                 : `${player.name} Muhafız Desteği hakkına sahip: kalkanlı bölgeye saldırırsa kalkanı aşabilir.`,
+            });
+          }
+          // Sis Çöktü 🌫️ — public chip.  Kart reveal zaten public olduğu için
+          // bilgi sızıntısı yok; rakip de "bu oyuncu kör görüyor" intelini
+          // alır.  isMe varyantı eyleme yönelik bilgilendirir.
+          if (pb.fogActive === true) {
+            bonusChips.push({
+              key:   "fog",
+              icon:  "🌫️",
+              title: isMe
+                ? "Sis Çöktü aktif: bölge puanları ve hedef göstergeleri gizli. Bir bölge fethederek sisi dağıtırsın."
+                : `${player.name} Sis Çöktü etkisinde: haritayı kör görüyor.`,
             });
           }
 

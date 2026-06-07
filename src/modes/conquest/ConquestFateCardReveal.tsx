@@ -108,6 +108,7 @@ export default function ConquestFateCardReveal({ event, viewerPlayerId }: Props)
     karaHaberFallbackPointLoss:    shownEvent.karaHaberFallbackPointLoss,
     affectedRegionName:            shownEvent.affectedRegionName,
     icKarisiklikFallbackPointLoss: shownEvent.icKarisiklikFallbackPointLoss,
+    fogActivated:                  shownEvent.fogActivated,
   });
   const eyebrowText = viewerIsActor
     ? "Kader Kartı çektin"

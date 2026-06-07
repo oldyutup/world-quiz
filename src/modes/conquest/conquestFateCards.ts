@@ -173,7 +173,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "sis_coktu",
     name:        "Sis Çöktü",
     type:        "bad",
-    description: "Kör harita etkisi yakında aktif olacak.",
+    description: "Sis çöktü. Bölge puanları ve hedef göstergeleri bir fethe kadar gizlenir.",
   },
   {
     id:          "kara_haber",
@@ -257,7 +257,11 @@ function getCardPointDelta(cardId: string): number {
     case "lanetli_zar":     return -1;
     case "vergi_baskini":   return -2;
     // ters_ruzgar    → time-effect card (see applyFateCardEffectToRound);
-    // sis_coktu      → currently a no-op (kör harita V2'ye ertelendi);
+    // sis_coktu      → fog-veil card; no bonusPoints delta.  Effect lives in
+    //                  applyFateCardEffectToFog (sets fogActive on the drawer's
+    //                  playerBonuses slot); the map then obscures point badges
+    //                  and suppresses legal-target highlights until a real
+    //                  capture (clearFogOnCapture) clears the flag.
     // kara_haber     → bonus-loss card; -1 puan only as fallback when the
     //                  drawer has no removable bonus (see
     //                  applyFateCardEffectToBonusLoss +
@@ -719,6 +723,104 @@ export function applyIcKarisiklikFallbackPointLoss(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sis Çöktü V1 — fog-veil helper + capture clear
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result of `applyFateCardEffectToFog`.  When `fogActivated` is true the
+ * drawer's `playerBonuses[playerId].fogActive` flipped from false → true; the
+ * caller should mirror it into `lastFateCardEvent.fogActivated` so the reveal
+ * + event-feed copy can render the actor-vs-opponent variants.  When false
+ * the `playerBonuses` map is returned reference-equal (no-op).
+ */
+export interface ConquestFateCardFogResult {
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+  fogActivated:  boolean;
+}
+
+/**
+ * Apply Sis Çöktü's fog-veil effect.  Sets `fogActive: true` on the drawer's
+ * `playerBonuses[playerId]` slot so the map UI can obscure region point
+ * badges and suppress legal-target highlights for this viewer only.  The
+ * flag is cleared by `clearFogOnCapture` the moment the drawer successfully
+ * captures any region (real ownership flip).
+ *
+ * Non-Sis-Çöktü card ids are no-ops (returns `playerBonuses` reference-equal,
+ * `fogActivated: false`) so the caller can chain unconditionally on every
+ * draw.  Same idempotent guard for re-fires: if the drawer is already in
+ * fog, the helper returns reference-equal with `fogActivated: false` so the
+ * event metadata doesn't lie about a "newly activated" fog.
+ *
+ * Pure — input is not mutated; a fresh playerBonuses map is returned when
+ * the flag flips, otherwise the input reference is passed through.  Gameplay
+ * state (regionStates, legal-target derivation, scoreboard) is intentionally
+ * NOT touched here; fog is a viewer-only UI veil.
+ */
+export function applyFateCardEffectToFog(
+  playerBonuses: Record<string, ConquestPlayerBonusState> | undefined,
+  playerId:      string,
+  cardId:        string,
+): ConquestFateCardFogResult {
+  const currentBonuses = playerBonuses ?? {};
+  if (cardId !== "sis_coktu") {
+    return { playerBonuses: currentBonuses, fogActivated: false };
+  }
+
+  const pb = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
+  if (pb.fogActive === true) {
+    // Already foggy — keep reference-equal so dev re-fires stay idempotent
+    // and the metadata doesn't over-claim "newly activated".
+    return { playerBonuses: currentBonuses, fogActivated: false };
+  }
+
+  return {
+    playerBonuses: {
+      ...currentBonuses,
+      [playerId]: { ...pb, fogActive: true },
+    },
+    fogActivated: true,
+  };
+}
+
+/**
+ * Result of `clearFogOnCapture`.  When `cleared` is true the drawer's fog
+ * flag flipped from true → false; otherwise the input map is returned
+ * reference-equal.
+ */
+export interface ConquestFateCardFogClearResult {
+  playerBonuses: Record<string, ConquestPlayerBonusState>;
+  cleared:       boolean;
+}
+
+/**
+ * Clear the Sis Çöktü fog flag after a successful real capture.  Caller is
+ * expected to invoke this only on actual ownership flips: direct
+ * capture_neutral / attack_region, duel attacker-win (no shield), and
+ * outpost-break attacker-win.  Shield-break-only attacker wins and ambushed /
+ * failed attacks must NOT call this — the spec defines "fethederse kalkar".
+ *
+ * No-op (reference-equal) when the player has no fog active, when the slot
+ * is missing, or when the bonuses map is undefined.  Pure — no mutation.
+ */
+export function clearFogOnCapture(
+  playerBonuses: Record<string, ConquestPlayerBonusState> | undefined,
+  playerId:      string,
+): ConquestFateCardFogClearResult {
+  const currentBonuses = playerBonuses ?? {};
+  const pb = currentBonuses[playerId];
+  if (!pb || pb.fogActive !== true) {
+    return { playerBonuses: currentBonuses, cleared: false };
+  }
+  return {
+    playerBonuses: {
+      ...currentBonuses,
+      [playerId]: { ...pb, fogActive: false },
+    },
+    cleared: true,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Viewer-aware copy — V2 reveal + event-feed
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -775,6 +877,14 @@ export interface ConquestFateCardViewerCopyContext {
    * bölgen yoktu" variant.
    */
   icKarisiklikFallbackPointLoss?: boolean;
+  /**
+   * Sis Çöktü V1 — true when this draw activated the drawer's fog veil.
+   * Forward `lastFateCardEvent.fogActivated` verbatim.  When true the helper
+   * renders the actionable "puanlar gizlendi … bir fethe kadar" variant;
+   * when absent (older client / event metadata missing) it falls through to
+   * a defensive description sentence.
+   */
+  fogActivated?: boolean;
 }
 
 /**
@@ -858,10 +968,20 @@ export function getFateCardViewerCopy(
         ? { title: cardName, detail: "Vergi Baskını: -2 puan kaybettin ve en fazla 100 Gold vergi olarak kesildi." }
         : { title: cardName, detail: `${actorName} Vergi Baskını yaşadı: -2 puan kaybetti ve en fazla 100 Gold vergi ödedi.` };
 
-    case "sis_coktu":
+    case "sis_coktu": {
+      // Two rendering branches:
+      //  1) fogActivated true → fresh fog veil; render the actionable copy.
+      //  2) absent (older client / event metadata missing) → defensive copy
+      //     that still names the card so the row is never empty.
+      if (ctx?.fogActivated) {
+        return viewerIsActor
+          ? { title: cardName, detail: "Sis Çöktü: Haritanın puanları gizlendi ve hedef göstergeleri kayboldu. Bir bölge fethederek sisi dağıtabilirsin." }
+          : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Harita puanlarını ve hedef göstergelerini sis altında görüyor.` };
+      }
       return viewerIsActor
-        ? { title: cardName, detail: "Sis Çöktü: Kör harita etkisi yakında aktif olacak." }
-        : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Kör harita etkisi yakında aktif olacak.` };
+        ? { title: cardName, detail: "Sis Çöktü: Haritan sisle örtüldü." }
+        : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti.` };
+    }
 
     case "kara_haber": {
       // Three rendering branches, in priority order:

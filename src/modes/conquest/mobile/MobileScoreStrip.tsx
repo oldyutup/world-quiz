@@ -114,6 +114,17 @@ function buildBonusChips(
         : `${player.name} Muhafız Desteği hakkına sahip`,
     });
   }
+  // Sis Çöktü 🌫️ — public chip; kart reveal zaten public, opponent da
+  // "kör görüyor" intelini alır.
+  if (bonus.fogActive === true) {
+    chips.push({
+      key:   "fog",
+      icon:  "🌫️",
+      title: isMe
+        ? "Sis Çöktü aktif: puanlar ve hedef göstergeleri gizli. Bir fetih sisi dağıtır."
+        : `${player.name} Sis Çöktü etkisinde`,
+    });
+  }
   return chips;
 }
 

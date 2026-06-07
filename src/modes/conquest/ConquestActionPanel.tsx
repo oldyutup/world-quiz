@@ -35,6 +35,9 @@ interface Props {
   hasPendingHiddenShield?: boolean;
   /** Mancınık: holder has an unspent uzak-saldırı charge — show the range hint. */
   hasMancinikCharge?: boolean;
+  /** Sis Çöktü 🌫️ — holder has an active fog veil; surface a short reminder
+   *  so they know the map is intentionally obscured and how the effect ends. */
+  fogActive?: boolean;
   onSkip:         () => void;
 }
 
@@ -47,6 +50,7 @@ export default function ConquestActionPanel({
   totalMs,
   hasPendingHiddenShield,
   hasMancinikCharge,
+  fogActive,
   onSkip,
 }: Props) {
   const showTimer    = msRemaining !== null && totalMs !== null && totalMs > 0;
@@ -133,6 +137,13 @@ export default function ConquestActionPanel({
           🎯 Mancınık hazır — bir sonraki saldırında komşuluk şartı olmadan
           haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı
           yok saymaz.
+        </p>
+      )}
+
+      {fogActive && (
+        <p className="cq-action-hint cq-action-hint--bonus" role="status">
+          🌫️ Sis Çöktü — bölge puanları ve hedef göstergeleri gizli. Bir bölge
+          fethederek sisi dağıtırsın.
         </p>
       )}
 

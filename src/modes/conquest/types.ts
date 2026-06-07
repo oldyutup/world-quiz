@@ -420,6 +420,18 @@ export interface ConquestPlayerBonusState {
    * with pre-liman saves; readers default to 0.
    */
   matchGoldEarned?:    number;
+  /**
+   * Sis Çöktü 🌫️ — drawer-specific fog flag.  True while this player has an
+   * active Sis Çöktü effect: their map UI obscures region point badges and
+   * suppresses legal-target highlights so they must act blind.  Cleared the
+   * moment the player successfully captures any region (real ownership flip
+   * — shield-break-only and ambushed/failed attacks leave the fog in place).
+   *
+   * Gameplay state (regionStates, legal-target derivation, scoreboard) is
+   * authoritatively unmasked; the fog is a viewer-only UI veil.  Optional for
+   * back-compat with pre-fog saves; readers default to false.
+   */
+  fogActive?:          boolean;
 }
 
 /**
@@ -1237,6 +1249,14 @@ export interface ConquestFateCardEvent {
    * compat.
    */
   icKarisiklikFallbackPointLoss?: boolean;
+  /**
+   * Sis Çöktü V1 — true when this draw activated the drawer's fog veil
+   * (`playerBonuses[playerId].fogActive = true`).  Drives the reveal +
+   * event-feed copy variant so opponents see "{actor} sis altında" and the
+   * drawer sees the actionable "bir fethe kadar gizlendi" instruction.
+   * Absent on non-Sis-Çöktü events.  Optional for back-compat.
+   */
+  fogActivated?: boolean;
 }
 
 /**
