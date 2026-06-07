@@ -103,9 +103,11 @@ export default function ConquestFateCardReveal({ event, viewerPlayerId }: Props)
   const viewerIsActor = viewerPlayerId !== null
     && viewerPlayerId === shownEvent.playerId;
   const copy = getFateCardViewerCopy(shownEvent.cardId, viewerIsActor, {
-    actorName:                  shownEvent.playerName,
-    removedBonusLabel:          shownEvent.removedBonusLabel,
-    karaHaberFallbackPointLoss: shownEvent.karaHaberFallbackPointLoss,
+    actorName:                     shownEvent.playerName,
+    removedBonusLabel:             shownEvent.removedBonusLabel,
+    karaHaberFallbackPointLoss:    shownEvent.karaHaberFallbackPointLoss,
+    affectedRegionName:            shownEvent.affectedRegionName,
+    icKarisiklikFallbackPointLoss: shownEvent.icKarisiklikFallbackPointLoss,
   });
   const eyebrowText = viewerIsActor
     ? "Kader Kartı çektin"

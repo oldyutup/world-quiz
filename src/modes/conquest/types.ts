@@ -1207,6 +1207,36 @@ export interface ConquestFateCardEvent {
    * removed.  Optional for back-compat.
    */
   karaHaberFallbackPointLoss?: boolean;
+  /**
+   * İç Karışıklık V1 — id of the drawer's own region that rebelled and
+   * dropped to neutral.  Set in tandem with `affectedRegionName` and
+   * `rebellionDroppedRegion: true`.  Absent when the card was not
+   * İç Karışıklık, or when İç Karışıklık fell through to the -1 puan
+   * fallback because the drawer had no regions.  Optional for back-compat.
+   */
+  affectedRegionId?: ConquestRegionId;
+  /**
+   * İç Karışıklık V1 — player-facing display label of the rebelled region
+   * (e.g. "Çukurova").  Resolved by the caller from mapConfig at event-
+   * write time so the helper stays pure on regionStates.  Paired with
+   * `affectedRegionId` / `rebellionDroppedRegion`.  Optional for back-compat.
+   */
+  affectedRegionName?: string;
+  /**
+   * İç Karışıklık V1 — true when the card actually dropped one of the
+   * drawer's regions to neutral.  Mutually exclusive with
+   * `icKarisiklikFallbackPointLoss`.  Optional for back-compat; absent on
+   * non-İç-Karışıklık events and on fallback draws.
+   */
+  rebellionDroppedRegion?: boolean;
+  /**
+   * İç Karışıklık V1 — true when the card fell through to the -1 puan
+   * fallback (drawer had no regions to drop).  Mutually exclusive with
+   * `affectedRegionId` / `affectedRegionName` / `rebellionDroppedRegion`.
+   * Drives the "kaybedecek bölgen yoktu" copy variant.  Optional for back-
+   * compat.
+   */
+  icKarisiklikFallbackPointLoss?: boolean;
 }
 
 /**

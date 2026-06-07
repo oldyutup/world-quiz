@@ -277,9 +277,11 @@ export function useConquestEventFeed(
     // Unknown card ids fall back to the catalog description inside the
     // helper, so older clients reading a newer event still surface a sentence.
     const copy = getFateCardViewerCopy(fc.cardId, isMine, {
-      actorName:                  fc.playerName,
-      removedBonusLabel:          fc.removedBonusLabel,
-      karaHaberFallbackPointLoss: fc.karaHaberFallbackPointLoss,
+      actorName:                     fc.playerName,
+      removedBonusLabel:             fc.removedBonusLabel,
+      karaHaberFallbackPointLoss:    fc.karaHaberFallbackPointLoss,
+      affectedRegionName:            fc.affectedRegionName,
+      icKarisiklikFallbackPointLoss: fc.icKarisiklikFallbackPointLoss,
     });
     const text = isMine
       ? `${copy.title}: ${copy.detail}`

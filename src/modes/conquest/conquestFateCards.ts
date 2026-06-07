@@ -42,7 +42,12 @@
  * `conquest_apply_gameplay_state` RPC.
  */
 
-import type { ConquestGameState, ConquestPlayerBonusState } from "./types";
+import type {
+  ConquestGameState,
+  ConquestPlayerBonusState,
+  ConquestRegionId,
+  ConquestRegionState,
+} from "./types";
 import { createEmptyPlayerBonusState } from "./regionBonuses";
 import { getPlayerTotalPoints } from "./regionPoints";
 
@@ -186,7 +191,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "ic_karisiklik",
     name:        "İç Karışıklık",
     type:        "bad",
-    description: "İç karışıklık çıktı. -1 puan.",
+    description: "İç karışıklık çıktı. Rastgele bir bölgen tarafsıza düşer; bölgen yoksa -1 puan.",
   },
 ];
 
@@ -251,12 +256,16 @@ function getCardPointDelta(cardId: string): number {
     // Bad
     case "lanetli_zar":     return -1;
     case "vergi_baskini":   return -2;
-    case "ic_karisiklik":   return -1;
-    // ters_ruzgar → time-effect card (see applyFateCardEffectToRound);
-    // sis_coktu  → currently a no-op (kör harita V2'ye ertelendi);
-    // kara_haber → bonus-loss card; -1 puan only as fallback when the drawer
-    //              has no removable bonus (see applyFateCardEffectToBonusLoss
-    //              + applyKaraHaberFallbackPointLoss).
+    // ters_ruzgar    → time-effect card (see applyFateCardEffectToRound);
+    // sis_coktu      → currently a no-op (kör harita V2'ye ertelendi);
+    // kara_haber     → bonus-loss card; -1 puan only as fallback when the
+    //                  drawer has no removable bonus (see
+    //                  applyFateCardEffectToBonusLoss +
+    //                  applyKaraHaberFallbackPointLoss).
+    // ic_karisiklik  → region-loss card; -1 puan only as fallback when the
+    //                  drawer has no owned regions (see
+    //                  applyFateCardEffectToRebellion +
+    //                  applyIcKarisiklikFallbackPointLoss).
     // Time cards & unknowns
     default:                return 0;
   }
@@ -550,33 +559,163 @@ export function applyFateCardEffectToBonusLoss(
 }
 
 /**
- * Kara Haber fallback — apply -1 bonusPoints with the same visible-total-floor
- * clamp used by `applyFateCardEffectToBonuses`.  Caller invokes this only
- * when `applyFateCardEffectToBonusLoss` returned `removedAny: false` for a
- * Kara Haber draw (i.e. the drawer had no removable bonus).
+ * Shared visible-total-floor clamp used by both Kara Haber and İç Karışıklık
+ * fallback paths.  Mirrors the clamp in `applyFateCardEffectToBonuses`: the
+ * player's visible total (regionPoints + bonusPoints) never drops below 0;
+ * `bonusPoints` itself may go negative (Suikast pattern).
  *
- * Pure — returns a fresh playerBonuses map.  The clamp uses the live region
- * totals from `state` so the visible total (regionPoints + bonusPoints) never
- * drops below 0; bonusPoints itself may go negative (Suikast-style).
+ * Pure — returns a fresh playerBonuses map.  Private so the two exported
+ * fallbacks present distinct, intention-revealing names without diverging
+ * on the math.
  */
-export function applyKaraHaberFallbackPointLoss(
+function applyClampedBonusPointDelta(
   state:    ConquestGameState,
   playerId: string,
+  delta:    number,
 ): Record<string, ConquestPlayerBonusState> {
   const currentBonuses = state.playerBonuses ?? {};
   const pb = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
 
-  const totals     = getPlayerTotalPoints(state.players, state.regionStates, state.playerBonuses);
-  const totalNow   = totals[playerId] ?? 0;
-  const regionPart = totalNow - pb.bonusPoints;
-  const minBonus   = -regionPart;
-  let nextBonusPoints = pb.bonusPoints - 1;
-  if (nextBonusPoints < minBonus) nextBonusPoints = minBonus;
+  let nextBonusPoints = pb.bonusPoints + delta;
+  if (delta < 0) {
+    const totals     = getPlayerTotalPoints(state.players, state.regionStates, state.playerBonuses);
+    const totalNow   = totals[playerId] ?? 0;
+    const regionPart = totalNow - pb.bonusPoints;
+    const minBonus   = -regionPart;
+    if (nextBonusPoints < minBonus) nextBonusPoints = minBonus;
+  }
 
   return {
     ...currentBonuses,
     [playerId]: { ...pb, bonusPoints: nextBonusPoints },
   };
+}
+
+/**
+ * Kara Haber fallback — apply -1 bonusPoints with the visible-total-floor
+ * clamp.  Caller invokes this only when `applyFateCardEffectToBonusLoss`
+ * returned `removedAny: false` for a Kara Haber draw (i.e. the drawer had
+ * no removable bonus).  Pure — returns a fresh playerBonuses map.
+ */
+export function applyKaraHaberFallbackPointLoss(
+  state:    ConquestGameState,
+  playerId: string,
+): Record<string, ConquestPlayerBonusState> {
+  return applyClampedBonusPointDelta(state, playerId, -1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// İç Karışıklık V1 — region-loss helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result of `applyFateCardEffectToRebellion`.  When `droppedAny` is true the
+ * `affectedRegionId` identifies the region that rebelled (caller resolves the
+ * display label from mapConfig and forwards both onto `lastFateCardEvent`).
+ * When false the `regionStates` array is returned reference-equal — the
+ * caller is expected to apply the -1 puan fallback via
+ * `applyIcKarisiklikFallbackPointLoss`.
+ */
+export interface ConquestFateCardRebellionResult {
+  regionStates:      ConquestRegionState[];
+  droppedAny:        boolean;
+  affectedRegionId?: ConquestRegionId;
+}
+
+/**
+ * Apply İç Karışıklık's region-loss effect.  Scans the drawer's owned regions
+ * and drops one (uniform random) to neutral.  Intentionally NOT a capture —
+ * this helper does not route through `flipOwnership` or `applyActionToGame`,
+ * so capture-side chains (mevzi protection, koçbaşı, hidden bonus claim,
+ * border outpost, point award to opponent) are all skipped.  Pure on
+ * `regionStates`; no mutation, fresh array on the dropped region.
+ *
+ * Non-İç-Karışıklık card ids are no-ops (returns the input reference,
+ * `droppedAny: false`) so the caller can chain unconditionally on every draw.
+ *
+ * Fields cleared on the dropped region (every alan structurally tied to the
+ * previous owner):
+ *   - ownerPlayerId        → null
+ *   - shielded             → false   (open shield was owner's defense)
+ *   - borderOutpostOwnerId → undefined (Sınır Karakolu binası sahibi kaybetti)
+ *   - hiddenShieldOwnerId  → undefined (Ankara Gizli Op sahibinindi)
+ *   - hiddenShieldKind     → undefined (paired with hiddenShieldOwnerId)
+ *   - limanIncomeTicks     → 0       (per-tenure counter; new tenant restarts)
+ *   - bereketHarvestTurns  → 0       (per-tenure counter)
+ *
+ * Fields intentionally preserved (history / per-region anti-farm log):
+ *   - lastCapturedBy
+ *   - turnCaptured
+ *   - captureCount
+ *   - mevziProtectionClaimedBy   (matches flipOwnership policy — same field
+ *                                 is not reset on capture either)
+ *
+ * Fallback (no owned regions): caller MUST call
+ * `applyIcKarisiklikFallbackPointLoss` to apply the -1 puan with the same
+ * visible-total-floor clamp as Kara Haber's fallback.
+ *
+ * RNG defaults to `Math.random`; result is replicated to every client via
+ * `lastFateCardEvent.affectedRegionId` so the rebellion target stays
+ * consistent across viewers.
+ */
+export function applyFateCardEffectToRebellion(
+  regionStates: ConquestRegionState[],
+  playerId:     string,
+  cardId:       string,
+  rng:          () => number = Math.random,
+): ConquestFateCardRebellionResult {
+  if (cardId !== "ic_karisiklik") {
+    return { regionStates, droppedAny: false };
+  }
+
+  const ownedIndices: number[] = [];
+  for (let i = 0; i < regionStates.length; i++) {
+    if (regionStates[i].ownerPlayerId === playerId) ownedIndices.push(i);
+  }
+
+  if (ownedIndices.length === 0) {
+    return { regionStates, droppedAny: false };
+  }
+
+  const pick     = Math.min(
+    ownedIndices.length - 1,
+    Math.max(0, Math.floor(rng() * ownedIndices.length)),
+  );
+  const targetIdx      = ownedIndices[pick];
+  const affectedRegion = regionStates[targetIdx].regionId;
+
+  const nextRegionStates = regionStates.map((rs, i) => {
+    if (i !== targetIdx) return rs;
+    return {
+      ...rs,
+      ownerPlayerId:        null,
+      shielded:             false,
+      borderOutpostOwnerId: undefined,
+      hiddenShieldOwnerId:  undefined,
+      hiddenShieldKind:     undefined,
+      limanIncomeTicks:     0,
+      bereketHarvestTurns:  0,
+    };
+  });
+
+  return {
+    regionStates:     nextRegionStates,
+    droppedAny:       true,
+    affectedRegionId: affectedRegion,
+  };
+}
+
+/**
+ * İç Karışıklık fallback — apply -1 bonusPoints with the visible-total-floor
+ * clamp.  Caller invokes this only when `applyFateCardEffectToRebellion`
+ * returned `droppedAny: false` for an İç Karışıklık draw (drawer had no
+ * owned regions).  Pure — returns a fresh playerBonuses map.
+ */
+export function applyIcKarisiklikFallbackPointLoss(
+  state:    ConquestGameState,
+  playerId: string,
+): Record<string, ConquestPlayerBonusState> {
+  return applyClampedBonusPointDelta(state, playerId, -1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -622,6 +761,20 @@ export interface ConquestFateCardViewerCopyContext {
    * bonusun yoktu" variant.
    */
   karaHaberFallbackPointLoss?: boolean;
+  /**
+   * İç Karışıklık V1 — display label of the rebelled region (e.g. "Çukurova").
+   * Forward `lastFateCardEvent.affectedRegionName` verbatim.  When present,
+   * the helper renders the "{regionName} bölgende isyan çıktı" copy variant.
+   */
+  affectedRegionName?: string;
+  /**
+   * İç Karışıklık V1 — true when the draw fell through to the -1 puan
+   * fallback (drawer had no owned regions).  Forward
+   * `lastFateCardEvent.icKarisiklikFallbackPointLoss` verbatim.  When true
+   * and `affectedRegionName` is absent, the helper renders the "kaybedecek
+   * bölgen yoktu" variant.
+   */
+  icKarisiklikFallbackPointLoss?: boolean;
 }
 
 /**
@@ -737,10 +890,25 @@ export function getFateCardViewerCopy(
         ? { title: cardName, detail: "Ters Rüzgar: Bu hamlede 5 saniye kaybettin." }
         : { title: cardName, detail: `${actorName} Ters Rüzgar yüzünden bu hamlede 5 saniye kaybetti.` };
 
-    case "ic_karisiklik":
+    case "ic_karisiklik": {
+      // Three rendering branches, in priority order:
+      //  1) affectedRegionName present  → a real region was dropped to neutral.
+      //  2) icKarisiklikFallbackPointLoss → drawer had no regions; -1 puan.
+      //  3) defensive fallback (older client / metadata missing).
+      if (ctx?.affectedRegionName) {
+        return viewerIsActor
+          ? { title: cardName, detail: `${ctx.affectedRegionName} bölgende isyan çıktı! İç karışıklıklar bölgeyi kaybetmene sebep oldu.` }
+          : { title: cardName, detail: `${actorName} oyuncusunun kontrolündeki ${ctx.affectedRegionName} bölgesi iç isyanlar sonucu düştü! Bölgeyi ele geçirmek için doğru zaman.` };
+      }
+      if (ctx?.icKarisiklikFallbackPointLoss) {
+        return viewerIsActor
+          ? { title: cardName, detail: "İç Karışıklık çıktı ama kaybedecek bölgen yoktu. -1 puan kaybettin." }
+          : { title: cardName, detail: `${actorName} İç Karışıklık çekti ama kaybedecek bölgesi yoktu. -1 puan kaybetti.` };
+      }
       return viewerIsActor
-        ? { title: cardName, detail: "İç karışıklık çıktı. -1 puan kaybettin." }
-        : { title: cardName, detail: `${actorName} İç Karışıklık yüzünden -1 puan kaybetti.` };
+        ? { title: cardName, detail: "İç Karışıklık çıktı. Bölgelerinde huzursuzluk başladı." }
+        : { title: cardName, detail: `${actorName} İç Karışıklık çekti. Bölgelerinde huzursuzluk başladı.` };
+    }
 
     default: {
       // Unknown card id — fall through to the catalog description so a

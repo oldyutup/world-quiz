@@ -136,8 +136,10 @@ import {
   applyFateCardEffectToBonuses,
   applyFateCardEffectToBonusLoss,
   applyFateCardEffectToNextMove,
+  applyFateCardEffectToRebellion,
   applyFateCardEffectToRound,
   applyFateCardEffectToShieldBypass,
+  applyIcKarisiklikFallbackPointLoss,
   applyKaraHaberFallbackPointLoss,
   drawRandomFateCard,
   FATE_CARDS,
@@ -1365,12 +1367,35 @@ export default function ConquestGame({
       card.id,
     );
     const karaHaberFallback = card.id === "kara_haber" && !bonusLoss.removedAny;
-    const nextBonuses = karaHaberFallback
+    const bonusesAfterKaraHaber = karaHaberFallback
       ? applyKaraHaberFallbackPointLoss(
           { ...latest, playerBonuses: bonusLoss.playerBonuses },
           myPlayerId,
         )
       : bonusLoss.playerBonuses;
+
+    // İç Karışıklık dev simulation — mirrors prod region-loss + fallback.
+    // fateCardsUsedByPlayerId stays unset so testers can re-fire the card
+    // and watch a fresh region drop on each click (or the fallback once they
+    // have no regions left).
+    const rebellion = applyFateCardEffectToRebellion(
+      latest.regionStates,
+      myPlayerId,
+      card.id,
+    );
+    const icKarisiklikFallback = card.id === "ic_karisiklik" && !rebellion.droppedAny;
+    const nextBonuses = icKarisiklikFallback
+      ? applyIcKarisiklikFallbackPointLoss(
+          { ...latest, playerBonuses: bonusesAfterKaraHaber },
+          myPlayerId,
+        )
+      : bonusesAfterKaraHaber;
+    const nextRegionStates = rebellion.regionStates;
+    const affectedRegionName = rebellion.affectedRegionId && mapConfig
+      ? (mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.displayLabel
+          ?? mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.name
+          ?? rebellion.affectedRegionId)
+      : undefined;
 
     // Mirror prod's reveal pause: shove actionEndsAt/actionStartedAt forward
     // by FATE_REVEAL_MS so the overlay backdrop freezes the move timer
@@ -1390,6 +1415,7 @@ export default function ConquestGame({
       ...latest,
       round:          nextRound,
       playerBonuses:  nextBonuses,
+      regionStates:   nextRegionStates,
       // fateCardsUsedByPlayerId intentionally untouched — same card replayable.
       lastFateCardEvent: {
         id:          `fate-dev-${now}-${myPlayerId}`,
@@ -1404,6 +1430,10 @@ export default function ConquestGame({
         removedBonusKey:           bonusLoss.removedBonusKey,
         removedBonusLabel:         bonusLoss.removedBonusLabel,
         karaHaberFallbackPointLoss: karaHaberFallback ? true : undefined,
+        affectedRegionId:          rebellion.affectedRegionId,
+        affectedRegionName,
+        rebellionDroppedRegion:    rebellion.droppedAny ? true : undefined,
+        icKarisiklikFallbackPointLoss: icKarisiklikFallback ? true : undefined,
       },
     };
 
@@ -2633,12 +2663,41 @@ export default function ConquestGame({
         card.id,
       );
       const karaHaberFallback = card.id === "kara_haber" && !bonusLoss.removedAny;
-      const nextBonuses = karaHaberFallback
+      const bonusesAfterKaraHaber = karaHaberFallback
         ? applyKaraHaberFallbackPointLoss(
             { ...latest, playerBonuses: bonusLoss.playerBonuses },
             myPlayerId,
           )
         : bonusLoss.playerBonuses;
+
+      // İç Karışıklık — V1 region-loss.  No-op for any other card id.  When
+      // the drawer owns at least one region, helper drops a uniform-random
+      // one to neutral (NOT via flipOwnership — capture-side chains stay
+      // dormant: no opponent point award, no hidden bonus claim, no mevzi
+      // protection, no border outpost trigger).  When the drawer has no
+      // owned regions, helper returns regionStates unchanged and we apply
+      // the -1 puan fallback via applyIcKarisiklikFallbackPointLoss (same
+      // clamp as Kara Haber's fallback).  affectedRegionId/Name +
+      // rebellionDroppedRegion + icKarisiklikFallbackPointLoss metadata
+      // flows into lastFateCardEvent.
+      const rebellion = applyFateCardEffectToRebellion(
+        latest.regionStates,
+        myPlayerId,
+        card.id,
+      );
+      const icKarisiklikFallback = card.id === "ic_karisiklik" && !rebellion.droppedAny;
+      const nextBonuses = icKarisiklikFallback
+        ? applyIcKarisiklikFallbackPointLoss(
+            { ...latest, playerBonuses: bonusesAfterKaraHaber },
+            myPlayerId,
+          )
+        : bonusesAfterKaraHaber;
+      const nextRegionStates = rebellion.regionStates;
+      const affectedRegionName = rebellion.affectedRegionId && mapConfig
+        ? (mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.displayLabel
+            ?? mapConfig.regions.find(r => r.id === rebellion.affectedRegionId)?.name
+            ?? rebellion.affectedRegionId)
+        : undefined;
 
       // Pause the move clock while the reveal overlay is up.  We do this by
       // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
@@ -2666,6 +2725,10 @@ export default function ConquestGame({
         ...latest,
         round: nextRound,
         playerBonuses: nextBonuses,
+        // İç Karışıklık rebels at most one region; for every other card id
+        // `nextRegionStates === latest.regionStates` reference-equal so this
+        // override is a no-op (no spurious diff downstream).
+        regionStates: nextRegionStates,
         fateCardsUsedByPlayerId: {
           ...(latest.fateCardsUsedByPlayerId ?? {}),
           [myPlayerId]: true,
@@ -2683,6 +2746,10 @@ export default function ConquestGame({
           removedBonusKey:           bonusLoss.removedBonusKey,
           removedBonusLabel:         bonusLoss.removedBonusLabel,
           karaHaberFallbackPointLoss: karaHaberFallback ? true : undefined,
+          affectedRegionId:          rebellion.affectedRegionId,
+          affectedRegionName,
+          rebellionDroppedRegion:    rebellion.droppedAny ? true : undefined,
+          icKarisiklikFallbackPointLoss: icKarisiklikFallback ? true : undefined,
         },
       };
 
