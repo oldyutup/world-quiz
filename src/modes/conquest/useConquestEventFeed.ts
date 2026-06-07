@@ -276,7 +276,11 @@ export function useConquestEventFeed(
     // a separate "X Kader Kartı çekti:" prefix and double up the attribution).
     // Unknown card ids fall back to the catalog description inside the
     // helper, so older clients reading a newer event still surface a sentence.
-    const copy = getFateCardViewerCopy(fc.cardId, isMine, { actorName: fc.playerName });
+    const copy = getFateCardViewerCopy(fc.cardId, isMine, {
+      actorName:                  fc.playerName,
+      removedBonusLabel:          fc.removedBonusLabel,
+      karaHaberFallbackPointLoss: fc.karaHaberFallbackPointLoss,
+    });
     const text = isMine
       ? `${copy.title}: ${copy.detail}`
       : copy.detail;

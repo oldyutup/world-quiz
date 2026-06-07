@@ -134,9 +134,11 @@ import ConquestFateCardWidget from "./ConquestFateCardWidget";
 import ConquestFateCardReveal from "./ConquestFateCardReveal";
 import {
   applyFateCardEffectToBonuses,
+  applyFateCardEffectToBonusLoss,
   applyFateCardEffectToNextMove,
   applyFateCardEffectToRound,
   applyFateCardEffectToShieldBypass,
+  applyKaraHaberFallbackPointLoss,
   drawRandomFateCard,
   FATE_CARDS,
   FATE_REVEAL_MS,
@@ -1350,11 +1352,25 @@ export default function ConquestGame({
       myPlayerId,
       card.id,
     );
-    const nextBonuses = applyFateCardEffectToShieldBypass(
+    const bonusesAfterShieldBypass = applyFateCardEffectToShieldBypass(
       { ...latest, playerBonuses: bonusesAfterNextMove },
       myPlayerId,
       card.id,
     );
+    // Kara Haber dev simulation — same helper chain as prod so dev panel
+    // exercises bonus-loss / fallback-point-loss code paths identically.
+    const bonusLoss = applyFateCardEffectToBonusLoss(
+      bonusesAfterShieldBypass,
+      myPlayerId,
+      card.id,
+    );
+    const karaHaberFallback = card.id === "kara_haber" && !bonusLoss.removedAny;
+    const nextBonuses = karaHaberFallback
+      ? applyKaraHaberFallbackPointLoss(
+          { ...latest, playerBonuses: bonusLoss.playerBonuses },
+          myPlayerId,
+        )
+      : bonusLoss.playerBonuses;
 
     // Mirror prod's reveal pause: shove actionEndsAt/actionStartedAt forward
     // by FATE_REVEAL_MS so the overlay backdrop freezes the move timer
@@ -1385,6 +1401,9 @@ export default function ConquestGame({
         description: card.description,
         createdAt:   now,
         round:       latest.round.roundNumber,
+        removedBonusKey:           bonusLoss.removedBonusKey,
+        removedBonusLabel:         bonusLoss.removedBonusLabel,
+        karaHaberFallbackPointLoss: karaHaberFallback ? true : undefined,
       },
     };
 
@@ -2594,11 +2613,32 @@ export default function ConquestGame({
       // Muhafız Desteği grants a one-shot open-shield bypass charge on top of
       // the +1 points.  Chain through a synthetic state so the helper sees
       // the freshly written bonusPoints / extraNextMoveMs.
-      const nextBonuses = applyFateCardEffectToShieldBypass(
+      const bonusesAfterShieldBypass = applyFateCardEffectToShieldBypass(
         { ...latest, playerBonuses: bonusesAfterNextMove },
         myPlayerId,
         card.id,
       );
+
+      // Kara Haber — V1 bonus-loss.  No-op for any other card id.  When a
+      // candidate exists, one random slot from the drawer's playerBonuses is
+      // zeroed.  When none exists, helper returns playerBonuses unchanged and
+      // we apply the -1 puan fallback via applyKaraHaberFallbackPointLoss
+      // (same visible-total-floor clamp as applyFateCardEffectToBonuses).
+      // Metadata (removedBonusKey / removedBonusLabel /
+      // karaHaberFallbackPointLoss) flows into lastFateCardEvent so reveal +
+      // event feed render the right viewer-aware copy variant.
+      const bonusLoss = applyFateCardEffectToBonusLoss(
+        bonusesAfterShieldBypass,
+        myPlayerId,
+        card.id,
+      );
+      const karaHaberFallback = card.id === "kara_haber" && !bonusLoss.removedAny;
+      const nextBonuses = karaHaberFallback
+        ? applyKaraHaberFallbackPointLoss(
+            { ...latest, playerBonuses: bonusLoss.playerBonuses },
+            myPlayerId,
+          )
+        : bonusLoss.playerBonuses;
 
       // Pause the move clock while the reveal overlay is up.  We do this by
       // pushing the synced `actionEndsAt` (and the matching `actionStartedAt`,
@@ -2618,8 +2658,8 @@ export default function ConquestGame({
             actionEndsAt:    latest.round.actionEndsAt    + FATE_REVEAL_MS,
           }
         : latest.round;
-      // Layer card-specific time effects (Son Hamle / Sis Çöktü) on top of the
-      // reveal pause.  No-op for any other card.
+      // Layer card-specific time effects (Son Hamle / Ters Rüzgar) on top of
+      // the reveal pause.  No-op for any other card.
       const nextRound = applyFateCardEffectToRound(pausedRound, latest.phase, card.id, now);
 
       const next: ConquestGameState = {
@@ -2640,6 +2680,9 @@ export default function ConquestGame({
           description: card.description,
           createdAt:   now,
           round:       latest.round.roundNumber,
+          removedBonusKey:           bonusLoss.removedBonusKey,
+          removedBonusLabel:         bonusLoss.removedBonusLabel,
+          karaHaberFallbackPointLoss: karaHaberFallback ? true : undefined,
         },
       };
 

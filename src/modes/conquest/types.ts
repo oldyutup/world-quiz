@@ -1184,6 +1184,29 @@ export interface ConquestFateCardEvent {
   description: string;
   createdAt:   number;
   round?:      number;
+  /**
+   * Kara Haber V1 — when a draw consumed a random active bonus from the
+   * drawer's `playerBonuses` slot, this is the structural key of the field
+   * that was zeroed (e.g. "mancinikCharges").  Absent when the card was not
+   * Kara Haber, or when Kara Haber fell through to the -1 point fallback
+   * because the drawer had no removable bonus.  Optional for back-compat.
+   */
+  removedBonusKey?: string;
+  /**
+   * Kara Haber V1 — player-facing label of the consumed bonus (e.g.
+   * "Mancınık Hakkı").  Used by the reveal overlay and the event-feed
+   * viewer-aware copy.  Paired with `removedBonusKey`.  Optional for back-
+   * compat with pre-Kara-Haber-V1 events.
+   */
+  removedBonusLabel?: string;
+  /**
+   * Kara Haber V1 — true when the card fell through to the -1 point fallback
+   * (drawer had no removable bonus).  Mutually exclusive with `removedBonusKey`
+   * / `removedBonusLabel`.  Drives the "kaybedecek aktif bonusun yoktu" copy
+   * variant.  Absent when the card was not Kara Haber, or when a bonus WAS
+   * removed.  Optional for back-compat.
+   */
+  karaHaberFallbackPointLoss?: boolean;
 }
 
 /**

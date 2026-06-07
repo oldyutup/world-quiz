@@ -174,7 +174,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "kara_haber",
     name:        "Kara Haber",
     type:        "bad",
-    description: "Kara haber geldi. -1 puan.",
+    description: "Kara haber geldi. Aktif bir bonusunu kaybedersin; bonusun yoksa -1 puan.",
   },
   {
     id:          "ters_ruzgar",
@@ -251,10 +251,12 @@ function getCardPointDelta(cardId: string): number {
     // Bad
     case "lanetli_zar":     return -1;
     case "vergi_baskini":   return -2;
-    case "kara_haber":      return -1;
     case "ic_karisiklik":   return -1;
     // ters_ruzgar → time-effect card (see applyFateCardEffectToRound);
-    // sis_coktu  → currently a no-op (kör harita V2'ye ertelendi).
+    // sis_coktu  → currently a no-op (kör harita V2'ye ertelendi);
+    // kara_haber → bonus-loss card; -1 puan only as fallback when the drawer
+    //              has no removable bonus (see applyFateCardEffectToBonusLoss
+    //              + applyKaraHaberFallbackPointLoss).
     // Time cards & unknowns
     default:                return 0;
   }
@@ -422,6 +424,162 @@ export function applyFateCardEffectToShieldBypass(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Kara Haber V1 — bonus-loss helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Result of `applyFateCardEffectToBonusLoss`.  When `removedAny` is true the
+ * bonusKey/Label pair identifies which slot was zeroed so the caller can
+ * forward it into `lastFateCardEvent` for viewer-aware copy.  When false the
+ * `playerBonuses` map is returned unchanged — the caller is expected to apply
+ * the Kara Haber -1 fallback via `applyKaraHaberFallbackPointLoss`.
+ */
+export interface ConquestFateCardBonusLossResult {
+  playerBonuses:     Record<string, ConquestPlayerBonusState>;
+  removedAny:        boolean;
+  removedBonusKey?:  string;
+  removedBonusLabel?: string;
+}
+
+interface KaraHaberCandidate {
+  key:   string;
+  label: string;
+  apply: (pb: ConquestPlayerBonusState) => ConquestPlayerBonusState;
+}
+
+/**
+ * Apply Kara Haber's bonus-loss effect.  Scans the drawer's
+ * `playerBonuses[playerId]` slot for active charges and zeroes one at random.
+ *
+ * V1 silinebilir bonus havuzu (önce-pozitif olanlar; field semantik olarak
+ * "var/yok"):
+ *   - mancinikCharges              → "Mancınık Hakkı"
+ *   - eliminatorCharges            → "Eleme Hakkı"
+ *   - guardianShieldBypassCharges  → "Muhafız Desteği"
+ *   - pendingHiddenShield (true)   → "Gizli Kalkan"
+ *   - extraNextMoveMs > 0          → "Ekstra Süre"
+ *
+ * Intentionally OUT of scope for V1: `bonusPoints` (kümülatif skor),
+ * `cukurovaClaimed` (legacy lock), `matchGoldEarned` (sadece kazanç log'u),
+ * `playerHiddenBonuses` (ayrı inventory kanalı), ve bölgeye bağlı tüm
+ * bonuslar (`shielded`, `borderOutpostOwnerId`, `hiddenShieldOwnerId`,
+ * `limanIncomeTicks`, `bereketHarvestTurns`, `mevziProtectionClaimedBy`).
+ *
+ * Non-Kara-Haber card ids are no-ops (returns `playerBonuses` unchanged,
+ * `removedAny: false`) so the caller can chain unconditionally on every draw.
+ *
+ * Pure — input is not mutated; a fresh playerBonuses map is returned when
+ * something changes, otherwise the input reference is passed through.  RNG
+ * defaults to `Math.random`; the seeded variant is available for tests but
+ * draws don't need determinism since the result is replicated via
+ * `lastFateCardEvent`.
+ *
+ * Fallback (no candidate found): caller MUST call
+ * `applyKaraHaberFallbackPointLoss` to apply the -1 puan with the same
+ * visible-total-floor clamp as `applyFateCardEffectToBonuses`.
+ */
+export function applyFateCardEffectToBonusLoss(
+  playerBonuses: Record<string, ConquestPlayerBonusState> | undefined,
+  playerId:      string,
+  cardId:        string,
+  rng:           () => number = Math.random,
+): ConquestFateCardBonusLossResult {
+  const currentBonuses = playerBonuses ?? {};
+  if (cardId !== "kara_haber") {
+    return { playerBonuses: currentBonuses, removedAny: false };
+  }
+
+  const pb = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
+  const candidates: KaraHaberCandidate[] = [];
+
+  if ((pb.mancinikCharges ?? 0) > 0) {
+    candidates.push({
+      key:   "mancinikCharges",
+      label: "Mancınık Hakkı",
+      apply: p => ({ ...p, mancinikCharges: 0 }),
+    });
+  }
+  if ((pb.eliminatorCharges ?? 0) > 0) {
+    candidates.push({
+      key:   "eliminatorCharges",
+      label: "Eleme Hakkı",
+      apply: p => ({ ...p, eliminatorCharges: 0 }),
+    });
+  }
+  if ((pb.guardianShieldBypassCharges ?? 0) > 0) {
+    candidates.push({
+      key:   "guardianShieldBypassCharges",
+      label: "Muhafız Desteği",
+      apply: p => ({ ...p, guardianShieldBypassCharges: 0 }),
+    });
+  }
+  if (pb.pendingHiddenShield === true) {
+    candidates.push({
+      key:   "pendingHiddenShield",
+      label: "Gizli Kalkan",
+      apply: p => ({ ...p, pendingHiddenShield: false }),
+    });
+  }
+  if ((pb.extraNextMoveMs ?? 0) > 0) {
+    candidates.push({
+      key:   "extraNextMoveMs",
+      label: "Ekstra Süre",
+      apply: p => ({ ...p, extraNextMoveMs: 0 }),
+    });
+  }
+
+  if (candidates.length === 0) {
+    return { playerBonuses: currentBonuses, removedAny: false };
+  }
+
+  const idx = Math.min(
+    candidates.length - 1,
+    Math.max(0, Math.floor(rng() * candidates.length)),
+  );
+  const picked = candidates[idx];
+
+  return {
+    playerBonuses: {
+      ...currentBonuses,
+      [playerId]: picked.apply(pb),
+    },
+    removedAny:        true,
+    removedBonusKey:   picked.key,
+    removedBonusLabel: picked.label,
+  };
+}
+
+/**
+ * Kara Haber fallback — apply -1 bonusPoints with the same visible-total-floor
+ * clamp used by `applyFateCardEffectToBonuses`.  Caller invokes this only
+ * when `applyFateCardEffectToBonusLoss` returned `removedAny: false` for a
+ * Kara Haber draw (i.e. the drawer had no removable bonus).
+ *
+ * Pure — returns a fresh playerBonuses map.  The clamp uses the live region
+ * totals from `state` so the visible total (regionPoints + bonusPoints) never
+ * drops below 0; bonusPoints itself may go negative (Suikast-style).
+ */
+export function applyKaraHaberFallbackPointLoss(
+  state:    ConquestGameState,
+  playerId: string,
+): Record<string, ConquestPlayerBonusState> {
+  const currentBonuses = state.playerBonuses ?? {};
+  const pb = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
+
+  const totals     = getPlayerTotalPoints(state.players, state.regionStates, state.playerBonuses);
+  const totalNow   = totals[playerId] ?? 0;
+  const regionPart = totalNow - pb.bonusPoints;
+  const minBonus   = -regionPart;
+  let nextBonusPoints = pb.bonusPoints - 1;
+  if (nextBonusPoints < minBonus) nextBonusPoints = minBonus;
+
+  return {
+    ...currentBonuses,
+    [playerId]: { ...pb, bonusPoints: nextBonusPoints },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Viewer-aware copy — V2 reveal + event-feed
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -448,6 +606,22 @@ export interface ConquestFateCardViewerCopyContext {
    *  `playerName`, but cheap insurance against a future caller that passes
    *  only the cardId. */
   actorName?: string;
+  /**
+   * Kara Haber V1 — player-facing label of the consumed bonus
+   * (e.g. "Mancınık Hakkı") when the draw actually removed a bonus.  Forward
+   * `lastFateCardEvent.removedBonusLabel` verbatim.  When absent for a
+   * Kara Haber draw, the helper falls through to the fallback / defensive
+   * branch depending on `karaHaberFallbackPointLoss`.
+   */
+  removedBonusLabel?: string;
+  /**
+   * Kara Haber V1 — true when the draw fell through to the -1 puan fallback
+   * (drawer had no removable bonus).  Forward
+   * `lastFateCardEvent.karaHaberFallbackPointLoss` verbatim.  When true and
+   * `removedBonusLabel` is absent, the helper renders the "kaybedecek aktif
+   * bonusun yoktu" variant.
+   */
+  karaHaberFallbackPointLoss?: boolean;
 }
 
 /**
@@ -536,10 +710,27 @@ export function getFateCardViewerCopy(
         ? { title: cardName, detail: "Sis Çöktü: Kör harita etkisi yakında aktif olacak." }
         : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Kör harita etkisi yakında aktif olacak.` };
 
-    case "kara_haber":
+    case "kara_haber": {
+      // Three rendering branches, in priority order:
+      //  1) removedBonusLabel present  → a real bonus was zeroed.
+      //  2) karaHaberFallbackPointLoss → drawer had no bonus; -1 puan applied.
+      //  3) neither (defensive)        → older client / metadata missing;
+      //     render a soft "aktif bir bonusu sarsıldı" line so the row is
+      //     never empty even if forward-compat slipped.
+      if (ctx?.removedBonusLabel) {
+        return viewerIsActor
+          ? { title: cardName, detail: `Kara Haber: ${ctx.removedBonusLabel} kaybettin.` }
+          : { title: cardName, detail: `${actorName} Kara Haber aldı ve ${ctx.removedBonusLabel} bonusunu kaybetti.` };
+      }
+      if (ctx?.karaHaberFallbackPointLoss) {
+        return viewerIsActor
+          ? { title: cardName, detail: "Kara Haber: Kaybedecek aktif bonusun yoktu. -1 puan kaybettin." }
+          : { title: cardName, detail: `${actorName} Kara Haber aldı. Kaybedecek aktif bonusu olmadığı için -1 puan kaybetti.` };
+      }
       return viewerIsActor
-        ? { title: cardName, detail: "Kara haber geldi. -1 puan kaybettin." }
-        : { title: cardName, detail: `${actorName} Kara Haber yüzünden -1 puan kaybetti.` };
+        ? { title: cardName, detail: "Kara Haber aldın. Aktif bir bonusun sarsıldı." }
+        : { title: cardName, detail: `${actorName} Kara Haber aldı. Aktif bir bonusu sarsıldı.` };
+    }
 
     case "ters_ruzgar":
       return viewerIsActor
