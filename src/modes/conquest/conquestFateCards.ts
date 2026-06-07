@@ -142,7 +142,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "kalkan",
     name:        "Muhafız Desteği",
     type:        "good",
-    description: "Muhafız desteği geldi. +1 puan.",
+    description: "+1 puan ve tek kullanımlık kalkan bypass hakkı. Bir sonraki kalkanlı bölge saldırında kalkanı aşarsın.",
   },
   {
     id:          "bolge_kalkani",
@@ -377,6 +377,42 @@ export function applyFateCardEffectToNextMove(
   };
 }
 
+/**
+ * Apply a card's open-shield bypass effect to
+ * `playerBonuses[playerId].guardianShieldBypassCharges`.
+ *
+ * Muhafız Desteği (kalkan) → Math.max(prev, 1).  Defensive overwrite-not-stack
+ * since the card is once-per-match (`fateCardsUsedByPlayerId` gates re-draws),
+ * so in practice the charge cannot stack — Math.max keeps the floor at 1 if a
+ * future change ever opens up a stacking path without re-thinking the flag.
+ * Consumed by gameplay's `consumeGuardianShieldBypassCharge` at duel start
+ * the moment the holder commits an attack against an open-shielded opponent
+ * region (see conquestGameplay.ts).
+ *
+ * No-op for any other card id.  Returns a fresh `playerBonuses` map.  Caller
+ * should chain this AFTER `applyFateCardEffectToBonuses` so a single card
+ * that touches both `bonusPoints` and the bypass charge lands atomically on
+ * the same pb entry.
+ */
+export function applyFateCardEffectToShieldBypass(
+  state:    ConquestGameState,
+  playerId: string,
+  cardId:   string,
+): Record<string, ConquestPlayerBonusState> {
+  const currentBonuses = state.playerBonuses ?? {};
+  if (cardId !== "kalkan") return currentBonuses;
+
+  const pb        = currentBonuses[playerId] ?? createEmptyPlayerBonusState();
+  const prev      = pb.guardianShieldBypassCharges ?? 0;
+  const nextCharge = Math.max(prev, 1);
+  if (nextCharge === prev) return currentBonuses;
+
+  return {
+    ...currentBonuses,
+    [playerId]: { ...pb, guardianShieldBypassCharges: nextCharge },
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Viewer-aware copy — V2 reveal + event-feed
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,8 +504,8 @@ export function getFateCardViewerCopy(
 
     case "kalkan":
       return viewerIsActor
-        ? { title: cardName, detail: "Muhafız desteği geldi. +1 puan kazandın." }
-        : { title: cardName, detail: `${actorName} Muhafız Desteği ile +1 puan kazandı.` };
+        ? { title: cardName, detail: "+1 puan kazandın. Bir sonraki kalkanlı bölge saldırında kalkanı aşabilirsin." }
+        : { title: cardName, detail: `${actorName} Muhafız Desteği ile +1 puan kazandı ve bir kalkan bypass hakkı aldı.` };
 
     case "bolge_kalkani":
       return viewerIsActor

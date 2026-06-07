@@ -105,6 +105,15 @@ function buildBonusChips(
       title: "Eleme Yetkisi hazır",
     });
   }
+  if ((bonus.guardianShieldBypassCharges ?? 0) > 0) {
+    chips.push({
+      key:   "guardian",
+      icon:  "🛡️",
+      title: isMe
+        ? "Muhafız Desteği hazır"
+        : `${player.name} Muhafız Desteği hakkına sahip`,
+    });
+  }
   return chips;
 }
 

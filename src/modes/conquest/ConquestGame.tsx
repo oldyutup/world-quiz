@@ -135,6 +135,7 @@ import {
   applyFateCardEffectToBonuses,
   applyFateCardEffectToNextMove,
   applyFateCardEffectToRound,
+  applyFateCardEffectToShieldBypass,
   drawRandomFateCard,
   FATE_CARDS,
   FATE_REVEAL_MS,
@@ -1343,8 +1344,13 @@ export default function ConquestGame({
     const now = getConquestSyncedNowMs();
 
     const bonusesAfterPoints = applyFateCardEffectToBonuses(latest, myPlayerId, card.id);
-    const nextBonuses        = applyFateCardEffectToNextMove(
+    const bonusesAfterNextMove = applyFateCardEffectToNextMove(
       { ...latest, playerBonuses: bonusesAfterPoints },
+      myPlayerId,
+      card.id,
+    );
+    const nextBonuses = applyFateCardEffectToShieldBypass(
+      { ...latest, playerBonuses: bonusesAfterNextMove },
       myPlayerId,
       card.id,
     );
@@ -2579,8 +2585,16 @@ export default function ConquestGame({
       // Moral Üstünlüğü layers a next-move time bonus on top of the +1 points.
       // Chain through a synthetic state so the helper sees the freshly written
       // bonusPoints; Math.max preserves a pending Karadeniz +5s if present.
-      const nextBonuses = applyFateCardEffectToNextMove(
+      const bonusesAfterNextMove = applyFateCardEffectToNextMove(
         { ...latest, playerBonuses: bonusesAfterPoints },
+        myPlayerId,
+        card.id,
+      );
+      // Muhafız Desteği grants a one-shot open-shield bypass charge on top of
+      // the +1 points.  Chain through a synthetic state so the helper sees
+      // the freshly written bonusPoints / extraNextMoveMs.
+      const nextBonuses = applyFateCardEffectToShieldBypass(
+        { ...latest, playerBonuses: bonusesAfterNextMove },
         myPlayerId,
         card.id,
       );
@@ -4237,6 +4251,15 @@ export default function ConquestGame({
                 🪵 Koçbaşı: Kalkan aşılır
               </div>
             )}
+            {duel?.guardianBypass && (
+              <div
+                className="cq-duel-mevzi-chip"
+                role="note"
+                aria-label="Muhafız Desteği avantajı"
+              >
+                🛡️ Muhafız Desteği: Kalkan aşılır
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -5497,6 +5520,15 @@ export default function ConquestGame({
               title: isMe
                 ? "Mancınık hazır: bir sonraki saldırın komşuluk şartı olmadan haritadaki herhangi bir bölgeyi vurabilir"
                 : `${player.name} Mancınık hakkına sahip: bir sonraki saldırısı uzak bir bölgeye gelebilir`,
+            });
+          }
+          if ((pb.guardianShieldBypassCharges ?? 0) > 0) {
+            bonusChips.push({
+              key:   "guardian",
+              icon:  "🛡️",
+              title: isMe
+                ? "Muhafız Desteği hazır: bir sonraki kalkanlı bölge saldırında kalkanı aşarsın."
+                : `${player.name} Muhafız Desteği hakkına sahip: kalkanlı bölgeye saldırırsa kalkanı aşabilir.`,
             });
           }
 

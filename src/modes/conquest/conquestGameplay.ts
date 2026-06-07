@@ -942,6 +942,29 @@ function consumeMancinikCharge(
 }
 
 /**
+ * Muhafız Desteği 🛡️ — return a new playerBonuses map with `playerId`'s
+ * `guardianShieldBypassCharges` zeroed.  Returns the input map verbatim when
+ * the player has no charge.  Pure: never mutates inputs.  Mirrors the
+ * Mancınık consume helper.
+ */
+function consumeGuardianShieldBypassCharge(
+  playerBonusesIn: Record<string, ConquestPlayerBonusState> | undefined,
+  playerId:        string,
+): Record<string, ConquestPlayerBonusState> | undefined {
+  if (!playerBonusesIn) return playerBonusesIn;
+  const pb = playerBonusesIn[playerId];
+  const current = pb?.guardianShieldBypassCharges ?? 0;
+  if (current <= 0) return playerBonusesIn;
+  return {
+    ...playerBonusesIn,
+    [playerId]: {
+      ...(pb ?? createEmptyPlayerBonusState()),
+      guardianShieldBypassCharges: 0,
+    },
+  };
+}
+
+/**
  * Koçbaşı 🪵 — true when `attackerId` currently owns the region carrying the
  * kocbasi bonus in this match's assignment.  The bonus is region-tied: as
  * soon as the attacker loses that region, this returns false.
@@ -1127,6 +1150,17 @@ export function applyActionToGame(
   // below).  This keeps a single rule for "if the shot leaves the silo, the
   // silo is empty"; the alternative (refund on ambush) would also leak
   // info to the attacker that something they hit was ambushed-not-shielded.
+  //
+  // Muhafız Desteği 🛡️ charge consumption: parallel rule — when the attack
+  // was launched against a SHIELDED opponent region (target.shielded === true)
+  // and the attacker holds a guardianShieldBypassCharges charge that would
+  // have spent on the shield branch below, the ambush still counts as an
+  // attempt against the shield.  Charge is consumed so the chip drops on
+  // every client and the attacker cannot deduce "ambushed-not-shielded"
+  // from a preserved charge.  Koçbaşı priority preserved (free bypass →
+  // guardian charge untouched).  Skipped entirely when the target is not
+  // an open-shielded opponent region (neutrals, own regions, unshielded
+  // enemies, hidden-shield-only regions).
   if (action.type === "attack_region" || action.type === "capture_neutral") {
     const attackerName =
       state.players.find(p => p.id === action.playerId)?.name ?? "Oyuncu";
@@ -1138,6 +1172,18 @@ export function applyActionToGame(
       getConquestSyncedNowMs(),
     );
     if (ambushTrigger) {
+      const ambushTarget = state.regionStates.find(r => r.regionId === action.regionId);
+      const ambushTargetShielded =
+        ambushTarget?.shielded === true
+        && ambushTarget.ownerPlayerId !== null
+        && ambushTarget.ownerPlayerId !== action.playerId;
+      const ambushKocbasiBypass = ambushTargetShielded && attackerHasKocbasiAdvantage(
+        state.regionStates, state.roundBonuses, action.playerId,
+      );
+      const ambushHasGuardian = (actingPb?.guardianShieldBypassCharges ?? 0) > 0;
+      const guardianAmbushed =
+        ambushTargetShielded && !ambushKocbasiBypass && ambushHasGuardian;
+
       const blockResult: ConquestActionResult = {
         ok:                 true,
         action:             action.type,
@@ -1146,9 +1192,15 @@ export function applyActionToGame(
         message:            "🕳️ Gizli pusu nedeniyle saldırı gerçekleşemedi.",
         mancinikBypassUsed: mancinikBypassUsed || undefined,
       };
-      const playerBonusesAfterAmbush = mancinikBypassUsed
-        ? consumeMancinikCharge(state.playerBonuses, action.playerId)
-        : state.playerBonuses;
+      let playerBonusesAfterAmbush = state.playerBonuses;
+      if (mancinikBypassUsed) {
+        playerBonusesAfterAmbush = consumeMancinikCharge(playerBonusesAfterAmbush, action.playerId);
+      }
+      if (guardianAmbushed) {
+        playerBonusesAfterAmbush = consumeGuardianShieldBypassCharge(
+          playerBonusesAfterAmbush, action.playerId,
+        );
+      }
       return {
         state: {
           ...state,
@@ -1248,22 +1300,40 @@ export function applyActionToGame(
       const kocbasiBypass = targetShielded && attackerHasKocbasiAdvantage(
         state.regionStates, state.roundBonuses, action.playerId,
       );
+      // Muhafız Desteği 🛡️ — fate-card-based open-shield bypass.  Resolved
+      // ONLY when the target carries an open shield AND Koçbaşı is not
+      // already supplying the bypass for free (Koçbaşı priority preserves
+      // the once-per-match charge).  Like Koçbaşı, the duel is tagged
+      // `shieldActive: false` so attacker-win flips ownership directly.
+      // Charge is consumed at duel start — both correct and wrong duel
+      // outcomes spend it (Mancınık's "shot leaves the silo" rule).
+      const hasGuardianBypass = (actingPb?.guardianShieldBypassCharges ?? 0) > 0;
+      const guardianBypassUsed =
+        targetShielded && !kocbasiBypass && hasGuardianBypass;
       // Mancınık 🎯 — consume the charge at duel start so opponents see
       // the chip drop the instant the shot leaves the silo.  Routed through
       // the duel state's `mancinikBypass` flag so the eventual attacker-win
       // flip can forward the adjacency bypass into `applyConquestAction`.
-      const stateForDuel = mancinikBypassUsed
-        ? { ...state, playerBonuses: consumeMancinikCharge(state.playerBonuses, action.playerId) }
+      let bonusesForDuel = state.playerBonuses;
+      if (mancinikBypassUsed) {
+        bonusesForDuel = consumeMancinikCharge(bonusesForDuel, action.playerId);
+      }
+      if (guardianBypassUsed) {
+        bonusesForDuel = consumeGuardianShieldBypassCharge(bonusesForDuel, action.playerId);
+      }
+      const stateForDuel = (mancinikBypassUsed || guardianBypassUsed)
+        ? { ...state, playerBonuses: bonusesForDuel }
         : state;
       const duelState = startDefenseDuel(
         stateForDuel,
         action.playerId,
         target.ownerPlayerId,
         action.regionId,
-        targetShielded && !kocbasiBypass,
+        targetShielded && !kocbasiBypass && !guardianBypassUsed,
         kocbasiBypass,
         mancinikBypassUsed,
         false,
+        guardianBypassUsed,
       );
       const startResult: ConquestActionResult = {
         ok:       true,
@@ -2003,6 +2073,7 @@ function startDefenseDuel(
   kocbasiBypass:  boolean = false,
   mancinikBypass: boolean = false,
   outpostBreak:   boolean = false,
+  guardianBypass: boolean = false,
 ): ConquestGameState {
   const now = getConquestSyncedNowMs();
   const usedSoFar = state.usedChallengeKeys ?? [];
@@ -2044,6 +2115,7 @@ function startDefenseDuel(
     kocbasiBypass:    kocbasiBypass || undefined,
     mancinikBypass:   mancinikBypass || undefined,
     outpostBreak:     outpostBreak  || undefined,
+    guardianBypass:   guardianBypass || undefined,
   };
 
   return {

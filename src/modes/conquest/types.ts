@@ -398,6 +398,21 @@ export interface ConquestPlayerBonusState {
    */
   mancinikCharges?:    number;
   /**
+   * Muhafız Desteği 🛡️ — number of pending open-shield bypass charges.
+   * Granted (overwrite-not-stack: Math.max(prev, 1)) by drawing the `kalkan`
+   * fate card.  While > 0, the holder's next attack against an opponent
+   * region with `shielded === true` ignores the shield: an attacker-win in
+   * the resulting duel flips ownership instead of just breaking the shield.
+   * Consumed at duel start the moment the attempt launches (Mancınık's
+   * "shot leaves the silo" rule) — both correct and wrong duel outcomes
+   * spend the charge.  Skipped when the target carries no open shield, when
+   * Koçbaşı already supplies the bypass for free (charge is preserved), and
+   * when the duel is a Sınır Karakolu / hidden-shield path (neither uses
+   * `target.shielded`).  Optional for back-compat with pre-guardian saves;
+   * readers default to 0.
+   */
+  guardianShieldBypassCharges?: number;
+  /**
    * Liman 🪙 — total Gold this player has earned via Liman round-end income
    * for the current match.  Synced in gameplay state so every client can see
    * each player's in-match earnings (account-level gold is NEVER mirrored
@@ -899,6 +914,16 @@ export interface ConquestDefenseDuelState {
    * attacker-wins-flip path.  Absent on normal duels.
    */
   mancinikBypass?:  boolean;
+  /**
+   * Muhafız Desteği 🛡️ — true when the attacker spent a
+   * `guardianShieldBypassCharges` charge to launch this attack (target
+   * carried an open shield AND Koçbaşı was not already supplying the
+   * bypass).  Like `kocbasiBypass`, the duel stores `shieldActive: false`
+   * so attacker-win flips ownership directly; this flag records that the
+   * shield was actually present and bypassed via the fate-card charge, so
+   * UI can show the bypass chip / toast variant.  Absent on normal duels.
+   */
+  guardianBypass?:  boolean;
   /**
    * Sınır Karakolu — true when this duel was triggered by an attacker
    * targeting a NEUTRAL region carrying a defender's border outpost.

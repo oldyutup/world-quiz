@@ -398,6 +398,7 @@ export function createEmptyPlayerBonusState(): ConquestPlayerBonusState {
     bonusPoints:         0,
     eliminatorCharges:   0,
     mancinikCharges:     0,
+    guardianShieldBypassCharges: 0,
     matchGoldEarned:     0,
   };
 }
