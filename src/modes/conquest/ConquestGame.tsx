@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   addGold,
   useGold,
+  getGold,
   spendGoldAsync,
   CONQUEST_FATE_CARD_COST,
 } from "../../lib/gold";
@@ -1318,10 +1319,10 @@ export default function ConquestGame({
   // ── DEV-ONLY: simulate a Kader Kartı draw without spending Gold ─────────
   // Mirrors the real `handleDrawFateCard` flow but:
   //   - skips spendGoldAsync / addGold entirely (NO real account gold is
-  //     written for Talih Kuşu / Hazine Sandığı in dev simulation — dev
-  //     panel only renders the reveal + point/time/next-move effects so
-  //     repeated clicks never inflate the tester's profiles.gold or
-  //     pollute the gold_transactions log);
+  //     written for Talih Kuşu / Hazine Sandığı / Vergi Baskını in dev
+  //     simulation — dev panel only renders the reveal + point/time/next-
+  //     move effects so repeated clicks never inflate or drain the
+  //     tester's profiles.gold or pollute the gold_transactions log);
   //   - does NOT mark fateCardsUsedByPlayerId so the same card stays
   //     replayable for testing;
   //   - reuses applyFateCardEffectToBonuses + applyFateCardEffectToNextMove
@@ -2760,6 +2761,39 @@ export default function ConquestGame({
             cardName: card.name,
           },
         );
+      }
+
+      // Vergi Baskını — kartın -2 puan etkisi yukarıdaki helper chain'i
+      // üzerinden zaten uygulandı.  Üstüne, oyuncunun hesap Gold'undan en
+      // fazla 100 Gold "vergi" olarak kesiliyor.  Tax-clamp: bakiyenin
+      // 100'den az olduğu durumda mevcut Gold kadar düşer (server-side
+      // `_apply_gold_delta` zaten 0 altına inmiyor; biz yine de istenen
+      // bakiye-100 kuralını client tarafında uyguluyoruz ki cap üzerinden
+      // de RPC reddi olmasın).  `spendGoldAsync` rejection'ı puan etkisini
+      // veya kart olayını geri almaz — vergi başarısız olsa bile kart
+      // çekilmiş, -2 puan kalır, refund tetiklenmez.  Reason whitelist'te
+      // zaten bulunan `gameplay_spend` üzerinden gidiyoruz; ayrı bir
+      // `conquest_vergi_baskini` reason'u eklemek migration gerektirirdi.
+      if (success && card.id === "vergi_baskini") {
+        const currentGold = getGold();
+        const taxAmount   = Math.min(currentGold, 100);
+        if (taxAmount > 0) {
+          try {
+            await spendGoldAsync(
+              taxAmount,
+              "gameplay_spend",
+              {
+                source:   "conquest_fate_card",
+                cardId:   "vergi_baskini",
+                cardName: "Vergi Baskını",
+                roomId,
+                playerId: myPlayerId,
+              },
+            );
+          } catch (err) {
+            console.error("[conquest] vergi baskını gold spend threw:", err);
+          }
+        }
       }
     } finally {
       // Gold dustu ama kart efekti uygulanamadi → refund. Tek source of

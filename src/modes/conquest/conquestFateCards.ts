@@ -162,13 +162,13 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "vergi_baskini",
     name:        "Vergi Baskını",
     type:        "bad",
-    description: "Vergi baskını yaşandı. -2 puan.",
+    description: "Vergi baskını! -2 puan ve en fazla -100 Gold.",
   },
   {
     id:          "sis_coktu",
     name:        "Sis Çöktü",
     type:        "bad",
-    description: "Sis çöktü. Hamle süren 5 saniye azaldı.",
+    description: "Kör harita etkisi yakında aktif olacak.",
   },
   {
     id:          "kara_haber",
@@ -180,7 +180,7 @@ export const FATE_CARDS: ConquestFateCardDef[] = [
     id:          "ters_ruzgar",
     name:        "Ters Rüzgar",
     type:        "bad",
-    description: "Ters rüzgar esti. -1 puan.",
+    description: "Ters rüzgar çıktı. Bu hamlede -5 saniye.",
   },
   {
     id:          "ic_karisiklik",
@@ -252,8 +252,9 @@ function getCardPointDelta(cardId: string): number {
     case "lanetli_zar":     return -1;
     case "vergi_baskini":   return -2;
     case "kara_haber":      return -1;
-    case "ters_ruzgar":     return -1;
     case "ic_karisiklik":   return -1;
+    // ters_ruzgar → time-effect card (see applyFateCardEffectToRound);
+    // sis_coktu  → currently a no-op (kör harita V2'ye ertelendi).
     // Time cards & unknowns
     default:                return 0;
   }
@@ -265,14 +266,14 @@ function getCardPointDelta(cardId: string): number {
  * feed / XP surfaces pick it up unchanged.
  *
  * Positive deltas (Talih Kuşu, Hazine Sandığı, Moral Üstünlüğü, Kalkan)
- * add straight.  Negative deltas (Lanetli Zar, Vergi
- * Baskını, Kara Haber, Ters Rüzgar, İç Karışıklık) are clamped so the
- * player's visible total (regionPoints + bonusPoints) never drops below 0.
- * The bonusPoints field itself may legitimately go negative, matching how
- * Suikast tracks deductions.
+ * add straight.  Negative deltas (Lanetli Zar, Vergi Baskını, Kara Haber,
+ * İç Karışıklık) are clamped so the player's visible total (regionPoints +
+ * bonusPoints) never drops below 0.  The bonusPoints field itself may
+ * legitimately go negative, matching how Suikast tracks deductions.
  *
- * Time-effect cards (Son Hamle / Sis Çöktü) resolve to delta=0 and pass
- * through unchanged — see `applyFateCardEffectToRound` for those.
+ * Time-effect cards (Son Hamle / Ters Rüzgar) and the V1 no-op (Sis Çöktü)
+ * resolve to delta=0 and pass through unchanged — see
+ * `applyFateCardEffectToRound` for the time path.
  *
  * Returns a fresh `playerBonuses` map; the caller assembles the next
  * ConquestGameState (so it can also write `fateCardsUsedByPlayerId` and
@@ -313,11 +314,18 @@ export function applyFateCardEffectToBonuses(
  * FATE_REVEAL_MS for the reveal pause — this helper layers the card-specific
  * delta on top of that.
  *
- * Son Hamle → +FATE_TIME_GAIN_MS to actionEndsAt.
- * Sis Çöktü → -FATE_TIME_LOSS_MS to actionEndsAt, floored so the holder
- *             still has at least FATE_TIME_FLOOR_MS of move time AFTER the
- *             reveal overlay closes (i.e. nextEndsAt >= now + FATE_REVEAL_MS
- *             + FATE_TIME_FLOOR_MS).
+ * Son Hamle   → +FATE_TIME_GAIN_MS to actionEndsAt.
+ * Ters Rüzgar → -FATE_TIME_LOSS_MS to actionEndsAt, floored so the holder
+ *               still has at least FATE_TIME_FLOOR_MS of move time AFTER the
+ *               reveal overlay closes (i.e. nextEndsAt >= now + FATE_REVEAL_MS
+ *               + FATE_TIME_FLOOR_MS).  Inherited verbatim from the prior
+ *               Sis Çöktü branch; same floor math keeps the holder with a
+ *               usable move window after the reveal closes.
+ *
+ * Sis Çöktü   → no-op in V1.  The kör-harita rework is deferred to V2; the
+ *               card draws and the reveal/event-feed copy reads "yakında
+ *               aktif olacak" so the catalog entry stays in the rotation
+ *               without a stand-in time penalty.
  *
  * No-op for non-time cards, for non-action phases, or when actionEndsAt is
  * missing — those cases pass `round` through unchanged.
@@ -334,7 +342,7 @@ export function applyFateCardEffectToRound(
   if (cardId === "son_hamle") {
     return { ...round, actionEndsAt: round.actionEndsAt + FATE_TIME_GAIN_MS };
   }
-  if (cardId === "sis_coktu") {
+  if (cardId === "ters_ruzgar") {
     const minEndsAt  = now + FATE_REVEAL_MS + FATE_TIME_FLOOR_MS;
     const nextEndsAt = Math.max(round.actionEndsAt - FATE_TIME_LOSS_MS, minEndsAt);
     return { ...round, actionEndsAt: nextEndsAt };
@@ -520,13 +528,13 @@ export function getFateCardViewerCopy(
 
     case "vergi_baskini":
       return viewerIsActor
-        ? { title: cardName, detail: "Vergi baskını yaşandı. -2 puan kaybettin." }
-        : { title: cardName, detail: `${actorName} Vergi Baskını yüzünden -2 puan kaybetti.` };
+        ? { title: cardName, detail: "Vergi Baskını: -2 puan kaybettin ve en fazla 100 Gold vergi olarak kesildi." }
+        : { title: cardName, detail: `${actorName} Vergi Baskını yaşadı: -2 puan kaybetti ve en fazla 100 Gold vergi ödedi.` };
 
     case "sis_coktu":
       return viewerIsActor
-        ? { title: cardName, detail: "Sis çöktü. Hamle süren 5 saniye azaldı." }
-        : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Hamle süresi 5 saniye azaldı.` };
+        ? { title: cardName, detail: "Sis Çöktü: Kör harita etkisi yakında aktif olacak." }
+        : { title: cardName, detail: `${actorName} Sis Çöktü kartını çekti. Kör harita etkisi yakında aktif olacak.` };
 
     case "kara_haber":
       return viewerIsActor
@@ -535,8 +543,8 @@ export function getFateCardViewerCopy(
 
     case "ters_ruzgar":
       return viewerIsActor
-        ? { title: cardName, detail: "Ters rüzgar esti. -1 puan kaybettin." }
-        : { title: cardName, detail: `${actorName} Ters Rüzgar yüzünden -1 puan kaybetti.` };
+        ? { title: cardName, detail: "Ters Rüzgar: Bu hamlede 5 saniye kaybettin." }
+        : { title: cardName, detail: `${actorName} Ters Rüzgar yüzünden bu hamlede 5 saniye kaybetti.` };
 
     case "ic_karisiklik":
       return viewerIsActor
