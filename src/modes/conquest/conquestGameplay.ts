@@ -48,6 +48,7 @@ import {
   resolveActiveBonus,
 } from "./conquestRoundBonuses";
 import { clearFogOnCapture } from "./conquestFateCards";
+import { areTeammates, isTeamModeActive } from "./teamUi";
 import {
   buildGizliOpIntelReport,
   buildHiddenBonusPlacements,
@@ -1122,6 +1123,34 @@ export function applyActionToGame(
         message:  "Elenmiş oyuncu hamle yapamaz.",
       },
     };
+  }
+
+  // 2v2 Takım modu — defensive guard: takım arkadaşının bölgesine attack_region
+  // hamlesi UI tarafında filtrelenmiş olsa da, eskimiş/sahte payload buraya
+  // ulaşırsa direkt reddet.  Sadece teamMode aktifken çalışır; bireysel modda
+  // davranışı değiştirmez.
+  if (action.type === "attack_region" && isTeamModeActive(state)) {
+    const target = state.regionStates.find(r => r.regionId === action.regionId);
+    if (
+      target
+      && target.ownerPlayerId
+      && areTeammates(state, action.playerId, target.ownerPlayerId)
+    ) {
+      const failResult: ConquestActionResult = {
+        ok:       false,
+        action:   "attack_region",
+        playerId: action.playerId,
+        regionId: action.regionId,
+        message:  "Takım arkadaşına saldıramazsın.",
+      };
+      return {
+        state: {
+          ...state,
+          round: { ...state.round, lastResult: failResult },
+        },
+        result: failResult,
+      };
+    }
   }
 
   // ── Mancınık 🎯 — long-range attack bypass decision ───────────────────
@@ -3438,6 +3467,18 @@ export function getCurrentLegalTargets(
     for (const rs of state.regionStates) {
       if (rs.ownerPlayerId === holderId) {
         targets.add(rs.regionId);
+      }
+    }
+  }
+  // 2v2 Takım modu — takım arkadaşının bölgesi legal attack target değildir.
+  // Sadece takım modu aktif ve teamAssignments doluyken devreye girer; bireysel
+  // (FFA) modda set olduğu gibi döner.
+  if (isTeamModeActive(state)) {
+    const byId = new Map(state.regionStates.map(rs => [rs.regionId, rs]));
+    for (const regionId of Array.from(targets)) {
+      const ownerId = byId.get(regionId)?.ownerPlayerId ?? null;
+      if (ownerId && areTeammates(state, holderId, ownerId)) {
+        targets.delete(regionId);
       }
     }
   }

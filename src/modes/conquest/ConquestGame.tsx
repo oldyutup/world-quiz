@@ -176,6 +176,14 @@ import {
   type ConquestXpBreakdown,
 } from "../../lib/progression";
 import type { Profile } from "../../lib/auth";
+import {
+  areTeammates,
+  buildTeamSummaries,
+  isTeamModeActive,
+  pickTeamWinner,
+  shouldUseTeamUi,
+  type TeamSummary,
+} from "./teamUi";
 
 // Temporary diagnostic flag for desktop-vs-mobile guest panel timing.
 // Read once at module init so the per-render check is a cheap boolean.
@@ -2513,6 +2521,32 @@ export default function ConquestGame({
         playSound("click");
         return;
       }
+    }
+
+    // 2v2 Takım modu — takım arkadaşının bölgesine saldırı yasak.  Sadece
+    // başka oyuncu sahipliğindeki takım arkadaşı bölgesini yakalar; kendi
+    // bölgesi ve tarafsız bölge mevcut akışta düşmeye devam eder.
+    if (
+      isTeamModeActive(gameState)
+      && targetRs
+      && targetRs.ownerPlayerId
+      && targetRs.ownerPlayerId !== holderId
+      && areTeammates(gameState, holderId, targetRs.ownerPlayerId)
+    ) {
+      const teammateFailResult: ConquestActionResult = {
+        ok:       false,
+        action:   "attack_region",
+        playerId: holderId,
+        regionId,
+        message:  "Takım arkadaşına saldıramazsın.",
+      };
+      const next: ConquestGameState = {
+        ...gameState,
+        round: { ...gameState.round, lastResult: teammateFailResult },
+      };
+      void onPushGameState(next);
+      flashIllegal(regionId);
+      return;
     }
 
     const holderPbForInfer = gameState.playerBonuses?.[holderId];
@@ -5194,49 +5228,129 @@ export default function ConquestGame({
         </section>
       )}
 
-      {phase === "finished" && (
-        <section className="cq-finished-panel" aria-label="Maç sonucu">
-          <header className="cq-finished-head">
-            <span className="cq-finished-icon" aria-hidden="true">🏆</span>
-            <h3 className="cq-finished-title">Kuşatma Bitti</h3>
-          </header>
+      {phase === "finished" && (() => {
+        const useTeamResult = shouldUseTeamUi(settings, players);
+        const teamSummaries: TeamSummary[] = useTeamResult
+          ? buildTeamSummaries(players, playerPoints, regionCounts)
+              .filter(t => t.members.length > 0)
+          : [];
+        const teamWinner = useTeamResult ? pickTeamWinner(teamSummaries) : null;
+        const headerTitle = useTeamResult && teamWinner
+          ? (teamWinner.kind === "winner"
+              ? `${teamWinner.label} Kazandı!`
+              : "Maç Berabere!")
+          : "Kuşatma Bitti";
+        const headerIcon = useTeamResult && teamWinner?.kind === "draw" ? "🤝" : "🏆";
 
-          <ol className="cq-standings-list">
-            {standings.map(row => (
-              <li
-                key={row.playerId}
-                className="cq-standings-row"
-                data-color={playerColors[row.playerId]}
-                data-rank={row.rank}
-              >
-                <span className="cq-standings-rank">#{row.rank}</span>
-                <span className="cq-standings-dot" aria-hidden="true" />
-                <span className="cq-standings-name">{row.playerName}</span>
-                <span className="cq-standings-score">
-                  <span className="cq-standings-points">{row.points} puan</span>
-                  <span className="cq-standings-regions">{row.regionsHeld} bölge</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-
-          {!isLoggedInPlayer && (
-            <p className="cq-finished-note" role="status">
-              XP kazanmak için giriş yap.
-            </p>
-          )}
-
-          <div className="cq-finished-actions">
-            <button
-              type="button"
-              className="btn btn-accent cq-finished-back-btn"
-              onClick={handleReturnToLobby}
+        return (
+          <section
+            className="cq-finished-panel"
+            aria-label="Maç sonucu"
+            data-team-mode={useTeamResult ? "true" : undefined}
+          >
+            <header
+              className="cq-finished-head"
+              data-team-winner={
+                useTeamResult && teamWinner?.kind === "winner"
+                  ? teamWinner.accent
+                  : undefined
+              }
             >
-              ← Lobiye Dön
-            </button>
-          </div>
-        </section>
-      )}
+              <span className="cq-finished-icon" aria-hidden="true">{headerIcon}</span>
+              <h3 className="cq-finished-title">{headerTitle}</h3>
+            </header>
+
+            {useTeamResult ? (
+              <div className="cq-team-result-list">
+                {[...teamSummaries]
+                  .sort((a, b) => {
+                    if (teamWinner?.kind === "winner") {
+                      if (a.teamId === teamWinner.teamId) return -1;
+                      if (b.teamId === teamWinner.teamId) return 1;
+                    }
+                    return b.totalPoints - a.totalPoints;
+                  })
+                  .map(team => {
+                    const isWinner =
+                      teamWinner?.kind === "winner" && team.teamId === teamWinner.teamId;
+                    return (
+                      <div
+                        key={`team-result-${team.teamId}`}
+                        className="cq-team-result-card"
+                        data-team={team.accent}
+                        data-winner={isWinner ? "true" : undefined}
+                      >
+                        <div className="cq-team-result-head">
+                          <span className="cq-team-result-label">
+                            {isWinner && (
+                              <span aria-hidden="true" className="cq-team-result-crown">👑 </span>
+                            )}
+                            {team.label}
+                          </span>
+                          <span className="cq-team-result-total">
+                            <span className="cq-team-result-total-num">{team.totalPoints}</span>
+                            <span className="cq-team-result-total-unit">puan</span>
+                          </span>
+                        </div>
+                        <ul className="cq-team-result-members">
+                          {team.members.map(m => (
+                            <li
+                              key={m.id}
+                              className="cq-team-result-member"
+                              data-color={playerColors[m.id]}
+                            >
+                              <span className="cq-team-result-member-dot" aria-hidden="true" />
+                              <span className="cq-team-result-member-name">{m.name}</span>
+                              <span className="cq-team-result-member-score">
+                                <span className="cq-team-result-member-points">{m.points} puan</span>
+                                <span className="cq-team-result-member-regions">{m.regions} bölge</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <ol className="cq-standings-list">
+                {standings.map(row => (
+                  <li
+                    key={row.playerId}
+                    className="cq-standings-row"
+                    data-color={playerColors[row.playerId]}
+                    data-rank={row.rank}
+                  >
+                    <span className="cq-standings-rank">#{row.rank}</span>
+                    <span className="cq-standings-dot" aria-hidden="true" />
+                    <span className="cq-standings-name">{row.playerName}</span>
+                    <span className="cq-standings-score">
+                      <span className="cq-standings-points">{row.points} puan</span>
+                      <span className="cq-standings-regions">{row.regionsHeld} bölge</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {!isLoggedInPlayer && (
+              <p className="cq-finished-note" role="status">
+                XP kazanmak için giriş yap.
+              </p>
+            )}
+
+            <div className="cq-finished-actions">
+              <button
+                type="button"
+                className="btn btn-accent cq-finished-back-btn"
+                onClick={handleReturnToLobby}
+              >
+                ← Lobiye Dön
+              </button>
+            </div>
+          </section>
+        );
+      })()}
     </>
   );
 
@@ -5690,9 +5804,17 @@ export default function ConquestGame({
       </div>
 
       {/* ── Compact player panel (top-left overlay) ─────────────── */}
-      <div className="cq-players-panel" role="list" aria-label="Oyuncular">
-        <h4 className="cq-players-panel-title" aria-hidden="true">Oyuncular</h4>
-        {players.map(player => {
+      <div
+        className="cq-players-panel"
+        role="list"
+        aria-label="Oyuncular"
+        data-team-mode={shouldUseTeamUi(settings, players) ? "true" : undefined}
+      >
+        {!shouldUseTeamUi(settings, players) && (
+          <h4 className="cq-players-panel-title" aria-hidden="true">Oyuncular</h4>
+        )}
+        {(() => {
+        const renderPlayerRow = (player: ConquestPlayer) => {
           const color    = playerColors[player.id];
           const isHolder = phase === "action" && gameState.round.actionHolderId === player.id;
           const pb       = getPlayerBonusState(playerBonuses, player.id);
@@ -5826,7 +5948,41 @@ export default function ConquestGame({
               </span>
             </div>
           );
-        })}
+        };
+
+        if (!shouldUseTeamUi(settings, players)) {
+          return players.map(renderPlayerRow);
+        }
+
+        const teamSummaries = buildTeamSummaries(players, playerPoints, regionCounts);
+        return teamSummaries
+          .filter(team => team.members.length > 0)
+          .map(team => {
+            const teamPlayers = team.members
+              .map(m => players.find(p => p.id === m.id))
+              .filter((p): p is ConquestPlayer => !!p);
+            return (
+              <div
+                key={`team-${team.teamId}`}
+                className="cq-team-group"
+                data-team={team.accent}
+                role="group"
+                aria-label={`${team.label}: ${team.totalPoints} puan`}
+              >
+                <div className="cq-team-group-head">
+                  <span className="cq-team-group-label">{team.label}</span>
+                  <span
+                    className="cq-team-group-total"
+                    aria-label={`Toplam ${team.totalPoints} puan`}
+                  >
+                    {team.totalPoints}
+                  </span>
+                </div>
+                {teamPlayers.map(renderPlayerRow)}
+              </div>
+            );
+          });
+        })()}
         {neutralCount > 0 && (
           <div
             className="cq-players-panel-row cq-players-panel-neutral"
