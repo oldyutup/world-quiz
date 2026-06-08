@@ -36,6 +36,9 @@ const MAX_FOV = 90;
 const DEFAULT_FOV = 80;
 const SPHERE_RADIUS = 500;
 
+const MAP_DEFAULT_CENTER: [number, number] = [25, 20];
+const MAP_DEFAULT_ZOOM = 3;
+
 function normalizeYawDeg(deg: number) {
   let v = deg % 360;
   if (v > 180) v -= 360;
@@ -55,8 +58,32 @@ function yawPitchDegToDirection(yawDeg: number, pitchDeg: number, out: THREE.Vec
   return out;
 }
 
+// Fisher-Yates — kept here (not in a util module) because Harita Dedektifi
+// is the only mode that needs an in-session shuffle of scenes.
+function shuffleScenes(scenes: readonly HaritaDedektifiScene[]): HaritaDedektifiScene[] {
+  const out = [...scenes];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps) {
-  const scene: HaritaDedektifiScene = HARITA_DEDEKTIFI_SCENES[0];
+  // One shuffled deck per game session. We use lazy useState init so the
+  // shuffle runs exactly once on mount (and again on Yeniden Oyna via
+  // setShuffledScenes) — never on every render.
+  const [shuffledScenes, setShuffledScenes] = useState<HaritaDedektifiScene[]>(
+    () => shuffleScenes(HARITA_DEDEKTIFI_SCENES),
+  );
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const [totalScore, setTotalScore] = useState(0);
+  const [playedCount, setPlayedCount] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
+
+  const scene: HaritaDedektifiScene = shuffledScenes[sceneIndex];
+  const totalScenes = shuffledScenes.length;
+  const isLastScene = sceneIndex === totalScenes - 1;
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -295,8 +322,8 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
     // not get a free hint from the initial map position, but close enough
     // that country labels (not just continent names) render right away.
     const map = L.map(el, {
-      center: [25, 20],
-      zoom: 3,
+      center: MAP_DEFAULT_CENTER,
+      zoom: MAP_DEFAULT_ZOOM,
       minZoom: 2,
       maxZoom: 18,
       // Each + / - press or wheel notch advances a full zoom level instead of
@@ -439,10 +466,17 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
     const bounds = L.latLngBounds([guessLatLng, answerLatLng]);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 8, animate: true });
 
+    // `result` is null here (early return above guards re-entry), so this
+    // submit is the first one for this scene — exactly when we want it to
+    // contribute to the running total.
+    setTotalScore((t) => t + score);
+    setPlayedCount((c) => c + 1);
     setResult({ distanceKm, score });
   };
 
-  const handleRetry = () => {
+  // Clears all per-scene UI / map state so the next scene starts on a clean
+  // slate. Used by both Sıradaki and Yeniden Oyna.
+  const resetForNextScene = () => {
     const map = mapRef.current;
 
     if (answerLineRef.current && map) {
@@ -460,8 +494,30 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
     }
     markerRef.current = null;
 
+    if (map) {
+      map.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM, { animate: false });
+    }
+
     setGuess(null);
     setResult(null);
+  };
+
+  const handleNext = () => {
+    if (isLastScene) {
+      setIsFinished(true);
+      return;
+    }
+    resetForNextScene();
+    setSceneIndex((i) => i + 1);
+  };
+
+  const handleRestart = () => {
+    resetForNextScene();
+    setShuffledScenes(shuffleScenes(HARITA_DEDEKTIFI_SCENES));
+    setSceneIndex(0);
+    setTotalScore(0);
+    setPlayedCount(0);
+    setIsFinished(false);
   };
 
   const maxScore = scene.scoreCurve?.maxScore ?? 1000;
@@ -471,6 +527,9 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
       : result.distanceKm >= 10
         ? `${Math.round(result.distanceKm).toLocaleString("tr-TR")} km`
         : `${result.distanceKm.toFixed(1)} km`;
+
+  const averageScore =
+    playedCount > 0 ? Math.round(totalScore / playedCount) : 0;
 
   // Only click + wheel are forwarded here. We deliberately do NOT stop
   // pointermove / touchmove / pointerup / touchend — Leaflet's drag and
@@ -517,25 +576,67 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
       <div className="cag-overlay cag-overlay--top-center">
         <div className="cag-info-chip">
           <span className="cag-info-year">{scene.yearLabel}</span>
-          <span className="cag-info-sep" aria-hidden="true">·</span>
-          <span className="cag-info-event">{scene.eventLabel}</span>
         </div>
       </div>
 
       <div
         className={`harita-map-panel${
-          mapPanelExpanded || result ? " is-expanded" : ""
-        }${result ? " has-result" : ""}`}
+          mapPanelExpanded || result || isFinished ? " is-expanded" : ""
+        }${result || isFinished ? " has-result" : ""}`}
         onMouseEnter={() => setMapPanelExpanded(true)}
         onMouseLeave={() => setMapPanelExpanded(false)}
         {...stopBubble}
       >
-        <div ref={mapContainerRef} className="harita-map-panel__map" />
+        <div
+          ref={mapContainerRef}
+          className="harita-map-panel__map"
+          style={isFinished ? { display: "none" } : undefined}
+        />
 
-        {result ? (
+        {isFinished ? (
+          <div className="harita-final" role="status" aria-live="polite">
+            <div className="harita-result__head">
+              <span className="harita-result__eyebrow">Oyun Bitti</span>
+              <h2 className="harita-result__place">Özet</h2>
+            </div>
+
+            <div className="harita-result__stats">
+              <div
+                className="harita-result__stat harita-result__stat--score"
+                aria-label={`Toplam puan ${totalScore}`}
+              >
+                <span className="harita-result__stat-value">
+                  {totalScore.toLocaleString("tr-TR")}
+                </span>
+                <span className="harita-result__stat-label">Toplam Puan</span>
+              </div>
+              <div className="harita-result__stat">
+                <span className="harita-result__stat-value">
+                  {playedCount.toLocaleString("tr-TR")}
+                </span>
+                <span className="harita-result__stat-label">Sahne</span>
+              </div>
+            </div>
+
+            <div className="harita-final__avg">
+              <span className="harita-result__stat-label">Ortalama</span>
+              <span className="harita-final__avg-value">
+                {averageScore.toLocaleString("tr-TR")}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="harita-map-panel__submit"
+              onClick={handleRestart}
+            >
+              Yeniden Oyna
+            </button>
+          </div>
+        ) : result ? (
           <div className="harita-result" role="status" aria-live="polite">
             <div className="harita-result__head">
-              <span className="harita-result__eyebrow">Doğru Yer</span>
+              <span className="harita-result__eyebrow">{scene.eventLabel}</span>
               <h2 className="harita-result__place">{scene.location.placeLabel}</h2>
             </div>
 
@@ -563,10 +664,10 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
 
             <button
               type="button"
-              className="harita-map-panel__submit harita-map-panel__submit--retry"
-              onClick={handleRetry}
+              className="harita-map-panel__submit"
+              onClick={handleNext}
             >
-              Tekrar Dene
+              {isLastScene ? "Bitir" : "Sıradaki"}
             </button>
           </div>
         ) : (

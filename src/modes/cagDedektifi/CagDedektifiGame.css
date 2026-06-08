@@ -733,6 +733,38 @@
   filter: none;
 }
 
+/* ── Harita Dedektifi end-of-game summary panel ───────────── */
+
+.harita-final {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 4px 2px;
+  animation: harita-result-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harita-final { animation: none; }
+}
+
+.harita-final__avg {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.harita-final__avg-value {
+  font-family:
+    "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 720px) {
   .harita-result { padding-top: 10px; gap: 10px; }
   .harita-result__place { font-size: 1rem; }
