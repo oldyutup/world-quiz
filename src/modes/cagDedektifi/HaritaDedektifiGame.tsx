@@ -292,21 +292,40 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
       // creeping by halves, so the mini map feels responsive instead of mushy.
       zoomSnap: 1,
       zoomDelta: 1,
-      wheelPxPerZoomLevel: 60,
-      wheelDebounceTime: 20,
+      // Lower px-per-zoom → a quick wheel flick crosses several zoom levels.
+      wheelPxPerZoomLevel: 40,
+      wheelDebounceTime: 10,
       zoomAnimation: true,
       fadeAnimation: true,
       markerZoomAnimation: true,
       worldCopyJump: true,
       zoomControl: true,
       attributionControl: true,
+      // Explicit mobile / desktop interaction switches. Defaults already
+      // enable these, but spelling them out makes the contract obvious and
+      // guards against a future refactor that silently flips a default.
+      dragging: true,
+      touchZoom: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      boxZoom: false,
+      keyboard: false,
     });
+
+    // Keep map taps and wheel scrolls from leaking out of the panel (e.g.
+    // closing parent overlays) without smothering Leaflet's own pan / pinch
+    // listeners — those live on document and would die if we stopped
+    // propagation at the React level. This is the Leaflet-blessed pattern.
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
 
     const provider = getMapTileProvider();
     L.tileLayer(provider.url, {
       attribution: provider.attribution,
       maxZoom: provider.maxZoom,
       ...(provider.subdomains ? { subdomains: provider.subdomains } : {}),
+      ...(provider.tileSize ? { tileSize: provider.tileSize } : {}),
+      ...(provider.zoomOffset !== undefined ? { zoomOffset: provider.zoomOffset } : {}),
     }).addTo(map);
 
     function placeOrMoveMarker(latlng: L.LatLng) {
@@ -372,16 +391,18 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
     console.log("[HaritaDedektifi] submit guess", guess);
   };
 
+  // Only click + wheel are forwarded here. We deliberately do NOT stop
+  // pointermove / touchmove / pointerup / touchend — Leaflet's drag and
+  // pinch handlers are attached to `document`, and React's synthetic
+  // stopPropagation bubbles up through the React root *before* the native
+  // event reaches document. Killing those events here is exactly what was
+  // breaking mobile pan and pinch. The panorama canvas owns its own native
+  // listeners on itself only, so move events on the panel never reach it
+  // either way.
   const stopBubble = useMemo(
     () => ({
-      onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
-      onPointerMove: (e: React.PointerEvent) => e.stopPropagation(),
-      onPointerUp: (e: React.PointerEvent) => e.stopPropagation(),
       onWheel: (e: React.WheelEvent) => e.stopPropagation(),
       onClick: (e: React.MouseEvent) => e.stopPropagation(),
-      onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
-      onTouchMove: (e: React.TouchEvent) => e.stopPropagation(),
-      onTouchEnd: (e: React.TouchEvent) => e.stopPropagation(),
     }),
     [],
   );
