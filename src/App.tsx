@@ -10,6 +10,7 @@ import WheelGroupGame from "./components/WheelGroupGame";
 import ConquestMode from "./modes/conquest/ConquestMode";
 import ConquestModeSelectModal from "./modes/conquest/ConquestModeSelectModal";
 import CagDedektifiGame from "./modes/cagDedektifi/CagDedektifiGame";
+import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -68,7 +69,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -125,6 +126,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "conquest-rooms": 0,
   "conquest-join": 0,
   "cag-dedektifi": 0,
+  "harita-dedektifi": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -300,6 +302,7 @@ const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
+const [showCagMenu, setShowCagMenu] = useState(false);
 const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
 useEffect(() => {
   try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
@@ -348,6 +351,8 @@ useEffect(() => {
     setShowWheelMenu(true);
   } else if (m.id === "conquest-game") {
     setShowConquestMenu(true);
+  } else if (m.id === "cag-dedektifi") {
+    setShowCagMenu(true);
   } else {
     onSelect(m.id);
   }
@@ -510,6 +515,53 @@ useEffect(() => {
         onClick={() => {
           playSound("click");
           setShowWheelMenu(false);
+        }}
+      >
+        ✕
+      </button>
+
+    </div>
+  </div>
+)}
+
+{showCagMenu && (
+  <div
+    className="overlay"
+    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    data-theme={getThemeDataAttr(homeTheme)}
+    onClick={() => setShowCagMenu(false)}
+  >
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+
+      <h2>🔎 Çağ Dedektifi</h2>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowCagMenu(false);
+          onSelect("cag-dedektifi");
+        }}
+      >
+        🕵️ Anakronizmi Bul
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowCagMenu(false);
+          onSelect("harita-dedektifi");
+        }}
+      >
+        📍 Harita Dedektifi
+      </button>
+
+      <button
+        className="modal-close"
+        onClick={() => {
+          playSound("click");
+          setShowCagMenu(false);
         }}
       >
         ✕
@@ -2442,6 +2494,7 @@ useEffect(() => {
 />
 );
   if (screen === "cag-dedektifi") return <CagDedektifiGame onHome={() => setScreen("home")} />;
+  if (screen === "harita-dedektifi") return <HaritaDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-game") return <WheelGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-duel-game") return (
