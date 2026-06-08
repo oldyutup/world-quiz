@@ -10,6 +10,7 @@ import {
   type HaritaDedektifiScene,
 } from "./haritaDedektifiScenes";
 import { getMapTileProvider } from "./mapTileProvider";
+import { calculateDistanceKm, calculateLocationScore } from "./geoUtils";
 import "./CagDedektifiGame.css";
 
 // Leaflet's default marker assets break under bundlers — re-point them at the
@@ -61,15 +62,25 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
   const [loadError, setLoadError] = useState<string | null>(null);
   const [guess, setGuess] = useState<{ lat: number; lng: number } | null>(null);
   const [mapPanelExpanded, setMapPanelExpanded] = useState(false);
+  const [result, setResult] = useState<{ distanceKm: number; score: number } | null>(null);
 
   const viewerContainerRef = useRef<HTMLDivElement | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const answerMarkerRef = useRef<L.Marker | null>(null);
+  const answerLineRef = useRef<L.Polyline | null>(null);
 
   const yawRef = useRef(0);
   const pitchRef = useRef(0);
   const fovRef = useRef(DEFAULT_FOV);
+
+  // Mirrors `result` for non-React handlers (Leaflet click) so they know
+  // whether the round has been scored without re-binding the map effect.
+  const resultRef = useRef<{ distanceKm: number; score: number } | null>(null);
+  useEffect(() => {
+    resultRef.current = result;
+  }, [result]);
 
   // ── 360 panorama viewer ─────────────────────────────────────
   useEffect(() => {
@@ -347,6 +358,9 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
     }
 
     map.on("click", (e) => {
+      // Once the guess is scored, the map becomes a read-only result view —
+      // clicks must not re-position the locked pin.
+      if (resultRef.current) return;
       placeOrMoveMarker(e.latlng);
     });
 
@@ -382,14 +396,81 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
       map.invalidateSize();
     }, 260);
     return () => window.clearTimeout(t);
-  }, [mapPanelExpanded]);
+  }, [mapPanelExpanded, result]);
 
   const handleSubmitGuess = () => {
-    if (!guess) return;
-    // PR-4 will compute distance/score and show the result modal.
-    // eslint-disable-next-line no-console
-    console.log("[HaritaDedektifi] submit guess", guess);
+    if (!guess || result) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const distanceKm = calculateDistanceKm(guess, scene.location);
+    const score = calculateLocationScore(distanceKm, scene.scoreCurve);
+
+    // Lock the guess pin so the user can't drag it after scoring.
+    if (markerRef.current?.dragging) {
+      markerRef.current.dragging.disable();
+    }
+
+    const answerLatLng = L.latLng(scene.location.lat, scene.location.lng);
+    const guessLatLng = L.latLng(guess.lat, guess.lng);
+
+    // Amber marker for the correct location — a divIcon so it's visually
+    // distinct from the default blue Leaflet pin used for the guess.
+    const answerIcon = L.divIcon({
+      className: "harita-answer-marker",
+      html: '<span class="harita-answer-marker__dot" aria-hidden="true"></span>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    answerMarkerRef.current = L.marker(answerLatLng, {
+      icon: answerIcon,
+      interactive: false,
+      keyboard: false,
+    }).addTo(map);
+
+    answerLineRef.current = L.polyline([guessLatLng, answerLatLng], {
+      color: "#f59e0b",
+      weight: 2,
+      opacity: 0.85,
+      dashArray: "6 6",
+      interactive: false,
+    }).addTo(map);
+
+    const bounds = L.latLngBounds([guessLatLng, answerLatLng]);
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 8, animate: true });
+
+    setResult({ distanceKm, score });
   };
+
+  const handleRetry = () => {
+    const map = mapRef.current;
+
+    if (answerLineRef.current && map) {
+      map.removeLayer(answerLineRef.current);
+    }
+    answerLineRef.current = null;
+
+    if (answerMarkerRef.current && map) {
+      map.removeLayer(answerMarkerRef.current);
+    }
+    answerMarkerRef.current = null;
+
+    if (markerRef.current && map) {
+      map.removeLayer(markerRef.current);
+    }
+    markerRef.current = null;
+
+    setGuess(null);
+    setResult(null);
+  };
+
+  const maxScore = scene.scoreCurve?.maxScore ?? 1000;
+  const distanceLabel =
+    result == null
+      ? ""
+      : result.distanceKm >= 10
+        ? `${Math.round(result.distanceKm).toLocaleString("tr-TR")} km`
+        : `${result.distanceKm.toFixed(1)} km`;
 
   // Only click + wheel are forwarded here. We deliberately do NOT stop
   // pointermove / touchmove / pointerup / touchend — Leaflet's drag and
@@ -442,25 +523,69 @@ export default function HaritaDedektifiGame({ onHome }: HaritaDedektifiGameProps
       </div>
 
       <div
-        className={`harita-map-panel${mapPanelExpanded ? " is-expanded" : ""}`}
+        className={`harita-map-panel${
+          mapPanelExpanded || result ? " is-expanded" : ""
+        }${result ? " has-result" : ""}`}
         onMouseEnter={() => setMapPanelExpanded(true)}
         onMouseLeave={() => setMapPanelExpanded(false)}
         {...stopBubble}
       >
         <div ref={mapContainerRef} className="harita-map-panel__map" />
-        {guess && (
-          <div className="harita-map-panel__debug">
-            {guess.lat.toFixed(3)}, {guess.lng.toFixed(3)}
+
+        {result ? (
+          <div className="harita-result" role="status" aria-live="polite">
+            <div className="harita-result__head">
+              <span className="harita-result__eyebrow">Doğru Yer</span>
+              <h2 className="harita-result__place">{scene.location.placeLabel}</h2>
+            </div>
+
+            <div className="harita-result__stats">
+              <div className="harita-result__stat">
+                <span className="harita-result__stat-value">{distanceLabel}</span>
+                <span className="harita-result__stat-label">Uzaklık</span>
+              </div>
+              <div
+                className="harita-result__stat harita-result__stat--score"
+                aria-label={`Puan ${result.score} bölü ${maxScore}`}
+              >
+                <span className="harita-result__stat-value">
+                  {result.score.toLocaleString("tr-TR")}
+                  <span className="harita-result__stat-max">
+                    {" / "}
+                    {maxScore.toLocaleString("tr-TR")}
+                  </span>
+                </span>
+                <span className="harita-result__stat-label">Puan</span>
+              </div>
+            </div>
+
+            <p className="harita-result__explanation">{scene.explanation}</p>
+
+            <button
+              type="button"
+              className="harita-map-panel__submit harita-map-panel__submit--retry"
+              onClick={handleRetry}
+            >
+              Tekrar Dene
+            </button>
           </div>
+        ) : (
+          <>
+            {guess && (
+              <div className="harita-map-panel__debug">
+                {guess.lat.toFixed(3)}, {guess.lng.toFixed(3)}
+              </div>
+            )}
+            <button
+              type="button"
+              className="harita-map-panel__submit"
+              onClick={handleSubmitGuess}
+              disabled={!guess}
+            >
+              Tahmini Gönder
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="harita-map-panel__submit"
-          onClick={handleSubmitGuess}
-          disabled={!guess}
-        >
-          Tahmini Gönder
-        </button>
       </div>
     </div>
   );
