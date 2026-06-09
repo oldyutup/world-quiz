@@ -11,6 +11,7 @@ import ConquestMode from "./modes/conquest/ConquestMode";
 import ConquestModeSelectModal from "./modes/conquest/ConquestModeSelectModal";
 import CagDedektifiGame from "./modes/cagDedektifi/CagDedektifiGame";
 import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
+import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -69,7 +70,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi" | "harita-duel-game";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -127,6 +128,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "conquest-join": 0,
   "cag-dedektifi": 0,
   "harita-dedektifi": 0,
+  "harita-duel-game": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -555,6 +557,17 @@ useEffect(() => {
         }}
       >
         📍 Harita Dedektifi
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowCagMenu(false);
+          onSelect("harita-duel-game");
+        }}
+      >
+        ⚔️ Online 1v1
       </button>
 
       <button
@@ -2495,6 +2508,12 @@ useEffect(() => {
 );
   if (screen === "cag-dedektifi") return <CagDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "harita-dedektifi") return <HaritaDedektifiGame onHome={() => setScreen("home")} />;
+  if (screen === "harita-duel-game") return (
+    <HaritaDuelGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-game") return <WheelGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-duel-game") return (
