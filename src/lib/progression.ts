@@ -31,7 +31,8 @@ export type ModeKey =
   | "flag_duel"
   | "wheel_duel"
   | "wheel_group"
-  | "conquest";
+  | "conquest"
+  | "harita_duel";
 
 /** Maç sonucu. */
 export type MatchResult = "win" | "loss" | "draw";
@@ -363,6 +364,47 @@ export function calculateWheelDuelXp(
   };
 }
 
+/** Harita Dedektifi 1v1 XP hesaplaması için girdiler. */
+export interface HaritaDuelXpParams {
+  /** Oyuncunun kazandığı round sayısı. */
+  roundsWon: number;
+  /** Maç sonucu. */
+  result: MatchResult;
+}
+
+/**
+ * Harita Dedektifi 1v1 XP — Country Duel ile aynı tablo:
+ *   - Katılım:              +10
+ *   - Her kazanılan round:  +3
+ *   - Kazanma:              +25
+ *   - Beraberlik:           +10
+ *   - Kaybetme:             +5
+ */
+export function calculateHaritaDuelXp(
+  params: HaritaDuelXpParams
+): XpBreakdown {
+  const participation = 10;
+  const perCorrect = 3;
+  const correctCount = Math.max(0, Math.floor(params.roundsWon || 0));
+  const correctTotal = perCorrect * correctCount;
+  const bonus = resultBonus(params.result);
+  const total = participation + correctTotal + bonus;
+
+  return {
+    participation,
+    perCorrect,
+    correctCount,
+    correctTotal,
+    resultBonus: bonus,
+    resultBonusLabel: params.result === "win"
+      ? "win"
+      : params.result === "draw"
+        ? "draw"
+        : "loss",
+    total,
+  };
+}
+
 /** Kuşatma (Conquest) XP hesaplaması için girdiler. */
 export interface ConquestXpParams {
   /** 1-based final rank from buildFinalStandings. Eşitlikte ortak rank verilebilir. */
@@ -565,14 +607,17 @@ export async function awardXpEvent(
     return emptyAwardResult(null);
   }
 
-  // wheel_group ve conquest için adanmış RPC'ler: mevcut award_xp_event'in
-  // mode_key whitelist'i bu modları içermediği için (eski modlar
-  // oluşturulduktan sonra eklendiler) kendi SECURITY DEFINER fonksiyonları
-  // üzerinden yazıyoruz. Sözleşme aynı; sadece mode_key sabit ve RPC adı farklı.
+  // wheel_group, conquest ve harita_duel için adanmış RPC'ler: mevcut
+  // award_xp_event'in mode_key whitelist'i bu modları içermediği için (eski
+  // modlar oluşturulduktan sonra eklendiler) kendi SECURITY DEFINER
+  // fonksiyonları üzerinden yazıyoruz. Sözleşme aynı; sadece mode_key sabit
+  // ve RPC adı farklı.
   //   wheel_group → 20260518130000_wheel_group_xp_rpc.sql
   //   conquest    → 20260602120000_conquest_xp_rpc.sql
+  //   harita_duel → 20260710120000_harita_duel_xp_rpc.sql
   const useDedicatedWheelGroupRpc = params.modeKey === "wheel_group";
   const useDedicatedConquestRpc   = params.modeKey === "conquest";
+  const useDedicatedHaritaDuelRpc = params.modeKey === "harita_duel";
 
   try {
     const { data, error } = useDedicatedWheelGroupRpc
@@ -585,6 +630,14 @@ export async function awardXpEvent(
         })
       : useDedicatedConquestRpc
       ? await supabase.rpc("award_conquest_xp_event", {
+          p_profile_id: params.profileId,
+          p_room_id:    params.roomId,
+          p_xp_earned:  xpEarned,
+          p_result:     params.result,
+          p_details:    params.details ?? {},
+        })
+      : useDedicatedHaritaDuelRpc
+      ? await supabase.rpc("award_harita_duel_xp_event", {
           p_profile_id: params.profileId,
           p_room_id:    params.roomId,
           p_xp_earned:  xpEarned,
@@ -605,7 +658,9 @@ export async function awardXpEvent(
         ? "award_wheel_group_xp_event"
         : useDedicatedConquestRpc
           ? "award_conquest_xp_event"
-          : "award_xp_event";
+          : useDedicatedHaritaDuelRpc
+            ? "award_harita_duel_xp_event"
+            : "award_xp_event";
       console.error(`[progression] ${rpcName} RPC error:`, error);
       return emptyAwardResult(error.message ?? "RPC failed");
     }

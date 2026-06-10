@@ -2821,6 +2821,38 @@ body {
   padding: 2px 8px;
 }
 
+/* Secondary back action for nested modal steps (Çağ Dedektifi offline submenu) */
+.modal-back {
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.modal-back:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.modal-back:active {
+  transform: scale(0.98);
+}
+
+.modal-hint {
+  margin: -4px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
 .modal-close {
   position: absolute;
   top: 10px;

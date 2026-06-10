@@ -490,6 +490,16 @@
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
 }
 
+/* Maç bitince yan panel gizlenir; sonuç ortalanmış modalda gösterilir. */
+.harita-map-panel--hidden {
+  display: none;
+}
+
+/* Tur arası geçişte sonuç paneli, geçiş backdrop'unun üstünde okunaklı kalır. */
+.harita-map-panel--lift {
+  z-index: 40;
+}
+
 .harita-map-panel__map {
   width: 100%;
   height: 250px;
@@ -781,6 +791,465 @@
   .harita-map-panel__map {
     transition: none;
   }
+}
+
+/* ── Harita Dedektifi 1v1 (online duel) ───────────────────── */
+
+.harita-duel-chip--me .cag-chip-value {
+  color: #93c5fd;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harita-duel-chip--opp .cag-chip-value {
+  color: #c4b5fd;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harita-duel-countdown {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  animation: harita-duel-countdown-pulse 1s ease-in-out infinite;
+}
+
+@keyframes harita-duel-countdown-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50%      { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harita-duel-countdown { animation: none; }
+}
+
+/* Rakip tahmini — mor nokta (doğru cevabın amber noktasından ayrışır) */
+.harita-opp-marker {
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+
+.harita-opp-marker__dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 4px;
+  border-radius: 50%;
+  background: #a78bfa;
+  border: 2px solid #f5f3ff;
+  box-shadow:
+    0 0 0 4px rgba(167, 139, 250, 0.28),
+    0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+/* Round/final skor satırları */
+.harita-duel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.harita-duel-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.04);
+}
+
+.harita-duel-row.is-winner {
+  background: rgba(245, 158, 11, 0.12);
+  outline: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.harita-duel-row__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.harita-duel-row__dist {
+  font-size: 0.76rem;
+  color: rgba(248, 250, 252, 0.55);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.harita-duel-row__score {
+  font-family: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.harita-duel-roundwinner {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fbbf24;
+}
+
+.harita-duel-waitnote {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.06);
+  border: 1px solid rgba(248, 250, 252, 0.1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.78);
+  text-align: center;
+}
+
+.harita-duel-waitnote--urgent {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+}
+
+.harita-duel-goldnote {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #fbbf24;
+  text-align: center;
+}
+
+/* Rakip ayrıldı banner'ı */
+.harita-duel-leftbanner {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(69, 10, 10, 0.85);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+  font-size: 0.84rem;
+  font-weight: 600;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  max-width: calc(100vw - 24px);
+}
+
+.harita-duel-leftbanner__btn {
+  appearance: none;
+  border: 1px solid rgba(248, 250, 252, 0.25);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.08);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.harita-duel-leftbanner__btn:hover {
+  background: rgba(248, 250, 252, 0.14);
+}
+
+@media (max-width: 720px) {
+  .harita-duel-chip--me .cag-chip-value,
+  .harita-duel-chip--opp .cag-chip-value {
+    max-width: 90px;
+  }
+
+  .harita-duel-row__score { font-size: 0.95rem; }
+  .harita-duel-leftbanner { top: 96px; }
+}
+
+/* ── Harita Dedektifi 1v1 — maç sonu modalı ───────────────── */
+
+.harita-final-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Alt sabit XP barı modal ile çakışmasın diye altta pay bırakılır. */
+  padding: 24px 24px clamp(120px, 22vh, 200px);
+}
+
+.harita-final-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.66);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  animation: harita-final-fade 320ms ease both;
+}
+
+.harita-final-modal {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 26px 24px;
+  text-align: center;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(245, 158, 11, 0.12), transparent 60%),
+    rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: harita-final-pop 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes harita-final-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes harita-final-pop {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harita-final-overlay__backdrop,
+  .harita-final-modal { animation: none; }
+}
+
+.harita-final-modal__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.5);
+}
+
+.harita-final-modal__title {
+  margin: 0;
+  font-family: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #fbbf24;
+}
+
+.harita-final-modal__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.harita-final-modal__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.05);
+  border: 1px solid transparent;
+}
+
+.harita-final-modal__row.is-winner {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15);
+}
+
+.harita-final-modal__row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.harita-final-modal__row.is-winner .harita-final-modal__row-name {
+  color: #fde68a;
+}
+
+.harita-final-modal__row-score {
+  font-family: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+}
+
+.harita-final-modal__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: rgba(248, 250, 252, 0.55);
+}
+
+.harita-final-modal__meta-value {
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+
+.harita-final-modal__gold {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+.harita-final-modal__exit {
+  appearance: none;
+  border: 0;
+  margin-top: 6px;
+  border-radius: 12px;
+  padding: 13px 18px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #111827;
+  transition: filter 0.14s ease, transform 0.14s ease;
+}
+
+.harita-final-modal__exit:hover {
+  filter: brightness(1.05);
+}
+
+.harita-final-modal__exit:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 720px) {
+  .harita-final-overlay {
+    padding: 16px 14px clamp(120px, 26vh, 220px);
+  }
+
+  .harita-final-modal {
+    width: 100%;
+    max-width: 360px;
+    padding: 22px 18px 20px;
+    border-radius: 18px;
+  }
+
+  .harita-final-modal__title { font-size: 1.4rem; }
+  .harita-final-modal__row { padding: 10px 13px; }
+  .harita-final-modal__row-score { font-size: 1.15rem; }
+}
+
+/* ── Harita Dedektifi 1v1 — tur arası otomatik geçiş kartı ── */
+
+.harita-transition-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 24px clamp(110px, 20vh, 190px);
+  pointer-events: none; /* sadece görsel; tıklama scene/panel'e dokunmaz */
+}
+
+.harita-transition-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.5);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
+  animation: harita-final-fade 280ms ease both;
+}
+
+.harita-transition-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(320px, 100%);
+  padding: 26px 30px 30px;
+  text-align: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(245, 158, 11, 0.14), transparent 62%),
+    rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(245, 158, 11, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  animation: harita-final-pop 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.harita-transition-card__label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(248, 250, 252, 0.72);
+}
+
+.harita-transition-card__count {
+  font-family: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-size: 4.4rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #fbbf24;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 6px 28px rgba(245, 158, 11, 0.35);
+  /* Her saniye (3→2→1) span yeniden mount olur (React key) → tek tek tıklayarak iner. */
+  animation: harita-transition-tick 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes harita-transition-tick {
+  0% { transform: scale(0.62); opacity: 0; }
+  55% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harita-transition-overlay__backdrop,
+  .harita-transition-card,
+  .harita-transition-card__count { animation: none; }
+}
+
+@media (max-width: 720px) {
+  .harita-transition-overlay {
+    padding: 16px 14px clamp(110px, 24vh, 210px);
+  }
+
+  .harita-transition-card {
+    width: 100%;
+    max-width: 280px;
+    padding: 22px 22px 26px;
+    border-radius: 18px;
+  }
+
+  .harita-transition-card__count { font-size: 3.6rem; }
 }
 
 /* ── Harita Dedektifi smoke test ──────────────────────────── */

@@ -305,6 +305,9 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showCagMenu, setShowCagMenu] = useState(false);
+const [cagView, setCagView] = useState<"main" | "offline">("main");
+const [cagSoonHint, setCagSoonHint] = useState(false);
+const closeCagMenu = () => { setShowCagMenu(false); setCagView("main"); setCagSoonHint(false); };
 const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
 useEffect(() => {
   try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
@@ -531,50 +534,94 @@ useEffect(() => {
     className="overlay"
     style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
     data-theme={getThemeDataAttr(homeTheme)}
-    onClick={() => setShowCagMenu(false)}
+    onClick={closeCagMenu}
   >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
-      <h2>🔎 Çağ Dedektifi</h2>
+      {cagView === "main" ? (
+        <>
+          <h2>🔎 Çağ Dedektifi</h2>
 
-      <button
-        className="modal-btn"
-        onClick={() => {
-          playSound("click");
-          setShowCagMenu(false);
-          onSelect("cag-dedektifi");
-        }}
-      >
-        🕵️ Anakronizmi Bul
-      </button>
+          <button
+            className="modal-btn"
+            onClick={() => {
+              playSound("click");
+              setCagSoonHint(false);
+              setCagView("offline");
+            }}
+          >
+            🕹️ Offline
+          </button>
 
-      <button
-        className="modal-btn"
-        onClick={() => {
-          playSound("click");
-          setShowCagMenu(false);
-          onSelect("harita-dedektifi");
-        }}
-      >
-        📍 Harita Dedektifi
-      </button>
+          <button
+            className="modal-btn"
+            onClick={() => {
+              playSound("click");
+              closeCagMenu();
+              onSelect("harita-duel-game");
+            }}
+          >
+            ⚔️ Online 1v1
+          </button>
 
-      <button
-        className="modal-btn"
-        onClick={() => {
-          playSound("click");
-          setShowCagMenu(false);
-          onSelect("harita-duel-game");
-        }}
-      >
-        ⚔️ Online 1v1
-      </button>
+          <button
+            type="button"
+            className="modal-btn modal-btn-soon"
+            aria-disabled="true"
+            onClick={() => {
+              playSound("click");
+              setCagSoonHint(true);
+            }}
+          >
+            👥 Çok Oyunculu
+            <span className="modal-btn-soon-tag">Yakında</span>
+          </button>
+
+          {cagSoonHint && <p className="modal-hint">Çok oyunculu yakında.</p>}
+        </>
+      ) : (
+        <>
+          <h2>🕹️ Offline</h2>
+
+          <button
+            className="modal-btn"
+            onClick={() => {
+              playSound("click");
+              closeCagMenu();
+              onSelect("cag-dedektifi");
+            }}
+          >
+            🕵️ Anakronizmi Bul
+          </button>
+
+          <button
+            className="modal-btn"
+            onClick={() => {
+              playSound("click");
+              closeCagMenu();
+              onSelect("harita-dedektifi");
+            }}
+          >
+            📍 Harita Dedektifi
+          </button>
+
+          <button
+            className="modal-back"
+            onClick={() => {
+              playSound("click");
+              setCagView("main");
+            }}
+          >
+            ← Geri
+          </button>
+        </>
+      )}
 
       <button
         className="modal-close"
         onClick={() => {
           playSound("click");
-          setShowCagMenu(false);
+          closeCagMenu();
         }}
       >
         ✕

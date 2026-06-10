@@ -1,8 +1,5 @@
 /**
- * HaritaDuelGame — Harita Dedektifi Online 1v1 lobby (MVP)
- *
- * Bu PR sadece lobby altyapısını ve UI temelini kuruyor. Round/oyun ekranı
- * henüz bağlı değil — host "Oyunu Başlat" dediğinde placeholder ekran açılır.
+ * HaritaDuelGame — Harita Dedektifi Online 1v1 lobby + maç köprüsü
  *
  * Mimari (mevcut Ülke Yaz / Bayrak / Çark online lobby desenleriyle uyumlu):
  *   - Lobby state Supabase Realtime channel üzerinden yürür:
@@ -10,11 +7,14 @@
  *       presence: oyuncu listesi (playerId, name, isHost)
  *       broadcast 'settings': host mod/tur ayarını yayar
  *       broadcast 'request_settings': joiner host'tan snapshot ister
- *       broadcast 'start': host placeholder round ekranına geçişi tetikler
- *   - Chat: mevcut LobbyChat (sendMode="direct" → duel_messages tablosu)
- *   - DB tabloları: bu PR'da hiçbir migration yapılmaz. Round ekranı
- *     bağlandığında ayrı bir tablo seti (harita_duel_rooms / _players) ya da
- *     duel_rooms üzerinde bir 'mode' kolonu önerilecek.
+ *       broadcast 'start': host matchId + karışık sahne sırasını yayar,
+ *         iki taraf da HaritaDuelMatch (round ekranı) fazına geçer
+ *   - Maç eventleri ayrı kanalda akar (HaritaDuelMatch içinde):
+ *       `harita-duel-match-<matchId>` — host authoritative round/timer/sonuç
+ *   - Chat: mevcut LobbyChat (sendMode="direct" → duel_messages tablosu).
+ *     Maç sırasında chat gizlenir; lobby'e dönünce geri gelir.
+ *   - DB tabloları: migration yok. Round state tamamen realtime broadcast +
+ *     presence ile yürür; Gold mevcut award_gameplay_gold RPC'si üzerinden.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
@@ -26,8 +26,12 @@ import {
 } from "../../lib/themeBackgrounds";
 import { playSound } from "../../lib/sound";
 import { validateUsername, type Profile } from "../../lib/auth";
+import { HARITA_DEDEKTIFI_SCENES } from "./haritaDedektifiScenes";
+import HaritaDuelMatch, {
+  type HaritaDuelMatchInit,
+} from "./HaritaDuelMatch";
 
-type Phase = "lobby" | "waiting" | "placeholder";
+type Phase = "lobby" | "waiting" | "match";
 type DuelMode = "harita_dedektifi" | "anakronizmi_bul";
 
 interface RoundOption {
@@ -73,6 +77,34 @@ function makePlayerId() {
   );
 }
 
+/** Maç kimliği — XP RPC'si uuid beklediği için uuid formatında üretilir. */
+function makeMatchId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Eski tarayıcı fallback'i: RFC4122 v4 şekilli pseudo-uuid.
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Maç için sahne sırası üret: havuz karıştırılır, seçilen tur sayısı kadar
+ * sahne alınır. Havuz tur sayısından küçükse maç güvenli şekilde havuz
+ * boyutuna kısaltılır — aynı maç içinde sahne tekrarı olmaz. Havuz 10/20/40
+ * sahneye çıktığında ek değişiklik gerekmeden tam tur sayısı oynanır.
+ */
+function buildSceneOrder(rounds: number): string[] {
+  const ids = HARITA_DEDEKTIFI_SCENES.map((s) => s.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids.slice(0, Math.max(1, Math.min(rounds, ids.length)));
+}
+
 interface HaritaDuelGameProps {
   onHome:   () => void;
   profile?: Profile | null;
@@ -98,6 +130,7 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
     mode:   "harita_dedektifi",
     rounds: 10,
   });
+  const [matchInit,  setMatchInit]  = useState<HaritaDuelMatchInit | null>(null);
 
   const playerIdRef = useRef<string>("");
   const channelRef  = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -106,6 +139,8 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
   isHostRef.current = isHost;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const playersRef  = useRef<PresencePlayer[]>([]);
+  playersRef.current = players;
 
   /* ── Realtime channel teardown ── */
   const teardownChannel = useCallback(() => {
@@ -167,8 +202,20 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
         }
       });
 
-      channel.on("broadcast", { event: "start" }, () => {
-        setPhase("placeholder");
+      channel.on("broadcast", { event: "start" }, (payload) => {
+        // Host matchId + sahne sırasını yayar; iki taraf da maça geçer.
+        const init = payload.payload as HaritaDuelMatchInit | undefined;
+        if (
+          !init ||
+          typeof init.matchId !== "string" ||
+          !Array.isArray(init.sceneIds) ||
+          init.sceneIds.length === 0 ||
+          !Array.isArray(init.players)
+        ) {
+          return;
+        }
+        setMatchInit(init);
+        setPhase("match");
       });
 
       return new Promise<boolean>((resolve) => {
@@ -274,18 +321,41 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
     setRoomCode(null);
     setIsHost(false);
     setPlayers([]);
+    setMatchInit(null);
     setErrorMsg(null);
     setStatusMsg(null);
   };
 
+  /** Maçtan oda bekleme ekranına dönüş — lobby kanalı zaten açık kalır. */
+  const exitMatchToWaiting = () => {
+    setMatchInit(null);
+    setPhase("waiting");
+  };
+
   const startGame = async () => {
     if (!isHost || !channelRef.current) return;
+    const list = playersRef.current;
+    if (list.length < 2) return;
+
+    const sceneIds = buildSceneOrder(settingsRef.current.rounds);
+    const init: HaritaDuelMatchInit = {
+      matchId:  makeMatchId(),
+      rounds:   sceneIds.length,
+      sceneIds,
+      hostId:   playerIdRef.current,
+      players:  list.map((p) => ({
+        playerId: p.playerId,
+        name:     p.name,
+        isHost:   p.isHost,
+      })),
+    };
     await channelRef.current.send({
       type:    "broadcast",
       event:   "start",
-      payload: { settings: settingsRef.current },
+      payload: init,
     });
-    setPhase("placeholder");
+    setMatchInit(init);
+    setPhase("match");
   };
 
   const copyCode = async () => {
@@ -301,11 +371,26 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
 
   /* ── Theme background (matches other 1v1 lobbies) ── */
   const homeTheme = useMemo(() => readStoredHomeTheme(), []);
-  const themeBg   = phase !== "placeholder" ? getThemeBackgroundStyle(homeTheme) : undefined;
-  const themeAttr = phase !== "placeholder" ? getThemeDataAttr(homeTheme) : undefined;
+  const themeBg   = phase !== "match" ? getThemeBackgroundStyle(homeTheme) : undefined;
+  const themeAttr = phase !== "match" ? getThemeDataAttr(homeTheme) : undefined;
 
-  const modeLabel  = MODE_OPTIONS.find(m => m.value === settings.mode)?.label ?? "Harita Dedektifi";
-  const roundLabel = ROUND_OPTIONS.find(r => r.value === settings.rounds)?.label ?? `${settings.rounds} Tur`;
+  /* Sahne havuzu tur sayısından küçükse maç havuz boyutuna kısalır. */
+  const scenePoolSize = HARITA_DEDEKTIFI_SCENES.length;
+
+  /* ════════ MATCH (round ekranı) ════════ */
+  if (phase === "match" && matchInit) {
+    return (
+      <HaritaDuelMatch
+        key={matchInit.matchId}
+        myId={playerIdRef.current}
+        myName={effectivePlayerName.trim() || "Misafir"}
+        isHost={isHost}
+        matchInit={matchInit}
+        profile={profile}
+        onExitToLobby={exitMatchToWaiting}
+      />
+    );
+  }
 
   return (
     <div
@@ -582,6 +667,12 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
                       {isHost
                         ? "Ayarları buradan değiştirebilirsiniz"
                         : "Yalnızca oda sahibi değiştirebilir"}
+                      {settings.rounds > scenePoolSize && (
+                        <>
+                          <br />
+                          {`Şu an ${scenePoolSize} sahne mevcut — maç ${scenePoolSize} tur sürer.`}
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -643,28 +734,6 @@ export default function HaritaDuelGame({ onHome, profile }: HaritaDuelGameProps)
         </div>
       )}
 
-      {/* ════════ PLACEHOLDER (start sonrası) ════════ */}
-      {phase === "placeholder" && (
-        <div className="duel-lobby">
-          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
-            <h2 className="duel-lobby-title">🚧 Harita Dedektifi 1v1</h2>
-            <p className="duel-lobby-desc" style={{ marginTop: 8 }}>
-              Round ekranı hazırlanıyor — yakında!<br />
-              <span style={{ opacity: 0.75 }}>
-                Mod: <strong>{modeLabel}</strong> · {roundLabel}
-              </span>
-            </p>
-            <div style={{ fontSize: 64, margin: "16px 0" }}>🗺️ ⚔️</div>
-            <button
-              className="btn btn-accent"
-              onClick={backToLobby}
-              style={{ minWidth: 180 }}
-            >
-              ← Lobiye Dön
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
