@@ -168,6 +168,42 @@ export interface WheelGroupPassVote {
   created_at:    string;
 }
 
+/* ── Kör Nokta (çok oyunculu oda/lobi — 3–5 kişi, login-only).
+ *    DB tarafı eski Tevatür iskeletini reuse eder; tablolar tevatur_*
+ *    adlarını korur, o yüzden tipler de Tevatur* kalır. ── */
+export interface TevaturRoom {
+  id:              string;
+  code:            string;
+  status:          "waiting" | "playing" | "finished";
+  /** Tur sayısı — 5 | 7 | 10 | 15 | 20 */
+  round_count:     number;
+  /** Legacy: fotoğraf gösterim süresi (sn). UI'dan kaldırıldı, kolonda duruyor. */
+  photo_seconds:   number;
+  max_players:     number;
+  host_player_id:  string | null;
+  started_at:      string | null;
+  finished_at:     string | null;
+  finished_reason: string | null;
+  /**
+   * Kör Nokta gameplay V1 sync blob'u (20260713120000 migration'ı).
+   * Lobi fazında null; start_game RPC'siyle yazılır, tüm faz/rapor/puan
+   * akışını taşır. Şekli korNoktaGameTypes.parseKnGameState doğrular.
+   */
+  game_state?:     unknown | null;
+  created_at:      string;
+  updated_at:      string;
+}
+
+export interface TevaturPlayer {
+  id:           string;
+  room_id:      string;
+  profile_id:   string;
+  name:         string;
+  score:        number;
+  joined_at:    string;
+  last_seen_at: string;
+}
+
 /* ── Conquest (Kuşatma) — Phase 5: Supabase-backed rooms & players ── */
 export interface ConquestRoomRow {
   id:               string;

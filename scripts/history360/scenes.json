@@ -1,0 +1,20 @@
+{
+  "comment": "Harita Dedektifi 360 test pipeline — sahne tanımları. generate.mjs bunları AI Horde'a (Flux.1-Schnell + RealESRGAN x4) gönderir, postprocess.mjs ham çıktıyı 4096×2048 WebP'ye indirger.",
+  "scenes": [
+    {
+      "id": "h360_001_giza_pyramids_construction",
+      "title": "Giza Piramitlerinin İnşası",
+      "prompt": "Seamless equirectangular 360 degree panorama, ancient Egypt circa 2560 BC, the Great Pyramid of Giza under construction on the desert plateau, massive limestone blocks pulled on wooden sledges, hundreds of workers hauling ropes, long earthen construction ramps, wooden scaffolding, overseers with staffs, papyrus-reed huts, the Nile valley far in the distance, hot dusty golden afternoon sunlight, photorealistic, extremely detailed, sharp focus"
+    },
+    {
+      "id": "h360_002_eiffel_tower_construction",
+      "title": "Eyfel Kulesi'nin İnşası",
+      "prompt": "Seamless equirectangular 360 degree panorama, Paris in 1888, the Eiffel Tower half-built under construction towering overhead, riveted wrought iron lattice, wooden scaffolding and steam-powered cranes, construction workers in 19th century clothing with flat caps, the muddy Champ de Mars field, horse carts with iron beams, Haussmann buildings and the Seine river in the distance, soft overcast daylight, photorealistic, extremely detailed, sharp focus"
+    },
+    {
+      "id": "h360_003_ephesus_harbor_daily_life",
+      "title": "Efes Liman Şehrinde Gündelik Yaşam",
+      "prompt": "Seamless equirectangular 360 degree panorama, the ancient Greco-Roman city of Ephesus around 100 AD as a bustling Mediterranean harbor city, marble colonnaded Harbour Street full of citizens in tunics and togas, merchants with amphoras and market stalls, wooden sailing ships moored at the port, stone quay, the grand theatre and library facades in the distance, bright Aegean sunlight, photorealistic, extremely detailed, sharp focus"
+    }
+  ]
+}

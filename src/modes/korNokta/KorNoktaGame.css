@@ -1,0 +1,1485 @@
+/* ═══════════════════════════════════════════════════════════════
+   Kör Nokta — gameplay V1 ekranları
+   App.css token'larını (--surface/--border/--accent/--amber/--green)
+   kullanır; lobi ile aynı görsel aile.
+═══════════════════════════════════════════════════════════════ */
+
+.kn-screen {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate; /* tema glow (::before, z-index:-1) bu kapsamda kalsın */
+  /* Kör Nokta'ya özel arkaplan + okunabilirlik için koyu overlay.
+     --kn-bg-image inline gelir (korNoktaBackgrounds). Görsel 404 verirse
+     overlay + koyu base color kalır → paneller okunur, oyun kırılmaz. */
+  background-color: #050a19;
+  background-image:
+    linear-gradient(rgba(5, 10, 25, 0.55), rgba(5, 10, 25, 0.72)),
+    var(--kn-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Role/faz temasına göre hafif accent glow — büyük değil, atmosfer farkı.
+   z-index:-1 ile arkaplan görselinin üstünde, panellerin altında durur. */
+.kn-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  box-shadow: inset 0 0 220px -70px var(--kn-accent, transparent);
+  opacity: 0.5;
+}
+
+.kn-screen--stage {
+  overflow: hidden;
+}
+
+/* ── Tema accent renkleri (spec §4) ────────────────────────── */
+.kn-theme-default   { --kn-accent: #5aa7ff; }
+.kn-theme-detective { --kn-accent: #5aa7ff; }
+.kn-theme-reporter  { --kn-accent: #3dd6c6; }
+.kn-theme-mole      { --kn-accent: #ff5b5b; }
+.kn-theme-reveal    { --kn-accent: #f6b73c; }
+.kn-theme-final     { --kn-accent: #ffd166; }
+
+/* ── Üst şerit ─────────────────────────────────────────────── */
+
+.kn-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.kn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(13, 17, 23, 0.78);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.kn-chip--timer {
+  font-variant-numeric: tabular-nums;
+  min-width: 74px;
+  justify-content: center;
+}
+
+.kn-chip--timer.is-low {
+  border-color: rgba(248, 81, 73, 0.55);
+  color: var(--red);
+}
+
+.kn-chip--detective {
+  border-color: rgba(88, 166, 255, 0.5);
+  background: rgba(88, 166, 255, 0.12);
+}
+
+.kn-chip--reporter {
+  border-color: rgba(63, 185, 80, 0.5);
+  background: rgba(63, 185, 80, 0.1);
+}
+
+.kn-chip--mole {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+/* ── Genel kart / merkez yerleşim ──────────────────────────── */
+
+.kn-center-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.kn-card {
+  width: min(440px, 100%);
+  background: rgba(22, 27, 34, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kn-card--center {
+  align-items: center;
+  text-align: center;
+}
+
+.kn-card__title {
+  font-family: var(--font-head);
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+.kn-card__desc {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 38ch;
+}
+
+.kn-wide-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.kn-error {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--red);
+}
+
+.kn-progress-pill {
+  display: inline-flex;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.kn-wait-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: knPulse 1.6s ease-out infinite;
+}
+
+@keyframes knPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.45); }
+  100% { box-shadow: 0 0 0 16px rgba(88, 166, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kn-wait-pulse { animation: none; }
+}
+
+/* ── Rol kartları ──────────────────────────────────────────── */
+
+.kn-rolecard {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 30px 24px;
+  border-radius: 16px;
+  background: rgba(22, 27, 34, 0.92);
+  border: 1px solid var(--border);
+}
+
+.kn-rolecard--detective { border-color: rgba(88, 166, 255, 0.55); background: rgba(88, 166, 255, 0.08); }
+.kn-rolecard--reporter  { border-color: rgba(63, 185, 80, 0.55);  background: rgba(63, 185, 80, 0.07); }
+.kn-rolecard--mole      { border-color: rgba(245, 158, 11, 0.55); background: rgba(245, 158, 11, 0.07); }
+
+.kn-rolecard__emoji {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.kn-rolecard__title {
+  font-family: var(--font-head);
+  font-size: 2rem;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.kn-rolecard__desc {
+  font-size: 0.92rem;
+  color: var(--text);
+  opacity: 0.85;
+  line-height: 1.55;
+  max-width: 30ch;
+}
+
+/* ── Panorama (Panorama360) ────────────────────────────────── */
+
+.kn-pano {
+  position: absolute;
+  inset: 0;
+}
+
+.kn-pano__canvas {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+
+.kn-pano__canvas:active { cursor: grabbing; }
+
+.kn-pano__canvas canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.kn-pano__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(13, 17, 23, 0.82);
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 20px;
+}
+
+.kn-pano__overlay--error strong { color: var(--red); }
+
+.kn-pano__spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: knSpin 0.8s linear infinite;
+}
+
+@keyframes knSpin { to { transform: rotate(360deg); } }
+
+/* ── Raporcu sahne yerleşimi ───────────────────────────────── */
+
+.kn-stage-pano {
+  z-index: 0;
+}
+
+.kn-stage-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.kn-stage-top .kn-chip { pointer-events: auto; }
+
+.kn-reportbar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 14px;
+  z-index: 2;
+  width: min(560px, calc(100% - 20px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(4px);
+}
+
+.kn-reportbar__head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kn-reportbar__category {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.kn-reportbar__hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.kn-reportbar__mole-note {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.kn-reportbar__row {
+  display: flex;
+  gap: 8px;
+}
+
+.kn-reportbar__input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+}
+
+.kn-reportbar__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.kn-reportbar__send {
+  height: 42px;
+  border-radius: 10px;
+  font-weight: 800;
+}
+
+.kn-reportbar__done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  padding: 4px 0;
+}
+
+.kn-reportbar__done-check {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--green);
+}
+
+.kn-reportbar__done-check--neutral { color: var(--text); }
+
+.kn-reportbar__done-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Dedektif tahmin ekranı ────────────────────────────────── */
+
+.kn-guess {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) 1fr;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.kn-guess__reports {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.kn-guess__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kn-guess__title {
+  font-family: var(--font-head);
+  font-size: 1.7rem;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.kn-guess__sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.kn-report-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(22, 27, 34, 0.92);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kn-report-card.is-suspect { border-color: rgba(245, 158, 11, 0.6); }
+.kn-report-card.is-useful  { background: rgba(63, 185, 80, 0.06); }
+.kn-report-card.is-suspect.is-useful {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(63, 185, 80, 0.06);
+}
+
+.kn-report-card__meta {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kn-report-card__text {
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.kn-report-card__text--missing {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.kn-report-card__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kn-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.kn-pick-btn:hover { color: var(--text); }
+
+.kn-pick-btn--suspect.is-on {
+  border-color: rgba(245, 158, 11, 0.7);
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--amber);
+}
+
+.kn-pick-btn--useful.is-on {
+  border-color: rgba(63, 185, 80, 0.7);
+  background: rgba(63, 185, 80, 0.14);
+  color: var(--green);
+}
+
+.kn-pick-btn--none {
+  align-self: flex-start;
+  padding: 8px 16px;
+}
+
+.kn-pick-btn--none.is-on {
+  border-color: rgba(88, 166, 255, 0.7);
+  background: rgba(88, 166, 255, 0.14);
+  color: var(--accent);
+}
+
+.kn-guess__checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 2px 8px;
+}
+
+.kn-guess__checklist .is-done {
+  color: var(--green);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.kn-guess__map-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kn-map {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--ocean);
+}
+
+.kn-guess__map {
+  flex: 1;
+  min-height: 220px;
+}
+
+/* ── Rapor değerlendirme (report_judgement) ────────────────── */
+
+.kn-judge {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 0 14px 20px;
+}
+
+/* Gerçek konum işareti (amber nokta) */
+.kn-answer-marker { background: transparent; border: none; }
+
+.kn-answer-marker__dot {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 3px solid rgba(13, 17, 23, 0.9);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55);
+}
+
+/* ── Round reveal ──────────────────────────────────────────── */
+
+.kn-reveal {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0 14px 16px;
+}
+
+/* ── round_reveal: solda dosya, sağda sohbet (desktop iki kolon) ── */
+.kn-reveal-shell {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 16px;
+  padding: 0 16px;
+}
+
+.kn-reveal-shell .kn-reveal {
+  flex: 1 1 auto;
+  max-width: 760px;
+  width: auto;
+  margin: 0;
+  padding: 0 0 16px;
+}
+
+.kn-reveal-chat {
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 16px;
+}
+
+.kn-reveal__head {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kn-reveal__title {
+  font-family: var(--font-head);
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.kn-reveal__sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.kn-reveal__scene {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.kn-reveal__map-wrap {
+  height: clamp(220px, 28vh, 300px);
+  flex-shrink: 0;
+}
+
+.kn-reveal__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.35fr;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.kn-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(22, 27, 34, 0.92);
+}
+
+/* Üçüncü blok: kompakt tur puanları listesi (nick solda, +puan sağda). */
+.kn-stat--roundpts {
+  align-items: stretch;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 5px;
+}
+
+.kn-roundpts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 76px;
+  overflow-y: auto;
+}
+
+.kn-roundpts__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.kn-roundpts__name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kn-roundpts__delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.kn-roundpts__delta.is-gain { color: var(--green); }
+
+.kn-stat__value {
+  font-family: var(--font-head);
+  font-size: 1.5rem;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kn-stat__max {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.kn-stat__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kn-reveal__reports {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* reveal kartları kompakt: rapor metni 2-5 kelime, kart kısa kalır. */
+.kn-report-card--reveal {
+  padding: 10px 12px;
+  gap: 6px;
+}
+
+.kn-report-card--reveal .kn-report-card__text {
+  font-size: 0.95rem;
+}
+
+.kn-report-card--reveal.is-mole {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.kn-report-card__author {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.kn-report-card__author strong { color: var(--text); }
+
+.kn-role-tag {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid rgba(63, 185, 80, 0.5);
+  background: rgba(63, 185, 80, 0.1);
+  color: var(--green);
+}
+
+.kn-role-tag--mole {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber);
+}
+
+.kn-report-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kn-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.kn-badge--suspect {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--amber);
+}
+
+.kn-badge--useful {
+  border-color: rgba(63, 185, 80, 0.5);
+  color: var(--green);
+}
+
+.kn-reveal__notice {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.kn-reveal__actions {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+.kn-reveal__actions .kn-wide-btn { max-width: 340px; }
+
+.kn-reveal__waiting {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* ── Final skor tablosu ────────────────────────────────────── */
+
+.kn-final { width: min(420px, 100%); }
+
+.kn-final__board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kn-final__row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.6);
+  font-size: 0.95rem;
+}
+
+.kn-final__row.is-winner {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.kn-final__rank {
+  font-weight: 800;
+  text-align: center;
+}
+
+.kn-final__name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kn-final__me {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.kn-final__total {
+  font-family: var(--font-head);
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Mobil ─────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .kn-guess {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(240px, 45dvh);
+    padding: 0 10px 10px;
+  }
+
+  .kn-guess__map { min-height: 170px; }
+
+  .kn-reportbar {
+    bottom: 10px;
+    padding: 10px 12px;
+  }
+
+  .kn-reportbar__row { flex-direction: column; }
+
+  .kn-reportbar__send { width: 100%; }
+
+  .kn-reveal__map-wrap { height: clamp(180px, 32vh, 240px); }
+
+  .kn-reveal__stats { grid-template-columns: 1fr 1fr; }
+
+  .kn-stat--roundpts { grid-column: 1 / -1; }
+
+  .kn-roundpts { max-height: 96px; }
+
+  .kn-reveal__reports { grid-template-columns: 1fr; }
+
+  .kn-topbar { padding: 8px 10px; gap: 6px; }
+}
+
+/* ≤860px: lc-panel gizlenir (LobbyChat FAB + bottom-sheet devralır).
+   Sağ kolonu kaldır, dosya tek kolon kalsın; sohbete alttaki FAB'den girilir. */
+@media (max-width: 860px) {
+  .kn-reveal-shell {
+    padding: 0;
+  }
+  .kn-reveal-chat {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CINEMATIC LAYER — sunum / sahne polisajı (presentation only)
+   Sadece görsel; gameplay/RPC/skor/arkaplan'a dokunmaz. Tüm efekt
+   accent token'ı (--kn-accent) üstünden çalışır, role/faza göre değişir.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Tekrar kullanılabilir animasyon dili (spec §10) ───────────
+   animation-fill-mode: both → giriş öncesi/sonrası kararlı kalır.
+   Tüm anim'ler ease-out (expo/quint); bounce/elastic yok. */
+@keyframes knFadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes knScaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes knRevealSweep {
+  0%   { opacity: 0; clip-path: inset(0 100% 0 0); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+@keyframes knGlowBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 transparent, inset 0 0 0 1px var(--kn-accent); }
+  50%      { box-shadow: 0 0 32px -8px var(--kn-accent), inset 0 0 0 1px var(--kn-accent); }
+}
+@keyframes knRadarSweep {
+  to { transform: rotate(360deg); }
+}
+
+.kn-anim-fade-up   { animation: knFadeUp 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kn-anim-scale-in  { animation: knScaleIn 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kn-anim-reveal    { animation: knRevealSweep 0.62s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kn-anim-pulse-soft{ animation: knPulse 1.8s ease-out infinite; }
+.kn-anim-glow      { animation: knGlowBreathe 3.2s ease-in-out infinite; }
+
+/* Sıralı (stagger) giriş için: inline --kn-delay ile gecikme. */
+.kn-anim-fade-up[style*="--kn-delay"],
+.kn-anim-scale-in[style*="--kn-delay"] { animation-delay: var(--kn-delay); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kn-anim-fade-up,
+  .kn-anim-scale-in,
+  .kn-anim-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    clip-path: none;
+  }
+  .kn-anim-glow { animation: none; }
+}
+
+/* ── Sinematik scrim: rol kartının arkasını koyulaştırır + odak ──
+   Arkaplan görselini SİLMEZ; üstüne yumuşak bir vinyet/karartma koyar. */
+.kn-cine {
+  position: relative;
+  isolation: isolate;
+}
+.kn-cine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 42%, transparent 38%, rgba(4, 8, 18, 0.72) 100%),
+    radial-gradient(60% 50% at 50% 44%, var(--kn-accent-wash, transparent), transparent 70%);
+  opacity: 0.9;
+}
+.kn-theme-detective { --kn-accent-wash: rgba(88, 166, 255, 0.12); }
+.kn-theme-reporter  { --kn-accent-wash: rgba(61, 214, 198, 0.12); }
+.kn-theme-mole      { --kn-accent-wash: rgba(255, 91, 91, 0.13); }
+.kn-theme-reveal    { --kn-accent-wash: rgba(246, 183, 60, 0.12); }
+.kn-theme-final     { --kn-accent-wash: rgba(255, 209, 102, 0.14); }
+.kn-cine > .kn-center-wrap { position: relative; z-index: 1; }
+.kn-cine > .kn-topbar { position: relative; z-index: 2; }
+
+/* ── Sinematik görev / briefing kartı (rol açılışı + bekleme panelleri) ──
+   "Düz yazı" yerine kutu/panel hissi (spec §11). */
+.kn-rolecard {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 24px 70px -32px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+/* Köşe ışık / parçacık hissi — radial dokunuşlar, ucuz ve hafif. */
+.kn-rolecard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 50% -8%, var(--kn-accent-wash, rgba(255,255,255,0.05)), transparent 60%),
+    radial-gradient(40% 30% at 8% 100%, rgba(255, 255, 255, 0.04), transparent 70%);
+}
+.kn-rolecard > * { position: relative; z-index: 1; }
+
+.kn-rolecard--detective { --kn-accent: #5aa7ff; --kn-accent-wash: rgba(90, 167, 255, 0.16); }
+.kn-rolecard--reporter  { --kn-accent: #3dd6c6; --kn-accent-wash: rgba(61, 214, 198, 0.16); }
+.kn-rolecard--mole      { --kn-accent: #ff5b5b; --kn-accent-wash: rgba(255, 91, 91, 0.16); }
+
+.kn-rolecard__eyebrow {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--muted));
+  opacity: 0.92;
+}
+.kn-rolecard__emoji {
+  filter: drop-shadow(0 0 18px var(--kn-accent-wash, transparent));
+}
+.kn-rolecard__title { color: #fff; }
+.kn-rolecard--detective .kn-rolecard__title { color: #cfe4ff; }
+.kn-rolecard--reporter  .kn-rolecard__title { color: #c9f6ef; }
+.kn-rolecard--mole      .kn-rolecard__title { color: #ffd2d2; }
+.kn-rolecard__rule {
+  width: 46px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--kn-accent, var(--border));
+  opacity: 0.8;
+}
+
+/* ── Briefing panel (bekleme/intro): "RAPORLAR BEKLENİYOR" vb. ── */
+.kn-briefing {
+  position: relative;
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 28px 26px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(18, 24, 36, 0.94), rgba(10, 14, 24, 0.94));
+  border: 1px solid var(--border);
+  box-shadow:
+    0 24px 70px -34px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+.kn-briefing__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--accent));
+}
+.kn-briefing__title {
+  font-family: var(--font-head);
+  font-size: 1.9rem;
+  letter-spacing: 0.05em;
+  line-height: 1.02;
+  color: #fff;
+}
+.kn-briefing__desc {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 34ch;
+}
+
+/* Radar süpürme — "veri akışı / dosya hazırlanıyor" hissi. */
+.kn-radar {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle, rgba(88, 166, 255, 0.08), transparent 70%);
+  overflow: hidden;
+}
+.kn-radar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(from 0deg, transparent 0deg, var(--kn-accent, var(--accent)) 60deg, transparent 75deg);
+  opacity: 0.55;
+  animation: knRadarSweep 2.4s linear infinite;
+}
+.kn-radar::after {
+  content: "";
+  position: absolute;
+  inset: 38%;
+  border-radius: 50%;
+  background: var(--kn-accent, var(--accent));
+  box-shadow: 0 0 14px 2px var(--kn-accent, var(--accent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .kn-radar::before { animation: none; opacity: 0.3; }
+}
+
+/* ── Görev kartı / rapor terminali (observe_report) ──────────── */
+.kn-reportbar { transition: border-color 0.2s, box-shadow 0.2s; }
+.kn-mission__eyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--accent));
+}
+.kn-reportbar__input {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+/* Köstebek terminali: sinsi kırmızı kenar parıltısı (horror değil). */
+.kn-reportbar--mole {
+  --kn-accent: #ff5b5b;
+  border-color: rgba(255, 91, 91, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(255, 91, 91, 0.14),
+    0 0 38px -16px rgba(255, 91, 91, 0.6);
+}
+.kn-reportbar--mole .kn-mission__eyebrow { color: #ff8a8a; }
+
+/* ── Dedektif tahmin: dosya başlığı + güçlü onay butonu ──────── */
+.kn-guess__eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.kn-report-card--file {
+  position: relative;
+  background: linear-gradient(180deg, rgba(24, 30, 42, 0.94), rgba(17, 22, 33, 0.94));
+  border-left: 1px solid var(--border);
+}
+.kn-report-card--file .kn-report-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.kn-report-card--file .kn-report-card__meta::before {
+  content: "";
+  width: 14px;
+  height: 16px;
+  border-radius: 2px 4px 2px 2px;
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(88, 166, 255, 0.4) 100%);
+  opacity: 0.55;
+  flex-shrink: 0;
+  clip-path: polygon(0 0, 70% 0, 100% 22%, 100% 100%, 0 100%);
+}
+
+/* "Tahmini Gönder" → görev onay butonu hissi (App.css btn-accent üstüne). */
+.kn-submit-cta {
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.kn-submit-cta:not(:disabled) {
+  box-shadow: 0 10px 30px -12px var(--accent-glow), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.kn-submit-cta:not(:disabled):hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+.kn-submit-cta:not(:disabled):active { transform: translateY(0); }
+.kn-submit-cta { transition: filter 0.15s, transform 0.12s ease-out, box-shadow 0.2s; }
+
+/* ── guess_reveal / round_reveal: reveal başlık paneli ───────── */
+.kn-reveal__head--panel {
+  position: relative;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(18, 24, 36, 0.92), rgba(11, 15, 25, 0.9));
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+.kn-reveal__eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--accent));
+}
+.kn-reveal__title { color: #fff; }
+
+/* İstatistik blokları pop-in + premium yüzey. */
+.kn-stat { transition: border-color 0.2s; }
+.kn-reveal__stats .kn-stat { animation: knScaleIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kn-reveal__stats .kn-stat:nth-child(2) { animation-delay: 0.07s; }
+.kn-reveal__stats .kn-stat:nth-child(3) { animation-delay: 0.14s; }
+@media (prefers-reduced-motion: reduce) {
+  .kn-reveal__stats .kn-stat { animation: none; }
+}
+.kn-stat__value { color: #fff; }
+
+/* ── Tur sonucu kartı (round_reveal banner → sinematik kart) ─── */
+.kn-outcome {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(22, 27, 34, 0.92);
+  overflow: hidden;
+}
+.kn-outcome::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(80% 120% at 50% 0%, var(--kn-out-wash, transparent), transparent 70%);
+}
+.kn-outcome > * { position: relative; }
+.kn-outcome__title {
+  font-family: var(--font-head);
+  font-size: 1.85rem;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--kn-out-color, #fff);
+}
+.kn-outcome__sub {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.kn-outcome--gold {
+  --kn-out-color: #ffd166;
+  --kn-out-wash: rgba(255, 209, 102, 0.16);
+  border-color: rgba(255, 209, 102, 0.5);
+}
+.kn-outcome--danger {
+  --kn-out-color: #ff7a6b;
+  --kn-out-wash: rgba(248, 81, 73, 0.16);
+  border-color: rgba(248, 81, 73, 0.5);
+}
+.kn-outcome--honest {
+  --kn-out-color: #7ee6a8;
+  --kn-out-wash: rgba(63, 185, 80, 0.16);
+  border-color: rgba(63, 185, 80, 0.5);
+}
+.kn-outcome--neutral {
+  --kn-out-color: #bcd8ff;
+  --kn-out-wash: rgba(88, 166, 255, 0.13);
+  border-color: rgba(88, 166, 255, 0.42);
+}
+
+/* ── Turun en faydalı raporu rozeti ──────────────────────────── */
+.kn-mvp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 209, 102, 0.45);
+  background: rgba(255, 209, 102, 0.08);
+  color: #ffd166;
+}
+.kn-mvp strong { color: #fff; font-weight: 800; }
+
+/* ── round_reveal sinematik intro paneli (≈7 sn) ─────────────────
+   Faz başında üst-orta bölgede beliren, kendiliğinden kaybolan sonuç
+   kartı. Tonlar .kn-outcome ile aynı dili konuşur; overlay tıklamayı
+   engellemez (pointer-events:none). */
+.kn-intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999; /* document.body'ye portal'lı; Leaflet pane/control'lerinin üstünde kalmalı */
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: clamp(64px, 17vh, 168px);
+  pointer-events: none;
+  background: radial-gradient(120% 70% at 50% 0%, rgba(5, 8, 13, 0.5), rgba(5, 8, 13, 0) 62%);
+  animation: knIntroBackdropIn 0.4s ease both;
+}
+.kn-intro-overlay.is-leaving { animation: knIntroBackdropOut 0.5s ease both; }
+
+.kn-intro-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
+  width: min(420px, 88vw);
+  padding: 22px 26px 24px;
+  border-radius: 18px;
+  border: 1px solid var(--kn-out-color, var(--border));
+  background:
+    radial-gradient(95% 130% at 50% 0%, var(--kn-out-wash, transparent), transparent 70%),
+    rgba(15, 19, 26, 0.97);
+  box-shadow: 0 26px 64px -22px rgba(0, 0, 0, 0.82), inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  animation: knIntroCardIn 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.is-leaving .kn-intro-card { animation: knIntroCardOut 0.46s cubic-bezier(0.4, 0, 1, 1) both; }
+
+.kn-intro-card--gold    { --kn-out-color: #ffd166; --kn-out-wash: rgba(255, 209, 102, 0.18); }
+.kn-intro-card--danger  { --kn-out-color: #ff7a6b; --kn-out-wash: rgba(248, 81, 73, 0.18); }
+.kn-intro-card--honest  { --kn-out-color: #7ee6a8; --kn-out-wash: rgba(63, 185, 80, 0.18); }
+.kn-intro-card--neutral { --kn-out-color: #bcd8ff; --kn-out-wash: rgba(88, 166, 255, 0.15); }
+
+.kn-intro-card__eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+}
+.kn-intro-card__title {
+  font-family: var(--font-head);
+  font-size: clamp(1.7rem, 6vw, 2.1rem);
+  letter-spacing: 0.05em;
+  line-height: 1;
+  color: var(--kn-out-color, #fff);
+}
+.kn-intro-card__sub {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.kn-intro-card__divider {
+  width: 46px;
+  height: 2px;
+  margin: 9px 0 5px;
+  border-radius: 2px;
+  background: var(--kn-out-color, var(--border));
+  opacity: 0.5;
+}
+.kn-intro-card__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.kn-intro-card__mole { color: #fff; }
+.kn-intro-card__useful { color: #ffd166; }
+.kn-intro-card__lines strong { color: #fff; font-weight: 800; }
+
+@keyframes knIntroBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes knIntroBackdropOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes knIntroCardIn {
+  from { opacity: 0; transform: translateY(-16px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes knIntroCardOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kn-intro-overlay,
+  .kn-intro-overlay.is-leaving,
+  .kn-intro-card,
+  .is-leaving .kn-intro-card { animation: none; }
+}
+
+/* Tur puanlarında o turun köstebeğini işaretleyen minik simge. */
+.kn-roundpts__mole {
+  margin-left: 5px;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: baseline;
+  filter: saturate(1.1);
+}
+
+/* ── Mini liderlik (round_reveal) ────────────────────────────── */
+.kn-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.6);
+}
+.kn-lead__title {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.kn-lead__row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+.kn-lead__rank { font-weight: 800; color: var(--muted); text-align: center; }
+.kn-lead__row.is-top .kn-lead__rank { color: #ffd166; }
+.kn-lead__name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kn-lead__score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text);
+}
+.kn-lead__me { color: var(--accent); font-weight: 800; }
+
+/* ── Final: dosya kapanışı + podyum ──────────────────────────── */
+.kn-final {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 30px 90px -36px rgba(0, 0, 0, 0.95);
+}
+.kn-final__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #ffd166;
+}
+.kn-final .kn-card__title { color: #fff; }
+
+.kn-final__winner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 18px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  background: radial-gradient(120% 140% at 50% 0%, rgba(255, 209, 102, 0.16), rgba(22, 27, 34, 0.4) 65%);
+  animation: knGlowBreathe 3.6s ease-in-out infinite;
+  --kn-accent: rgba(255, 209, 102, 0.6);
+}
+.kn-final__crown { font-size: 30px; line-height: 1; filter: drop-shadow(0 0 16px rgba(255, 209, 102, 0.5)); }
+.kn-final__winner-name {
+  font-family: var(--font-head);
+  font-size: 2rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #ffe9b0;
+}
+.kn-final__winner-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #ffd166;
+  font-size: 1rem;
+}
+.kn-final__winner-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 209, 102, 0.85);
+}
+@media (prefers-reduced-motion: reduce) {
+  .kn-final__winner { animation: none; }
+}
+
+.kn-final__row.is-winner .kn-final__total { color: #ffd166; }
+.kn-final__row { animation: knFadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kn-final__row:nth-child(2) { animation-delay: 0.05s; }
+.kn-final__row:nth-child(3) { animation-delay: 0.1s; }
+.kn-final__row:nth-child(4) { animation-delay: 0.15s; }
+@media (prefers-reduced-motion: reduce) {
+  .kn-final__row { animation: none; }
+}

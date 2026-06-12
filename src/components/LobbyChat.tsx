@@ -35,6 +35,7 @@ interface Props {
    *   - "wheel_group" → wheel_group_send_message RPC   (Wheel Group)
    *   - "duel_group"  → duel_group_send_message RPC    (Duel Group)
    *   - "conquest"    → conquest_send_message RPC      (Conquest)
+   *   - "tevatur"     → tevatur_send_message RPC       (Kör Nokta — tevatur_* DB adları reuse)
    *   - "direct"      → fallback: supabase.from("duel_messages").insert
    *                     Dilim 1 (yumuşak geçiş) süresince tutuluyor; tüm
    *                     call-site'lar RPC moduna geçtikten ve Dilim 2
@@ -44,16 +45,24 @@ interface Props {
    * Tüm RPC modlarında: player_name CLIENT'TAN GÖNDERİLMEZ — server-side
    * <mode>_players.name resolve edilir. playerId + claimToken zorunlu.
    */
-  sendMode?:   "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "direct";
+  sendMode?:   "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "tevatur" | "direct";
   /** RPC modları için zorunlu — <mode>_players.id */
   playerId?:   string;
   /** RPC modları için zorunlu — <mode>_player_claims.claim_token */
   claimToken?: string;
+  /**
+   * Opsiyonel zaman penceresi (ISO 8601). Verilirse HEM geçmiş yüklemesi HEM
+   * realtime intake yalnız `created_at >= minCreatedAt` mesajlarını gösterir.
+   * Kör Nokta round_reveal sohbeti bunu kullanır: her tur reveal'i taze
+   * başlasın, önceki turun mesajları taşmasın. Verilmezse (lobi + diğer
+   * modlar) eski davranış: odanın tüm mesajları görünür.
+   */
+  minCreatedAt?: string;
 }
 
 /** sendMode → RPC adı eşlemesi. "direct" buraya düşmez. */
 const SEND_RPC: Record<
-  "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest",
+  "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "tevatur",
   string
 > = {
   duel:        "duel_send_message",
@@ -62,6 +71,7 @@ const SEND_RPC: Record<
   wheel_group: "wheel_group_send_message",
   duel_group:  "duel_group_send_message",
   conquest:    "conquest_send_message",
+  tevatur:     "tevatur_send_message",
 };
 
 /* ────────────────────────────────────────────────────────────
@@ -149,6 +159,7 @@ export default function LobbyChat({
   sendMode   = "direct",
   playerId,
   claimToken,
+  minCreatedAt,
 }: Props) {
   const myName = playerName.trim();
   const isControlled = onMobileSheetOpenChange !== undefined;
@@ -188,20 +199,29 @@ export default function LobbyChat({
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
   }, []);
 
-  /* ── Ortak ekleyici: dedupe garantili ── */
+  /* ── Pencere filtresi: realtime intake'i de minCreatedAt'e göre kıs.
+     Ref üzerinden okunur → minCreatedAt değişince kanal yeniden kurulmaz. ── */
+  const minCreatedAtRef = useRef(minCreatedAt);
+  useEffect(() => { minCreatedAtRef.current = minCreatedAt; }, [minCreatedAt]);
+
+  /* ── Ortak ekleyici: dedupe + (varsa) zaman penceresi filtresi ── */
   const addMessage = useCallback((msg: DuelMessage) => {
+    const floor = minCreatedAtRef.current;
+    if (floor && msg.created_at && msg.created_at < floor) return;
     setMessages(prev => {
       if (prev.some(m => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
   }, []);
 
-  /* ── 1) Geçmişi yükle ── */
+  /* ── 1) Geçmişi yükle (minCreatedAt verilirse yalnız o andan sonrası) ── */
   useEffect(() => {
-    supabase
+    let query = supabase
       .from("duel_messages")
       .select("*")
-      .eq("room_code", roomCode)
+      .eq("room_code", roomCode);
+    if (minCreatedAt) query = query.gte("created_at", minCreatedAt);
+    query
       .order("created_at", { ascending: true })
       .limit(100)
       .then(({ data, error }) => {
@@ -211,7 +231,7 @@ export default function LobbyChat({
         }
         if (data) setMessages(data as DuelMessage[]);
       });
-  }, [roomCode]);
+  }, [roomCode, minCreatedAt]);
 
   /* ── 2) Realtime: HEM broadcast HEM postgres_changes ──
      Broadcast: anında çalışır, replication ayarı gerektirmez.

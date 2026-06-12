@@ -18,6 +18,8 @@ type AuthModalProps = {
   /** Optional context-aware notice shown above the form (e.g. "Kuşatma moduna
    *  katılmak için giriş yapmalısın."). */
   headerNote?: string;
+  /** Hides "Misafir olarak devam et" — for login-only modes (Kör Nokta). */
+  hideGuest?: boolean;
 };
 
 export default function AuthModal({
@@ -25,6 +27,7 @@ export default function AuthModal({
   onGuest,
   onAuthSuccess,
   headerNote,
+  hideGuest,
 }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
@@ -291,16 +294,18 @@ return;
           Oturumu kontrol et
         </button>
 
-        <button
-          className="auth-guest"
-          type="button"
-          onClick={() => {
-            onGuest();
-            onClose();
-          }}
-        >
-          Misafir olarak devam et
-        </button>
+        {!hideGuest && (
+          <button
+            className="auth-guest"
+            type="button"
+            onClick={() => {
+              onGuest();
+              onClose();
+            }}
+          >
+            Misafir olarak devam et
+          </button>
+        )}
       </div>
     </div>
   );

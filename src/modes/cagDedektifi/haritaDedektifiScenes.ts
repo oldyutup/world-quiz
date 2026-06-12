@@ -17,74 +17,97 @@ export interface HaritaDedektifiScene {
 
 export const HARITA_DEDEKTIFI_SCENES: HaritaDedektifiScene[] = [
   {
-    id: "map_001_giza_pyramids_construction",
-    yearLabel: "MÖ 2560",
-    eventLabel: "Giza Piramitlerinin İnşası",
-    panorama: "/assets/history/harita-dedektifi/map_001_ancient_egypt_giza_pyramids_construction_4096.jpg",
+    id: "viking_village_birka",
+    yearLabel: "900'ler",
+    eventLabel: "Viking Köyü",
+    panorama:
+      "/assets/history/harita-dedektifi/map_008_viking_village_scandinavia_900s_4096.png",
     location: {
-      lat: 29.9792,
-      lng: 31.1342,
-      placeLabel: "Giza Platosu, Mısır",
+      lat: 59.3361,
+      lng: 17.5419,
+      placeLabel: "Birka, Björkö, İsveç",
     },
     scoreCurve: {
       maxScore: 5000,
-      scaleKm: 350,
+      scaleKm: 400,
     },
     explanation:
-      "Bu sahne, Antik Mısır'da Giza Platosu'nda piramitlerin inşa sürecini temsil eder. Doğru coğrafi referans noktası bugünkü Giza Piramitleri bölgesidir.",
+      "Bu sahne, 900'lerde İskandinavya'daki bir Viking yerleşimini temsil eder. Doğru coğrafi referans noktası, dönemin en önemli Viking ticaret kasabalarından biri olan İsveç'teki Birka'dır (Mälaren Gölü'ndeki Björkö adası).",
   },
-
   {
-    id: "map_002_berlin_wall_fall",
-    yearLabel: "1989",
-    eventLabel: "Berlin Duvarı'nın Yıkılışı",
-    panorama: "/assets/history/harita-dedektifi/map_002_berlin_wall_fall_4096.jpg",
+    id: "ephesus_harbor_city_roman",
+    yearLabel: "MS 2. yüzyıl",
+    eventLabel: "Efes Liman Kenti",
+    panorama:
+      "/assets/history/harita-dedektifi/map_008_ephesus_harbor_city_roman_4096.png",
+    // TODO: final hotspot coordinates will be adjusted after in-game debug click test.
     location: {
-      lat: 52.5163,
-      lng: 13.3777,
-      placeLabel: "Brandenburg Kapısı çevresi, Berlin, Almanya",
+      lat: 37.9410,
+      lng: 27.3380,
+      placeLabel: "Efes Antik Kenti, Selçuk, İzmir",
     },
     scoreCurve: {
       maxScore: 5000,
-      scaleKm: 500,
+      scaleKm: 300,
     },
     explanation:
-      "Bu sahne, 1989'da Berlin Duvarı'nın yıkılışını temsil eder. Referans nokta olarak Berlin Duvarı'nın en ikonik bölgelerinden biri olan Brandenburg Kapısı çevresi alınmıştır.",
+      "Bu sahne, Roma İmparatorluk Dönemi'nde (MS 2. yüzyıl) Efes'in aktif bir liman kenti olduğu dönemdeki gündelik yaşamı temsil eder. Doğru coğrafi referans noktası, Batı Anadolu'da bugünkü Selçuk yakınlarındaki Efes Antik Kenti ve antik liman bölgesidir.",
   },
-
   {
-    id: "map_003_gobekli_tepe_ritual_life",
-    yearLabel: "MÖ 9600",
-    eventLabel: "Göbekli Tepe'de Ritüel Yaşam",
-    panorama: "/assets/history/harita-dedektifi/map_003_gobekli_tepe_ritual_life_4096.jpg",
+    id: "battle_of_ankara_1402",
+    yearLabel: "1402",
+    eventLabel: "Ankara Savaşı Öncesi",
+    panorama:
+      "/assets/history/harita-dedektifi/map_009_battle_of_ankara_1402_4096.png",
+    // TODO: final hotspot coordinates will be adjusted after in-game debug click test.
     location: {
-      lat: 37.2231,
-      lng: 38.9225,
-      placeLabel: "Göbekli Tepe, Şanlıurfa, Türkiye",
+      lat: 40.1000,
+      lng: 33.0500,
+      placeLabel: "Çubuk Ovası, Ankara yakınları",
     },
     scoreCurve: {
       maxScore: 5000,
-      scaleKm: 450,
+      scaleKm: 300,
     },
     explanation:
-      "Bu sahne, Şanlıurfa yakınlarındaki Göbekli Tepe'de erken Neolitik döneme ait ritüel yaşamı temsil eder. Doğru coğrafi referans noktası bugünkü Göbekli Tepe arkeolojik alanıdır.",
+      "Bu sahne, 1402'de (Geç Orta Çağ Anadolu) Ankara Savaşı başlamadan hemen önce Osmanlı ve Timurlu ordularının karşı karşıya geldiği anı temsil eder. Doğru coğrafi referans noktası, Ankara yakınlarındaki Çubuk Ovası'dır.",
   },
-
   {
-    id: "map_004_eiffel_tower_opening_1889",
-    yearLabel: "1889",
-    eventLabel: "Eiffel Kulesi'nin Açılışı",
-    panorama: "/assets/history/harita-dedektifi/map_004_eiffel_tower_opening_1889_4096.jpg",
+    id: "titanic_shipyard_belfast_1911",
+    yearLabel: "1911",
+    eventLabel: "Titanic Tersanesi",
+    panorama:
+      "/assets/history/harita-dedektifi/map_010_titanic_shipyard_belfast_1911_4096.png",
+    // TODO: final hotspot coordinates will be adjusted after in-game debug click test.
     location: {
-      lat: 48.8584,
-      lng: 2.2945,
-      placeLabel: "Eiffel Kulesi, Paris, Fransa",
+      lat: 54.6080,
+      lng: -5.9080,
+      placeLabel: "Harland & Wolff Tersanesi, Belfast",
     },
     scoreCurve: {
       maxScore: 5000,
-      scaleKm: 450,
+      scaleKm: 300,
     },
     explanation:
-      "Bu sahne, 1889 Paris Dünya Fuarı döneminde Eiffel Kulesi çevresini temsil eder. Doğru coğrafi referans noktası bugünkü Eiffel Kulesi'nin bulunduğu Champ de Mars çevresidir.",
+      "Bu sahne, RMS Titanic'in 1911'de Belfast'taki Harland & Wolff tersanesinde inşa edildiği dönemi temsil eder. Doğru coğrafi referans noktası, Belfast'taki Harland & Wolff Tersanesi'dir.",
+  },
+  {
+    id: "trial_of_socrates_athens_399bc",
+    yearLabel: "MÖ 399",
+    eventLabel: "Sokrates'in Yargılanması",
+    panorama:
+      "/assets/history/harita-dedektifi/map_011_trial_of_socrates_athens_399bc_4096.png",
+    // TODO: final hotspot coordinates will be adjusted after in-game debug click test.
+    location: {
+      lat: 37.9755,
+      lng: 23.7220,
+      placeLabel: "Atina, Yunanistan",
+    },
+    scoreCurve: {
+      maxScore: 5000,
+      scaleKm: 300,
+    },
+    explanation:
+      "Bu sahne, Klasik Yunan döneminde (MÖ 399) Sokrates'in Atina'da yurttaş jürisi önünde yargılandığı kamusal mahkeme atmosferini temsil eder. Doğru coğrafi referans noktası, Atina'daki antik Agora ve mahkeme (Heliaia) bölgesidir.",
   },
 ];

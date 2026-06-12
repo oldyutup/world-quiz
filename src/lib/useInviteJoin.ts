@@ -7,7 +7,8 @@ export type InviteParamKey =
   | "duelGroup"
   | "flagDuel"
   | "wheelDuel"
-  | "wheelGroup";
+  | "wheelGroup"
+  | "korNokta";
 
 /** Davet linkinden gelen kodu standartlaştırır. Tüm modlarda oda kodu
  *  6 karakterli A-Z/0-9 olduğu için aynı normalize: trim → upper → strip

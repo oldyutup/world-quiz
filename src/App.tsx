@@ -9,9 +9,13 @@ import WheelDuelGame from "./components/WheelDuelGame";
 import WheelGroupGame from "./components/WheelGroupGame";
 import ConquestMode from "./modes/conquest/ConquestMode";
 import ConquestModeSelectModal from "./modes/conquest/ConquestModeSelectModal";
+// Çağ Dedektifi ekranları menüden kaldırıldı (yerini Kör Nokta aldı) ama kod
+// pasif olarak duruyor; render branch'leri aşağıda korunuyor.
 import CagDedektifiGame from "./modes/cagDedektifi/CagDedektifiGame";
 import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
 import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
+import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
+import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -70,7 +74,7 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi" | "harita-duel-game";
+type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi" | "harita-duel-game" | "kornokta-create" | "kornokta-join";
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -129,6 +133,8 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "cag-dedektifi": 0,
   "harita-dedektifi": 0,
   "harita-duel-game": 0,
+  "kornokta-create": 0,
+  "kornokta-join": 0,
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -298,16 +304,19 @@ function DDItem({ active, onClick, children }: DDItemProps) {
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
 
-interface HomeProps { onSelect: (screen: AppScreen) => void; profile: Profile | null; }
-function HomeScreen({ onSelect, profile }: HomeProps) {
+interface HomeProps {
+  onSelect: (screen: AppScreen) => void;
+  profile: Profile | null;
+  /** Kör Nokta login-only: guest bir aksiyon seçince App auth modal'ı açar
+   *  ve login sonrası ilgili ekrana yönlendirir. */
+  onKorNoktaAuthRequired: (action: "create" | "join") => void;
+}
+function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
-const [showCagMenu, setShowCagMenu] = useState(false);
-const [cagView, setCagView] = useState<"main" | "offline">("main");
-const [cagSoonHint, setCagSoonHint] = useState(false);
-const closeCagMenu = () => { setShowCagMenu(false); setCagView("main"); setCagSoonHint(false); };
+const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
 const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
 useEffect(() => {
   try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
@@ -319,7 +328,7 @@ useEffect(() => {
   { id: "route-game" as AppScreen, icon: "🧭", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
   { id: "wheel-game" as AppScreen, icon: "🎯", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
   { id: "conquest-game" as AppScreen, icon: "🛡️", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
-  { id: "cag-dedektifi" as AppScreen, icon: "🔍", title: "ÇAĞ DEDEKTİFİ", desc: "Zaman yolcusunun bıraktığı izi bul.", available: true },
+  { id: "kornokta-create" as AppScreen, icon: "🕵️‍♂️", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
 ];
   return (
     <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : "")}>
@@ -356,8 +365,8 @@ useEffect(() => {
     setShowWheelMenu(true);
   } else if (m.id === "conquest-game") {
     setShowConquestMenu(true);
-  } else if (m.id === "cag-dedektifi") {
-    setShowCagMenu(true);
+  } else if (m.id === "kornokta-create") {
+    setShowKorNoktaMenu(true);
   } else {
     onSelect(m.id);
   }
@@ -529,106 +538,28 @@ useEffect(() => {
   </div>
 )}
 
-{showCagMenu && (
-  <div
-    className="overlay"
-    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
-    data-theme={getThemeDataAttr(homeTheme)}
-    onClick={closeCagMenu}
-  >
-    <div className="modal" onClick={(e) => e.stopPropagation()}>
-
-      {cagView === "main" ? (
-        <>
-          <h2>🔎 Çağ Dedektifi</h2>
-
-          <button
-            className="modal-btn"
-            onClick={() => {
-              playSound("click");
-              setCagSoonHint(false);
-              setCagView("offline");
-            }}
-          >
-            🕹️ Offline
-          </button>
-
-          <button
-            className="modal-btn"
-            onClick={() => {
-              playSound("click");
-              closeCagMenu();
-              onSelect("harita-duel-game");
-            }}
-          >
-            ⚔️ Online 1v1
-          </button>
-
-          <button
-            type="button"
-            className="modal-btn modal-btn-soon"
-            aria-disabled="true"
-            onClick={() => {
-              playSound("click");
-              setCagSoonHint(true);
-            }}
-          >
-            👥 Çok Oyunculu
-            <span className="modal-btn-soon-tag">Yakında</span>
-          </button>
-
-          {cagSoonHint && <p className="modal-hint">Çok oyunculu yakında.</p>}
-        </>
-      ) : (
-        <>
-          <h2>🕹️ Offline</h2>
-
-          <button
-            className="modal-btn"
-            onClick={() => {
-              playSound("click");
-              closeCagMenu();
-              onSelect("cag-dedektifi");
-            }}
-          >
-            🕵️ Anakronizmi Bul
-          </button>
-
-          <button
-            className="modal-btn"
-            onClick={() => {
-              playSound("click");
-              closeCagMenu();
-              onSelect("harita-dedektifi");
-            }}
-          >
-            📍 Harita Dedektifi
-          </button>
-
-          <button
-            className="modal-back"
-            onClick={() => {
-              playSound("click");
-              setCagView("main");
-            }}
-          >
-            ← Geri
-          </button>
-        </>
-      )}
-
-      <button
-        className="modal-close"
-        onClick={() => {
-          playSound("click");
-          closeCagMenu();
-        }}
-      >
-        ✕
-      </button>
-
-    </div>
-  </div>
+{showKorNoktaMenu && (
+  <KorNoktaSelectModal
+    overlayStyle={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    themeAttr={getThemeDataAttr(homeTheme)}
+    isLoggedIn={!!profile?.username}
+    onCreate={() => {
+      setShowKorNoktaMenu(false);
+      onSelect("kornokta-create");
+    }}
+    onJoin={() => {
+      setShowKorNoktaMenu(false);
+      onSelect("kornokta-join");
+    }}
+    onRequireAuth={(action) => {
+      setShowKorNoktaMenu(false);
+      onKorNoktaAuthRequired(action);
+    }}
+    onClose={() => {
+      playSound("click");
+      setShowKorNoktaMenu(false);
+    }}
+  />
 )}
 
 {showConquestMenu && (
@@ -2193,9 +2124,12 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
    * "Kuşatma moduna katılmak için giriş yapmalısın." and triggers an auto-join
-   * once login completes. */
-  const [authPromptReason, setAuthPromptReason] =
-    useState<null | "welcome" | "conquest-invite">(null);
+   * once login completes. "kornokta-*" variants show the Kör Nokta copy, hide
+   * the guest button (login-only mode) and route after a successful login. */
+  const [authPromptReason, setAuthPromptReason] = useState<
+    null | "welcome" | "conquest-invite"
+    | "kornokta-invite" | "kornokta-create" | "kornokta-join"
+  >(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
@@ -2320,6 +2254,17 @@ function clearPendingConquestInvite() {
   }
 }
 
+/** Kör Nokta davet auth promptu kapatılınca ?korNokta= param'ını temizle ki
+ *  reload aynı login modal'ıyla kullanıcıyı rahatsız etmesin. */
+function clearPendingKorNoktaInvite() {
+  if (typeof window === "undefined") return;
+  const cleaned = new URL(window.location.href);
+  if (cleaned.searchParams.has("korNokta")) {
+    cleaned.searchParams.delete("korNokta");
+    window.history.replaceState({}, "", cleaned.toString());
+  }
+}
+
   /* ── Invite-link routing ──────────────────────────────────────────────────
    * Conquest is the only mode that requires login, so it has to wait for the
    * auth-load to settle before routing. Re-runs when authLoading / profile
@@ -2337,6 +2282,7 @@ function clearPendingConquestInvite() {
     const flagDuelCode = params.get("flagDuel");
     const wheelDuelCode = params.get("wheelDuel");
     const wheelGroupCode = params.get("wheelGroup");
+    const korNoktaCode = params.get("korNokta");
 
     const conquestFromUrl = params.get("conquest")?.trim().toUpperCase() || null;
     const conquestFromStorage = (() => {
@@ -2370,6 +2316,20 @@ function clearPendingConquestInvite() {
           setAuthPromptReason("conquest-invite");
           setAuthOpen(true);
         }
+      }
+      return;
+    }
+
+    if (korNoktaCode) {
+      // Kör Nokta login-only: misafire önce auth modal'ı açılır; login sonrası
+      // bu effect profile?.id flip'iyle yeniden koşar ve join ekranına geçer.
+      // KorNoktaMode içindeki useInviteJoin ?korNokta= param'ını okuyup
+      // auto-join tetikler ve URL'den temizler.
+      if (profile?.username) {
+        if (screen !== "kornokta-join") setScreen("kornokta-join");
+      } else if (!authOpen) {
+        setAuthPromptReason("kornokta-invite");
+        setAuthOpen(true);
       }
       return;
     }
@@ -2413,7 +2373,7 @@ useEffect(() => {
   // Conquest davetinde de modal'ı atla; conquest-invite effect kendi auth
   // promptunu açıyor (farklı header mesajıyla).
   const params = new URLSearchParams(window.location.search);
-  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("conquest")) {
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("conquest") || params.get("korNokta")) {
     return;
   }
   let pendingConquest: string | null = null;
@@ -2462,7 +2422,14 @@ useEffect(() => {
         )}
       </div>
 
-      <HomeScreen onSelect={setScreen} profile={profile} />
+      <HomeScreen
+        onSelect={setScreen}
+        profile={profile}
+        onKorNoktaAuthRequired={(action) => {
+          setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
+          setAuthOpen(true);
+        }}
+      />
 
       {leaderboardOpen && (
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
@@ -2496,7 +2463,16 @@ useEffect(() => {
     headerNote={
       authPromptReason === "conquest-invite"
         ? "Kuşatma moduna katılmak için giriş yapmalısın."
+        : authPromptReason === "kornokta-invite" || authPromptReason === "kornokta-join"
+        ? "Kör Nokta moduna katılmak için giriş yapmalısın."
+        : authPromptReason === "kornokta-create"
+        ? "Kör Nokta odası kurmak için giriş yapmalısın."
         : undefined
+    }
+    hideGuest={
+      authPromptReason === "kornokta-invite" ||
+      authPromptReason === "kornokta-create" ||
+      authPromptReason === "kornokta-join"
     }
     onClose={() => {
       setAuthOpen(false);
@@ -2504,6 +2480,9 @@ useEffect(() => {
       // a reload doesn't pester the user with the same login modal.
       if (authPromptReason === "conquest-invite") {
         clearPendingConquestInvite();
+      }
+      if (authPromptReason === "kornokta-invite") {
+        clearPendingKorNoktaInvite();
       }
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
@@ -2513,15 +2492,25 @@ useEffect(() => {
       if (authPromptReason === "conquest-invite") {
         clearPendingConquestInvite();
       }
+      if (authPromptReason === "kornokta-invite") {
+        clearPendingKorNoktaInvite();
+      }
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}
     onAuthSuccess={(nextProfile) => {
       setProfile(nextProfile);
+      // Menüden "Oda Kur / Odaya Katıl" seçip login olan kullanıcıyı
+      // hedeflediği Kör Nokta ekranına taşı. Davet linki ("kornokta-invite")
+      // burada ele alınmaz: invite-link effect'i profile?.id flip'iyle
+      // yeniden koşar ve auto-join'i kendisi tetikler.
+      if (nextProfile?.username && authPromptReason === "kornokta-create") {
+        setScreen("kornokta-create");
+      } else if (nextProfile?.username && authPromptReason === "kornokta-join") {
+        setScreen("kornokta-join");
+      }
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
-      // The invite-link effect re-runs once `profile?.id` flips, which is
-      // where the conquest auto-join is triggered. Nothing else to do here.
     }}
   />
 )}
@@ -2553,6 +2542,20 @@ useEffect(() => {
   profile={profile}
 />
 );
+  if (screen === "kornokta-create") return (
+    <KorNoktaMode
+      initialAction="create"
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "kornokta-join") return (
+    <KorNoktaMode
+      initialAction="join"
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
   if (screen === "cag-dedektifi") return <CagDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "harita-dedektifi") return <HaritaDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "harita-duel-game") return (

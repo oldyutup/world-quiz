@@ -5,7 +5,8 @@ export type SoundName =
   | "countdown20"
   | "win"
   | "lose"
-  | "levelup";
+  | "levelup"
+  | "korNoktaReportAmbient";
 
 export type CountdownSoundMode = "off" | "last10" | "last20";
 
@@ -20,6 +21,7 @@ const SOUND_PATHS: Record<SoundName, string> = {
   win: "/sounds/win.mp3",
   lose: "/sounds/lose.mp3",
   levelup: "/sounds/levelup.mp3",
+  korNoktaReportAmbient: "/sounds/kor-nokta-report-ambient.mp3",
 };
 
 const SOUND_VOLUME: Record<SoundName, number> = {
@@ -30,6 +32,7 @@ const SOUND_VOLUME: Record<SoundName, number> = {
   win: 0.65,
   lose: 0.6,
   levelup: 0.7,
+  korNoktaReportAmbient: 0.15,
 };
 
 const audioCache = new Map<SoundName, HTMLAudioElement>();
@@ -113,6 +116,21 @@ export function playSound(name: SoundName, options?: { restart?: boolean }) {
   if (!isSoundEnabled()) return;
 
   try {
+    // Loop'lu ambient (Kör Nokta raporlama fazı): tek cache instance, düşük
+    // ses. Zaten çalıyorsa baştan başlatma — her ticker tetiklemesinde
+    // playSound çağrılsa bile kesintisiz akar. stopSound ile durdurulur.
+    if (name === "korNoktaReportAmbient") {
+      const audio = getAudio(name);
+      audio.loop = true;
+      audio.volume = SOUND_VOLUME[name];
+      if (audio.paused) {
+        void audio.play().catch(() => {
+          // Autoplay engeli oyunu bozmasın.
+        });
+      }
+      return;
+    }
+
     // Kontrol edilebilir sesler (durdurulabilir) tek cache instance kullanır.
     if (name === "countdown20") {
       const audio = getAudio(name);
