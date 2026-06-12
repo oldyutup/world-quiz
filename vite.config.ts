@@ -7,6 +7,6 @@ export default defineConfig({
     dedupe: ['three'],
   },
   optimizeDeps: {
-    include: ['three', '@photo-sphere-viewer/core'],
+    include: ['three'],
   },
 })

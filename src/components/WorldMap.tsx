@@ -11,8 +11,10 @@ import { TOPOID_TO_DISPLAY } from "../data/countries";
 /* ─────────────────────────────────────────────────
    SHARED TOPO CACHE
    Both WorldMap and SilhouetteView share one fetch.
+   Self-hosted copy of world-atlas@2 countries-110m.json (vendored in
+   public/data/) so map modes work offline / without third-party CDN.
 ───────────────────────────────────────────────── */
-const WORLD_URL  = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const WORLD_URL  = "/data/countries-110m.json";
 let   _topoCache: Feature<Geometry>[] | null = null;
 const _topoWaiters: Array<(f: Feature<Geometry>[]) => void> = [];
 
