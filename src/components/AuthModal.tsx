@@ -20,6 +20,10 @@ type AuthModalProps = {
   headerNote?: string;
   /** Hides "Misafir olarak devam et" — for login-only modes (Kör Nokta). */
   hideGuest?: boolean;
+  /** True only inside the Capacitor native shell. Switches the modal to the
+   *  app-style layout (Apple / Google first, email collapsed). Web stays
+   *  byte-for-byte unchanged when this is false/undefined. */
+  isNative?: boolean;
 };
 
 export default function AuthModal({
@@ -28,8 +32,13 @@ export default function AuthModal({
   onAuthSuccess,
   headerNote,
   hideGuest,
+  isNative = false,
 }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
+  // Native only: the email/password form starts collapsed behind a disclosure
+  // button. On web it's effectively always open (the render gate below never
+  // hides it), so this flag has no web-visible effect.
+  const [emailExpanded, setEmailExpanded] = useState(!isNative);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -133,6 +142,13 @@ return;
     }
   }
 
+  // Native-only placeholder for Apple / Google. Real SDK login isn't wired yet;
+  // just surface a friendly "coming soon" notice instead of crashing.
+  function handleStubProvider() {
+    setErrorMsg(null);
+    setStatusMsg("Bu giriş yöntemi yakında aktif olacak.");
+  }
+
   async function handleGoogle() {
     setErrorMsg(null);
     setStatusMsg(null);
@@ -174,22 +190,74 @@ return;
 
   return (
     <div className="auth-overlay" onClick={onClose}>
-      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={isNative ? "auth-modal auth-modal--native" : "auth-modal"}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button className="auth-close" type="button" onClick={onClose}>
           ×
         </button>
 
-        <div className="auth-head">
-          <div className="auth-icon">🌍</div>
-          <h2>{isSignup ? "Hesap Oluştur" : "Giriş Yap"}</h2>
-          <p>
-            {isSignup
-              ? "XP, level ve ilerlemeni kaydetmek için hesap oluştur."
-              : "Profiline, XP seviyene ve ilerlemene devam et."}
-          </p>
-          {headerNote && <p className="auth-note">{headerNote}</p>}
-        </div>
+        {isNative ? (
+          <div className="auth-head">
+            <div className="auth-icon">🌍</div>
+            <h2>Torble’a giriş yap</h2>
+            {headerNote && <p className="auth-note">{headerNote}</p>}
+          </div>
+        ) : (
+          <div className="auth-head">
+            <div className="auth-icon">🌍</div>
+            <h2>{isSignup ? "Hesap Oluştur" : "Giriş Yap"}</h2>
+            <p>
+              {isSignup
+                ? "XP, level ve ilerlemeni kaydetmek için hesap oluştur."
+                : "Profiline, XP seviyene ve ilerlemene devam et."}
+            </p>
+            {headerNote && <p className="auth-note">{headerNote}</p>}
+          </div>
+        )}
 
+        {isNative && (
+          <>
+            <button
+              className="auth-apple"
+              type="button"
+              disabled={loading}
+              onClick={handleStubProvider}
+            >
+               Apple ile devam et
+            </button>
+
+            <button
+              className="auth-google"
+              type="button"
+              disabled={loading}
+              onClick={handleStubProvider}
+            >
+              Google ile devam et
+            </button>
+
+            {!emailExpanded && (
+              <>
+                {statusMsg && <div className="auth-status">{statusMsg}</div>}
+                <button
+                  className="auth-email-toggle"
+                  type="button"
+                  onClick={() => {
+                    setEmailExpanded(true);
+                    setErrorMsg(null);
+                    setStatusMsg(null);
+                  }}
+                >
+                  E-posta ile devam et
+                </button>
+              </>
+            )}
+          </>
+        )}
+
+        {(!isNative || emailExpanded) && (
+        <>
         <div className="auth-tabs">
           <button
             type="button"
@@ -276,14 +344,16 @@ return;
           {loading ? "İşleniyor..." : isSignup ? "Hesap Oluştur" : "Giriş Yap"}
         </button>
 
-        <button
-          className="auth-google"
-          type="button"
-          disabled={loading}
-          onClick={handleGoogle}
-        >
-          Google ile devam et
-        </button>
+        {!isNative && (
+          <button
+            className="auth-google"
+            type="button"
+            disabled={loading}
+            onClick={handleGoogle}
+          >
+            Google ile devam et
+          </button>
+        )}
 
         <button
           className="auth-ghost"
@@ -293,6 +363,8 @@ return;
         >
           Oturumu kontrol et
         </button>
+        </>
+        )}
 
         {!hideGuest && (
           <button

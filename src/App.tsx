@@ -2514,6 +2514,10 @@ function clearPendingKorNoktaInvite() {
 useEffect(() => {
   // Auth check henüz bitmediyse bekle
   if (authLoading) return;
+  // Native app (Capacitor): doğrudan ana ekrana açılsın — zorunlu hoş geldin
+  // login modal'ı gösterme. Giriş yalnızca Profil/Sıralama veya auth isteyen
+  // bir online moda dokunulduğunda açılır. Web davranışı değişmez.
+  if (IS_NATIVE_APP) return;
   // Zaten giriş yapmışsa gerek yok
   if (profile) return;
   // Daha önce göstermişsek bir daha çıkma
@@ -2628,6 +2632,7 @@ useEffect(() => {
 
       {authOpen && (
   <AuthModal
+    isNative={IS_NATIVE_APP}
     headerNote={
       authPromptReason === "conquest-invite"
         ? "Kuşatma moduna katılmak için giriş yapmalısın."

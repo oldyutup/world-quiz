@@ -5856,6 +5856,44 @@ body {
   margin-top: 10px;
 }
 
+/* ── Native app (Capacitor) only: Apple / Google-first, email collapsed ──
+   These classes are rendered exclusively inside the native shell (AuthModal
+   isNative branch), so they never appear in the desktop/mobile-web DOM and
+   cannot affect the web layout. */
+.auth-apple,
+.auth-email-toggle {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.auth-apple {
+  border: 0;
+  background: #ffffff;
+  color: #000000;
+  margin-top: 4px;
+  font-size: 15.5px;
+}
+
+.auth-modal--native .auth-google {
+  margin-top: 12px;
+  min-height: 50px;
+  font-size: 15.5px;
+}
+
+.auth-email-toggle {
+  border: 1px solid rgba(140, 160, 190, 0.22);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(220, 230, 245, 0.85);
+  margin-top: 14px;
+}
+
+.auth-modal--native .auth-guest {
+  margin-top: 14px;
+}
+
 @media (max-width: 768px) {
   .auth-mini-bar {
     top: 10px;
