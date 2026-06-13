@@ -255,6 +255,120 @@ function MobileThemeSheet({
   );
 }
 
+/** Quick Match (Eşleş tab) — native-only placeholder entry panel for the
+ *  future, level-based matchmaking system. NO real matchmaking yet: the mode
+ *  cards and süre/tur controls are an inert preview and the primary CTA is
+ *  disabled. The only live action reuses the existing Düello mode sheet so a
+ *  player can still set up a duel today. Reuses the .mh-sheet shell and is
+ *  opened solely from the native-app bottom-nav, so it never reaches desktop
+ *  or mobile web. When real matchmaking lands, this panel becomes its home. */
+function MobileQuickMatchSheet({
+  onClose,
+  onCreateDuelRoom,
+}: {
+  onClose: () => void;
+  onCreateDuelRoom: () => void;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useSheetLock(sheetRef, onClose);
+
+  // Future duello modes, mirroring the Düello category. Preview-only here.
+  const modes = [
+    { icon: "🌍", label: "Ülke Yaz Düellosu" },
+    { icon: "🚩", label: "Bayrak Düellosu" },
+    { icon: "🎯", label: "Çark Düellosu" },
+  ];
+
+  return createPortal(
+    <>
+      <div
+        className="mh-sheet-backdrop"
+        aria-hidden="true"
+        onClick={() => { playSound("click"); onClose(); }}
+      />
+      <div
+        ref={sheetRef}
+        className="mh-sheet mh-sheet--match"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mh-match-title"
+        tabIndex={-1}
+      >
+        <div className="mh-sheet-grab" aria-hidden="true" />
+        <header className="mh-sheet-head">
+          <span className="mh-sheet-icon" aria-hidden="true">⚡</span>
+          <h3 id="mh-match-title" className="mh-sheet-title">Hızlı Eşleş</h3>
+          <span className="mh-qm-soon">Yakında</span>
+          <button
+            type="button"
+            className="mh-sheet-close"
+            aria-label="Kapat"
+            onClick={() => { playSound("click"); onClose(); }}
+          >
+            ✕
+          </button>
+        </header>
+
+        <p className="mh-qm-intro">
+          Seviyene uygun rakiplerle hızlıca eşleşmen için hazırlanıyor.
+        </p>
+
+        <div className="mh-qm-group">
+          <span className="mh-qm-section">Mod</span>
+          <div className="mh-qm-modes">
+            {modes.map((m, i) => (
+              <button
+                key={m.label}
+                type="button"
+                className={"mh-qm-mode" + (i === 0 ? " mh-qm-mode--active" : "")}
+                disabled
+                aria-disabled="true"
+              >
+                <span className="mh-qm-mode-icon" aria-hidden="true">{m.icon}</span>
+                <span className="mh-qm-mode-label">{m.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Süre / Tur — inert preview readouts of the planned match settings. */}
+        <div className="mh-qm-prefs">
+          <div className="mh-qm-group">
+            <span className="mh-qm-section">Süre</span>
+            <div className="mh-qm-chips" aria-hidden="true">
+              <span className="mh-qm-chip">60 sn</span>
+              <span className="mh-qm-chip mh-qm-chip--active">120 sn</span>
+              <span className="mh-qm-chip">180 sn</span>
+            </div>
+          </div>
+          <div className="mh-qm-group">
+            <span className="mh-qm-section">Tur</span>
+            <div className="mh-qm-chips" aria-hidden="true">
+              <span className="mh-qm-chip">5</span>
+              <span className="mh-qm-chip mh-qm-chip--active">10</span>
+              <span className="mh-qm-chip">15</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mh-qm-actions">
+          <button type="button" className="mh-qm-primary" disabled aria-disabled="true">
+            Yakında aktif olacak
+          </button>
+          <button
+            type="button"
+            className="mh-qm-secondary"
+            onClick={() => { playSound("click"); onCreateDuelRoom(); }}
+          >
+            Şimdilik düello odası kur
+          </button>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
 export default function MobileHome({
   onPlay,
   onOpenConquest,
@@ -267,6 +381,7 @@ export default function MobileHome({
 }: MobileHomeProps) {
   const [openId, setOpenId] = useState<Category["id"] | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [matchOpen, setMatchOpen] = useState(false);
 
   const categories: Category[] = [
     {
@@ -346,12 +461,29 @@ export default function MobileHome({
         />
       )}
 
+      {matchOpen && (
+        <MobileQuickMatchSheet
+          onClose={() => setMatchOpen(false)}
+          // Reuse the existing Düello mode sheet — the duel flow today.
+          onCreateDuelRoom={() => { setMatchOpen(false); setOpenId("duel"); }}
+        />
+      )}
+
       {/* Native-app tab bar. Display:none on desktop + mobile web (only
           html.is-native-app paints it), so the floating top-right login /
           ranking stack, theme picker and social dock are hidden there and
-          these four tabs take over. Ana Menü is the active tab; the others
-          delegate to the same App handlers the floating chrome used. */}
+          these five tabs take over: Profil · Sıralama · Ana Menü · Eşleş ·
+          Tema. Ana Menü is the home tab; Eşleş opens the Quick Match sheet;
+          the rest delegate to the same App handlers the floating chrome used. */}
       <nav className="mh-bottom-nav" aria-label="Uygulama menüsü">
+        <button
+          type="button"
+          className="mh-nav-item"
+          onClick={() => { playSound("click"); onOpenProfile(); }}
+        >
+          <span className="mh-nav-icon" aria-hidden="true">{isLoggedIn ? "👤" : "🔑"}</span>
+          <span className="mh-nav-label">Profil</span>
+        </button>
         <button
           type="button"
           className="mh-nav-item"
@@ -368,6 +500,7 @@ export default function MobileHome({
             playSound("click");
             setOpenId(null);
             setThemeOpen(false);
+            setMatchOpen(false);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         >
@@ -376,16 +509,16 @@ export default function MobileHome({
         </button>
         <button
           type="button"
-          className="mh-nav-item"
-          onClick={() => { playSound("click"); onOpenProfile(); }}
+          className={"mh-nav-item" + (matchOpen ? " mh-nav-item--active" : "")}
+          onClick={() => { playSound("click"); setOpenId(null); setThemeOpen(false); setMatchOpen(true); }}
         >
-          <span className="mh-nav-icon" aria-hidden="true">{isLoggedIn ? "👤" : "🔑"}</span>
-          <span className="mh-nav-label">Profil</span>
+          <span className="mh-nav-icon" aria-hidden="true">⚡</span>
+          <span className="mh-nav-label">Eşleş</span>
         </button>
         <button
           type="button"
           className={"mh-nav-item" + (themeOpen ? " mh-nav-item--active" : "")}
-          onClick={() => { playSound("click"); setThemeOpen(true); }}
+          onClick={() => { playSound("click"); setOpenId(null); setMatchOpen(false); setThemeOpen(true); }}
         >
           <span className="mh-nav-icon" aria-hidden="true">🎨</span>
           <span className="mh-nav-label">Tema</span>
