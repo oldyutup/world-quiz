@@ -57,6 +57,7 @@ import NicknameModal from "./components/NicknameModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { UsernameChangeModal } from "./components/UsernameChangeModal";
+import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import {
   getCurrentUser,
   loadOrCreateProfile,
@@ -2215,6 +2216,7 @@ export default function App() {
   // and the dropdown keeps its own internal open state.
   const [profileNavOpen, setProfileNavOpen] = useState(false);
   const [usernameModalOpen, setUsernameModalOpen] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
@@ -2622,6 +2624,9 @@ useEffect(() => {
           onRequestUsernameChange={
             profile ? () => setUsernameModalOpen(true) : undefined
           }
+          onRequestAvatarChange={
+            profile ? () => setAvatarModalOpen(true) : undefined
+          }
         />
 
         {/* Profil dropdown açıkken sıralama butonu görsel olarak çakışmasın
@@ -2678,6 +2683,19 @@ useEffect(() => {
                 : prev
             );
             setUsernameModalOpen(false);
+          }}
+        />
+      )}
+
+      {avatarModalOpen && profile && (
+        <AvatarPickerModal
+          profile={profile}
+          onClose={() => setAvatarModalOpen(false)}
+          onSuccess={(avatarId) => {
+            setProfile((prev) =>
+              prev ? { ...prev, avatar_id: avatarId } : prev
+            );
+            setAvatarModalOpen(false);
           }}
         />
       )}

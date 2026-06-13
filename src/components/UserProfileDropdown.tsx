@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getLevelProgress, fetchTotalXp } from "../lib/progression";
 import type { Profile } from "../lib/auth";
 import type { CountdownSoundMode } from "../lib/sound";
+import { Avatar } from "./Avatar";
 
 interface Props {
   profile: Profile | null;
@@ -23,6 +24,8 @@ interface Props {
   controlledOpen?: boolean;
   /** "Adı Değiştir" butonuna basılınca modal açma sinyali parent'a gider. */
   onRequestUsernameChange?: () => void;
+  /** "Avatarı Değiştir" butonuna basılınca avatar seçim modalını açar. */
+  onRequestAvatarChange?: () => void;
 }
 
 export function UserProfileDropdown({
@@ -40,6 +43,7 @@ export function UserProfileDropdown({
   onOpenChange,
   controlledOpen,
   onRequestUsernameChange,
+  onRequestAvatarChange,
 }: Props) {
   // Open state is internal by default; when `controlledOpen` is provided the
   // parent owns it (native bottom-nav). Either way every open/close routes
@@ -107,7 +111,6 @@ export function UserProfileDropdown({
   // Use freshly-fetched XP if available, fall back to profile snapshot
   const xp = freshXp ?? profile.xp;
   const lp = getLevelProgress(xp);
-  const initial = (profile.username ?? "?")[0].toUpperCase();
   const pct = Math.round(lp.progressRatio * 100);
   const xpSpan = lp.nextLevelXp - lp.currentLevelXp;
 
@@ -120,7 +123,11 @@ export function UserProfileDropdown({
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
-        <span className="upd-avatar">{initial}</span>
+        <Avatar
+          avatarId={profile.avatar_id}
+          username={profile.username}
+          className="upd-avatar"
+        />
         <span className="upd-uname">@{profile.username}</span>
         <span className="upd-lv">Lv.&nbsp;{lp.level}</span>
         <span className="upd-chevron">{open ? "▲" : "▼"}</span>
@@ -131,7 +138,31 @@ export function UserProfileDropdown({
         <div className="upd-dropdown">
           {/* — Header — */}
           <div className="upd-head">
-            <span className="upd-head-avatar">{initial}</span>
+            {onRequestAvatarChange ? (
+              <button
+                type="button"
+                className="upd-head-avatar-btn"
+                onClick={() => {
+                  setOpen(false);
+                  onRequestAvatarChange();
+                }}
+                aria-label="Avatarı değiştir"
+                title="Avatarı değiştir"
+              >
+                <Avatar
+                  avatarId={profile.avatar_id}
+                  username={profile.username}
+                  className="upd-head-avatar"
+                />
+                <span className="upd-head-avatar-edit" aria-hidden="true">✎</span>
+              </button>
+            ) : (
+              <Avatar
+                avatarId={profile.avatar_id}
+                username={profile.username}
+                className="upd-head-avatar"
+              />
+            )}
             <div className="upd-head-info">
               <div className="upd-head-uname-row">
                 <span className="upd-head-uname">@{profile.username}</span>
@@ -151,6 +182,18 @@ export function UserProfileDropdown({
                 )}
               </div>
               <span className="upd-head-level">Seviye {lp.level}</span>
+              {onRequestAvatarChange && (
+                <button
+                  type="button"
+                  className="upd-edit-uname upd-edit-avatar"
+                  onClick={() => {
+                    setOpen(false);
+                    onRequestAvatarChange();
+                  }}
+                >
+                  Avatarı Değiştir
+                </button>
+              )}
             </div>
           </div>
 
