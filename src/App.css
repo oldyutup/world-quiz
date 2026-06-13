@@ -17623,3 +17623,383 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     font-size: 9.5px;
   }
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE-ONLY APP HOME (≤600px)
+   Desktop keeps the classic homepage untouched: outside the media
+   query below the only rule is the display:none that hides the
+   mobile tree. At ≤600px the classic .mode-grid hides and this
+   app-style layout (components/MobileHome.tsx) takes over.
+═══════════════════════════════════════════ */
+.mobile-home { display: none; }
+
+@media (max-width: 600px) {
+  /* ── App-home background (mobile only) ──
+     The app gets its own bright illustrated backdrop, independent of the
+     saved desktop "home theme" (whose default is "adventure"), so all four
+     home-screen states are overridden here. Desktop (>600px) never reaches
+     this rule. center/cover keeps the full portrait art — foliage at the
+     top, the earth horizon at the bottom — visible while only the side
+     margins crop on tall phones; a soft top/bottom scrim keeps the hero
+     text and bottom chrome legible without dimming the bright middle. */
+  .home-screen,
+  .home-screen.home-screen--earth,
+  .home-screen.home-screen--adventure,
+  .home-screen.home-screen--dark-space {
+    background:
+      linear-gradient(180deg,
+        rgba(5, 12, 30, .34) 0%,
+        rgba(5, 12, 30, 0) 20%,
+        rgba(5, 12, 30, 0) 68%,
+        rgba(5, 12, 30, .30) 100%),
+      url('/assets/backgrounds/mobile-app-home-bg.png') center center / cover no-repeat;
+    background-color: #0a1530;
+  }
+  /* The dark starfield (::before) and vignette (::after) would mute the
+     bright art — switch them off on mobile; the scrim above carries
+     contrast instead. */
+  .home-screen::before,
+  .home-screen.home-screen--earth::before,
+  .home-screen.home-screen--adventure::before,
+  .home-screen.home-screen--dark-space::before { opacity: 0; }
+  .home-screen::after,
+  .home-screen.home-screen--earth::after,
+  .home-screen.home-screen--adventure::after,
+  .home-screen.home-screen--dark-space::after { opacity: 0; }
+
+  .home-screen .mode-grid { display: none; }
+
+  /* ── App-home vertical rhythm (mobile only) ──
+     Desktop keeps its own .home-screen padding; here the hero (logo +
+     subtitle) and the three category cards are pushed down together so the
+     first screen reads balanced instead of top-heavy. Both the top offset
+     and the hero→cards gap scale with viewport height (clamped), so the
+     card group drifts toward the lower guide on tall phones yet stays fully
+     visible — all three cards clear of the social dock — on a 4.7" iPhone
+     SE. Only padding-top + gap are overridden; the horizontal and bottom
+     padding from the shared mobile rules stay intact. The theme variants
+     are listed so this wins over the default .home-screen--adventure class. */
+  .home-screen,
+  .home-screen.home-screen--earth,
+  .home-screen.home-screen--adventure,
+  .home-screen.home-screen--dark-space {
+    padding-top: clamp(46px, 12vh, 128px);
+    gap: clamp(26px, 6.5vh, 60px);
+  }
+
+  /* Hero legibility over the bright sky (mobile-only; desktop type intact) */
+  .home-logo { filter: drop-shadow(0 10px 26px rgba(4, 10, 28, .45)); }
+  .home-subtitle {
+    color: #fff;
+    font-weight: 600;
+    text-shadow: 0 1px 12px rgba(5, 12, 30, .6), 0 1px 2px rgba(5, 12, 30, .55);
+  }
+
+  .mobile-home {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 430px;
+    margin: 0 auto;
+    /* clear the fixed social dock / theme picker pinned at the bottom */
+    padding-bottom: 88px;
+    /* lift above the theme decor layers, same as .mode-grid gets per-theme */
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── First screen: three category cards ──
+     Dark-blue frosted glass over the bright art. A 3-column grid
+     (icon · text · arrow), vertically centred, keeps every element
+     balanced and the three cards at equal height. The per-category accent
+     (--cat) tints the icon tile, count pill, corner glow and chevron so the
+     cards read as distinct destinations of equal weight, not a repeated
+     icon+text grid. */
+  .mh-cat {
+    --cat: var(--accent);
+    --cat-rgb: 88, 166, 255;
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 14px;
+    width: 100%;
+    min-height: 90px;
+    padding: 15px 17px;
+    border-radius: 20px;
+    /* Shared deep-navy glass for all three cards; the per-category accent
+       lives only in the border tint, a confined top-corner glow and a soft
+       outer halo — never a full red/green wash. The base is a touch more
+       transparent than before so the bright art reads through as glass,
+       while the backdrop blur keeps the navy dark enough for white text. */
+    border: 1px solid rgba(var(--cat-rgb), .26);
+    background:
+      radial-gradient(78% 70% at 92% -12%, rgba(var(--cat-rgb), .20), transparent 62%),
+      linear-gradient(155deg, rgba(18, 30, 56, .48), rgba(10, 18, 38, .64));
+    box-shadow:
+      0 14px 34px rgba(3, 9, 26, .32),
+      0 2px 8px rgba(3, 9, 26, .20),
+      0 0 26px -8px rgba(var(--cat-rgb), .26),
+      inset 0 1px 0 rgba(255, 255, 255, .15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    backdrop-filter: blur(18px) saturate(1.3);
+    color: var(--text);
+    font-family: var(--font-body);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform .14s cubic-bezier(.22,1,.36,1), border-color .18s, box-shadow .18s;
+  }
+  .mh-cat:active {
+    transform: scale(.985);
+    border-color: rgba(var(--cat-rgb), .6);
+    box-shadow:
+      0 10px 24px rgba(3, 9, 26, .4),
+      0 0 30px -6px rgba(var(--cat-rgb), .34),
+      inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
+  /* Subtler accents: cool blue (solo), soft coral (duel), green-teal (multi). */
+  .mh-cat--solo  { --cat: #74b8ff; --cat-rgb: 116, 184, 255; }
+  .mh-cat--duel  { --cat: #ff8e84; --cat-rgb: 255, 142, 132; }
+  .mh-cat--multi { --cat: #5fd2a0; --cat-rgb: 95, 210, 160; }
+
+  .mh-cat-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.9rem;
+    line-height: 1;
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(var(--cat-rgb), .24), rgba(var(--cat-rgb), .08));
+    border: 1px solid rgba(var(--cat-rgb), .36);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+  }
+  .mh-cat-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .mh-cat-titlerow { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .mh-cat-title {
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 1.6rem;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+    line-height: 1;
+    white-space: nowrap;
+    color: #fff;
+  }
+  .mh-cat-count {
+    flex-shrink: 0;
+    font-size: .56rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--cat);
+    background: rgba(var(--cat-rgb), .15);
+    border: 1px solid rgba(var(--cat-rgb), .36);
+    padding: 3px 8px;
+    border-radius: 999px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .mh-cat-tagline {
+    font-size: .8rem;
+    line-height: 1.3;
+    color: rgba(223, 233, 250, .74);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mh-cat-chevron {
+    color: var(--cat);
+    font-size: 1.7rem;
+    line-height: 1;
+    opacity: .9;
+  }
+
+  /* ── Bottom sheet: a category's modes (portalled to <body>) ── */
+  .mh-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 5300;
+    background: rgba(2, 6, 16, .68);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    animation: mhFade .2s ease;
+  }
+  .mh-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5301;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 480px;
+    max-height: 86vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 16px calc(22px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, #101a31 0%, #0a1020 100%);
+    border-top: 1px solid rgba(160, 196, 255, .20);
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -20px 50px rgba(0,0,0,.5);
+    animation: mhSheetUp .3s cubic-bezier(.22,1,.36,1);
+  }
+  .mh-sheet-grab {
+    flex-shrink: 0;
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.22);
+    margin: 2px auto 4px;
+  }
+  .mh-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 2px 4px;
+  }
+  .mh-sheet-icon { font-size: 1.4rem; line-height: 1; flex-shrink: 0; }
+  .mh-sheet-title {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 1.55rem;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .mh-sheet-close {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.04);
+    color: var(--muted);
+    font-size: .82rem;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .mh-sheet-close:active { color: var(--text); border-color: var(--muted); }
+
+  /* Featured mode (Kuşatma) — the amber flagship card, now living atop
+     the Çok Oyunculu sheet instead of the first screen. */
+  .mh-feature {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    margin-top: 5px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1.5px solid rgba(245, 158, 11, .42);
+    background:
+      radial-gradient(circle at 85% 12%, rgba(245,158,11,.22), transparent 55%),
+      linear-gradient(135deg, rgba(120, 53, 15, .50), rgba(8, 13, 26, .82) 60%);
+    box-shadow: 0 12px 30px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.06);
+    color: var(--text);
+    font-family: var(--font-body);
+    text-align: left;
+    cursor: pointer;
+    transition: transform .12s;
+  }
+  .mh-feature:active { transform: scale(.985); }
+  .mh-feature-badge {
+    position: absolute;
+    top: -9px;
+    left: 14px;
+    background: var(--amber);
+    color: #000;
+    font-size: .6rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 2px 9px;
+    border-radius: 999px;
+  }
+  .mh-feature-icon { font-size: 2.4rem; line-height: 1; flex-shrink: 0; }
+  .mh-feature-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .mh-feature-title {
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 1.5rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    line-height: 1.05;
+  }
+  .mh-feature-desc { font-size: .78rem; color: var(--muted); line-height: 1.35; }
+  .mh-feature-cta {
+    flex-shrink: 0;
+    align-self: center;
+    background: var(--amber);
+    color: #000;
+    font-weight: 800;
+    font-size: .8rem;
+    padding: 8px 16px;
+    border-radius: 10px;
+  }
+
+  /* Mode rows inside the sheet */
+  .mh-rows { display: flex; flex-direction: column; gap: 8px; }
+  .mh-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 14px;
+    border-radius: 13px;
+    border: 1px solid rgba(160, 196, 255, .16);
+    background: rgba(14, 24, 48, .5);
+    color: var(--text);
+    font-family: var(--font-body);
+    text-align: left;
+    cursor: pointer;
+    transition: transform .12s, border-color .15s;
+  }
+  .mh-row:active { transform: scale(.985); border-color: var(--accent); }
+  .mh-row-icon { font-size: 1.55rem; line-height: 1; flex-shrink: 0; width: 34px; text-align: center; }
+  .mh-row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .mh-row-title { font-weight: 700; font-size: .95rem; }
+  .mh-row-desc { font-size: .72rem; color: var(--muted); line-height: 1.3; }
+  .mh-row-chevron { color: var(--muted); font-size: 1.35rem; line-height: 1; flex-shrink: 0; }
+
+  @keyframes mhFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mhSheetUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+}
+
+@media (max-width: 600px) and (prefers-reduced-motion: reduce) {
+  .mh-sheet { animation: none; }
+  .mh-sheet-backdrop { animation: none; }
+}
+
+@media (max-width: 360px) {
+  /* Gentler vertical rhythm for the smallest (and often shortest) phones so
+     all three cards stay clear of the dock; mirrors the ≤600px override with
+     a smaller vh share. Theme variants listed to win specificity, as above. */
+  .home-screen,
+  .home-screen.home-screen--earth,
+  .home-screen.home-screen--adventure,
+  .home-screen.home-screen--dark-space {
+    padding-top: clamp(34px, 9vh, 84px);
+    gap: clamp(20px, 5vh, 44px);
+  }
+  .mobile-home { gap: 10px; padding-bottom: 82px; }
+  .mh-cat { min-height: 82px; padding: 13px 14px; column-gap: 12px; }
+  .mh-cat-icon { width: 50px; height: 50px; font-size: 1.7rem; border-radius: 14px; }
+  .mh-cat-title { font-size: 1.45rem; }
+  .mh-cat-tagline { font-size: .74rem; }
+}

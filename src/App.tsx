@@ -16,6 +16,7 @@ import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
 import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
+import MobileHome from "./components/MobileHome";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -375,6 +376,15 @@ useEffect(() => {
           </div>
         ))}
       </div>
+      {/* Mobile-only app-style home (≤600px) — hidden on desktop via CSS.
+          Routes through the same onSelect / select-modal flows as the
+          desktop mode cards above; see components/MobileHome.tsx.
+          App v1: Kör Nokta / panorama modes are desktop-web-only and
+          intentionally absent from this mobile navigation. */}
+      <MobileHome
+        onPlay={onSelect}
+        onOpenConquest={() => setShowConquestMenu(true)}
+      />
       {showCountryMenu && (
   <div
     className="overlay"
