@@ -17,6 +17,7 @@ import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
 import MobileHome from "./components/MobileHome";
+import { Capacitor } from "@capacitor/core";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
@@ -372,8 +373,12 @@ interface HomeProps {
   /** Kör Nokta login-only: guest bir aksiyon seçince App auth modal'ı açar
    *  ve login sonrası ilgili ekrana yönlendirir. */
   onKorNoktaAuthRequired: (action: "create" | "join") => void;
+  /** Native-app bottom nav: ranking ve profil App seviyesindeki mevcut
+   *  chrome'a (LeaderboardModal / AuthModal / UserProfileDropdown) bağlanır. */
+  onOpenRanking: () => void;
+  onOpenProfile: () => void;
 }
-function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired }: HomeProps) {
+function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
@@ -445,6 +450,12 @@ useEffect(() => {
       <MobileHome
         onPlay={onSelect}
         onOpenConquest={() => setShowConquestMenu(true)}
+        onOpenRanking={onOpenRanking}
+        onOpenProfile={onOpenProfile}
+        isLoggedIn={!!profile?.username}
+        themes={HOME_THEMES}
+        activeTheme={homeTheme}
+        onSelectTheme={(id) => setHomeTheme(id as HomeTheme)}
       />
       {showCountryMenu && (
   <div
@@ -2181,6 +2192,14 @@ function SilhouetteGame({
 /* ═══════════════════════════════════════════════════════════════
    ROOT APP
 ═══════════════════════════════════════════════════════════════ */
+// True only inside the Capacitor native shell (matches html.is-native-app in
+// main.tsx). Used to hand the home profile dropdown its open state to the
+// native bottom-nav Profil tab; web + mobile browser keep the dropdown's own
+// internal toggle. Guarded so a missing bridge in dev/SSR can't throw.
+const IS_NATIVE_APP = (() => {
+  try { return Capacitor.isNativePlatform(); } catch { return false; }
+})();
+
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [continent, setContinent] = useState<ContinentFilter>("world");
@@ -2190,6 +2209,10 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  // Native app only: the bottom-nav Profil tab drives the (otherwise
+  // top-right) UserProfileDropdown open state. On web this stays undefined
+  // and the dropdown keeps its own internal open state.
+  const [profileNavOpen, setProfileNavOpen] = useState(false);
   const [usernameModalOpen, setUsernameModalOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -2538,7 +2561,8 @@ useEffect(() => {
           onSetCountdownSoundMode={handleSetCountdownSoundMode}
           onLogout={handleLogout}
           onLogin={() => setAuthOpen(true)}
-          onOpenChange={setProfileMenuOpen}
+          controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
+          onOpenChange={(o) => { setProfileMenuOpen(o); setProfileNavOpen(o); }}
           onRequestUsernameChange={
             profile ? () => setUsernameModalOpen(true) : undefined
           }
@@ -2565,6 +2589,13 @@ useEffect(() => {
         onKorNoktaAuthRequired={(action) => {
           setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
           setAuthOpen(true);
+        }}
+        onOpenRanking={() => setLeaderboardOpen(true)}
+        onOpenProfile={() => {
+          // Reuse the existing chrome: logged-in opens the profile dropdown
+          // (native: anchored above the bottom nav), logged-out opens AuthModal.
+          if (profile) setProfileNavOpen(true);
+          else setAuthOpen(true);
         }}
       />
 

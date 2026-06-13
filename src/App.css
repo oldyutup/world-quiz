@@ -17974,6 +17974,41 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .mh-row-desc { font-size: .72rem; color: var(--muted); line-height: 1.3; }
   .mh-row-chevron { color: var(--muted); font-size: 1.35rem; line-height: 1; flex-shrink: 0; }
 
+  /* Theme bottom-sheet rows (Tema tab) — same glass row as .mh-row with a
+     colour swatch and a check on the active theme. Only ever rendered in the
+     native shell (opened from .mh-bottom-nav), never on desktop/mobile web. */
+  .mh-theme-row {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    width: 100%;
+    padding: 13px 14px;
+    border-radius: 13px;
+    border: 1px solid rgba(160, 196, 255, .16);
+    background: rgba(14, 24, 48, .5);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: .95rem;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    transition: transform .12s, border-color .15s, background-color .15s;
+  }
+  .mh-theme-row:active { transform: scale(.985); }
+  .mh-theme-row--active {
+    border-color: rgba(88, 166, 255, .55);
+    background: rgba(28, 51, 88, .62);
+  }
+  .mh-theme-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14), 0 2px 8px rgba(2, 8, 23, .35);
+  }
+  .mh-theme-name { flex: 1; min-width: 0; }
+  .mh-theme-check { color: var(--accent); font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+
   @keyframes mhFade { from { opacity: 0; } to { opacity: 1; } }
   @keyframes mhSheetUp {
     from { transform: translateY(100%); }
@@ -18002,4 +18037,219 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .mh-cat-icon { width: 50px; height: 50px; font-size: 1.7rem; border-radius: 14px; }
   .mh-cat-title { font-size: 1.45rem; }
   .mh-cat-tagline { font-size: .74rem; }
+}
+
+/* ═══════════════════════════════════════════
+   NATIVE APP SAFE AREAS  (Capacitor iOS / Android)
+   ───────────────────────────────────────────
+   Every rule below is scoped to `html.is-native-app`, a class added in
+   src/main.tsx ONLY when the app runs inside the Capacitor native shell
+   (Capacitor.isNativePlatform()). Desktop web and mobile browsers never get
+   that class, so their layout is byte-for-byte unchanged — no extra top
+   padding, no behavioural change.
+
+   Why this is needed: the native webview is full-bleed (index.html sets
+   viewport-fit=cover and capacitor.config.ts sets ios.contentInset:'never'),
+   so content draws *under* the status bar / Dynamic Island. We reserve the top
+   inset on the game shell + the mobile home, and nudge the one control pinned
+   to the viewport's top edge. Bottom and side controls elsewhere already use
+   env(safe-area-inset-*), so they keep working in native too.
+═══════════════════════════════════════════ */
+
+/* Game-screen shell (map / flag / silhouette / route / duel / conquest / wheel
+   …). The top HUD — .control-bar, .duel-header, the conquest header — is the
+   first in-flow child of .app, so reserving the inset on the shell pushes the
+   whole header below the Dynamic Island. box-sizing:border-box keeps .app at
+   100dvh, so the playfield just gains the offset at the top; nothing scrolls.
+   No .app rule sets padding, so padding-top here is conflict-free. */
+html.is-native-app .app {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Map/flag/silhouette/route top HUD: give the back button (top-left) and score
+   pill (top-right) clearance from the rounded corners / camera in landscape,
+   where safe-area-inset-left/right become non-zero. Portrait insets are 0, so
+   this is a no-op there and the original horizontal padding is preserved. */
+html.is-native-app .control-bar {
+  padding-left: calc(14px + env(safe-area-inset-left, 0px));
+  padding-right: calc(14px + env(safe-area-inset-right, 0px));
+}
+@media (max-width: 600px) {
+  /* The compact ≤600px HUD shrinks horizontal padding to 8px; keep that
+     compact value and stack the landscape side insets on top of it. */
+  html.is-native-app .control-bar {
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  }
+}
+
+/* Mobile/native home vertical rhythm. The browser-mobile layout reserves
+   clamp(46px, 12vh, 128px) of top padding *below the browser's own top chrome*.
+   The native webview is full-bleed (viewport-fit=cover + ios.contentInset:
+   'never'), so the equivalent of that chrome is the status-bar / Dynamic Island
+   inset — add it on top of the same tuned rhythm. This reproduces the browser's
+   balanced position inside the native shell: the logo block clears the Island
+   and the vh-scaling balance is preserved. (Replaces the earlier flat
+   max(20px, inset+12px), which was *smaller* than the browser value and let the
+   hero ride up under the Island.) */
+html.is-native-app .home-screen {
+  padding-top: calc(env(safe-area-inset-top, 0px) + clamp(46px, 12vh, 128px));
+}
+/* Smallest / shortest phones: mirror the ≤360px browser rhythm (gentler vh
+   share) plus the inset, so all three cards stay clear of the social dock. */
+@media (max-width: 360px) {
+  html.is-native-app .home-screen {
+    padding-top: calc(env(safe-area-inset-top, 0px) + clamp(34px, 9vh, 84px));
+  }
+}
+
+/* Bottom safe area: .mobile-home reserves 88px below the last card so it clears
+   the fixed social dock / studio credit. The dock itself is offset by the
+   bottom inset (bottom: calc(16-20px + env(safe-area-inset-bottom))), so in the
+   full-bleed native shell that reserve must grow by the same inset, otherwise
+   the last card slips behind the dock when the page is scrolled fully down. */
+html.is-native-app .mobile-home {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+@media (max-width: 360px) {
+  html.is-native-app .mobile-home {
+    padding-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Top-right home chrome — the "Giriş Yap" profile pill + "Sıralama" button
+   stack (.top-right-stack, position:fixed; top:10px on mobile). This is the one
+   home control pinned to the viewport's top edge, so push it past the status
+   bar / Dynamic Island; without this it sat at 10px, half under the Island. The
+   landscape side inset keeps it off the rounded corner / camera (0 in portrait,
+   so the 10px mobile baseline is preserved there). */
+html.is-native-app .top-right-stack {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: calc(10px + env(safe-area-inset-right, 0px));
+}
+
+/* Legacy auth mini bar (used by non-home shells, not the home stack above):
+   keep the same top-edge clearance it always had. */
+html.is-native-app .auth-mini-bar {
+  top: calc(14px + env(safe-area-inset-top, 0px));
+  right: calc(18px + env(safe-area-inset-right, 0px));
+}
+
+/* ═══════════════════════════════════════════
+   NATIVE APP — HOME BOTTOM TAB BAR
+   ───────────────────────────────────────────
+   The native shell replaces the home screen's floating chrome with a real
+   bottom tab bar (markup in components/MobileHome.tsx). The bar is display:none
+   everywhere EXCEPT html.is-native-app, so desktop web and the mobile browser
+   are byte-for-byte unchanged — they keep the top-right login/ranking stack,
+   the floating theme picker and the social dock. Inside the native shell those
+   floats are hidden (below) and these four tabs drive ranking, profile and
+   theme instead. Ana Menü is the active tab.
+═══════════════════════════════════════════ */
+.mh-bottom-nav { display: none; }
+
+html.is-native-app .mh-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  /* Side insets keep tabs off the rounded corners / camera in landscape;
+     the bottom inset lifts the row above the home-indicator. */
+  padding:
+    8px
+    calc(10px + env(safe-area-inset-right, 0px))
+    calc(8px + env(safe-area-inset-bottom, 0px))
+    calc(10px + env(safe-area-inset-left, 0px));
+  background: linear-gradient(180deg, rgba(11, 22, 47, .80) 0%, rgba(6, 13, 31, .95) 100%);
+  border-top: 1px solid rgba(120, 170, 255, .16);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 -10px 30px rgba(2, 8, 23, .45);
+}
+
+html.is-native-app .mh-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(190, 208, 240, .72);
+  font-family: var(--font-body);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .12s ease;
+}
+html.is-native-app .mh-nav-item:active { transform: translateY(1px) scale(.96); }
+
+html.is-native-app .mh-nav-icon {
+  font-size: 1.34rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 4px rgba(2, 8, 23, .5));
+  transition: transform .16s ease;
+}
+html.is-native-app .mh-nav-label {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* Narrowest phones (≤360px): trim the label so four tabs never overflow. */
+@media (max-width: 360px) {
+  html.is-native-app .mh-nav-label { font-size: .63rem; }
+  html.is-native-app .mh-nav-icon { font-size: 1.24rem; }
+}
+
+/* Active tab (Ana Menü / open Tema) — accent glass pill + brighter type. */
+html.is-native-app .mh-nav-item--active {
+  color: #eaf2ff;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(88, 166, 255, .26), rgba(88, 166, 255, .07));
+  box-shadow: inset 0 0 0 1px rgba(120, 170, 255, .28);
+}
+html.is-native-app .mh-nav-item--active .mh-nav-icon { transform: scale(1.07); }
+
+/* Hide the floating home chrome the bottom nav replaces. The profile dropdown
+   PANEL is kept (the Profil tab opens it), so .top-right-stack stays in the DOM
+   but stops intercepting taps; its now-hidden triggers leave the corner empty. */
+html.is-native-app .top-right-stack { pointer-events: none; }
+html.is-native-app .top-right-stack .upd-pill,
+html.is-native-app .top-right-stack .lb-trigger { display: none; }
+html.is-native-app .home-theme-picker,
+html.is-native-app .home-social-dock,
+html.is-native-app .home-studio-credit { display: none; }
+
+/* Profil tab → existing UserProfileDropdown panel, re-anchored from the
+   top-right caret to a card sitting just above the tab bar. Same markup +
+   handlers (gold, daily bonus, sound, username, logout) — only its position
+   and entry animation change in the native shell. */
+html.is-native-app .top-right-stack .upd-dropdown {
+  position: fixed;
+  top: auto;
+  left: 12px;
+  right: 12px;
+  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  max-width: 440px;
+  margin: 0 auto;
+  max-height: 64vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
+  animation: mhSheetRise .22s cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes mhSheetRise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.is-native-app .top-right-stack .upd-dropdown { animation: none; }
 }

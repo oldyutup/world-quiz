@@ -1,6 +1,23 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import App from "./App";
+
+// Native-shell detection (Capacitor iOS / Android). When — and only when — the
+// app runs inside the native webview, tag <html> so CSS can opt safe-area rules
+// in for the native app alone. Desktop web and mobile browsers never receive
+// these classes, so their layout stays byte-for-byte unchanged. Runs at module
+// eval, before render, so the first paint already has the correct insets.
+try {
+  if (Capacitor.isNativePlatform()) {
+    const root = document.documentElement;
+    root.classList.add("is-native-app");
+    root.classList.add(`is-${Capacitor.getPlatform()}`); // is-ios / is-android
+  }
+} catch {
+  // @capacitor/core is bundled in every build; guard defensively anyway so a
+  // missing native bridge in dev/SSR can never break the web render.
+}
 
 // Dev-only panorama viewer comparison page. import.meta.env.DEV is statically
 // false in production builds, so this branch (and its chunk) never ships.

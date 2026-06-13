@@ -22,7 +22,7 @@
    stay desktop-web-only for now (invite links still work; only
    this mobile navigation omits them).
 ═══════════════════════════════════════════════════════════════ */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sound";
 
@@ -39,10 +39,52 @@ export type MobileHomeTarget =
   | "duel-group-game"
   | "wheel-group-game";
 
+/** One home background theme — mirrors App's HOME_THEMES entries without
+ *  importing the HomeTheme union, so the bottom-nav theme sheet stays a dumb
+ *  presenter over the real setHomeTheme logic. */
+interface ThemeOption {
+  id: string;
+  name: string;
+  swatch: string;
+}
+
 interface MobileHomeProps {
   onPlay: (target: MobileHomeTarget) => void;
   /** Opens the existing ConquestModeSelectModal (create / join / browse + auth). */
   onOpenConquest: () => void;
+  /** Bottom-nav (native app shell only). Each reuses an App-level handler:
+   *  ranking opens the existing LeaderboardModal; profile opens the AuthModal
+   *  when logged out or the existing UserProfileDropdown when logged in. */
+  onOpenRanking: () => void;
+  onOpenProfile: () => void;
+  /** Drives the Profil tab's icon/label only; the action lives in onOpenProfile. */
+  isLoggedIn: boolean;
+  /** Home themes (App's HOME_THEMES) surfaced by the Tema tab as a bottom
+   *  sheet; onSelectTheme is App's setHomeTheme — no new theme logic. */
+  themes: ThemeOption[];
+  activeTheme: string;
+  onSelectTheme: (id: string) => void;
+}
+
+/** Shared bottom-sheet chrome: lock background scroll while the sheet is up,
+ *  focus the panel, and close on Escape. Used by the category sheet and the
+ *  theme sheet so both behave identically. */
+function useSheetLock(ref: RefObject<HTMLDivElement>, onClose: () => void) {
+  useEffect(() => {
+    // Page scroll lives on body/html (home-screen grows via min-height),
+    // so locking body overflow freezes the background while the sheet is up.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ref, onClose]);
 }
 
 interface SheetMode {
@@ -72,22 +114,7 @@ function MobileSheet({
   onLaunch: (run: () => void) => void;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Page scroll lives on body/html (home-screen grows via min-height),
-    // so locking body overflow freezes the background while the sheet is up.
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    sheetRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  useSheetLock(sheetRef, onClose);
 
   // Portalled to <body> so the sheet escapes .home-screen's `isolation`
   // stacking context and paints above the fixed login/ranking chrome.
@@ -161,8 +188,85 @@ function MobileSheet({
   );
 }
 
-export default function MobileHome({ onPlay, onOpenConquest }: MobileHomeProps) {
+/** Theme picker as a native bottom sheet. Reuses the .mh-sheet shell + the
+ *  real setHomeTheme handler (onSelect); only opened from the native-app
+ *  bottom-nav Tema tab, so it never appears on desktop or mobile web. */
+function MobileThemeSheet({
+  themes,
+  active,
+  onSelect,
+  onClose,
+}: {
+  themes: ThemeOption[];
+  active: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useSheetLock(sheetRef, onClose);
+
+  return createPortal(
+    <>
+      <div
+        className="mh-sheet-backdrop"
+        aria-hidden="true"
+        onClick={() => { playSound("click"); onClose(); }}
+      />
+      <div
+        ref={sheetRef}
+        className="mh-sheet mh-sheet--theme"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mh-theme-title"
+        tabIndex={-1}
+      >
+        <div className="mh-sheet-grab" aria-hidden="true" />
+        <header className="mh-sheet-head">
+          <span className="mh-sheet-icon" aria-hidden="true">🎨</span>
+          <h3 id="mh-theme-title" className="mh-sheet-title">Tema</h3>
+          <button
+            type="button"
+            className="mh-sheet-close"
+            aria-label="Kapat"
+            onClick={() => { playSound("click"); onClose(); }}
+          >
+            ✕
+          </button>
+        </header>
+        <div className="mh-rows" role="menu" aria-label="Arka plan teması">
+          {themes.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              className={"mh-theme-row" + (t.id === active ? " mh-theme-row--active" : "")}
+              role="menuitemradio"
+              aria-checked={t.id === active}
+              onClick={() => { playSound("click"); onSelect(t.id); onClose(); }}
+            >
+              <span className="mh-theme-swatch" style={{ background: t.swatch }} aria-hidden="true" />
+              <span className="mh-theme-name">{t.name}</span>
+              {t.id === active && <span className="mh-theme-check" aria-hidden="true">✓</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
+export default function MobileHome({
+  onPlay,
+  onOpenConquest,
+  onOpenRanking,
+  onOpenProfile,
+  isLoggedIn,
+  themes,
+  activeTheme,
+  onSelectTheme,
+}: MobileHomeProps) {
   const [openId, setOpenId] = useState<Category["id"] | null>(null);
+  const [themeOpen, setThemeOpen] = useState(false);
 
   const categories: Category[] = [
     {
@@ -232,6 +336,61 @@ export default function MobileHome({ onPlay, onOpenConquest }: MobileHomeProps) 
           onLaunch={run => { setOpenId(null); run(); }}
         />
       )}
+
+      {themeOpen && (
+        <MobileThemeSheet
+          themes={themes}
+          active={activeTheme}
+          onSelect={onSelectTheme}
+          onClose={() => setThemeOpen(false)}
+        />
+      )}
+
+      {/* Native-app tab bar. Display:none on desktop + mobile web (only
+          html.is-native-app paints it), so the floating top-right login /
+          ranking stack, theme picker and social dock are hidden there and
+          these four tabs take over. Ana Menü is the active tab; the others
+          delegate to the same App handlers the floating chrome used. */}
+      <nav className="mh-bottom-nav" aria-label="Uygulama menüsü">
+        <button
+          type="button"
+          className="mh-nav-item"
+          onClick={() => { playSound("click"); onOpenRanking(); }}
+        >
+          <span className="mh-nav-icon" aria-hidden="true">🏆</span>
+          <span className="mh-nav-label">Sıralama</span>
+        </button>
+        <button
+          type="button"
+          className="mh-nav-item mh-nav-item--active"
+          aria-current="page"
+          onClick={() => {
+            playSound("click");
+            setOpenId(null);
+            setThemeOpen(false);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
+          <span className="mh-nav-icon" aria-hidden="true">🏠</span>
+          <span className="mh-nav-label">Ana Menü</span>
+        </button>
+        <button
+          type="button"
+          className="mh-nav-item"
+          onClick={() => { playSound("click"); onOpenProfile(); }}
+        >
+          <span className="mh-nav-icon" aria-hidden="true">{isLoggedIn ? "👤" : "🔑"}</span>
+          <span className="mh-nav-label">Profil</span>
+        </button>
+        <button
+          type="button"
+          className={"mh-nav-item" + (themeOpen ? " mh-nav-item--active" : "")}
+          onClick={() => { playSound("click"); setThemeOpen(true); }}
+        >
+          <span className="mh-nav-icon" aria-hidden="true">🎨</span>
+          <span className="mh-nav-label">Tema</span>
+        </button>
+      </nav>
     </div>
   );
 }

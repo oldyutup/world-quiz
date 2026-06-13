@@ -17,6 +17,10 @@ interface Props {
   onLogin: () => void;
   /** Parent ataması — dropdown açıldığında üst üste binmeleri kapatmak için. */
   onOpenChange?: (open: boolean) => void;
+  /** Opsiyonel controlled mod: verildiğinde açık/kapalı durumu parent yönetir
+   *  (native bottom-nav Profil sekmesi için). Tanımsızsa bileşen kendi iç
+   *  state'ini kullanır — web davranışı değişmez. */
+  controlledOpen?: boolean;
   /** "Adı Değiştir" butonuna basılınca modal açma sinyali parent'a gider. */
   onRequestUsernameChange?: () => void;
 }
@@ -34,14 +38,19 @@ export function UserProfileDropdown({
   onLogout,
   onLogin,
   onOpenChange,
+  controlledOpen,
   onRequestUsernameChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
-
-  // Parent'a açık/kapalı sinyali — leaderboard butonunun gizlenmesi için.
-  useEffect(() => {
-    onOpenChange?.(open);
-  }, [open, onOpenChange]);
+  // Open state is internal by default; when `controlledOpen` is provided the
+  // parent owns it (native bottom-nav). Either way every open/close routes
+  // through setOpen, which notifies the parent via onOpenChange.
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (!isControlled) setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const [freshXp, setFreshXp] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +117,7 @@ export function UserProfileDropdown({
       <button
         type="button"
         className={`upd-pill${open ? " upd-pill--open" : ""}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
         <span className="upd-avatar">{initial}</span>
