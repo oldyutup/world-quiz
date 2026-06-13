@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:app": "tsc && vite build --outDir dist-app --emptyOutDir && node scripts/prune-app-assets.mjs dist-app",
+    "prune:app": "node scripts/prune-app-assets.mjs dist-app",
     "preview": "vite preview",
     "export:turkey-bg-guide": "tsx scripts/export-turkey-bg-guide.ts"
   },
