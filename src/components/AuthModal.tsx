@@ -11,6 +11,7 @@ import {
   type Profile,
 } from "../lib/auth";
 import { signInWithApple } from "../lib/appleAuth";
+import { signInWithGoogleNative } from "../lib/googleAuth";
 
 type AuthMode = "login" | "signup";
 
@@ -57,6 +58,9 @@ export default function AuthModal({
   // Native-only: tracks the in-flight Apple sign-in so the button can show a
   // spinner and the handler can reject double taps.
   const [appleLoading, setAppleLoading] = useState(false);
+  // Native-only counterpart for Google — same purpose (spinner + double-tap
+  // guard) while the OAuth browser round-trip is in flight.
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
@@ -158,8 +162,9 @@ return;
     }
   }
 
-  // Native-only placeholder for Google (still a stub this phase). Apple is wired
-  // for real below; Google just surfaces a friendly "coming soon" notice.
+  // Native-only placeholder kept for the Apple button on non-iOS native
+  // (Android), where real Apple sign-in isn't wired this phase. Google is wired
+  // for real below on all native platforms.
   function handleStubProvider() {
     setErrorMsg(null);
     setStatusMsg("Bu giriş yöntemi yakında aktif olacak.");
@@ -207,6 +212,50 @@ return;
       setErrorMsg("Apple ile giriş tamamlanamadı.");
     } finally {
       setAppleLoading(false);
+    }
+  }
+
+  // Native-only: real "Google ile devam et" (Auth Phase 2B). Mirrors handleApple
+  // — opens the OAuth browser, then hands a successful login through the exact
+  // same path (loadOrCreateProfile → NicknameModal for first-login social users,
+  // direct routing for returning users). Web uses handleGoogle() below instead.
+  async function handleGoogleNative() {
+    if (loading || appleLoading || googleLoading) return; // reject double taps
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setGoogleLoading(true);
+
+    try {
+      const result = await signInWithGoogleNative();
+
+      if (result.status === "cancelled") {
+        // User backed out of the browser — silent no-op, no scary error.
+        return;
+      }
+
+      if (result.status === "error") {
+        setErrorMsg(result.message);
+        return;
+      }
+
+      // Success. As with Apple, loadOrCreateProfile does NOT mint a username
+      // from the Google email / name on native, so a first-login social user
+      // comes back with no profile (null) → hand off to the NicknameModal. A
+      // returning Google user already has a username → route immediately.
+      const profile = await loadOrCreateProfile(result.user);
+      if (profile?.username) {
+        onAuthSuccess(profile);
+        onClose();
+      } else if (onNeedsUsername) {
+        onNeedsUsername(result.user.id);
+      } else {
+        onAuthSuccess(profile ?? null);
+        onClose();
+      }
+    } catch {
+      setErrorMsg("Google ile giriş tamamlanamadı.");
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -283,7 +332,7 @@ return;
             <button
               className="auth-apple"
               type="button"
-              disabled={loading || appleLoading}
+              disabled={loading || appleLoading || googleLoading}
               onClick={isApplePlatform ? handleApple : handleStubProvider}
             >
               {appleLoading ? "Apple’a bağlanılıyor…" : " Apple ile devam et"}
@@ -292,14 +341,17 @@ return;
             <button
               className="auth-google"
               type="button"
-              disabled={loading || appleLoading}
-              onClick={handleStubProvider}
+              disabled={loading || appleLoading || googleLoading}
+              onClick={handleGoogleNative}
             >
-              Google ile devam et
+              {googleLoading ? "Google’a bağlanılıyor…" : "Google ile devam et"}
             </button>
 
             {!emailExpanded && (
               <>
+                {/* Native social errors (Apple/Google) surface here; the
+                    email-expanded view has its own auth-error slot below. */}
+                {errorMsg && <div className="auth-error">{errorMsg}</div>}
                 {statusMsg && <div className="auth-status">{statusMsg}</div>}
                 <button
                   className="auth-email-toggle"

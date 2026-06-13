@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { Capacitor } from "@capacitor/core";
 
 const url = import.meta.env.VITE_SUPABASE_URL as string;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -9,11 +10,31 @@ if (!url || !key) {
   );
 }
 
+// Native (Capacitor) Google OAuth returns through a custom-scheme deep link
+// (com.kavakgames.torble://auth-callback?code=…) that is exchanged manually via
+// supabase.auth.exchangeCodeForSession — and that exchange requires the PKCE
+// flow. The callback never arrives as a webview page navigation, so URL-based
+// session detection is turned off on native.
+//
+// WEB IS LEFT EXACTLY AS BEFORE: when not running inside the native shell the
+// options collapse to { persistSession, autoRefreshToken, detectSessionInUrl }
+// with no flowType key — i.e. the historical default flow — so the existing web
+// Google full-page redirect / hash handling is byte-for-byte unchanged.
+const isNativeApp = (() => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+})();
+
 export const supabase = createClient(url ?? "", key ?? "", {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    ...(isNativeApp
+      ? { flowType: "pkce" as const, detectSessionInUrl: false }
+      : { detectSessionInUrl: true }),
   },
 });
 

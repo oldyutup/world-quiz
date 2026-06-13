@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Native Google OAuth deep-link callback (Auth Phase 2B).
+                 com.kavakgames.torble://auth-callback is delivered here and
+                 picked up by the @capacitor/app appUrlOpen listener. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.kavakgames.torble" android:host="auth-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider
