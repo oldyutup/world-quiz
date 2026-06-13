@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 import {
   BANNED_USERNAME_WORDS,
 } from "../data/bannedUsernames";
+import { isValidAvatarId } from "../data/avatars";
 
 export type Profile = {
   id: string;
@@ -10,6 +11,7 @@ export type Profile = {
   xp: number;
   level: number;
   gold: number;
+  avatar_id: string | null;
   created_at: string;
   updated_at: string;
   username_changed_at?: string | null;
@@ -321,6 +323,30 @@ export async function updateUsername(userId: string, usernameRaw: string) {
     .from("profiles")
     .update({
       username,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", userId)
+    .select("*")
+    .single<Profile>();
+}
+
+/**
+ * Updates the profile's built-in avatar (Avatar Phase 1A). Mirrors
+ * updateUsername: client-side validation, single-column update, returns the
+ * fresh row. `avatarId` must be a known curated avatar (see isValidAvatarId) or
+ * null to reset to the default (no avatar). Only avatar_id + updated_at are
+ * written — username, xp, level and gold are never touched. No RPC in this
+ * phase; the format CHECK on profiles.avatar_id is the DB-side backstop.
+ */
+export async function updateAvatar(userId: string, avatarId: string | null) {
+  if (avatarId !== null && !isValidAvatarId(avatarId)) {
+    return { data: null, error: { message: "Geçersiz avatar." } };
+  }
+
+  return supabase
+    .from("profiles")
+    .update({
+      avatar_id: avatarId,
       updated_at: new Date().toISOString(),
     })
     .eq("id", userId)
