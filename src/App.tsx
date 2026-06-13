@@ -76,6 +76,67 @@ import {
    TYPES
 ═══════════════════════════════════════════════════════════════ */
 type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi" | "harita-duel-game" | "kornokta-create" | "kornokta-join";
+
+/** Why the auth modal was opened. Single-player modes never trigger it; the
+ *  online gates below ("duel-gate" / "multi-gate" / "kusatma-gate") hide the
+ *  guest button and route to the intended screen after a successful login. */
+type AuthPromptReason =
+  | "welcome"
+  | "conquest-invite"
+  | "kornokta-invite" | "kornokta-create" | "kornokta-join"
+  | "duel-gate" | "multi-gate" | "kusatma-gate";
+
+/** Online modes that require login (Düello + Çok Oyunculu). Maps each gated
+ *  AppScreen to the auth-prompt reason driving the modal copy. Single-player
+ *  and Kör Nokta (its own gating) screens are intentionally absent — they pass
+ *  straight through navigateOnline() to setScreen. */
+const ONLINE_GATED_SCREENS: Partial<Record<AppScreen, AuthPromptReason>> = {
+  "duel-game":        "duel-gate",
+  "flag-duel-game":   "duel-gate",
+  "wheel-duel-game":  "duel-gate",
+  "duel-group-game":  "multi-gate",
+  "wheel-group-game": "multi-gate",
+  "conquest-game":    "kusatma-gate",
+  "conquest-join":    "kusatma-gate",
+  "conquest-rooms":   "kusatma-gate",
+};
+
+/** Düello / Çok Oyunculu davet linkleri. Hepsi login gerektirir. OAuth redirect
+ *  query string'i sildiği için kod sessionStorage'a yazılır ve dönüşte URL'e
+ *  geri konur (conquest pattern) — böylece useInviteJoin auto-join'i okur. */
+const ONLINE_INVITE_LINKS: {
+  param: string;
+  storageKey: string;
+  screen: AppScreen;
+  reason: AuthPromptReason;
+}[] = [
+  { param: "duel",       storageKey: "pending_invite_duel",       screen: "duel-game",        reason: "duel-gate" },
+  { param: "flagDuel",   storageKey: "pending_invite_flagDuel",   screen: "flag-duel-game",   reason: "duel-gate" },
+  { param: "wheelDuel",  storageKey: "pending_invite_wheelDuel",  screen: "wheel-duel-game",  reason: "duel-gate" },
+  { param: "duelGroup",  storageKey: "pending_invite_duelGroup",  screen: "duel-group-game",  reason: "multi-gate" },
+  { param: "wheelGroup", storageKey: "pending_invite_wheelGroup", screen: "wheel-group-game", reason: "multi-gate" },
+];
+
+/** Drops every Düello/Çok Oyunculu pending-invite anchor so a dismissed login
+ *  prompt doesn't re-pester the user on the next reload. */
+function clearPendingOnlineInvites() {
+  try {
+    for (const link of ONLINE_INVITE_LINKS) sessionStorage.removeItem(link.storageKey);
+  } catch { /* sessionStorage disabled — best effort */ }
+}
+
+/** sessionStorage key mirroring the in-memory pendingOnlineTarget for a *normal*
+ *  (non-invite) menu tap on a gated online mode. A Google OAuth round-trip
+ *  reloads the app and wipes React state, so the target is persisted here and
+ *  consumed once after auth settles (invite links use their own anchors above). */
+const PENDING_ONLINE_TARGET_KEY = "pending_online_target";
+
+/** Drops the persisted normal-menu online target — on dismiss, on guest, or
+ *  once it has been consumed — so a later reload doesn't re-route the user. */
+function clearPendingOnlineTarget() {
+  try { sessionStorage.removeItem(PENDING_ONLINE_TARGET_KEY); }
+  catch { /* sessionStorage disabled — best effort */ }
+}
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
 
@@ -2135,14 +2196,37 @@ export default function App() {
   /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
    * "Kuşatma moduna katılmak için giriş yapmalısın." and triggers an auto-join
    * once login completes. "kornokta-*" variants show the Kör Nokta copy, hide
-   * the guest button (login-only mode) and route after a successful login. */
-  const [authPromptReason, setAuthPromptReason] = useState<
-    null | "welcome" | "conquest-invite"
-    | "kornokta-invite" | "kornokta-create" | "kornokta-join"
-  >(null);
+   * the guest button (login-only mode) and route after a successful login. The
+   * "*-gate" variants gate the Düello / Çok Oyunculu / Kuşatma online modes. */
+  const [authPromptReason, setAuthPromptReason] = useState<AuthPromptReason | null>(null);
+  /* Screen a logged-out user tried to open through an online gate. After a
+   * successful login navigateOnline()/the auth modal routes here. */
+  const [pendingOnlineTarget, setPendingOnlineTarget] = useState<AppScreen | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
+
+  /* Navigation gate for every mode launched from the home screen. Online modes
+   * (Düello / Çok Oyunculu / Kuşatma) require login: a logged-out tap opens the
+   * AuthModal (guest button hidden) and stashes the target so login routes there.
+   * Single-player and Kör Nokta screens are not gated and pass straight through.
+   * Wired as HomeScreen's onSelect, so desktop mode-cards, the choice modals and
+   * the mobile bottom-sheet all funnel through here. */
+  const navigateOnline = (target: AppScreen) => {
+    const reason = ONLINE_GATED_SCREENS[target];
+    if (reason && !profile?.username) {
+      setPendingOnlineTarget(target);
+      // Mirror into sessionStorage so a Google OAuth redirect — which reloads
+      // the app and wipes the in-memory pendingOnlineTarget — still routes the
+      // user to the mode they picked once their session is restored.
+      try { sessionStorage.setItem(PENDING_ONLINE_TARGET_KEY, target); }
+      catch { /* sessionStorage disabled — best effort */ }
+      setAuthPromptReason(reason);
+      setAuthOpen(true);
+      return;
+    }
+    setScreen(target);
+  };
 
   const handleAppClaimBonus = () => {
   const result = claimDailyBonus();
@@ -2287,11 +2371,6 @@ function clearPendingKorNoktaInvite() {
     if (authLoading) return;
 
     const params = new URLSearchParams(window.location.search);
-    const duelCode = params.get("duel");
-    const duelGroupCode = params.get("duelGroup");
-    const flagDuelCode = params.get("flagDuel");
-    const wheelDuelCode = params.get("wheelDuel");
-    const wheelGroupCode = params.get("wheelGroup");
     const korNoktaCode = params.get("korNokta");
 
     const conquestFromUrl = params.get("conquest")?.trim().toUpperCase() || null;
@@ -2344,29 +2423,67 @@ function clearPendingKorNoktaInvite() {
       return;
     }
 
-    if (wheelGroupCode) {
-      setScreen("wheel-group-game");
+    // Düello / Çok Oyunculu davet linkleri — hepsi login gerektirir. Misafire
+    // önce auth modal açılır; login sonrası bu effect profile?.id flip'iyle
+    // yeniden koşar. Conquest gibi kod sessionStorage'a yazılır ve OAuth
+    // redirect URL'i sildiyse geri konur ki ilgili modun useInviteJoin'i
+    // ?param=KOD'u okuyup auto-join tetiklesin.
+    for (const link of ONLINE_INVITE_LINKS) {
+      const fromUrl = params.get(link.param)?.trim() || null;
+      let fromStorage: string | null = null;
+      try { fromStorage = sessionStorage.getItem(link.storageKey); }
+      catch { /* sessionStorage disabled — best effort */ }
+      const code = fromUrl ?? fromStorage;
+      if (!code) continue;
+
+      if (profile?.username) {
+        // Giriş yapılmış: modu aç. OAuth URL'i sildiyse param'ı geri yaz
+        // (useInviteJoin okuyup auto-join eder), sonra anchor'ı temizle.
+        try { sessionStorage.removeItem(link.storageKey); } catch { /* ignore */ }
+        if (!fromUrl && typeof window !== "undefined") {
+          const restored = new URL(window.location.href);
+          restored.searchParams.set(link.param, code);
+          window.history.replaceState({}, "", restored.toString());
+        }
+        if (screen !== link.screen) setScreen(link.screen);
+      } else {
+        // Misafir: kodu OAuth redirect'e dayanması için sakla, login iste.
+        try { sessionStorage.setItem(link.storageKey, code); } catch { /* ignore */ }
+        if (!fromUrl && typeof window !== "undefined") {
+          const restored = new URL(window.location.href);
+          restored.searchParams.set(link.param, code);
+          window.history.replaceState({}, "", restored.toString());
+        }
+        if (!authOpen) {
+          setPendingOnlineTarget(link.screen);
+          setAuthPromptReason(link.reason);
+          setAuthOpen(true);
+        }
+      }
       return;
     }
 
-    if (wheelDuelCode) {
-      setScreen("wheel-duel-game");
-      return;
-    }
-
-    if (flagDuelCode) {
-      setScreen("flag-duel-game");
-      return;
-    }
-
-    if (duelGroupCode) {
-      setScreen("duel-group-game");
-      return;
-    }
-
-    if (duelCode) {
-      setScreen("duel-game");
-      return;
+    // Normal menu tap on a gated online mode (no invite link in the URL): the
+    // in-memory pendingOnlineTarget is wiped by a Google OAuth redirect, so
+    // navigateOnline() mirrors it into sessionStorage. Consume it once here —
+    // after auth settles — then clear it. The redirect lands on home, this is
+    // what routes the user onward. Invite links handled above take priority.
+    let storedTarget: string | null = null;
+    try { storedTarget = sessionStorage.getItem(PENDING_ONLINE_TARGET_KEY); }
+    catch { /* sessionStorage disabled — best effort */ }
+    if (storedTarget) {
+      const stillGated = !!ONLINE_GATED_SCREENS[storedTarget as AppScreen];
+      if (!stillGated) {
+        // Unknown screen or no longer gated — drop it so it can't linger.
+        clearPendingOnlineTarget();
+      } else if (profile?.username) {
+        // Logged in: route once, clearing first so setScreen can't loop us
+        // back through this effect (setScreen doesn't change the deps anyway).
+        clearPendingOnlineTarget();
+        if (screen !== storedTarget) setScreen(storedTarget as AppScreen);
+      }
+      // Still gated but no session (e.g. OAuth dismissed/failed): leave it so a
+      // later in-modal login can still route; onClose/onGuest clear it.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, profile?.id]);
@@ -2390,6 +2507,16 @@ useEffect(() => {
   try { pendingConquest = sessionStorage.getItem("pending_conquest_invite_code"); }
   catch { /* ignore */ }
   if (pendingConquest) return;
+
+  // OAuth redirect query'yi siler; online davet anchor'ı duruyorsa davet
+  // effect'i kendi login promptunu açacak — welcome modalını gösterme.
+  let pendingOnlineInvite = false;
+  try {
+    pendingOnlineInvite = ONLINE_INVITE_LINKS.some(
+      (link) => sessionStorage.getItem(link.storageKey)
+    );
+  } catch { /* ignore */ }
+  if (pendingOnlineInvite) return;
 
   setAuthPromptReason("welcome");
   setAuthOpen(true);
@@ -2433,7 +2560,7 @@ useEffect(() => {
       </div>
 
       <HomeScreen
-        onSelect={setScreen}
+        onSelect={navigateOnline}
         profile={profile}
         onKorNoktaAuthRequired={(action) => {
           setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
@@ -2477,12 +2604,21 @@ useEffect(() => {
         ? "Kör Nokta moduna katılmak için giriş yapmalısın."
         : authPromptReason === "kornokta-create"
         ? "Kör Nokta odası kurmak için giriş yapmalısın."
+        : authPromptReason === "duel-gate"
+        ? "Düello oynamak için giriş yapmalısın."
+        : authPromptReason === "multi-gate"
+        ? "Çok oyunculu modlara katılmak için giriş yapmalısın."
+        : authPromptReason === "kusatma-gate"
+        ? "Kuşatma oynamak için giriş yapmalısın."
         : undefined
     }
     hideGuest={
       authPromptReason === "kornokta-invite" ||
       authPromptReason === "kornokta-create" ||
-      authPromptReason === "kornokta-join"
+      authPromptReason === "kornokta-join" ||
+      authPromptReason === "duel-gate" ||
+      authPromptReason === "multi-gate" ||
+      authPromptReason === "kusatma-gate"
     }
     onClose={() => {
       setAuthOpen(false);
@@ -2494,6 +2630,15 @@ useEffect(() => {
       if (authPromptReason === "kornokta-invite") {
         clearPendingKorNoktaInvite();
       }
+      if (
+        authPromptReason === "duel-gate" ||
+        authPromptReason === "multi-gate" ||
+        authPromptReason === "kusatma-gate"
+      ) {
+        clearPendingOnlineInvites();
+        clearPendingOnlineTarget();
+      }
+      setPendingOnlineTarget(null);
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}
@@ -2505,6 +2650,17 @@ useEffect(() => {
       if (authPromptReason === "kornokta-invite") {
         clearPendingKorNoktaInvite();
       }
+      // Online gate'lerde "Misafir" butonu zaten gizli (hideGuest); yine de
+      // temiz kalsın diye pending hedef ve davet anchor'ları düşürülür.
+      if (
+        authPromptReason === "duel-gate" ||
+        authPromptReason === "multi-gate" ||
+        authPromptReason === "kusatma-gate"
+      ) {
+        clearPendingOnlineInvites();
+        clearPendingOnlineTarget();
+      }
+      setPendingOnlineTarget(null);
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}
@@ -2518,7 +2674,23 @@ useEffect(() => {
         setScreen("kornokta-create");
       } else if (nextProfile?.username && authPromptReason === "kornokta-join") {
         setScreen("kornokta-join");
+      } else if (
+        nextProfile?.username &&
+        pendingOnlineTarget &&
+        (authPromptReason === "duel-gate" ||
+          authPromptReason === "multi-gate" ||
+          authPromptReason === "kusatma-gate")
+      ) {
+        // Online gate: kullanıcıyı hedeflediği moda taşı. Davet linkiyle
+        // gelinmişse email login redirect etmediği için URL param'ı durur;
+        // mod kendi useInviteJoin'iyle auto-join eder. (Davet effect'i de
+        // profile?.id flip'iyle yeniden koşar — aynı ekran, idempotent.)
+        setScreen(pendingOnlineTarget);
       }
+      // In-modal login (no OAuth redirect) routed via the in-memory target
+      // above; drop the sessionStorage mirror so the effect can't re-consume it.
+      clearPendingOnlineTarget();
+      setPendingOnlineTarget(null);
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
     }}

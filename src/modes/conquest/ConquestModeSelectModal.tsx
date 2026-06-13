@@ -7,7 +7,8 @@
  * Guest restrictions (Kuşatma-only):
  *   - "Oda Kur"        → blocked for guests; inline warning shown.
  *   - "Odalara Göz At" → blocked for guests; inline warning shown.
- *   - "Oda Koduyla Katıl" → allowed for guests (invite-link parity).
+ *   - "Oda Koduyla Katıl" → no inline block here; the host's online auth gate
+ *       (navigateOnline) prompts login for guests before routing.
  */
 
 import { useState, type CSSProperties } from "react";
