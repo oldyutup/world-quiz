@@ -53,16 +53,17 @@ import {
   type CountdownSoundMode,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
+import NicknameModal from "./components/NicknameModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import {
-  createProfile,
   getCurrentUser,
-  getProfile,
+  loadOrCreateProfile,
   signOut,
   type Profile,
 } from "./lib/auth";
+import { supabase } from "./lib/supabase";
 import {
   useGold,
   addGold,
@@ -2225,6 +2226,11 @@ export default function App() {
   /* Screen a logged-out user tried to open through an online gate. After a
    * successful login navigateOnline()/the auth modal routes here. */
   const [pendingOnlineTarget, setPendingOnlineTarget] = useState<AppScreen | null>(null);
+  /* Auth Phase 3 (native only): a freshly signed-in social user (Apple/Google)
+   * who has no valid Torble username yet. When set, the NicknameModal blocks
+   * routing until the player picks a handle. Never set on web (gated on
+   * IS_NATIVE_APP) — desktop/web social login is unchanged. */
+  const [pendingNicknameUserId, setPendingNicknameUserId] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
@@ -2249,6 +2255,33 @@ export default function App() {
       return;
     }
     setScreen(target);
+  };
+
+  /* Shared post-auth routing for both the AuthModal success handler and the
+   * NicknameModal success handler (native first-login). Once the user has a
+   * valid username, routes them to the online target / Kör Nokta action they
+   * originally picked, then clears the pending-auth bookkeeping. Kept in one
+   * place so the nickname path preserves the exact same pending navigation. */
+  const completeAuthRouting = (nextProfile: Profile | null) => {
+    if (nextProfile?.username && authPromptReason === "kornokta-create") {
+      setScreen("kornokta-create");
+    } else if (nextProfile?.username && authPromptReason === "kornokta-join") {
+      setScreen("kornokta-join");
+    } else if (
+      nextProfile?.username &&
+      pendingOnlineTarget &&
+      (authPromptReason === "duel-gate" ||
+        authPromptReason === "multi-gate" ||
+        authPromptReason === "kusatma-gate")
+    ) {
+      setScreen(pendingOnlineTarget);
+    }
+    // In-modal login (no OAuth redirect) routed via the in-memory target above;
+    // drop the sessionStorage mirror so the effect can't re-consume it.
+    clearPendingOnlineTarget();
+    setPendingOnlineTarget(null);
+    setAuthPromptReason(null);
+    localStorage.setItem("torble_welcome_seen", "true");
   };
 
   const handleAppClaimBonus = () => {
@@ -2317,41 +2350,60 @@ useEffect(() => {
       return;
     }
 
-    const { data } = await getProfile(user.id);
+    const nextProfile = await loadOrCreateProfile(user);
 
-if (!alive) return;
+    if (!alive) return;
 
-if (data) {
-  setProfile(data);
-  setAuthLoading(false);
-  return;
-}
-
-const pendingUsername =
-  user.user_metadata?.username ||
-  localStorage.getItem("geoquiz_pending_username") ||
-  user.email?.split("@")[0] ||
-  "oyuncu";
-
-const { data: createdProfile } = await createProfile(user.id, pendingUsername);
-
-if (!alive) return;
-
-if (createdProfile) {
-  localStorage.removeItem("geoquiz_pending_username");
-  setProfile(createdProfile);
-  setAuthLoading(false);
-  return;
-}
-
-setProfile(null);
-setAuthLoading(false);
+    setProfile(nextProfile);
+    // Native first-login (social) / interrupted nickname: signed in but no
+    // valid username. Show the NicknameModal. Web never reaches this (gated on
+    // IS_NATIVE_APP); loadOrCreateProfile always returns a handle there.
+    if (IS_NATIVE_APP && !nextProfile?.username) {
+      setPendingNicknameUserId(user.id);
+    }
+    setAuthLoading(false);
   }
 
   loadAuth();
 
+  // Keep the React profile in sync with Supabase auth for explicit sign-in /
+  // sign-out events that don't already flow through the modal's own success
+  // handler — most importantly the native Apple sign-in, where
+  // signInWithIdToken fires SIGNED_IN. The initial session is handled by
+  // loadAuth() above, so INITIAL_SESSION is ignored; TOKEN_REFRESHED is ignored
+  // too so a periodic token refresh can't clobber live in-session profile state
+  // (gold / xp / username) with a stale row. Web behavior is unchanged: email
+  // and Google logins set the same profile they already did, just idempotently.
+  const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT") {
+      if (alive) setProfile(null);
+      return;
+    }
+    if (event !== "SIGNED_IN") return;
+
+    const user = session?.user;
+    if (!user) return;
+
+    // Defer the profile DB calls out of the callback — awaiting other supabase
+    // methods synchronously inside onAuthStateChange can deadlock the client.
+    setTimeout(() => {
+      if (!alive) return;
+      loadOrCreateProfile(user).then((p) => {
+        if (!alive) return;
+        setProfile(p);
+        // Backstop for the native social SIGNED_IN path (Apple's
+        // signInWithIdToken fires this). The AuthModal handler also opens the
+        // NicknameModal directly for snappier UX; both set the same id.
+        if (IS_NATIVE_APP && !p?.username) {
+          setPendingNicknameUserId(user.id);
+        }
+      });
+    }, 0);
+  });
+
   return () => {
     alive = false;
+    authSub.subscription.unsubscribe();
   };
 }, []);
 
@@ -2633,6 +2685,13 @@ useEffect(() => {
       {authOpen && (
   <AuthModal
     isNative={IS_NATIVE_APP}
+    onNeedsUsername={(userId) => {
+      // Native first-login social user with no handle. Hide the auth modal and
+      // hand off to the NicknameModal, KEEPING pendingOnlineTarget +
+      // authPromptReason so the nickname success routes them onward.
+      setPendingNicknameUserId(userId);
+      setAuthOpen(false);
+    }}
     headerNote={
       authPromptReason === "conquest-invite"
         ? "Kuşatma moduna katılmak için giriş yapmalısın."
@@ -2701,37 +2760,38 @@ useEffect(() => {
       localStorage.setItem("torble_welcome_seen", "true");
     }}
     onAuthSuccess={(nextProfile) => {
-      setProfile(nextProfile);
       // Menüden "Oda Kur / Odaya Katıl" seçip login olan kullanıcıyı
-      // hedeflediği Kör Nokta ekranına taşı. Davet linki ("kornokta-invite")
-      // burada ele alınmaz: invite-link effect'i profile?.id flip'iyle
-      // yeniden koşar ve auto-join'i kendisi tetikler.
-      if (nextProfile?.username && authPromptReason === "kornokta-create") {
-        setScreen("kornokta-create");
-      } else if (nextProfile?.username && authPromptReason === "kornokta-join") {
-        setScreen("kornokta-join");
-      } else if (
-        nextProfile?.username &&
-        pendingOnlineTarget &&
-        (authPromptReason === "duel-gate" ||
-          authPromptReason === "multi-gate" ||
-          authPromptReason === "kusatma-gate")
-      ) {
-        // Online gate: kullanıcıyı hedeflediği moda taşı. Davet linkiyle
-        // gelinmişse email login redirect etmediği için URL param'ı durur;
-        // mod kendi useInviteJoin'iyle auto-join eder. (Davet effect'i de
-        // profile?.id flip'iyle yeniden koşar — aynı ekran, idempotent.)
-        setScreen(pendingOnlineTarget);
-      }
-      // In-modal login (no OAuth redirect) routed via the in-memory target
-      // above; drop the sessionStorage mirror so the effect can't re-consume it.
-      clearPendingOnlineTarget();
-      setPendingOnlineTarget(null);
-      setAuthPromptReason(null);
-      localStorage.setItem("torble_welcome_seen", "true");
+      // hedeflediği Kör Nokta ekranına / online moduna taşı. Davet linki
+      // ("kornokta-invite") burada ele alınmaz: invite-link effect'i
+      // profile?.id flip'iyle yeniden koşar ve auto-join'i kendisi tetikler.
+      setProfile(nextProfile);
+      completeAuthRouting(nextProfile);
     }}
   />
 )}
+
+      {pendingNicknameUserId && (
+        <NicknameModal
+          userId={pendingNicknameUserId}
+          onSuccess={(nextProfile) => {
+            // Handle chosen → set profile, close, and continue the SAME pending
+            // online / Kör Nokta routing the AuthModal success path would run.
+            setProfile(nextProfile);
+            setPendingNicknameUserId(null);
+            completeAuthRouting(nextProfile);
+          }}
+          onCancel={() => {
+            // Abort (not "skip"): sign back out and return to logged-out home.
+            // Never routes into an online flow without a handle.
+            void handleLogout();
+            setPendingNicknameUserId(null);
+            clearPendingOnlineInvites();
+            clearPendingOnlineTarget();
+            setPendingOnlineTarget(null);
+            setAuthPromptReason(null);
+          }}
+        />
+      )}
     </>
   );
   if (screen === "duel-game") {

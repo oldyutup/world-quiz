@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import {
   getCurrentUser,
   getProfile,
+  loadOrCreateProfile,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
   validateUsername,
   type Profile,
 } from "../lib/auth";
+import { signInWithApple } from "../lib/appleAuth";
 
 type AuthMode = "login" | "signup";
 
@@ -24,6 +27,11 @@ type AuthModalProps = {
    *  app-style layout (Apple / Google first, email collapsed). Web stays
    *  byte-for-byte unchanged when this is false/undefined. */
   isNative?: boolean;
+  /** Auth Phase 3 (native only): called after a successful social sign-in when
+   *  the user has no valid Torble username yet. App hides this modal and shows
+   *  the NicknameModal, preserving the pending online target. Web never wires
+   *  this and never reaches the native social branch that calls it. */
+  onNeedsUsername?: (userId: string) => void;
 };
 
 export default function AuthModal({
@@ -33,6 +41,7 @@ export default function AuthModal({
   headerNote,
   hideGuest,
   isNative = false,
+  onNeedsUsername,
 }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
   // Native only: the email/password form starts collapsed behind a disclosure
@@ -45,10 +54,17 @@ export default function AuthModal({
   const [username, setUsername] = useState("");
 
   const [loading, setLoading] = useState(false);
+  // Native-only: tracks the in-flight Apple sign-in so the button can show a
+  // spinner and the handler can reject double taps.
+  const [appleLoading, setAppleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const isSignup = mode === "signup";
+  // Real Apple sign-in is iOS-only this phase. On other native platforms
+  // (Android) the Apple button keeps its prior "coming soon" stub behavior so
+  // we don't trigger a misconfigured flow. Web never renders the button at all.
+  const isApplePlatform = isNative && Capacitor.getPlatform() === "ios";
 
   async function handleLogin() {
     setErrorMsg(null);
@@ -142,11 +158,56 @@ return;
     }
   }
 
-  // Native-only placeholder for Apple / Google. Real SDK login isn't wired yet;
-  // just surface a friendly "coming soon" notice instead of crashing.
+  // Native-only placeholder for Google (still a stub this phase). Apple is wired
+  // for real below; Google just surfaces a friendly "coming soon" notice.
   function handleStubProvider() {
     setErrorMsg(null);
     setStatusMsg("Bu giriş yöntemi yakında aktif olacak.");
+  }
+
+  // iOS-only: real "Sign in with Apple". Only wired up for isApplePlatform
+  // (native iOS); signInWithApple() additionally hard-gates on platform "ios".
+  async function handleApple() {
+    if (appleLoading || loading) return; // reject double taps
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setAppleLoading(true);
+
+    try {
+      const result = await signInWithApple();
+
+      if (result.status === "cancelled") {
+        // User backed out of the Apple sheet — silent no-op, no scary error.
+        return;
+      }
+
+      if (result.status === "error") {
+        setErrorMsg(result.message);
+        return;
+      }
+
+      // Success. On native, loadOrCreateProfile does NOT mint a username from
+      // the Apple email / relay / metadata, so a first-login social user comes
+      // back with no profile (null). Hand off to the NicknameModal so the player
+      // picks a public handle before any online routing. A returning Apple user
+      // already has a username → route immediately via the existing flow.
+      const profile = await loadOrCreateProfile(result.user);
+      if (profile?.username) {
+        onAuthSuccess(profile);
+        onClose();
+      } else if (onNeedsUsername) {
+        onNeedsUsername(result.user.id);
+      } else {
+        // No nickname handler wired (web/non-native fallback): preserve prior
+        // behavior. Online gates still block routing until a username exists.
+        onAuthSuccess(profile ?? null);
+        onClose();
+      }
+    } catch {
+      setErrorMsg("Apple ile giriş tamamlanamadı.");
+    } finally {
+      setAppleLoading(false);
+    }
   }
 
   async function handleGoogle() {
@@ -222,16 +283,16 @@ return;
             <button
               className="auth-apple"
               type="button"
-              disabled={loading}
-              onClick={handleStubProvider}
+              disabled={loading || appleLoading}
+              onClick={isApplePlatform ? handleApple : handleStubProvider}
             >
-               Apple ile devam et
+              {appleLoading ? "Apple’a bağlanılıyor…" : " Apple ile devam et"}
             </button>
 
             <button
               className="auth-google"
               type="button"
-              disabled={loading}
+              disabled={loading || appleLoading}
               onClick={handleStubProvider}
             >
               Google ile devam et

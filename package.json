@@ -13,9 +13,11 @@
     "cap:sync": "npm run build:app && npx cap sync",
     "cap:copy": "npm run build:app && npx cap copy",
     "cap:open:ios": "npx cap open ios",
-    "cap:open:android": "npx cap open android"
+    "cap:open:android": "npx cap open android",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "7.1.0",
     "@capacitor/android": "^8.4.0",
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.3",
@@ -45,6 +47,7 @@
     "@vitejs/plugin-react": "^4.2.0",
     "clipper-lib": "^6.4.2",
     "jpeg-js": "^0.4.4",
+    "patch-package": "^8.0.1",
     "polygon-clipping": "^0.15.7",
     "sharp": "^0.35.0",
     "simplify-js": "^1.2.4",
