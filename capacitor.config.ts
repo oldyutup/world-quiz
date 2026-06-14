@@ -26,7 +26,8 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 600,
       launchAutoHide: true,
-      backgroundColor: '#0d1117',
+      // Torble brand blue, matching the launch logo background.
+      backgroundColor: '#035DDA',
       showSpinner: false,
       androidScaleType: 'CENTER_CROP',
       splashFullScreen: true,

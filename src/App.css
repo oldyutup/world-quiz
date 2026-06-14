@@ -18591,6 +18591,7 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
   user-select: none;
 }
 .avatar-emoji { font-size: 1.1em; line-height: 1; }
+.avatar-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
 /* Header avatar becomes a button (opens the picker) with a small edit badge.
    Keeps the same 44px circle — only the wrapper + badge are new. */
@@ -18653,8 +18654,7 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
   position: relative;
   width: min(440px, 100%);
   max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden; /* clip the scrolling body to the rounded corners */
   background: linear-gradient(180deg, rgba(20, 26, 40, 0.97), rgba(14, 18, 30, 0.97));
   border: 1px solid rgba(140, 170, 220, 0.22);
   border-radius: 18px;
@@ -18663,7 +18663,7 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
   color: rgba(232, 240, 255, 0.94);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   animation: apk-pop 0.18s cubic-bezier(0.18, 0.9, 0.32, 1.18);
 }
 @keyframes apk-pop {
@@ -18704,11 +18704,248 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
   color: rgba(170, 195, 230, 0.78);
 }
 
-.apk-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+/* Pinned header (above the scroll), clears the close button. */
+.apk-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 30px;
+}
+
+/* Scrolling content region — the only part that scrolls, so the title stays
+   put at the top and the actions stay reachable at the bottom. */
+.apk-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden; /* horizontal preview rows scroll on their own axis */
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overscroll-behavior: contain;
+}
+
+.apk-section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.apk-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  margin-top: 2px;
+  min-height: 20px;
+}
+.apk-section-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.35px;
+  color: rgba(214, 226, 248, 0.92);
+}
+/* Locked sections recede a touch so the active free-avatar section leads. */
+.apk-section--locked .apk-section-label {
+  color: rgba(196, 210, 236, 0.78);
+}
+.apk-section-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(168, 190, 224, 0.62);
+}
+
+/* Muted status pills. Deliberately low-saturation so locked sections recede
+   and the sheet never reads as an aggressive shop. */
+.apk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.apk-badge .apk-ico {
+  width: 11px;
+  height: 11px;
+}
+.apk-badge--soon {
+  color: rgba(192, 210, 240, 0.78);
+  background: rgba(150, 175, 215, 0.1);
+  border: 1px solid rgba(150, 175, 215, 0.22);
+}
+.apk-badge--locked {
+  color: rgba(198, 210, 238, 0.82);
+  background: rgba(120, 150, 210, 0.12);
+  border: 1px solid rgba(135, 160, 215, 0.26);
+}
+
+/* Free-avatar row: compact horizontal scroll on phones, wraps on desktop. */
+.apk-free-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  margin: 0 -4px;
+  padding: 2px 4px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.apk-free-row .apk-tile {
+  flex: 0 0 auto;
+  width: 72px;
+  scroll-snap-align: start;
+}
+@media (min-width: 600px) {
+  .apk-free-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 2px;
+  }
+}
+
+/* Locked achievement chips — look like avatars under a veil + lock. */
+.apk-lock-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 2px 4px 6px;
+  -webkit-overflow-scrolling: touch;
+}
+.apk-lock-tile {
+  flex: 0 0 auto;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.apk-lock-avatar {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  filter: saturate(0.7) brightness(0.78);
+}
+.apk-lock-avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(8, 12, 20, 0.4);
+}
+.apk-lock-glyph {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(228, 237, 255, 0.92);
+}
+.apk-lock-glyph .apk-ico {
+  width: 16px;
+  height: 16px;
+}
+.apk-lock-tile .apk-tile-label {
+  color: rgba(182, 200, 230, 0.58);
+}
+
+/* Premium previews — a small overlapping stack, distinct from the chip rows. */
+.apk-premium {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.apk-premium-orbs {
+  display: flex;
+  align-items: center;
+}
+.apk-premium-orb {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(14, 18, 30, 0.92);
+  filter: saturate(0.82) brightness(0.84);
+}
+.apk-premium-orb + .apk-premium-orb {
+  margin-left: -12px;
+}
+.apk-premium-orb--more {
+  background: rgba(150, 175, 215, 0.14);
+  border: 1px dashed rgba(160, 185, 225, 0.4);
+  color: rgba(200, 216, 244, 0.7);
+  filter: none;
+}
+.apk-premium-orb--more .apk-ico {
+  width: 16px;
+  height: 16px;
+}
+
+/* Frame previews — rings around the player's own avatar, dimmed. */
+.apk-frame-row {
+  display: flex;
+  gap: 12px;
+}
+.apk-frame-prev {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 50%;
+  opacity: 0.62;
+  filter: saturate(0.85);
+}
+.apk-frame--gold {
+  background: linear-gradient(135deg, #f9d423, #e6912b);
+}
+.apk-frame--neon {
+  background: linear-gradient(135deg, #00f5d4, #00a6fb);
+}
+.apk-frame--aurora {
+  background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+}
+
+/* Own-photo placeholder — a single dashed upload-style card (no file picker). */
+.apk-photo-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1.5px dashed rgba(150, 175, 215, 0.3);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: default;
+}
+.apk-photo-glyph {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(178, 200, 235, 0.66);
+  background: rgba(120, 150, 210, 0.1);
+  border: 1px solid rgba(140, 165, 215, 0.2);
+}
+.apk-photo-glyph .apk-ico {
+  width: 21px;
+  height: 21px;
 }
 .apk-tile {
   position: relative;
@@ -18771,7 +19008,8 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
 .apk-actions {
   display: flex;
   gap: 10px;
-  margin-top: 4px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(140, 170, 220, 0.14);
 }
 .apk-btn {
   flex: 1;
@@ -18806,9 +19044,11 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 @media (max-width: 520px) {
-  .apk-modal { padding: 18px 16px 14px; gap: 10px; }
+  .apk-modal { padding: 18px 16px 14px; gap: 12px; }
   .apk-title { font-size: 16px; }
-  .apk-grid { grid-template-columns: repeat(3, 1fr); }
+  .apk-body { gap: 16px; }
+  .apk-free-row .apk-tile,
+  .apk-lock-tile { width: 66px; }
 }
 
 /* ── Native app: avatar picker becomes a bottom sheet ────────────────────────
@@ -18842,4 +19082,212 @@ html.is-native-app .apk-modal::before {
 }
 @media (prefers-reduced-motion: reduce) {
   html.is-native-app .apk-modal { animation: none; }
+}
+
+/* ── Web only: horizontal "gallery rail" personalization layout ───────────────
+   Scoped under html:not(.is-native-app), which is the inverse of the native gate
+   added in main.tsx. The native app (bottom sheet, compact rows) is untouched —
+   every rule below targets desktop/mobile WEB exclusively. No markup, no JS, no
+   selection/save logic changes: the same .apk-* DOM is just laid out as wide
+   single-line rails instead of wrapping grids.
+
+   Specificity note: `html:not(.is-native-app) .apk-*` is (0,2,1), so it wins
+   over the base `.apk-*` rules and the `@media (min-width:600px)` wrap rule
+   regardless of source order. */
+
+/* The web panel: a compact, intentional sheet that sits on a subtle Torble
+   travel-art background. The image is laid under a vertical blue-glass scrim
+   (lighter at the top so the sky/clouds read, darker through the body so text
+   and tiles stay legible). Border-box clip means the art fills edge to edge,
+   behind the pinned header and footer too. */
+html:not(.is-native-app) .apk-modal {
+  width: min(820px, 100%);
+  max-height: min(764px, calc(100vh - 48px));
+  padding: 22px 24px 18px;
+  gap: 16px;
+  border: 1px solid rgba(150, 185, 240, 0.3);
+  border-radius: 22px;
+  background:
+    linear-gradient(
+      178deg,
+      rgba(15, 26, 50, 0.58) 0%,
+      rgba(11, 19, 38, 0.84) 34%,
+      rgba(9, 15, 30, 0.92) 100%
+    ),
+    url('/assets/ui/torble-avatar-panel-bg-v1.png') center / cover no-repeat;
+  box-shadow:
+    0 32px 90px -24px rgba(4, 10, 24, 0.72),
+    0 0 0 1px rgba(120, 160, 230, 0.08) inset,
+    0 1px 0 rgba(190, 215, 255, 0.12) inset;
+}
+html:not(.is-native-app) .apk-body {
+  gap: 16px;
+}
+
+/* Pinned chrome sits directly on the art; the body content rides in its own
+   frosted panels (below), so header/footer read as the fixed frame. */
+html:not(.is-native-app) .apk-head {
+  padding-right: 34px;
+}
+html:not(.is-native-app) .apk-sub {
+  color: rgba(186, 208, 240, 0.82);
+}
+html:not(.is-native-app) .apk-actions {
+  border-top-color: rgba(150, 180, 230, 0.2);
+}
+
+/* Layered section surfaces — each section becomes a semi-transparent frosted
+   card floating over the travel art. The lead (free avatars) carries a touch
+   more presence; locked sections recede. Keeps text readable without hiding
+   the background. */
+html:not(.is-native-app) .apk-section {
+  padding: 13px 15px 11px;
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    rgba(22, 33, 56, 0.52),
+    rgba(14, 23, 42, 0.44)
+  );
+  border: 1px solid rgba(140, 172, 230, 0.18);
+  box-shadow:
+    0 1px 0 rgba(200, 222, 255, 0.06) inset,
+    0 10px 26px -18px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px) saturate(1.05);
+  -webkit-backdrop-filter: blur(3px) saturate(1.05);
+}
+html:not(.is-native-app) .apk-section--locked {
+  background: linear-gradient(
+    180deg,
+    rgba(16, 25, 44, 0.4),
+    rgba(12, 19, 36, 0.34)
+  );
+  border-color: rgba(118, 150, 210, 0.13);
+  box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.55);
+}
+
+/* The two scrollable, content-heavy rails (selectable avatars + locked
+   achievements) get a soft edge fade so "there is more to the right" reads at a
+   glance, plus snap + native momentum scrolling. */
+html:not(.is-native-app) .apk-free-row,
+html:not(.is-native-app) .apk-lock-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 32px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 32px),
+    transparent 100%
+  );
+}
+
+/* Free avatars — the lead, interactive rail: larger tiles, ~6 in view, a thin
+   unobtrusive scrollbar so mouse users get a visible affordance (trackpads scroll
+   horizontally natively; Shift+wheel also works). */
+html:not(.is-native-app) .apk-free-row {
+  gap: 14px;
+  margin: 0;
+  padding: 6px 2px 12px;
+  scroll-padding-inline: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 175, 215, 0.32) transparent;
+}
+html:not(.is-native-app) .apk-free-row::-webkit-scrollbar {
+  height: 6px;
+}
+html:not(.is-native-app) .apk-free-row::-webkit-scrollbar-thumb {
+  background: rgba(150, 175, 215, 0.3);
+  border-radius: 999px;
+}
+html:not(.is-native-app) .apk-free-row::-webkit-scrollbar-thumb:hover {
+  background: rgba(165, 190, 230, 0.45);
+}
+html:not(.is-native-app) .apk-free-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+html:not(.is-native-app) .apk-free-row .apk-tile {
+  width: 96px;
+  padding: 14px 6px;
+  gap: 9px;
+  scroll-snap-align: start;
+}
+/* Clearer current-selection emphasis on the wider tiles (inset only, so the
+   overflow:hidden rail never clips it). */
+html:not(.is-native-app) .apk-free-row .apk-tile--active {
+  border-color: rgba(140, 180, 255, 0.95);
+  background: rgba(74, 124, 228, 0.24);
+  box-shadow: inset 0 0 0 1.5px rgba(140, 180, 255, 0.6);
+}
+
+/* Locked achievement rail — same horizontal flow, scrollbar hidden but still
+   scrollable (the fade carries the affordance). */
+html:not(.is-native-app) .apk-lock-row {
+  gap: 12px;
+  margin: 0;
+  padding: 4px 2px 8px;
+  scrollbar-width: none;
+}
+html:not(.is-native-app) .apk-lock-row::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
+
+/* Premium previews — unstack the overlapping orbs into a clean horizontal
+   preview row (still purely "Yakında", no clicks). */
+html:not(.is-native-app) .apk-premium-orbs {
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+html:not(.is-native-app) .apk-premium-orbs::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
+html:not(.is-native-app) .apk-premium-orb + .apk-premium-orb {
+  margin-left: 0;
+}
+
+/* Frame previews — horizontal preview row (3 items, scrolls if it ever grows). */
+html:not(.is-native-app) .apk-frame-row {
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+html:not(.is-native-app) .apk-frame-row::-webkit-scrollbar {
+  height: 0;
+  width: 0;
+}
+
+/* Own-photo placeholder stays a single dashed "Yakında" card; just cap its width
+   so it reads as a card, not a full-width bar, in the wider web modal. */
+html:not(.is-native-app) .apk-photo-card {
+  max-width: 360px;
+}
+
+/* Narrow web (phone browsers): keep the rails, shrink the tiles + padding. */
+@media (max-width: 560px) {
+  html:not(.is-native-app) .apk-modal {
+    padding: 18px 16px 14px;
+    gap: 12px;
+  }
+  html:not(.is-native-app) .apk-body {
+    gap: 16px;
+  }
+  html:not(.is-native-app) .apk-free-row .apk-tile {
+    width: 78px;
+    padding: 11px 5px;
+  }
 }

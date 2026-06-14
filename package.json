@@ -36,6 +36,7 @@
     "topojson-client": "^3.1.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.4.0",
     "@resvg/resvg-js": "^2.6.2",
     "@types/d3-geo": "^3.1.0",
