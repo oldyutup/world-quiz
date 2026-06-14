@@ -61,6 +61,7 @@ import {
   calculateWheelGroupXp,
   type WheelGroupXpBreakdown,
 } from "../lib/progression";
+import { recordOnlineMatchResult, recordGameComplete } from "../lib/achievementStats";
 import {
   getFlagPool,
   getContinentIds,
@@ -1034,6 +1035,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       finalRank: Math.max(1, myRank),
       totalPlayers: finalLeaderboard.length,
     });
+
+    // Achievement stats: online race. 1st place is a win; any other rank resets
+    // the win streak. Completion feeds daily streak + distinct-mode count. We run
+    // before the guest/login split so it records once for guests too (local-only
+    // stats). The effect is once-guarded (xpAwardedRef) past the `me` check.
+    recordOnlineMatchResult(myRank === 1 ? "win" : "loss");
+    recordGameComplete({ modeFamily: "wheel" });
 
     const matchKey = room.current_match_id;
 

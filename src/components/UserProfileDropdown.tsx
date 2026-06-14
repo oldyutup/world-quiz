@@ -164,47 +164,54 @@ export function UserProfileDropdown({
               />
             )}
             <div className="upd-head-info">
-              <div className="upd-head-uname-row">
-                <span className="upd-head-uname">@{profile.username}</span>
-                {onRequestUsernameChange && (
-                  <button
-                    type="button"
-                    className="upd-edit-uname"
-                    onClick={() => {
-                      setOpen(false);
-                      onRequestUsernameChange();
-                    }}
-                    aria-label="Kullanıcı adını değiştir"
-                    title="Kullanıcı adını değiştir"
-                  >
-                    Adı Değiştir
-                  </button>
-                )}
-              </div>
+              <span className="upd-head-uname">@{profile.username}</span>
               <span className="upd-head-level">Seviye {lp.level}</span>
+            </div>
+          </div>
+
+          {/* — Edit actions (balanced two-up row, no longer cramped) — */}
+          {(onRequestUsernameChange || onRequestAvatarChange) && (
+            <div className="upd-edit-actions">
+              {onRequestUsernameChange && (
+                <button
+                  type="button"
+                  className="upd-edit-btn"
+                  onClick={() => {
+                    setOpen(false);
+                    onRequestUsernameChange();
+                  }}
+                  aria-label="Kullanıcı adını değiştir"
+                  title="Kullanıcı adını değiştir"
+                >
+                  Adı Değiştir
+                </button>
+              )}
               {onRequestAvatarChange && (
                 <button
                   type="button"
-                  className="upd-edit-uname upd-edit-avatar"
+                  className="upd-edit-btn"
                   onClick={() => {
                     setOpen(false);
                     onRequestAvatarChange();
                   }}
+                  aria-label="Avatarı değiştir"
+                  title="Avatarı değiştir"
                 >
                   Avatarı Değiştir
                 </button>
               )}
             </div>
-          </div>
+          )}
 
-          {/* — XP bar — */}
+          {/* — XP / level progress — */}
           <div className="upd-xp">
+            <span className="upd-xp-title">Seviye İlerlemesi</span>
             <div className="upd-xp-track">
               <div className="upd-xp-fill" style={{ width: `${pct}%` }} />
             </div>
             <div className="upd-xp-labels">
               <span>{lp.xpIntoLevel} / {xpSpan} XP</span>
-              <span>{lp.xpForNextLevel} XP kaldı</span>
+              <span className="upd-xp-remain">{lp.xpForNextLevel} XP kaldı</span>
             </div>
           </div>
 

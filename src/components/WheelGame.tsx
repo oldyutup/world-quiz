@@ -30,6 +30,7 @@ import {
   type Difficulty,
 } from "../data/countries";
 import { playSound, stopSound, shouldPlayCountdownSound, getCountdownSoundMode } from "../lib/sound";
+import { recordGameComplete } from "../lib/achievementStats";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES & CONSTANTS
@@ -515,6 +516,9 @@ export default function WheelGame({ onHome }: WheelGameProps) {
       passCount: passedRef.current.size,
     });
     setFinished(true);
+    // Achievement stats: single-player wheel completed (daily streak +
+    // distinct-mode count). Once-guarded by endedRef above.
+    recordGameComplete({ modeFamily: "wheel" });
   }, []);
 
   /* ── Spin wheel (also starts the game on first call) ── */

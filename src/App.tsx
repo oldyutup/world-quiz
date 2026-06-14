@@ -74,6 +74,11 @@ import {
   setActiveProfile as setActiveGoldProfile,
   DAILY_BONUS,
 } from "./lib/gold";
+import {
+  setActiveAchievementProfile,
+  recordGameComplete,
+  recordCorrectFlag,
+} from "./lib/achievementStats";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -1507,6 +1512,22 @@ function useGameCore(
       continent, duration: selectedDuration, gameType,
       date: new Date().toLocaleDateString("tr-TR"),
     }));
+
+    // Achievement stats: this single-player (OFFLINE) game just completed.
+    //   map-game        → country mode completion ONLY. Offline Ülke Yaz must
+    //                     NOT feed Dünya Gezgini (uniqueCorrectCountryIds) — that
+    //                     achievement is online-only to prevent farming.
+    //   flag-game       → flag mode completion + Bayrak Ustası (offline allowed).
+    //   silhouette-game → silhouette mode (completion only)
+    // Runs once per game (mode flips to "finished" exactly once).
+    if (gameType === "map-game") {
+      recordGameComplete({ modeFamily: "country" });
+    } else if (gameType === "flag-game") {
+      recordCorrectFlag("flag_offline", guessedISOs.size);
+      recordGameComplete({ modeFamily: "flag" });
+    } else if (gameType === "silhouette-game") {
+      recordGameComplete({ modeFamily: "silhouette" });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -2333,6 +2354,9 @@ useEffect(() => {
 useEffect(() => {
   if (authLoading) return;
   setActiveGoldProfile(profile?.id ?? null, profile?.gold);
+  // Achievement stats are persisted per-profile too (localStorage in V1); keep
+  // them switched in lockstep with gold so a login/logout loads the right data.
+  setActiveAchievementProfile(profile?.id ?? null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [profile?.id, authLoading]);
 

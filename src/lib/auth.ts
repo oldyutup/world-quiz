@@ -4,6 +4,11 @@ import {
   BANNED_USERNAME_WORDS,
 } from "../data/bannedUsernames";
 import { isValidAvatarId } from "../data/avatars";
+import {
+  isAchievementAvatarId,
+  isAchievementAvatarUnlockedFor,
+  getAchievementStats,
+} from "./achievementStats";
 
 export type Profile = {
   id: string;
@@ -341,6 +346,16 @@ export async function updateUsername(userId: string, usernameRaw: string) {
 export async function updateAvatar(userId: string, avatarId: string | null) {
   if (avatarId !== null && !isValidAvatarId(avatarId)) {
     return { data: null, error: { message: "Geçersiz avatar." } };
+  }
+
+  // Achievement avatars are only selectable once their achievement is unlocked.
+  // The picker already hides locked tiles; this is the persistence-layer backstop.
+  if (
+    avatarId !== null &&
+    isAchievementAvatarId(avatarId) &&
+    !isAchievementAvatarUnlockedFor(avatarId, getAchievementStats())
+  ) {
+    return { data: null, error: { message: "Bu avatar başarımla açılır." } };
   }
 
   return supabase

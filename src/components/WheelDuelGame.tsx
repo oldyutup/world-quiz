@@ -48,6 +48,7 @@ import {
   resultFromScores,
   type XpBreakdown,
 } from "../lib/progression";
+import { recordOnlineMatchResult, recordGameComplete } from "../lib/achievementStats";
 import {
   getFlagPool,
   getContinentIds,
@@ -967,6 +968,11 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
           : "loss";
 
     xpAwardedRef.current = true;
+
+    // Achievement stats: online win streak + daily streak/distinct-mode count.
+    // Logged-in-only, once-guarded above → exactly once per match.
+    recordOnlineMatchResult(matchResult);
+    recordGameComplete({ modeFamily: "wheel" });
 
     const breakdown = calculateWheelDuelXp({
       correctCount: myScoreFinal,

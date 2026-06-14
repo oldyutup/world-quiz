@@ -175,6 +175,7 @@ import {
   calculateConquestXp,
   type ConquestXpBreakdown,
 } from "../../lib/progression";
+import { recordOnlineMatchResult, recordGameComplete } from "../../lib/achievementStats";
 import type { Profile } from "../../lib/auth";
 import {
   areTeammates,
@@ -1718,6 +1719,11 @@ export default function ConquestGame({
         : breakdown.resultBonusLabel === "draw"
           ? "draw"
           : "loss";
+
+    // Achievement stats: online win streak (rank #1 = win) + daily streak /
+    // distinct-mode count. Logged-in-only, per-match guarded → once per match.
+    recordOnlineMatchResult(matchResult);
+    recordGameComplete({ modeFamily: "conquest" });
 
     const profileId = profile.id;
     const xpRoomId  = matchKey;

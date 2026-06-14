@@ -47,6 +47,7 @@ import {
   type MatchResult,
   type XpBreakdown,
 } from "../../lib/progression";
+import { recordOnlineMatchResult, recordGameComplete } from "../../lib/achievementStats";
 import XpGainBar from "../../components/XpGainBar";
 import { playSound, stopSound } from "../../lib/sound";
 import type { Profile } from "../../lib/auth";
@@ -1180,6 +1181,11 @@ export default function HaritaDuelMatch({
       result,
     });
     breakdown.bonusLabelText = undefined;
+
+    // Achievement stats: online win streak + daily streak / distinct-mode count.
+    // Logged-in-only, once-guarded above → exactly once per match.
+    recordOnlineMatchResult(result);
+    recordGameComplete({ modeFamily: "blindspot" });
 
     const profileId = profile.id;
     (async () => {

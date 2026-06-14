@@ -36,6 +36,11 @@ import {
   awardXpEvent,
   type XpBreakdown,
 } from "../lib/progression";
+import {
+  recordOnlineMatchResult,
+  recordGameComplete,
+  recordOnlineCorrectCountries,
+} from "../lib/achievementStats";
 import XpGainBar from "./XpGainBar";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
@@ -505,6 +510,15 @@ useEffect(() => {
     correctCount: myScoreFinal,
     result: matchResult,
   });
+
+  // Achievement stats: online win streak + daily streak/distinct-mode count.
+  // Logged-in-only path, once-guarded (xpAwardedRef) → exactly once per match.
+  recordOnlineMatchResult(matchResult, "country_duel");
+  recordGameComplete({ modeFamily: "country" });
+  // Dünya Gezgini: feed unique correct countries from THIS online match only
+  // (myTopoIds = country codes this player claimed correctly). Offline play
+  // never reaches here, so the achievement stays online-sourced.
+  recordOnlineCorrectCountries(myTopoIds, "country_duel");
 
   const profileId = profile.id;
   const roomId    = room.id;

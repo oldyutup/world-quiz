@@ -12,6 +12,7 @@ import {
   type RouteDifficulty,
 } from "../data/countries";
 import { useGold, addGold, spendGold as spendGoldStore } from "../lib/gold";
+import { recordGameComplete } from "../lib/achievementStats";
 
 /* ─── route reward dedup helpers ─── */
 function buildRewardKey(start: string, target: string, diff: RouteDifficulty, shortest: number): string {
@@ -208,6 +209,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
         flushGold(reward);
       }
       setPhase("won");
+      recordGameComplete({ modeFamily: "route" });
       playSound(isOptimal ? "win" : "lose");
     } else {
       showOk("✓ Doğru komşu!");

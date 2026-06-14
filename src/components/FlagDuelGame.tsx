@@ -33,6 +33,11 @@ import {
   type XpBreakdown,
   type MatchResult,
 } from "../lib/progression";
+import {
+  recordOnlineMatchResult,
+  recordGameComplete,
+  recordCorrectFlag,
+} from "../lib/achievementStats";
 import XpGainBar from "./XpGainBar";
 import LobbyChat from "./LobbyChat";
 import { playSound, stopSound } from "../lib/sound";
@@ -692,6 +697,15 @@ useEffect(() => {
   } else if (iForfeited) {
     breakdown.bonusLabelText = `Hükmen Mağlubiyet +${breakdown.resultBonus}`;
   }
+
+  // Achievement stats: win streak from the online result; daily streak +
+  // distinct-mode count from completion. Online play is logged-in only and this
+  // block is once-guarded (xpAwardedRef), so it runs exactly once per match.
+  recordOnlineMatchResult(matchResult, "flag_duel");
+  recordGameComplete({ modeFamily: "flag" });
+  // Bayrak Ustası: count this match's correct flags (myScoreFinal = correct
+  // answers). Online 1v1 source; offline flag is counted separately in App.tsx.
+  recordCorrectFlag("flag_duel", myScoreFinal);
 
   const profileId  = profile.id;
   const matchId    = matchIdRef.current;
