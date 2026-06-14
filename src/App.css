@@ -18402,6 +18402,42 @@ html.is-native-app .mh-nav-item--active {
 }
 html.is-native-app .mh-nav-item--active .mh-nav-icon { transform: scale(1.07); }
 
+/* Profil tab — the selected avatar shown as a small round badge instead of a
+   glyph. The fixed-size wrap reserves height so the active lift can't push the
+   label or break the tab's tap target; the lift/glow lives on the avatar. */
+html.is-native-app .mh-nav-avatar-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+}
+html.is-native-app .mh-nav-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 2px solid rgba(120, 180, 255, .45);
+  background: rgba(10, 20, 45, .55);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(2, 8, 23, .5);
+  transition: transform .18s cubic-bezier(.22, 1, .36, 1),
+    box-shadow .18s ease, border-color .18s ease;
+}
+/* Active (profile dropdown open): lift, brighten the ring, add a cyan/blue glow.
+   The avatar stays circular; the surrounding tab keeps the shared accent pill. */
+html.is-native-app .mh-nav-item--profile.mh-nav-item--active .mh-nav-avatar {
+  transform: translateY(-5px) scale(1.08);
+  border-color: rgba(140, 200, 255, .9);
+  box-shadow:
+    0 6px 16px rgba(56, 132, 255, .45),
+    0 0 0 3px rgba(88, 166, 255, .22);
+}
+
+@media (max-width: 360px) {
+  html.is-native-app .mh-nav-avatar-wrap { width: 28px; height: 28px; }
+  html.is-native-app .mh-nav-avatar { width: 26px; height: 26px; }
+}
+
 /* Hide the floating home chrome the bottom nav replaces. The profile dropdown
    PANEL is kept (the Profil tab opens it), so .top-right-stack stays in the DOM
    but stops intercepting taps; its now-hidden triggers leave the corner empty. */
@@ -19420,6 +19456,10 @@ html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
   .apk-lock-tile { width: 66px; }
   .apk-ach-card { width: 66px; }
   .apk-ach-popover { width: 240px; }
+  /* On the narrowest phones let the "Ödülleri Topla" pill wrap under its label
+     instead of overflowing the section head. */
+  .apk-section-head { flex-wrap: wrap; }
+  .apk-claim-btn { font-size: 10px; padding: 5px 9px; }
 }
 
 /* ── Native app: avatar picker becomes a bottom sheet ────────────────────────

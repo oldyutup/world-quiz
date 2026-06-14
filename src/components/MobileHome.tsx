@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sound";
+import { Avatar } from "./Avatar";
 
 /** Screens the mobile home can launch directly — a subset of App's AppScreen ids. */
 export type MobileHomeTarget =
@@ -59,6 +60,15 @@ interface MobileHomeProps {
   onOpenProfile: () => void;
   /** Drives the Profil tab's icon/label only; the action lives in onOpenProfile. */
   isLoggedIn: boolean;
+  /** Selected profile avatar id (profiles.avatar_id). When logged in the Profil
+   *  tab renders this avatar instead of the default person glyph; unknown / null
+   *  falls back to the default globe via the shared <Avatar>. */
+  avatarId?: string | null;
+  /** Username, forwarded to <Avatar> for its alt text only. */
+  username?: string | null;
+  /** True while the native profile dropdown is open — lifts/glows the Profil
+   *  tab avatar so the bottom nav reflects the open panel as the active tab. */
+  profileActive?: boolean;
   /** Home themes (App's HOME_THEMES) surfaced by the Tema tab as a bottom
    *  sheet; onSelectTheme is App's setHomeTheme — no new theme logic. */
   themes: ThemeOption[];
@@ -375,6 +385,9 @@ export default function MobileHome({
   onOpenRanking,
   onOpenProfile,
   isLoggedIn,
+  avatarId,
+  username,
+  profileActive,
   themes,
   activeTheme,
   onSelectTheme,
@@ -478,10 +491,23 @@ export default function MobileHome({
       <nav className="mh-bottom-nav" aria-label="Uygulama menüsü">
         <button
           type="button"
-          className="mh-nav-item"
+          className={"mh-nav-item mh-nav-item--profile" + (profileActive ? " mh-nav-item--active" : "")}
+          aria-expanded={profileActive}
           onClick={() => { playSound("click"); onOpenProfile(); }}
         >
-          <span className="mh-nav-icon" aria-hidden="true">{isLoggedIn ? "👤" : "🔑"}</span>
+          {isLoggedIn ? (
+            // Selected avatar as a small round badge. The fixed-size wrapper keeps
+            // the tab height stable while the active lift/glow lives on .mh-nav-avatar.
+            <span className="mh-nav-avatar-wrap" aria-hidden="true">
+              <Avatar
+                avatarId={avatarId}
+                username={username}
+                className="mh-nav-avatar"
+              />
+            </span>
+          ) : (
+            <span className="mh-nav-icon" aria-hidden="true">🔑</span>
+          )}
           <span className="mh-nav-label">Profil</span>
         </button>
         <button

@@ -384,8 +384,11 @@ interface HomeProps {
    *  chrome'a (LeaderboardModal / AuthModal / UserProfileDropdown) bağlanır. */
   onOpenRanking: () => void;
   onOpenProfile: () => void;
+  /** Native-app only: true while the profile dropdown is open, so the bottom-nav
+   *  Profil avatar can show its active (lifted/glowing) state. */
+  profileOpen?: boolean;
 }
-function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile }: HomeProps) {
+function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
@@ -460,6 +463,9 @@ useEffect(() => {
         onOpenRanking={onOpenRanking}
         onOpenProfile={onOpenProfile}
         isLoggedIn={!!profile?.username}
+        avatarId={profile?.avatar_id}
+        username={profile?.username}
+        profileActive={profileOpen}
         themes={HOME_THEMES}
         activeTheme={homeTheme}
         onSelectTheme={(id) => setHomeTheme(id as HomeTheme)}
@@ -2682,6 +2688,7 @@ useEffect(() => {
           if (profile) setProfileNavOpen(true);
           else setAuthOpen(true);
         }}
+        profileOpen={IS_NATIVE_APP ? profileNavOpen : false}
       />
 
       {leaderboardOpen && (

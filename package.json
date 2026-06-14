@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "export:turkey-bg-guide": "tsx scripts/export-turkey-bg-guide.ts",
     "cap:sync": "npm run build:app && npx cap sync",
+    "ios:sync": "npm run build:app && npx cap sync ios",
     "cap:copy": "npm run build:app && npx cap copy",
     "cap:open:ios": "npx cap open ios",
     "cap:open:android": "npx cap open android",
