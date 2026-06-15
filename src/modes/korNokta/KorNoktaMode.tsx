@@ -52,20 +52,23 @@ import { buildKnScenePlan, parseKnGameState } from "./korNoktaGameTypes";
 ═══════════════════════════════════════════════════════════════ */
 
 type Phase = "join" | "creating" | "lobby";
+type KnTeam = "blue" | "red";
 
-const MIN_PLAYERS = 3;
-/** Lobide gösterilen toplam slot sayısı (maksimum oyuncu). */
-const TOTAL_SLOTS = 5;
+/** Maksimum oyuncu (5v5). */
+const TOTAL_SLOTS = 10;
+/** Takım başına gösterilen slot sayısı. */
+const TEAM_SLOTS = 5;
+/** Oyun başlatılabilen toplam oyuncu sayıları (eşit takım). */
+const VALID_TEAM_COUNTS = [4, 6, 8, 10];
 
 const ROUND_OPTIONS: { label: string; value: number }[] = [
   { label: "5 tur",  value: 5  },
-  { label: "7 tur",  value: 7  },
   { label: "10 tur", value: 10 },
   { label: "15 tur", value: 15 },
   { label: "20 tur", value: 20 },
 ];
 
-const DEFAULT_ROUND_COUNT = 7;
+const DEFAULT_ROUND_COUNT = 10;
 /** Legacy DB kolonu: fotoğraf süresi ayarı UI'dan kaldırıldı ama
  *  tevatur_create_room RPC'si parametreyi zorunlu tutuyor. Sabit gönderilir;
  *  gameplay fazında ya yeniden kullanılır ya da migration'la kaldırılır. */
@@ -92,6 +95,17 @@ function generateRoomCode(): string {
 
 function normalizeRoomCode(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+}
+
+/** Oyuncuları takıma ayırır (team null → Mavi varsayılır, eski satır güvenliği). */
+function splitTeams(players: TevaturPlayer[]): Record<KnTeam, TevaturPlayer[]> {
+  const blue: TevaturPlayer[] = [];
+  const red: TevaturPlayer[] = [];
+  for (const p of players) {
+    if (p.team === "red") red.push(p);
+    else blue.push(p);
+  }
+  return { blue, red };
 }
 
 function freshPlayerId(): string {
@@ -144,7 +158,8 @@ function describeKorNoktaRpcError(
   if (msg.includes("room_not_waiting"))     return "Oda artık lobi fazında değil.";
   if (msg.includes("round_count_invalid"))  return "Geçersiz tur sayısı.";
   if (msg.includes("photo_seconds_invalid")) return "Geçersiz fotoğraf süresi.";
-  if (msg.includes("player_count_invalid")) return "Oyun 3–5 oyuncuyla başlatılabilir.";
+  if (msg.includes("player_count_invalid")) return "Takımlar eşit olmalı: 2v2, 3v3, 4v4 veya 5v5 oynanabilir.";
+  if (msg.includes("team_invalid"))         return "Geçersiz takım.";
   if (msg.includes("scenes_invalid"))       return "Sahne planı oluşturulamadı. Tekrar dene.";
   if (msg.includes("game_not_active"))      return "Oyun aktif değil.";
   if (msg.includes("cannot_kick_self"))     return "Kendini kickleyemezsin.";
@@ -415,7 +430,8 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
    *  tüm oyuncuları aynı anda oyun ekranına geçirir. */
   async function startGame() {
     if (!room || !isHost || starting) return;
-    if (players.length < MIN_PLAYERS || players.length > TOTAL_SLOTS) return;
+    const { blue, red } = splitTeams(players);
+    if (blue.length !== red.length || !VALID_TEAM_COUNTS.includes(players.length)) return;
     playSound("click");
     setStarting(true);
     setErrorMsg(null);
@@ -454,6 +470,40 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     });
     if (error) {
       console.error("[KorNokta] update_settings RPC failed", error);
+    }
+  }
+
+  /** Host: bir oyuncuyu diğer takıma alır (yalnız lobide). */
+  async function setPlayerTeam(targetId: string, team: KnTeam) {
+    if (!room || !isHost) return;
+    playSound("click");
+    // Optimistic — rollback realtime echo'ya bırakılır.
+    setPlayers(prev => prev.map(p => (p.id === targetId ? { ...p, team } : p)));
+    const { error } = await supabase.rpc("tevatur_kn_set_team", {
+      p_room_id:          room.id,
+      p_host_player_id:   myIdRef.current,
+      p_claim_token:      myClaimTokenRef.current,
+      p_target_player_id: targetId,
+      p_team:             team,
+    });
+    if (error) {
+      console.error("[KorNokta] set_team RPC failed", error);
+    }
+  }
+
+  /** Host: köstebek ayarını açar/kapatır (yalnız 3v3+ etkin). */
+  async function setMoleEnabled(enabled: boolean) {
+    if (!room || !isHost) return;
+    playSound("click");
+    setRoom(prev => (prev ? { ...prev, mole_enabled: enabled } : prev));
+    const { error } = await supabase.rpc("tevatur_kn_set_mole", {
+      p_room_id:        room.id,
+      p_host_player_id: myIdRef.current,
+      p_claim_token:    myClaimTokenRef.current,
+      p_enabled:        enabled,
+    });
+    if (error) {
+      console.error("[KorNokta] set_mole RPC failed", error);
     }
   }
 
@@ -588,6 +638,86 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   const themeBgStyle = getThemeBackgroundStyle(homeTheme);
   const themeDataAttr = getThemeDataAttr(homeTheme);
 
+  /* ── Takım dağılımı + başlatma/köstebek koşulları ── */
+  const teams = splitTeams(players);
+  const teamsEqual = teams.blue.length === teams.red.length;
+  const validCount = VALID_TEAM_COUNTS.includes(players.length);
+  const canStart = isHost && teamsEqual && validCount && !starting;
+  // Köstebek yalnız 3v3+ (her takımda >=3 oyuncu) etkin.
+  const moleEligible = teams.blue.length >= 3 && teams.red.length >= 3;
+  const moleOn = (room?.mole_enabled ?? true) && moleEligible;
+
+  /** Tek takım panelini render eder (Mavi/Kırmızı). */
+  const renderTeamPanel = (team: KnTeam, onClose?: () => void) => {
+    const list = teams[team];
+    const label = team === "blue" ? "🔵 Mavi Takım" : "🔴 Kırmızı Takım";
+    const other: KnTeam = team === "blue" ? "red" : "blue";
+    return (
+      <div className={"kn-team-panel kn-team-panel--" + team}>
+        <div className="kn-team-panel__head">
+          <span className="kn-team-panel__title">{label}</span>
+          <span className="wgg-max-badge">{list.length}/{TEAM_SLOTS}</span>
+        </div>
+        <div className="wgg-player-list">
+          {Array.from({ length: TEAM_SLOTS }, (_, i) => {
+            const p = list[i] ?? null;
+            if (!p) {
+              return (
+                <div key={`empty-${team}-${i}`} className="kn-team-slot-empty">
+                  <span className="wgg-ps-dot-empty" />
+                  <span style={{ fontSize: 12, fontStyle: "italic" }}>Boş slot</span>
+                </div>
+              );
+            }
+            const isMe = p.id === myIdRef.current;
+            const isPlayerHost = p.id === room?.host_player_id;
+            const rp = rosterProfiles.get(p.profile_id ?? "");
+            return (
+              <div
+                key={p.id}
+                className={"duel-player-chip" + (isMe ? " mine" : "")}
+                style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
+                  <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                    <PlayerAvatar
+                      avatarId={rp?.avatarId}
+                      username={p.name}
+                      size="sm"
+                      highlight={isPlayerHost}
+                      className="duel-player-avatar"
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.name}
+                    </span>
+                  </PlayerProfileTrigger>
+                  {rp?.level != null && <span className="kn-team-level">Sv {rp.level}</span>}
+                  {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                  {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
+                </div>
+                {isHost && (
+                  <button
+                    type="button"
+                    className="kn-team-move-btn"
+                    title={"Diğer takıma al"}
+                    onClick={() => { setPlayerTeam(p.id, other); onClose?.(); }}
+                  >
+                    ↔
+                  </button>
+                )}
+                {isHost && !isPlayerHost && (
+                  <button type="button" className="dgg-kick-btn" style={{ flexShrink: 0 }} onClick={() => { setKickTarget(p); onClose?.(); }}>
+                    At
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app duel-screen" style={themeBgStyle} data-theme={themeDataAttr}>
       {/* ════════ HEADER ════════ */}
@@ -621,7 +751,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           <div className="duel-lobby-card">
             <h2 className="duel-lobby-title">🕵️‍♂️ Kör Nokta</h2>
             <p className="duel-lobby-desc">
-              Raporlara güven, konumu bul. 3–5 oyuncu.
+              İki takım, mesafe yarışı. 2v2 · 3v3 · 4v4 · 5v5.
             </p>
             <p className="duel-error">
               🔒 Kör Nokta moduna katılmak için giriş yapmalısın. Ana menüden
@@ -756,76 +886,29 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
         <div className="duel-lobby">
           <div className="wgg-grid">
 
-            {/* ══ SOL KART: Oyuncular ══ */}
+            {/* ══ SOL KART: Takımlar (Mavi / Kırmızı) ══ */}
             <div className="duel-lobby-card wgg-players-card">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexShrink: 0 }}>
-                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.02em" }}>👥 Oyuncular</span>
+                <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.02em" }}>👥 Takımlar</span>
                 <span className="wgg-max-badge">
-                  {players.length}/{room.max_players}
+                  {players.length}/{TOTAL_SLOTS}
                 </span>
               </div>
 
-              <div className="wgg-player-list">
-                {Array.from({ length: Math.max(TOTAL_SLOTS, players.length) }, (_, i) => {
-                  const p = players[i] ?? null;
-                  if (!p) {
-                    return (
-                      <div key={`empty-${i}`} style={{
-                        display: "flex", alignItems: "center", gap: 6,
-                        padding: "5px 8px", borderRadius: 8,
-                        border: "1px dashed rgba(255,255,255,0.10)", opacity: 0.22,
-                      }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, fontStyle: "italic" }}>Boş slot</span>
-                      </div>
-                    );
-                  }
-                  const isMe = p.id === myIdRef.current;
-                  const isPlayerHost = p.id === room.host_player_id;
-                  return (
-                    <div
-                      key={p.id}
-                      className={"duel-player-chip" + (isMe ? " mine" : "")}
-                      style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
-                          <PlayerAvatar
-                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
-                            username={p.name}
-                            size="sm"
-                            highlight={isPlayerHost}
-                            className="duel-player-avatar"
-                          />
-                          <span style={{
-                            fontSize: 13, fontWeight: 600, minWidth: 0,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>
-                            {p.name}
-                          </span>
-                        </PlayerProfileTrigger>
-                        {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
-                        {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
-                      </div>
-                      {isHost && !isPlayerHost && (
-                        <button type="button" className="dgg-kick-btn" style={{ flexShrink: 0 }} onClick={() => setKickTarget(p)}>
-                          At
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="kn-teams-wrap">
+                {renderTeamPanel("blue")}
+                {renderTeamPanel("red")}
               </div>
 
-              {players.length < MIN_PLAYERS && (
+              {!canStart && (
                 <div style={{ marginTop: 10, flexShrink: 0 }}>
                   <span style={{
                     display: "inline-flex", alignItems: "center", gap: 6,
                     fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 999,
                     background: "rgba(212,160,44,0.16)", border: "1px solid rgba(212,160,44,0.45)",
-                    color: "var(--amber, #d4a02c)", letterSpacing: "0.02em",
+                    color: "var(--amber, #d4a02c)", letterSpacing: "0.02em", lineHeight: 1.3,
                   }}>
-                    En az {MIN_PLAYERS} oyuncu gerekli — {MIN_PLAYERS - players.length} bekleniyor
+                    Takımlar eşit olmalı: 2v2, 3v3, 4v4 veya 5v5 oynanabilir.
                   </span>
                 </div>
               )}
@@ -876,7 +959,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                 </div>
               </div>
 
-              {/* Oyun Ayarları: Tur Sayısı (host) + Roller (UI hazırlığı, disabled) */}
+              {/* Oyun Ayarları: Tur Sayısı + Köstebek (host) */}
               <section aria-label="Oyun Ayarları" style={{
                 display: "flex", flexDirection: "column",
                 gap: 8, padding: "10px 12px",
@@ -900,21 +983,28 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                     </div>
                   </div>
                   <div className="duel-select-wrap" style={{ minWidth: 0, gap: 3 }}>
-                    <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>🎭 Roller</label>
-                    <div className="duel-select-box" title="V1'de sabit: köstebek 2. turdan itibaren %60 ihtimalle çıkar.">
-                      <select className="duel-select" value="default" disabled
-                        style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: 0.55, cursor: "not-allowed" }}
+                    <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>🎭 Köstebek</label>
+                    <div className="duel-select-box" title={moleEligible ? "Köstebek 3v3 ve üzerinde etkin" : "Köstebek yalnız 3v3+ açılabilir (2v2'de yok)"}>
+                      <select
+                        className="duel-select"
+                        value={(room.mole_enabled ?? true) ? "on" : "off"}
+                        disabled={!isHost || !moleEligible}
+                        onChange={e => setMoleEnabled(e.target.value === "on")}
+                        style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: (isHost && moleEligible) ? 1 : 0.55, cursor: (isHost && moleEligible) ? "pointer" : "not-allowed" }}
                       >
-                        <option value="default">Dedektif + Raporcu + Köstebek</option>
+                        <option value="on">Açık</option>
+                        <option value="off">Kapalı</option>
                       </select>
-                      <span className="duel-select-caret" style={{ opacity: 0.55 }}>▾</span>
+                      <span className="duel-select-caret">▾</span>
                     </div>
                   </div>
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.55, lineHeight: 1.5 }}>
                   📝 Rapor limiti: 2–5 kelime
                   <br />
-                  🎭 Köstebek: 2. turdan itibaren %60 ihtimal, turda en fazla 1.
+                  🎭 Köstebek: {moleOn
+                    ? "açık — her takımda 1, raporu karşı takım dedektifine gider."
+                    : (moleEligible ? "kapalı." : "2v2'de yok (3v3+ gerekir).")}
                 </div>
               </section>
 
@@ -923,17 +1013,12 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
               {/* Aksiyonlar */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
-                {isHost && (() => {
-                  const canStart =
-                    players.length >= MIN_PLAYERS &&
-                    players.length <= TOTAL_SLOTS &&
-                    !starting;
-                  return (
+                {isHost && (
                     <button
                       className={canStart ? "btn btn-accent" : "btn btn-ghost"}
                       onClick={() => { void startGame(); }}
                       disabled={!canStart}
-                      title={canStart ? "Oyunu başlat" : `En az ${MIN_PLAYERS} oyuncu gerekli`}
+                      title={canStart ? "Oyunu başlat" : "Takımlar eşit olmalı: 2v2/3v3/4v4/5v5"}
                       style={{
                         width: "100%", minHeight: 44, fontSize: 15, fontWeight: 800,
                         borderRadius: 12, letterSpacing: "0.02em",
@@ -943,10 +1028,9 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                     >
                       {starting
                         ? "⏳ Başlatılıyor…"
-                        : `🚀 Oyunu Başlat (${players.length} kişi)`}
+                        : `🚀 Oyunu Başlat (${teams.blue.length}v${teams.red.length})`}
                     </button>
-                  );
-                })()}
+                )}
                 <button
                   className="btn btn-ghost"
                   onClick={() => { playSound("click"); void leaveRoom(); onHome(); }}
@@ -984,8 +1068,8 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
             onClick={() => { setPlayersSheetOpen(true); setChatSheetOpen(false); }}
           >
             <span>👥</span>
-            <span>Oyuncular</span>
-            <span className="wgg-players-fab-badge">{players.length}/{room.max_players}</span>
+            <span>Takımlar</span>
+            <span className="wgg-players-fab-badge">{players.length}/{TOTAL_SLOTS}</span>
           </button>
         )}
 
@@ -997,10 +1081,10 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
               <header className="wgg-ps-header">
                 <span className="wgg-ps-title">
                   <span>👥</span>
-                  <span>Oyuncular</span>
+                  <span>Takımlar</span>
                 </span>
                 <span className="wgg-max-badge wgg-max-badge--sheet">
-                  {players.length}/{room.max_players}
+                  {players.length}/{TOTAL_SLOTS}
                 </span>
                 <button
                   type="button"
@@ -1012,57 +1096,14 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                 </button>
               </header>
               <div className="wgg-ps-list">
-                {Array.from({ length: Math.max(TOTAL_SLOTS, players.length) }, (_, i) => {
-                  const p = players[i] ?? null;
-                  if (!p) {
-                    return (
-                      <div key={`empty-${i}`} className="wgg-ps-empty-slot">
-                        <span className="wgg-ps-dot-empty" />
-                        <span>Boş slot</span>
-                      </div>
-                    );
-                  }
-                  const isMe = p.id === myIdRef.current;
-                  const isPlayerHost = p.id === room.host_player_id;
-                  return (
-                    <div
-                      key={p.id}
-                      className={"duel-player-chip" + (isMe ? " mine" : "")}
-                      style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, paddingBottom: 6, minWidth: 0 }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
-                          <PlayerAvatar
-                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
-                            username={p.name}
-                            size="sm"
-                            highlight={isPlayerHost}
-                            className="duel-player-avatar"
-                          />
-                          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {p.name}
-                          </span>
-                        </PlayerProfileTrigger>
-                        {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
-                        {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
-                      </div>
-                      {isHost && !isPlayerHost && (
-                        <button
-                          type="button"
-                          className="dgg-kick-btn"
-                          style={{ flexShrink: 0 }}
-                          onClick={() => { setKickTarget(p); setPlayersSheetOpen(false); }}
-                        >
-                          At
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                <div className="kn-teams-wrap">
+                  {renderTeamPanel("blue", () => setPlayersSheetOpen(false))}
+                  {renderTeamPanel("red", () => setPlayersSheetOpen(false))}
+                </div>
               </div>
-              {players.length < MIN_PLAYERS && (
+              {!canStart && (
                 <div className="wgg-ps-warning">
-                  En az {MIN_PLAYERS} oyuncu gerekli — {MIN_PLAYERS - players.length} bekleniyor
+                  Takımlar eşit olmalı: 2v2, 3v3, 4v4 veya 5v5 oynanabilir.
                 </div>
               )}
             </div>

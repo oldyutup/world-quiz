@@ -48,8 +48,8 @@ function roleBgKey(role: KnRole | null): KnBgKey {
 /**
  * Faz + rol → arkaplan key. Spec §2 eşlemesi:
  *   role_reveal / observe_report → role bazlı
- *   detective_guess / report_judgement → dedektif: detective, diğerleri: default
- *   guess_reveal / round_reveal → reveal
+ *   detective_guess → dedektif: detective, diğerleri: default
+ *   round_reveal → reveal
  *   final_results → final
  *   bilinmeyen / null → default
  */
@@ -62,9 +62,7 @@ export function resolveKnBgKey(
     case "observe_report":
       return roleBgKey(role);
     case "detective_guess":
-    case "report_judgement":
       return role === "detective" ? "detective" : "default";
-    case "guess_reveal":
     case "round_reveal":
       return "reveal";
     case "final_results":

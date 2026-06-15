@@ -208,6 +208,8 @@ export interface TevaturRoom {
   /** Legacy: fotoğraf gösterim süresi (sn). UI'dan kaldırıldı, kolonda duruyor. */
   photo_seconds:   number;
   max_players:     number;
+  /** Kör Nokta takım modu: köstebek ayarı (host, yalnız 3v3+ etkin). */
+  mole_enabled?:   boolean;
   host_player_id:  string | null;
   started_at:      string | null;
   finished_at:     string | null;
@@ -228,6 +230,8 @@ export interface TevaturPlayer {
   profile_id:   string;
   name:         string;
   score:        number;
+  /** Kör Nokta takım modu: "blue" | "red" (lobide atanır). */
+  team?:        "blue" | "red" | null;
   joined_at:    string;
   last_seen_at: string;
 }

@@ -31,10 +31,18 @@ export interface KnLatLng {
   lng: number;
 }
 
+/** Çok-tahminli reveal için renkli takım tahmini. */
+export interface KnRevealGuess extends KnLatLng {
+  /** Marker + çizgi rengi (örn. "#4f8bff" Mavi, "#ef4444" Kırmızı). */
+  color: string;
+}
+
 interface KorNoktaGuessMapProps {
   mode: "pick" | "reveal";
   onGuessChange?: (guess: KnLatLng) => void;
   revealGuess?: KnLatLng | null;
+  /** Çok tahmin (takım modu): her biri kendi renginde marker + çizgi. */
+  revealGuesses?: KnRevealGuess[] | null;
   revealActual?: KnLatLng | null;
   className?: string;
 }
@@ -46,6 +54,7 @@ export default function KorNoktaGuessMap({
   mode,
   onGuessChange,
   revealGuess,
+  revealGuesses,
   revealActual,
   className,
 }: KorNoktaGuessMapProps) {
@@ -116,7 +125,13 @@ export default function KorNoktaGuessMap({
       });
     } else {
       const actual = revealActual ?? null;
-      const guess = revealGuess ?? null;
+      // Çok-tahmin (takım modu) önceliklidir; yoksa tek revealGuess (geri uyum).
+      const guesses: KnRevealGuess[] =
+        revealGuesses && revealGuesses.length > 0
+          ? revealGuesses
+          : revealGuess
+            ? [{ ...revealGuess, color: "#f59e0b" }]
+            : [];
 
       if (actual) {
         const answerIcon = L.divIcon({
@@ -132,34 +147,46 @@ export default function KorNoktaGuessMap({
         }).addTo(map);
       }
 
-      if (guess) {
-        L.marker([guess.lat, guess.lng], {
+      const boundsPts: [number, number][] = [];
+      if (actual) boundsPts.push([actual.lat, actual.lng]);
+
+      for (const g of guesses) {
+        const guessIcon = L.divIcon({
+          className: "kn-guess-marker",
+          html: `<span class="kn-guess-marker__dot" style="background:${g.color}" aria-hidden="true"></span>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        });
+        L.marker([g.lat, g.lng], {
+          icon: guessIcon,
           interactive: false,
           keyboard: false,
         }).addTo(map);
+        boundsPts.push([g.lat, g.lng]);
+
+        if (actual) {
+          L.polyline(
+            [
+              [g.lat, g.lng],
+              [actual.lat, actual.lng],
+            ],
+            {
+              color: g.color,
+              weight: 2,
+              opacity: 0.85,
+              dashArray: "6 6",
+              interactive: false,
+            },
+          ).addTo(map);
+        }
       }
 
-      if (actual && guess) {
-        L.polyline(
-          [
-            [guess.lat, guess.lng],
-            [actual.lat, actual.lng],
-          ],
-          {
-            color: "#f59e0b",
-            weight: 2,
-            opacity: 0.85,
-            dashArray: "6 6",
-            interactive: false,
-          },
-        ).addTo(map);
-        map.fitBounds(
-          L.latLngBounds([
-            [guess.lat, guess.lng],
-            [actual.lat, actual.lng],
-          ]),
-          { padding: [40, 40], maxZoom: 8, animate: false },
-        );
+      if (boundsPts.length >= 2) {
+        map.fitBounds(L.latLngBounds(boundsPts), {
+          padding: [40, 40],
+          maxZoom: 8,
+          animate: false,
+        });
       } else if (actual) {
         map.setView([actual.lat, actual.lng], 4, { animate: false });
       }

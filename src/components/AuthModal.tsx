@@ -7,9 +7,13 @@ import {
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
-  validateUsername,
   type Profile,
 } from "../lib/auth";
+import {
+  validateUsername,
+  sanitizeUsernameInput,
+  USERNAME_MAX_LENGTH,
+} from "../lib/username";
 import { signInWithApple } from "../lib/appleAuth";
 import { signInWithGoogleNative } from "../lib/googleAuth";
 
@@ -128,7 +132,8 @@ export default function AuthModal({
       return;
     }
 
-    const usernameError = validateUsername(username);
+    const cleanedUsername = sanitizeUsernameInput(username);
+    const usernameError = validateUsername(cleanedUsername);
     if (usernameError) {
       setErrorMsg(usernameError);
       return;
@@ -137,12 +142,11 @@ export default function AuthModal({
     setLoading(true);
 
 try {
-  localStorage.setItem(
-    "geoquiz_pending_username",
-    username.trim().toLocaleLowerCase("tr-TR")
-  );
+  // Store the chosen DISPLAY (Türkçe + case preserved). loadOrCreateProfile
+  // turns this into the profile handle and folds the uniqueness key itself.
+  localStorage.setItem("geoquiz_pending_username", cleanedUsername);
 
-  const { error } = await signUpWithEmail(email, password, username);
+  const { error } = await signUpWithEmail(email, password, cleanedUsername);
 
       if (error) {
         if (error.message.toLowerCase().includes("already")) {
@@ -402,12 +406,12 @@ return;
     <span>Kullanıcı adı</span>
     <input
       value={username}
-      onChange={(e) => setUsername(e.target.value.toLocaleLowerCase("tr-TR"))}
+      onChange={(e) => setUsername(e.target.value.replace(/^@+/, ""))}
       placeholder="oyuncu_adı"
-      maxLength={16}
+      maxLength={USERNAME_MAX_LENGTH}
       autoComplete="username"
     />
-    <small>3-16 karakter. Küçük harf, rakam, alt çizgi ve Türkçe karakter.</small>
+    <small>3-20 karakter. Harf, rakam, nokta, tire ve alt çizgi (Türkçe karakter olur).</small>
   </label>
 )}
 

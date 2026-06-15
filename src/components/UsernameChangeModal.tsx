@@ -13,12 +13,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   callChangeUsername,
-  validateUsernameV1,
-  normalizeUsernameV1,
   USERNAME_CHANGE_COST,
   USERNAME_CHANGE_COOLDOWN_DAYS,
   type Profile,
 } from "../lib/auth";
+import {
+  validateUsername,
+  normalizeUsernameKey,
+  sanitizeUsernameInput,
+  USERNAME_MAX_LENGTH,
+} from "../lib/username";
 import { syncGoldFromServer } from "../lib/gold";
 
 interface Props {
@@ -70,13 +74,15 @@ export function UsernameChangeModal({ profile, gold, onClose, onSuccess }: Props
   // Canlı format validation (client tarafı erken uyarı; otorite RPC'dir).
   const clientValidationError: string | null = useMemo(() => {
     if (value.trim().length === 0) return null;
-    return validateUsernameV1(value);
+    return validateUsername(value);
   }, [value]);
 
-  const normalized = normalizeUsernameV1(value);
+  // Aynı kullanıcı adı mı? Türkçe-katlanmış key üzerinden karşılaştır
+  // ("Padır" ile "padir" aynı sayılır).
+  const normalizedKey = normalizeUsernameKey(value);
   const isSameAsCurrent =
-    normalized.length > 0 &&
-    normalized === (profile.username ?? "").toLowerCase();
+    normalizedKey.length > 0 &&
+    normalizedKey === normalizeUsernameKey(profile.username ?? "");
 
   // Buton enable koşulu — client-side ön kontroller.
   let buttonDisabled = submitting;
@@ -163,12 +169,13 @@ export function UsernameChangeModal({ profile, gold, onClose, onSuccess }: Props
             type="text"
             className="uc-input"
             placeholder="ornek_ad"
-            maxLength={20}
+            maxLength={USERNAME_MAX_LENGTH}
             value={value}
             disabled={submitting}
             onChange={(e) => {
               setServerError(null);
-              setValue(e.target.value);
+              // Baştaki '@'ı temizle; Türkçe + büyük/küçük harfi koru.
+              setValue(sanitizeUsernameInput(e.target.value));
             }}
             onKeyDown={handleKey}
             autoComplete="off"

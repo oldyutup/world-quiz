@@ -1,4 +1,3 @@
-import { Capacitor } from "@capacitor/core";
 import { supabase } from "./supabase";
 import {
   BANNED_USERNAME_WORDS,
@@ -9,6 +8,11 @@ import {
   isAchievementAvatarUnlockedFor,
   getAchievementStats,
 } from "./achievementStats";
+import {
+  sanitizeUsernameInput as sanitizeAccountUsername,
+  normalizeUsernameKey,
+  validateUsername as validateAccountUsername,
+} from "./username";
 
 export type Profile = {
   id: string;
@@ -21,86 +25,23 @@ export type Profile = {
   updated_at: string;
   username_changed_at?: string | null;
   username_change_count?: number | null;
+  /** True once the player has explicitly picked their own handle (onboarding
+   *  modal, email-signup form, or a username change). False/missing → the
+   *  blocking first-login NicknameModal is shown. Existing users were
+   *  backfilled to true (see *_username_key_system.sql). */
+  has_chosen_username?: boolean | null;
+  /** Diagnostic origin of the current handle: 'signup' | 'onboarding' |
+   *  'change' | 'legacy'. Never shown to the user. */
+  username_source?: string | null;
 };
 
+// Oyun-içi MİSAFİR görünen-ad doğrulaması için (account username DEĞİL).
+// Bkz. validateUsername / normalizeUsername aşağıda; bu kurallar (3-16,
+// ASCII+Türkçe, nokta/tire yok) değiştirilmedi.
 const USERNAME_REGEX = /^[a-z0-9_çğıöşü]{3,16}$/;
-
-// V1 strict username regex — kullanıcı adı değiştirme akışı için
-// server-side regex ile birebir aynı: sadece a-z, 0-9, alt çizgi.
-const USERNAME_V1_REGEX = /^[a-z0-9_]{3,16}$/;
 
 export const USERNAME_CHANGE_COST = 500;
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 14;
-
-// V1'de yasaklı sabit isim listesi. Server da aynı listeyi kontrol eder;
-// burada client tarafında erken uyarı için tutuyoruz.
-const USERNAME_RESERVED: ReadonlySet<string> = new Set([
-  "admin",
-  "administrator",
-  "moderator",
-  "mod",
-  "system",
-  "sistem",
-  "torble",
-  "bot",
-  "npc",
-  "test",
-  "support",
-  "destek",
-  "official",
-  "owner",
-  "root",
-  "staff",
-  "null",
-  "undefined",
-  "geoquiz",
-  "geo_quiz",
-  "developer",
-  "dev",
-  "yetkili",
-  "kurucu",
-  "yonetici",
-  "help",
-  "helper",
-]);
-
-export function normalizeUsernameV1(raw: string): string {
-  let v = (raw ?? "").trim();
-  if (v.startsWith("@")) v = v.slice(1);
-  return v.toLowerCase();
-}
-
-/**
- * Yeni kullanıcı adı değiştirme akışı için V1 client validation.
- * Server-side change_username RPC ile birebir aynı kuralları uygular;
- * UI'da canlı feedback için kullanılır. Asıl otorite RPC'dir.
- */
-export function validateUsernameV1(raw: string): string | null {
-  const v = normalizeUsernameV1(raw);
-
-  if (v.length === 0) {
-    return "Kullanıcı adı boş olamaz.";
-  }
-  if (v.length < 3) {
-    return "Kullanıcı adı en az 3 karakter olmalı.";
-  }
-  if (v.length > 16) {
-    return "Kullanıcı adı en fazla 16 karakter olabilir.";
-  }
-  if (!USERNAME_V1_REGEX.test(v)) {
-    return "Sadece küçük harf (a-z), rakam ve alt çizgi (_) kullanılabilir.";
-  }
-  if (USERNAME_RESERVED.has(v)) {
-    return "Bu kullanıcı adı kullanılamaz.";
-  }
-
-  const lowerBanned = BANNED_USERNAME_WORDS.some((w) => v.includes(w));
-  if (lowerBanned) {
-    return "Bu kullanıcı adı kullanılamaz.";
-  }
-
-  return null;
-}
 
 export type ChangeUsernameResult =
   | {
@@ -127,7 +68,9 @@ export type ChangeUsernameResult =
 export async function callChangeUsername(
   rawUsername: string
 ): Promise<ChangeUsernameResult> {
-  const cleaned = normalizeUsernameV1(rawUsername);
+  // Send the sanitized DISPLAY (Türkçe + case preserved). The RPC strips '@',
+  // trims, folds to the ASCII key for uniqueness and keeps the display as-is.
+  const cleaned = sanitizeAccountUsername(rawUsername);
   const { data, error } = await supabase.rpc("change_username", {
     p_new_username: cleaned,
   });
@@ -241,22 +184,24 @@ export async function getProfile(userId: string) {
  * Apple sign-in handler so first-login profile creation behaves identically
  * regardless of entry point.
  *
- * Auth Phase 3: a *chosen* username comes only from the email/password signup
- * path (user_metadata.username, mirrored into geoquiz_pending_username). Social
- * login (Apple, later Google) carries no chosen handle, so on native we must
- * NOT mint a public username from the email local-part, an Apple private-relay
- * address or provider metadata — we return null (no row created) and the caller
- * shows the NicknameModal. On web the historical email-local-part/"oyuncu"
- * fallback is preserved byte-for-byte (the suppression branch is dead code
- * there), so existing web Google / legacy behavior is unchanged.
+ * Username system: a *chosen* username comes only from the email/password
+ * signup form (user_metadata.username, mirrored into geoquiz_pending_username).
+ * Social logins (Apple / Google) — and web Google — carry NO chosen handle. We
+ * never mint a public username from the email local-part, an Apple private-relay
+ * address or provider metadata (web or native): if there is no chosen handle we
+ * return null (no row created) and the caller shows the blocking NicknameModal,
+ * which creates the row via setInitialUsername once a handle is picked. This is
+ * what stops the old "email-derived nick" from ever being shown to the user.
+ *
+ * Existing users already have a profile row, so getProfile() returns it before
+ * we get here — they never see the modal.
  */
 export async function loadOrCreateProfile(
   user: {
     id: string;
     email?: string | null;
     user_metadata?: { username?: string | null } | null;
-  },
-  opts?: { allowDerivedUsername?: boolean }
+  }
 ): Promise<Profile | null> {
   const { data } = await getProfile(user.id);
   if (data) return data;
@@ -268,21 +213,13 @@ export async function loadOrCreateProfile(
       ? localStorage.getItem("geoquiz_pending_username")
       : null);
 
-  // Web keeps the legacy fallback; native social login suppresses it so the
-  // player picks a handle via the NicknameModal instead of leaking their email.
-  const allowDerived =
-    opts?.allowDerivedUsername ?? !Capacitor.isNativePlatform();
-
-  const pendingUsername =
-    chosenUsername || (allowDerived ? user.email?.split("@")[0] || "oyuncu" : null);
-
-  if (!pendingUsername) {
-    // First-login social user on native — no row created yet. The NicknameModal
-    // will create it (see setInitialUsername) once a username is picked.
+  if (!chosenUsername) {
+    // No handle was chosen (social login, web Google, or interrupted signup).
+    // Create no row — the NicknameModal collects a username first.
     return null;
   }
 
-  const { data: created } = await createProfile(user.id, pendingUsername);
+  const { data: created } = await createProfile(user.id, chosenUsername, "signup");
   if (created) {
     try {
       localStorage.removeItem("geoquiz_pending_username");
@@ -292,15 +229,28 @@ export async function loadOrCreateProfile(
     return created;
   }
 
-  // INSERT failed (concurrent winner or generated username failed validation).
+  // INSERT failed (concurrent winner or the chosen username failed validation).
   // Re-fetch so a row created by the racing path is still returned.
   const { data: refetched } = await getProfile(user.id);
   return refetched ?? null;
 }
 
-export async function createProfile(userId: string, usernameRaw: string) {
-  const username = normalizeUsername(usernameRaw);
-  const validationError = validateUsername(username);
+/**
+ * Creates the profile row for a player who picked a handle at signup. Uses the
+ * account-username system (Türkçe display preserved, ASCII-folded key for
+ * uniqueness) so email signup follows the exact same rules as the NicknameModal
+ * and the change-username panel. Sets has_chosen_username so the first-login
+ * modal is not shown to a user who already chose a name on the signup form.
+ * The DB trigger recomputes username_normalized = username_key(username), so the
+ * value sent here is authoritative-by-trigger either way.
+ */
+export async function createProfile(
+  userId: string,
+  usernameRaw: string,
+  source: string = "signup"
+) {
+  const display = sanitizeAccountUsername(usernameRaw);
+  const validationError = validateAccountUsername(display);
 
   if (validationError) {
     return { data: null, error: { message: validationError } };
@@ -310,7 +260,10 @@ export async function createProfile(userId: string, usernameRaw: string) {
     .from("profiles")
     .insert({
       id: userId,
-      username,
+      username: display,
+      username_normalized: normalizeUsernameKey(display),
+      has_chosen_username: true,
+      username_source: source,
     })
     .select("*")
     .single<Profile>();
@@ -370,7 +323,7 @@ export async function updateAvatar(userId: string, avatarId: string | null) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Auth Phase 3 — first-login username for native social sign-in
+   First-login username (onboarding NicknameModal — web + native)
    ────────────────────────────────────────────────────────────────────────── */
 
 export type SetInitialUsernameResult =
@@ -382,7 +335,7 @@ export type SetInitialUsernameResult =
 
 /** True for a Postgres unique-constraint violation surfaced by PostgREST. The
  *  case-insensitive index (profiles_username_normalized_uniq) trips this when
- *  the chosen handle is already taken. */
+ *  the chosen handle's folded key is already taken. */
 function isUniqueViolation(err: { code?: string; message?: string } | null): boolean {
   if (!err) return false;
   const code = err.code ?? "";
@@ -396,32 +349,37 @@ function isUniqueViolation(err: { code?: string; message?: string } | null): boo
 }
 
 /**
- * Sets a social-login player's *first* public username (Auth Phase 3).
+ * Sets a player's *first* public username from the onboarding NicknameModal.
+ * Runs on both web and native, for anyone signed in without a chosen handle
+ * (social login, web Google, or an interrupted signup).
  *
- * loadOrCreateProfile() returns null on native for a chosen-username-less social
- * user, so usually there is no profile row yet:
- *   - no row   → INSERT (the common Apple case)
- *   - row with a blank/invalid username → UPDATE (interrupted prior signup)
- * Both write username_normalized so the case-insensitive unique index enforces
- * uniqueness; a collision is mapped to { code: "taken" } for a Turkish error.
+ * loadOrCreateProfile() returns null when no handle was chosen, so usually there
+ * is no profile row yet:
+ *   - no row → INSERT (the common case)
+ *   - existing row with no chosen handle → UPDATE (interrupted prior signup)
  *
- * Validation uses the strict V1 rules (a-z0-9_), matching the change_username
- * RPC, so a handle minted here stays valid for later username changes. This is a
- * native-only path; it never touches the shared createProfile used by web email
- * signup, so web behavior is unchanged.
+ * The display `username` is kept exactly as typed (Türkçe + case preserved);
+ * uniqueness is enforced on the folded `username_normalized` key (the DB trigger
+ * also recomputes it from the display), so "padır" and "padir" collide → mapped
+ * to { code: "taken" }. Validation uses the shared account-username rules so a
+ * handle minted here stays valid for later changes via the panel.
  */
 export async function setInitialUsername(
   userId: string,
   usernameRaw: string
 ): Promise<SetInitialUsernameResult> {
-  const username = normalizeUsernameV1(usernameRaw);
-  const validationError = validateUsernameV1(username);
+  const display = sanitizeAccountUsername(usernameRaw);
+  const validationError = validateAccountUsername(display);
   if (validationError) {
     return { data: null, error: { code: "validation", message: validationError } };
   }
 
-  // ascii lowercase — the V1 regex guarantees normalized === username here.
-  const row = { username, username_normalized: username };
+  const row = {
+    username: display,
+    username_normalized: normalizeUsernameKey(display),
+    has_chosen_username: true,
+    username_source: "onboarding",
+  };
 
   const { data: existing } = await getProfile(userId);
 
@@ -465,35 +423,4 @@ export async function setInitialUsername(
   }
 
   return { data, error: null };
-}
-
-// ascii-only, no reserved/banned stems — kept lowercase so the V1 regex passes.
-const NICKNAME_STEMS = [
-  "gezgin",
-  "kasif",
-  "pusula",
-  "atlas",
-  "rota",
-  "kuzey",
-  "patika",
-  "seyyah",
-  "kervan",
-  "harita",
-];
-
-/**
- * A safe, validation-passing nickname suggestion (e.g. "gezgin742"). Never
- * derived from email or real name; guaranteed to satisfy validateUsernameV1 so
- * it can be offered as a one-tap default in the NicknameModal.
- */
-export function suggestNickname(): string {
-  for (let i = 0; i < 16; i += 1) {
-    const stem = NICKNAME_STEMS[Math.floor(Math.random() * NICKNAME_STEMS.length)];
-    const num = Math.floor(100 + Math.random() * 9900); // 100–9999
-    const candidate = `${stem}${num}`;
-    if (candidate.length <= 16 && validateUsernameV1(candidate) === null) {
-      return candidate;
-    }
-  }
-  return `gezgin${Math.floor(1000 + Math.random() * 9000)}`;
 }

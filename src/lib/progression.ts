@@ -32,7 +32,8 @@ export type ModeKey =
   | "wheel_duel"
   | "wheel_group"
   | "conquest"
-  | "harita_duel";
+  | "harita_duel"
+  | "kornokta";
 
 /** Maç sonucu. */
 export type MatchResult = "win" | "loss" | "draw";
@@ -405,6 +406,36 @@ export function calculateHaritaDuelXp(
   };
 }
 
+/** Kör Nokta (takım modu) XP hesaplaması için girdiler. */
+export interface KorNoktaXpParams {
+  /** Maç sonucu (takımın toplam puanına göre win/draw/loss). */
+  result: MatchResult;
+}
+
+/**
+ * Kör Nokta takım modu XP — maç sonucuna göre (round-win sayısına DEĞİL):
+ *   - Katılım:    +10
+ *   - Kazanma:    +25
+ *   - Beraberlik: +10
+ *   - Kaybetme:   +5
+ * "Doğru sayısı" yok; XpBreakdown'ın correct alanları 0 bırakılır.
+ */
+export function calculateKorNoktaXp(
+  params: KorNoktaXpParams
+): XpBreakdown {
+  const participation = 10;
+  const bonus = resultBonus(params.result);
+  return {
+    participation,
+    perCorrect: 0,
+    correctCount: 0,
+    correctTotal: 0,
+    resultBonus: bonus,
+    resultBonusLabel: params.result,
+    total: participation + bonus,
+  };
+}
+
 /** Kuşatma (Conquest) XP hesaplaması için girdiler. */
 export interface ConquestXpParams {
   /** 1-based final rank from buildFinalStandings. Eşitlikte ortak rank verilebilir. */
@@ -618,6 +649,7 @@ export async function awardXpEvent(
   const useDedicatedWheelGroupRpc = params.modeKey === "wheel_group";
   const useDedicatedConquestRpc   = params.modeKey === "conquest";
   const useDedicatedHaritaDuelRpc = params.modeKey === "harita_duel";
+  const useDedicatedKorNoktaRpc   = params.modeKey === "kornokta";
 
   try {
     const { data, error } = useDedicatedWheelGroupRpc
@@ -644,6 +676,14 @@ export async function awardXpEvent(
           p_result:     params.result,
           p_details:    params.details ?? {},
         })
+      : useDedicatedKorNoktaRpc
+      ? await supabase.rpc("award_kornokta_xp_event", {
+          p_profile_id: params.profileId,
+          p_room_id:    params.roomId,
+          p_xp_earned:  xpEarned,
+          p_result:     params.result,
+          p_details:    params.details ?? {},
+        })
       : await supabase.rpc("award_xp_event", {
           p_profile_id: params.profileId,
           p_mode_key:   params.modeKey,
@@ -660,7 +700,9 @@ export async function awardXpEvent(
           ? "award_conquest_xp_event"
           : useDedicatedHaritaDuelRpc
             ? "award_harita_duel_xp_event"
-            : "award_xp_event";
+            : useDedicatedKorNoktaRpc
+              ? "award_kornokta_xp_event"
+              : "award_xp_event";
       console.error(`[progression] ${rpcName} RPC error:`, error);
       return emptyAwardResult(error.message ?? "RPC failed");
     }

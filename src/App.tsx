@@ -2232,6 +2232,16 @@ const IS_NATIVE_APP = (() => {
   try { return Capacitor.isNativePlatform(); } catch { return false; }
 })();
 
+/** True when a signed-in user must pick their own handle via the blocking
+ *  NicknameModal: no profile row yet, no username, or has_chosen_username has
+ *  not been set (email-derived legacy / interrupted signup). Existing users
+ *  were backfilled to has_chosen_username=true, so they pass straight through. */
+function needsUsernameSelection(p: Profile | null): boolean {
+  if (!p) return true;
+  if (!p.username || p.username.trim().length === 0) return true;
+  return p.has_chosen_username !== true;
+}
+
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [continent, setContinent] = useState<ContinentFilter>("world");
@@ -2390,10 +2400,11 @@ useEffect(() => {
     if (!alive) return;
 
     setProfile(nextProfile);
-    // Native first-login (social) / interrupted nickname: signed in but no
-    // valid username. Show the NicknameModal. Web never reaches this (gated on
-    // IS_NATIVE_APP); loadOrCreateProfile always returns a handle there.
-    if (IS_NATIVE_APP && !nextProfile?.username) {
+    // First-login (web + native): signed in but hasn't picked their own handle
+    // yet (social login, web Google, email-derived legacy, or interrupted
+    // signup). Show the blocking NicknameModal. Existing users were backfilled
+    // to has_chosen_username=true, so they never reach this.
+    if (needsUsernameSelection(nextProfile)) {
       setPendingNicknameUserId(user.id);
     }
     setAuthLoading(false);
@@ -2426,10 +2437,11 @@ useEffect(() => {
       loadOrCreateProfile(user).then((p) => {
         if (!alive) return;
         setProfile(p);
-        // Backstop for the native social SIGNED_IN path (Apple's
-        // signInWithIdToken fires this). The AuthModal handler also opens the
-        // NicknameModal directly for snappier UX; both set the same id.
-        if (IS_NATIVE_APP && !p?.username) {
+        // Backstop for the SIGNED_IN path (native Apple/Google via
+        // signInWithIdToken, and web Google after its OAuth redirect). The
+        // AuthModal handler also opens the NicknameModal directly for snappier
+        // UX on native; both set the same id.
+        if (needsUsernameSelection(p)) {
           setPendingNicknameUserId(user.id);
         }
       });

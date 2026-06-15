@@ -18214,6 +18214,17 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   /* İçteki liste satırları sheet'in kendi scroll'unu kullanır — taşma yok. */
   .social-tab-body .notif-list { display: flex; flex-direction: column; }
 
+  /* Arama açıkken bölüm başlıkları ("Arkadaşlar" / "Oyuncular"). */
+  .social-search-section-label {
+    padding: 9px 14px 5px;
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .social-search-section-label:first-child { padding-top: 6px; }
+
   .social-theme { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .social-section-label {
     font-size: .72rem;
@@ -18686,7 +18697,7 @@ html.is-native-app .top-right-stack .upd-dropdown {
    desktop / mobile-web DOM. Scoped under html.is-native-app to follow the
    native-only convention regardless. Matches the dark uc-modal / auth-modal
    language; safe-area aware so it clears the home indicator. */
-html.is-native-app .nick-overlay {
+.nick-overlay {
   position: fixed;
   inset: 0;
   z-index: 6200; /* above auth-overlay (6000) and uc-overlay (6100) */
@@ -18705,7 +18716,7 @@ html.is-native-app .nick-overlay {
   to   { opacity: 1; }
 }
 
-html.is-native-app .nick-modal {
+.nick-modal {
   position: relative;
   width: min(440px, 100%);
   box-sizing: border-box;
@@ -18724,23 +18735,23 @@ html.is-native-app .nick-modal {
   to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  html.is-native-app .nick-overlay,
-  html.is-native-app .nick-modal { animation: none; }
+  .nick-overlay,
+  .nick-modal { animation: none; }
 }
 
-html.is-native-app .nick-emoji {
+.nick-emoji {
   font-size: 36px;
   text-align: center;
   margin-bottom: 6px;
 }
-html.is-native-app .nick-title {
+.nick-title {
   margin: 0;
   text-align: center;
   font-size: 23px;
   font-weight: 900;
   letter-spacing: 0.01em;
 }
-html.is-native-app .nick-sub {
+.nick-sub {
   margin: 8px 0 20px;
   text-align: center;
   line-height: 1.45;
@@ -18748,7 +18759,7 @@ html.is-native-app .nick-sub {
   color: rgba(190, 202, 222, 0.78);
 }
 
-html.is-native-app .nick-label {
+.nick-label {
   font-size: 11.5px;
   font-weight: 800;
   text-transform: uppercase;
@@ -18757,12 +18768,12 @@ html.is-native-app .nick-label {
   margin-bottom: 8px;
 }
 
-html.is-native-app .nick-input-wrap {
+.nick-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
-html.is-native-app .nick-input-at {
+.nick-input-at {
   position: absolute;
   left: 15px;
   font-size: 16px;
@@ -18770,7 +18781,7 @@ html.is-native-app .nick-input-at {
   color: rgba(160, 185, 230, 0.5);
   pointer-events: none;
 }
-html.is-native-app .nick-input {
+.nick-input {
   width: 100%;
   box-sizing: border-box;
   height: 54px;
@@ -18785,20 +18796,20 @@ html.is-native-app .nick-input {
   outline: none;
   transition: border-color 0.12s, background 0.12s;
 }
-html.is-native-app .nick-input:focus {
+.nick-input:focus {
   border-color: rgba(120, 170, 255, 0.72);
   background: rgba(10, 16, 28, 0.88);
 }
-html.is-native-app .nick-input:disabled { opacity: 0.6; }
+.nick-input:disabled { opacity: 0.6; }
 
-html.is-native-app .nick-hint {
+.nick-hint {
   margin: 9px 2px 0;
   font-size: 12.5px;
   line-height: 1.4;
   color: rgba(178, 190, 208, 0.6);
 }
 
-html.is-native-app .nick-error {
+.nick-error {
   margin-top: 14px;
   padding: 10px 13px;
   border-radius: 12px;
@@ -18810,8 +18821,20 @@ html.is-native-app .nick-error {
   border: 1px solid rgba(220, 80, 80, 0.36);
 }
 
-html.is-native-app .nick-primary,
-html.is-native-app .nick-cancel {
+.nick-ok {
+  margin-top: 14px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(150, 230, 175, 0.96);
+  background: rgba(60, 200, 110, 0.12);
+  border: 1px solid rgba(70, 200, 120, 0.34);
+}
+
+.nick-primary,
+.nick-cancel {
   width: 100%;
   min-height: 52px;
   border-radius: 15px;
@@ -18820,21 +18843,21 @@ html.is-native-app .nick-cancel {
   cursor: pointer;
   transition: filter 0.14s, opacity 0.14s, transform 0.05s;
 }
-html.is-native-app .nick-primary {
+.nick-primary {
   margin-top: 22px;
   border: 0;
   background: linear-gradient(135deg, #55a5ff, #2388ff);
   color: #06101f;
 }
-html.is-native-app .nick-primary:active:not(:disabled) { transform: translateY(1px); }
-html.is-native-app .nick-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-html.is-native-app .nick-cancel {
+.nick-primary:active:not(:disabled) { transform: translateY(1px); }
+.nick-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.nick-cancel {
   margin-top: 10px;
   border: 1px solid rgba(140, 160, 190, 0.2);
   background: transparent;
   color: rgba(206, 218, 238, 0.72);
 }
-html.is-native-app .nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+.nick-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ═══════════════════════════════════════════════════════════
    AVATAR — shared avatar glyph + profile avatar picker (Phase 1B)
