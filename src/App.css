@@ -7696,8 +7696,89 @@ body {
   z-index: 5100;
   display: flex;
   flex-direction: column;
+  /* Dikey sosyal blok: profil pill / Sıralama / (Bildirimler+Arkadaşlar) hepsi
+     aynı genişlikte hizalansın diye sabit genişlik + stretch. */
   align-items: stretch;
-  gap: 7px;
+  width: 232px;
+  gap: 8px;
+}
+
+/* Sosyal blok — 1. satır: profil pill (tüm bloğa yayılır). */
+.social-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.top-right-stack .upd-wrap { width: 100%; }
+.top-right-stack .upd-pill { width: 100%; }
+/* Pill içindeki kullanıcı adı boşluğu doldursun; Lv + chevron sağa yaslansın. */
+.top-right-stack .upd-uname {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sosyal blok — 3. satır: Bildirimler + Arkadaşlar, eşit genişlikte iki buton. */
+.social-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+.social-row .notif-wrap { flex: 1; min-width: 0; }
+
+/* Etiketli sosyal buton (Bildirimler / Arkadaşlar) — pill ile aynı aile. */
+.social-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(140, 160, 190, 0.28);
+  border-radius: 999px;
+  background: rgba(15, 20, 30, 0.76);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  color: rgba(235, 242, 255, 0.92);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.05s;
+  white-space: nowrap;
+}
+.social-btn:hover {
+  border-color: rgba(120, 170, 255, 0.7);
+  background: rgba(22, 30, 46, 0.9);
+}
+.social-btn--open {
+  border-color: var(--accent);
+  background: rgba(26, 38, 60, 0.95);
+}
+.social-btn:active { transform: translateY(1px); }
+.social-btn-icon { font-size: 14px; line-height: 1; }
+.social-btn-label { line-height: 1; overflow: hidden; text-overflow: ellipsis; }
+.social-btn-badge {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px rgba(8, 12, 20, 0.9);
 }
 
 .top-right-stack .upd-wrap {
@@ -8010,7 +8091,9 @@ body {
 /* Mobile */
 @media (max-width: 520px) {
   .upd-wrap { top: 10px; right: 10px; }
-  .top-right-stack { top: 10px; right: 10px; gap: 6px; }
+  .top-right-stack { top: 10px; right: 10px; gap: 6px; width: min(208px, calc(100vw - 20px)); }
+  .social-btn { font-size: 11.5px; padding: 6px 8px; gap: 4px; }
+  .social-btn-icon { font-size: 13px; }
   .upd-pill { font-size: 12px; padding: 6px 10px; gap: 6px; }
   .upd-avatar { width: 22px; height: 22px; font-size: 10px; }
   .upd-dropdown { width: min(284px, calc(100vw - 20px)); }
@@ -8209,9 +8292,10 @@ body {
 }
 .lb-row {
   display: grid;
-  grid-template-columns: 32px 1fr auto auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
+  min-height: 50px;
   padding: 9px 12px;
   background: rgba(20, 26, 40, 0.55);
   border: 1px solid rgba(140, 170, 220, 0.14);
@@ -18071,6 +18155,99 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .mh-theme-name { flex: 1; min-width: 0; }
   .mh-theme-check { color: var(--accent); font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
 
+  /* ── Social Center bottom-sheet (Arkadaşlar tab) — native-only sosyal merkez.
+     Tek sheet içinde sekmeli: Arkadaşlar / İstekler / Bildirimler / Tema.
+     Reuses the .mh-sheet shell; opened solely from .mh-bottom-nav. ── */
+  .mh-sheet--social { max-height: 88vh; }
+
+  .social-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 2px;
+    border-radius: 14px;
+    background: rgba(8, 14, 28, .55);
+    border: 1px solid rgba(160, 196, 255, .12);
+  }
+  .social-tab {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    padding: 9px 4px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-body);
+    font-size: .8rem;
+    font-weight: 700;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .15s, background-color .15s;
+  }
+  .social-tab--active {
+    color: #eaf2ff;
+    background: radial-gradient(120% 130% at 50% 0%, rgba(88, 166, 255, .28), rgba(88, 166, 255, .08));
+    box-shadow: inset 0 0 0 1px rgba(120, 170, 255, .3);
+  }
+  .social-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 5px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font-size: .62rem;
+    font-weight: 800;
+    vertical-align: middle;
+  }
+  .social-tab-body {
+    min-height: 220px;
+    border-radius: 14px;
+    border: 1px solid rgba(160, 196, 255, .12);
+    background: rgba(10, 17, 33, .5);
+    overflow: hidden;
+  }
+  /* İçteki liste satırları sheet'in kendi scroll'unu kullanır — taşma yok. */
+  .social-tab-body .notif-list { display: flex; flex-direction: column; }
+
+  .social-theme { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+  .social-section-label {
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .social-cosmetic-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .social-cosmetic-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 14px 6px;
+    border-radius: 13px;
+    border: 1px dashed rgba(160, 196, 255, .22);
+    background: rgba(14, 24, 48, .4);
+    text-align: center;
+  }
+  .social-cosmetic-icon { font-size: 1.5rem; line-height: 1; }
+  .social-cosmetic-label { font-size: .76rem; font-weight: 700; color: var(--text); }
+  .social-cosmetic-soon {
+    font-size: .6rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   /* ── Quick Match bottom-sheet (Eşleş tab) — native-only placeholder entry
      panel for the future matchmaking system. Reuses the .mh-sheet shell; the
      mode cards + süre/tur chips are an inert preview and the primary CTA is
@@ -18438,11 +18615,39 @@ html.is-native-app .mh-nav-item--profile.mh-nav-item--active .mh-nav-avatar {
   html.is-native-app .mh-nav-avatar { width: 26px; height: 26px; }
 }
 
+/* Arkadaşlar tab — kırmızı bildirim badge'i ikonun sağ üstünde. Sayaç =
+   okunmamış bildirim toplamı (arkadaşlık isteği / davet / ödül dahil). */
+html.is-native-app .mh-nav-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+html.is-native-app .mh-nav-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: .6rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(6, 13, 31, .95);
+}
+
 /* Hide the floating home chrome the bottom nav replaces. The profile dropdown
    PANEL is kept (the Profil tab opens it), so .top-right-stack stays in the DOM
    but stops intercepting taps; its now-hidden triggers leave the corner empty. */
 html.is-native-app .top-right-stack { pointer-events: none; }
 html.is-native-app .top-right-stack .upd-pill,
+html.is-native-app .top-right-stack .social-row,
 html.is-native-app .top-right-stack .lb-trigger { display: none; }
 html.is-native-app .home-theme-picker,
 html.is-native-app .home-social-dock,
@@ -19777,4 +19982,618 @@ html:not(.is-native-app) .apk-photo-card {
     width: 78px;
     padding: 9px 5px;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SOSYAL SİSTEM — PlayerAvatar / Profil Kartı / Bildirim Merkezi
+   (desktop web + mobil web + native iOS/app ortak)
+══════════════════════════════════════════════════════════════ */
+
+/* ── PlayerAvatar ── */
+.player-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  border-radius: 50%;
+  line-height: 0;
+}
+.player-avatar .avatar { border-radius: 50%; overflow: hidden; }
+.player-avatar .avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+.player-avatar--highlight {
+  box-shadow: 0 0 0 2px rgba(255, 200, 60, 0.6), 0 0 8px rgba(255, 200, 60, 0.3);
+}
+.player-avatar--framed { box-shadow: 0 0 0 2px var(--accent); }
+
+/* ── PlayerProfileTrigger (genel sarmalayıcı) ── */
+.ppt-trigger {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ppt-trigger:focus-visible { outline: 2px solid var(--accent); border-radius: 8px; }
+
+/* ── Leaderboard satırında avatar + isim hücresi ── */
+.lb-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+}
+.lb-avatar {
+  border: 1.5px solid rgba(120, 180, 255, 0.4);
+  align-self: center;
+}
+@media (max-width: 520px) {
+  .lb-player { grid-area: name; }
+}
+
+/* ── Lobi satırında avatar (barın solundan hafif taşar) ── */
+.duel-player-id,
+.cq-player-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+.duel-player-avatar,
+.cq-player-avatar {
+  border: 2px solid rgba(120, 180, 255, 0.55);
+  margin-left: -4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.duel-player-chip.has-avatar { padding-left: 6px; }
+
+/* ── Profil kartı overlay ── */
+.ppc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 8, 16, 0.62);
+  backdrop-filter: blur(3px);
+}
+.ppc-overlay--sheet { align-items: flex-end; padding: 0; }
+.ppc-overlay-inner { position: relative; width: 100%; max-width: 360px; }
+.ppc-overlay--sheet .ppc-overlay-inner { max-width: 100%; }
+.ppc-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #cdd9ee;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ppc-loading {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--muted);
+  background: linear-gradient(160deg, rgba(22, 30, 48, 0.97), rgba(14, 20, 34, 0.97));
+  border: 1px solid rgba(120, 160, 230, 0.25);
+  border-radius: 18px;
+}
+.ppc-card {
+  background: linear-gradient(160deg, rgba(22, 30, 48, 0.97), rgba(14, 20, 34, 0.97));
+  border: 1px solid rgba(120, 160, 230, 0.25);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+}
+.ppc-overlay--sheet .ppc-card {
+  border-radius: 18px 18px 0 0;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+}
+.ppc-head { display: flex; align-items: center; gap: 14px; }
+.ppc-identity { min-width: 0; }
+.ppc-uname {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: #eaf1ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ppc-meta { display: flex; gap: 8px; margin-top: 5px; align-items: center; }
+.ppc-level {
+  font-size: 12px;
+  font-weight: 800;
+  color: #bcd0f0;
+  background: rgba(88, 166, 255, 0.16);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.ppc-xp { font-size: 12px; color: var(--muted); }
+.ppc-badges { display: flex; gap: 8px; margin: 16px 0; }
+.ppc-badge-slot {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ppc-badge-slot--empty {
+  border: 1px dashed rgba(150, 175, 220, 0.25);
+  background: rgba(255, 255, 255, 0.02);
+}
+.ppc-badge-slot--filled {
+  border: 1px solid rgba(120, 160, 230, 0.4);
+  background: rgba(88, 166, 255, 0.08);
+}
+.ppc-badge-img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
+.ppc-actions { display: flex; flex-direction: column; gap: 8px; }
+.ppc-btn {
+  all: unset;
+  text-align: center;
+  padding: 11px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.ppc-btn:hover:not(:disabled) { border-color: var(--accent); }
+.ppc-btn--primary { background: var(--accent); color: #04111f; border-color: transparent; }
+.ppc-btn--ghost { color: var(--muted); }
+.ppc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Bildirim merkezi ── */
+.notif-wrap { position: relative; }
+.notif-bell {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 18px;
+  cursor: pointer;
+}
+.notif-bell:hover,
+.notif-bell--open { border-color: var(--accent); }
+.notif-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 1200;
+  background: linear-gradient(160deg, rgba(22, 30, 48, 0.98), rgba(14, 20, 34, 0.98));
+  border: 1px solid rgba(120, 160, 230, 0.25);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.notif-sheet-backdrop { position: fixed; inset: 0; z-index: 1200; background: rgba(4, 8, 16, 0.5); }
+.notif-panel--sheet {
+  position: fixed;
+  top: auto;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  max-height: 75vh;
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 1201;
+}
+.notif-panel-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(16, 22, 36, 0.98);
+  border-bottom: 1px solid rgba(140, 170, 220, 0.12);
+}
+.notif-panel-title { font-weight: 800; color: #eaf1ff; }
+.notif-markall { all: unset; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--accent); }
+.notif-list { display: flex; flex-direction: column; }
+.notif-empty { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+.notif-item { padding: 11px 14px; border-bottom: 1px solid rgba(140, 170, 220, 0.08); }
+.notif-item--unread { background: rgba(88, 166, 255, 0.07); }
+.notif-item-main { display: flex; flex-direction: column; gap: 2px; }
+.notif-item-title { font-weight: 700; font-size: 13px; color: #e8f0ff; }
+.notif-item-body { font-size: 12px; color: rgba(200, 215, 240, 0.75); }
+.notif-item-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.notif-item-actions { display: flex; gap: 8px; margin-top: 8px; }
+.notif-act {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.notif-act--accept { background: var(--accent); color: #04111f; }
+.notif-act--reject { background: var(--surface3); color: var(--text); }
+
+/* ── Sosyal toast ── */
+.social-toast-host {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.social-toast {
+  max-width: 90vw;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(14, 20, 34, 0.96);
+  border: 1px solid rgba(120, 160, 230, 0.35);
+  color: #eaf1ff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.notif-panel-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.16);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+/* Yanıtlanmış arkadaşlık isteği etiketi (butonlar yerine) */
+.notif-item-resolved {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(120, 210, 150, 0.95);
+}
+
+/* ── Arkadaşlar paneli ── */
+.friends-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 26px 22px;
+  text-align: center;
+}
+.friends-empty-title { font-weight: 800; color: #e8f0ff; font-size: 13.5px; }
+.friends-empty-sub { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(140, 170, 220, 0.08);
+  text-align: left;
+}
+.friend-row:hover { background: rgba(88, 166, 255, 0.07); }
+.friend-row-avatar { border: 1.5px solid rgba(120, 180, 255, 0.4); }
+.friend-row-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.friend-row-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #eaf1ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.friend-row-level { font-size: 11.5px; color: var(--muted); }
+.friend-row-status {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(140, 170, 220, 0.35);
+}
+
+/* ── Oyuncu / arkadaş arama input'u (panel + davet modalı ortak) ── */
+.friends-search {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(16, 22, 36, 0.98);
+  border-bottom: 1px solid rgba(140, 170, 220, 0.12);
+}
+.friends-search-icon { font-size: 13px; opacity: 0.7; flex: 0 0 auto; }
+.friends-search-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(10, 16, 28, 0.85);
+  border: 1px solid rgba(120, 160, 230, 0.25);
+  color: #eaf1ff;
+  font-family: var(--font-body);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.friends-search-input::placeholder { color: rgba(170, 190, 220, 0.5); }
+.friends-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+}
+.friends-search-clear {
+  all: unset;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.friends-search-clear:hover { background: rgba(140, 170, 220, 0.14); color: #eaf1ff; }
+
+/* Davet modalında arama: sticky değil (modal kabuğu içinde akar), kenar boşluğu modale uyumlu. */
+.friends-search--invite {
+  position: static;
+  margin: 0 -20px 4px;
+  padding: 0 20px 12px;
+  background: transparent;
+  border-bottom: 1px solid rgba(140, 170, 220, 0.1);
+}
+
+/* Arama sonucu satırındaki "Arkadaş Ekle" / durum butonu */
+.friend-add-btn {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: #04111f;
+  white-space: nowrap;
+  transition: filter 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+}
+.friend-add-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.friend-add-btn:disabled { cursor: default; }
+.friend-add-btn.is-disabled {
+  background: rgba(140, 170, 220, 0.12);
+  border-color: rgba(140, 170, 220, 0.25);
+  color: var(--muted);
+}
+
+/* ── Ortak lobi davet alanı (LobbyInviteBar) ── */
+/* İki buton: sığarsa yan yana, sığmazsa alt alta (flex-wrap). */
+.lobby-invite-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.lobby-invite-btn {
+  flex: 1 1 140px;
+  min-width: 140px;
+  height: 44px;
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  letter-spacing: 0.01em;
+  box-sizing: border-box;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, filter 0.15s;
+}
+/* Linki Kopyala — nötr/mavi */
+.lobby-invite-btn--copy {
+  background: var(--surface2);
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+}
+.lobby-invite-btn--copy:hover:not(.is-copied) { background: rgba(88, 166, 255, 0.12); }
+.lobby-invite-btn--copy.is-copied {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(63, 185, 80, 0.08);
+}
+/* Arkadaş Davet Et — sosyal/vurgulu (dolu accent) */
+.lobby-invite-btn--friends {
+  background: var(--accent);
+  border: 1.5px solid transparent;
+  color: #04111f;
+}
+.lobby-invite-btn--friends:hover { filter: brightness(1.06); }
+
+@media (max-width: 400px) {
+  .lobby-invite-btn { font-size: 0.8rem; }
+}
+
+/* Arkadaş davet seçici (ppc-overlay kabuğunu paylaşır) */
+.lobby-invite-picker-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #eaf1ff;
+}
+.lobby-invite-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 4px -20px 0;
+}
+.lobby-invite-row {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.lobby-invite-send {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: #04111f;
+  white-space: nowrap;
+  transition: filter 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+}
+.lobby-invite-send:hover:not(:disabled) { filter: brightness(1.06); }
+.lobby-invite-send:disabled { cursor: default; }
+.lobby-invite-send.is-invited {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.5);
+  color: var(--green);
+}
+
+/* Arama aktifken: "Arkadaşlar" + "Oyuncular" bölümleri tek scroll kabında */
+.lobby-invite-sections {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 4px -20px 0;
+  padding: 0 20px;
+}
+.lobby-invite-section + .lobby-invite-section { margin-top: 10px; }
+.lobby-invite-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(170, 190, 220, 0.65);
+  margin: 6px 0 2px;
+}
+/* Bölüm içindeki listeler kendi scroll'unu/negatif kenarını taşımaz (kap hallediyor) */
+.lobby-invite-sections .lobby-invite-list {
+  max-height: none;
+  overflow: visible;
+  margin: 0;
+}
+.lobby-invite-sections .lobby-invite-row { padding-left: 0; padding-right: 0; }
+.lobby-invite-sections .friends-empty { padding: 8px 0; }
+
+/* ── Native profil panelindeki sosyal menü satırları ── */
+.upd-social-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.social-menu-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: rgba(20, 28, 46, 0.7);
+  border: 1px solid rgba(120, 160, 230, 0.18);
+  color: #eaf1ff;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.social-menu-row:active { transform: translateY(1px); }
+.social-menu-row-icon { font-size: 17px; line-height: 1; }
+.social-menu-row-label { flex: 1; }
+.social-menu-row-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* Native app: sağ üst zil/arkadaşlar ikonları gizli; erişim profil panelinden.
+   (Bottom-sheet panelleri upd-dropdown içinde pointer-events:auto kalır.) */
+html.is-native-app .social-bar .notif-bell { display: none; }
+/* Bottom-sheet ve backdrop her şeyin üstünde paint olsun. */
+.notif-sheet-backdrop { z-index: 6300; }
+.notif-panel--sheet { z-index: 6301; }
+
+@media (max-width: 520px) {
+  .notif-panel { width: 320px; }
 }

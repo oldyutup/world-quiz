@@ -28,6 +28,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import LobbyChat from "../../components/LobbyChat";
+import { PlayerAvatar } from "../../components/PlayerAvatar";
+import { PlayerProfileTrigger } from "../../components/PlayerProfileTrigger";
+import { LobbyInviteBar } from "../../components/LobbyInviteBar";
+import { useRosterProfiles } from "../../lib/useRosterProfiles";
+import { useSocialOptional } from "../../components/SocialContext";
 import { playSound } from "../../lib/sound";
 import { recallConquestClaim } from "./conquestClaim";
 import {
@@ -137,7 +142,6 @@ export default function ConquestLobby({
   teamNotice,
   onDismissTeamNotice,
 }: Props) {
-  const [copied,      setCopied]      = useState(false);
   const [chatOpen,    setChatOpen]    = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
@@ -160,19 +164,6 @@ export default function ConquestLobby({
     `Katılmak için tıkla:\n${shareLink}`
   ), [settings, shareLink]);
 
-  function copyInvite() {
-    const text = inviteMessage;
-    if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {
-        window.prompt("Linki kopyala:", shareLink);
-      });
-  }
 
   /* Rematch mode is driven by the explicit prop from ConquestMode (which
    * derives it from the canonical room.gameplay_state.phase === "finished"
@@ -262,6 +253,15 @@ export default function ConquestLobby({
    * pre-date the picker.  Same map is used both in lobby chips and the
    * "taken" mask in the picker so the two views can never drift apart. */
   const resolvedColors = useMemo(() => assignConquestPlayerColors(players), [players]);
+
+  // Sosyal: roster avatarları (tek batched RPC) + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profileId ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    if (roomCode) social.setRoomContext({ code: roomCode, mode: "conquest", roomUrl: `/?conquest=${roomCode}` });
+    return () => social.setRoomContext(null);
+  }, [social, roomCode]);
   const me            = myPlayerId ? players.find(p => p.id === myPlayerId) ?? null : null;
   const myColor       = me ? resolvedColors[me.id] : null;
   /* Build "taken by someone else" set on raw `player.color` (not the resolved
@@ -427,7 +427,16 @@ export default function ConquestLobby({
         aria-disabled={passive || undefined}
       >
         <div className="cq-player-chip-main">
-          <span className="cq-player-name">{p.name}</span>
+          <PlayerProfileTrigger profileId={p.profileId} as="span" className="cq-player-id">
+            <PlayerAvatar
+              avatarId={rosterProfiles.get(p.profileId ?? "")?.avatarId}
+              username={p.name}
+              size="sm"
+              highlight={p.isHost}
+              className="cq-player-avatar"
+            />
+            <span className="cq-player-name">{p.name}</span>
+          </PlayerProfileTrigger>
           {isMe && <span className="cq-player-you-tag">sen</span>}
           {p.isHost && <span className="duel-tag host">👑</span>}
           {isRematch && ready && (
@@ -847,13 +856,13 @@ export default function ConquestLobby({
           </div>
 
           <div className="cq-invite-block">
-            <button
-              className={"btn cq-invite-btn" + (copied ? " cq-invite-btn--copied" : "")}
-              onClick={copyInvite}
-              type="button"
-            >
-              {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-            </button>
+            <LobbyInviteBar
+              inviteMessage={inviteMessage}
+              shareLink={shareLink}
+              roomCode={roomCode}
+              mode="conquest"
+              roomUrl={`/?conquest=${roomCode}`}
+            />
             <input
               className="duel-link-input cq-link-input"
               readOnly

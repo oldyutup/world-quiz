@@ -18,6 +18,8 @@
  */
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
 
 type LeaderType = "xp" | "gold";
 type XpScope = "general" | "country" | "flag" | "wheel" | "conquest";
@@ -25,6 +27,7 @@ type XpScope = "general" | "country" | "flag" | "wheel" | "conquest";
 interface XpRow {
   profile_id: string;
   username:   string | null;
+  avatar_id:  string | null;
   xp:         number;
   total_xp:   number;
   level:      number;
@@ -32,6 +35,7 @@ interface XpRow {
 interface GoldRow {
   profile_id: string;
   username:   string | null;
+  avatar_id:  string | null;
   gold:       number;
   total_xp:   number;
   level:      number;
@@ -196,7 +200,16 @@ export function LeaderboardModal({ onClose }: Props) {
                     className={`lb-row${rank <= 3 ? ` lb-row--top${rank}` : ""}`}
                   >
                     <span className="lb-rank">{rank}</span>
-                    <span className="lb-name">@{name}</span>
+                    <PlayerProfileTrigger profileId={row.profile_id} className="lb-player">
+                      <PlayerAvatar
+                        avatarId={row.avatar_id}
+                        username={name}
+                        size="sm"
+                        highlight={rank <= 3}
+                        className="lb-avatar"
+                      />
+                      <span className="lb-name">@{name}</span>
+                    </PlayerProfileTrigger>
                     <span className="lb-level">Lv.&nbsp;{row.level}</span>
                     <span className="lb-value">
                       {type === "gold" && <span className="lb-coin">🟡</span>}

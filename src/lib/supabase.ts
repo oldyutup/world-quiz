@@ -85,6 +85,9 @@ export interface DuelPlayer {
   score:        number;
   joined_at:    string;
   last_seen_at: string | null;
+  /** auth.users.id — logged-in oyuncuda dolu, misafirde null. Avatar/profil
+   *  kartı çözümü için (DB kolonu zaten var; select '*' döndürür). */
+  profile_id?:  string | null;
 }
 
 export interface DuelClaim {
@@ -149,6 +152,8 @@ export interface WheelDuelPlayer {
   score:        number;
   joined_at:    string;
   last_seen_at: string;
+  /** auth.users.id — logged-in oyuncuda dolu, misafirde null (avatar çözümü). */
+  profile_id?:  string | null;
 }
 
 /* ── Wheel Group (Çark Çok Oyunculu — 3–10 kişi) ── */
@@ -179,6 +184,8 @@ export interface WheelGroupPlayer {
   score:        number;
   joined_at:    string;
   last_seen_at: string;
+  /** auth.users.id — logged-in oyuncuda dolu, misafirde null (avatar çözümü). */
+  profile_id?:  string | null;
 }
 
 export interface WheelGroupPassVote {

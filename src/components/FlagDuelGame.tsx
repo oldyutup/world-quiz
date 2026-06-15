@@ -52,6 +52,11 @@ import { validateUsername, type Profile } from "../lib/auth";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import { LobbyInviteBar } from "./LobbyInviteBar";
+import { useRosterProfiles } from "../lib/useRosterProfiles";
+import { useSocialOptional } from "./SocialContext";
 
 /* ═══════════════════════════════════════════════════════════════
    SEÇENEKLER (offline mod ile aynı isimler)
@@ -505,13 +510,21 @@ useEffect(() => {
     },
   });
   const [players, setPlayers] = useState<DuelPlayer[]>([]);
+  // Sosyal: roster avatarları + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    const code = room?.code;
+    if (code) social.setRoomContext({ code, mode: "flagDuel", roomUrl: `/?flagDuel=${code}` });
+    return () => social.setRoomContext(null);
+  }, [social, room?.code]);
   const [claims,  setClaims]  = useState<DuelClaim[]>([]);
   const [isHost,  setIsHost]  = useState(false);
 
   /* oyun durumu */
   const [input,    setInput]    = useState("");
   const [feedback, setFeedback] = useState<"correct" | "wrong" | "dup" | null>(null);
-  const [copied,   setCopied]   = useState(false);
   const [imgError, setImgError] = useState(false);
 
   /* quit modal */
@@ -2024,21 +2037,14 @@ if (!code) {
     setErrorMsg(null); setStatusMsg(null);
   };
 
-  /* davet kopyala */
-  const copyInvite = async () => {
-    if (!room) return;
-    const msg = `Torble Bayrak Modu Online 1v1! 🚩
+  /* davet mesajı (LobbyInviteBar kopyalar) */
+  const inviteMessage = room
+    ? `Torble Bayrak Modu Online 1v1! 🚩
 Mod: ${continentLabel} · ${roundsLabel}
 Oda kodu: ${room.code}
 
-${shareLink}`;
-    try {
-      await navigator.clipboard.writeText(msg);
-      setCopied(true); setTimeout(() => setCopied(false), 2000);
-    } catch {
-      window.prompt("Linki kopyala:", shareLink);
-    }
-  };
+${shareLink}`
+    : "";
 
   /* sonuç */
   const resolveResult = (): { emoji: string; title: string; subtitle: string | null } => {
@@ -2263,10 +2269,13 @@ ${shareLink}`;
                 <p className="duel-room-code-hint">6 haneli kod — arkadaşına ver</p>
               </div>
 
-              <button className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                onClick={copyInvite}>
-                {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-              </button>
+              <LobbyInviteBar
+                inviteMessage={inviteMessage}
+                shareLink={shareLink}
+                roomCode={room.code}
+                mode="flagDuel"
+                roomUrl={`/?flagDuel=${room.code}`}
+              />
 
               <div className="duel-link-preview" onClick={e => {
                 const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
@@ -2282,9 +2291,17 @@ ${shareLink}`;
                   <div className="duel-players-list">
                     {players.map(p => (
                       <div key={p.id}
-                        className={"duel-player-chip" + (p.id === myId ? " mine" : "")}>
-                        <span className="duel-player-dot"/>
-                        <span className="duel-player-name">{p.name}</span>
+                        className={"duel-player-chip has-avatar" + (p.id === myId ? " mine" : "")}>
+                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                          <PlayerAvatar
+                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                            username={p.name}
+                            size="sm"
+                            highlight={players[0]?.id === p.id}
+                            className="duel-player-avatar"
+                          />
+                          <span className="duel-player-name">{p.name}</span>
+                        </PlayerProfileTrigger>
                         <div className="duel-player-tags">
                           {p.id === myId && <span className="duel-tag">Sen</span>}
                           {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}

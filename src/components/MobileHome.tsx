@@ -26,6 +26,8 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sound";
 import { Avatar } from "./Avatar";
+import { SocialCenterSheet } from "./SocialCenterSheet";
+import { useSocialOptional } from "./SocialContext";
 
 /** Screens the mobile home can launch directly — a subset of App's AppScreen ids. */
 export type MobileHomeTarget =
@@ -198,73 +200,6 @@ function MobileSheet({
   );
 }
 
-/** Theme picker as a native bottom sheet. Reuses the .mh-sheet shell + the
- *  real setHomeTheme handler (onSelect); only opened from the native-app
- *  bottom-nav Tema tab, so it never appears on desktop or mobile web. */
-function MobileThemeSheet({
-  themes,
-  active,
-  onSelect,
-  onClose,
-}: {
-  themes: ThemeOption[];
-  active: string;
-  onSelect: (id: string) => void;
-  onClose: () => void;
-}) {
-  const sheetRef = useRef<HTMLDivElement>(null);
-  useSheetLock(sheetRef, onClose);
-
-  return createPortal(
-    <>
-      <div
-        className="mh-sheet-backdrop"
-        aria-hidden="true"
-        onClick={() => { playSound("click"); onClose(); }}
-      />
-      <div
-        ref={sheetRef}
-        className="mh-sheet mh-sheet--theme"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mh-theme-title"
-        tabIndex={-1}
-      >
-        <div className="mh-sheet-grab" aria-hidden="true" />
-        <header className="mh-sheet-head">
-          <span className="mh-sheet-icon" aria-hidden="true">🎨</span>
-          <h3 id="mh-theme-title" className="mh-sheet-title">Tema</h3>
-          <button
-            type="button"
-            className="mh-sheet-close"
-            aria-label="Kapat"
-            onClick={() => { playSound("click"); onClose(); }}
-          >
-            ✕
-          </button>
-        </header>
-        <div className="mh-rows" role="menu" aria-label="Arka plan teması">
-          {themes.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              className={"mh-theme-row" + (t.id === active ? " mh-theme-row--active" : "")}
-              role="menuitemradio"
-              aria-checked={t.id === active}
-              onClick={() => { playSound("click"); onSelect(t.id); onClose(); }}
-            >
-              <span className="mh-theme-swatch" style={{ background: t.swatch }} aria-hidden="true" />
-              <span className="mh-theme-name">{t.name}</span>
-              {t.id === active && <span className="mh-theme-check" aria-hidden="true">✓</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-    </>,
-    document.body
-  );
-}
-
 /** Quick Match (Eşleş tab) — native-only placeholder entry panel for the
  *  future, level-based matchmaking system. NO real matchmaking yet: the mode
  *  cards and süre/tur controls are an inert preview and the primary CTA is
@@ -393,8 +328,13 @@ export default function MobileHome({
   onSelectTheme,
 }: MobileHomeProps) {
   const [openId, setOpenId] = useState<Category["id"] | null>(null);
-  const [themeOpen, setThemeOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
+
+  // Arkadaşlar alt-nav badge'i: okunmamış bildirim (arkadaşlık isteği, davet,
+  // ödül vs. hepsi bildirim olarak gelir) toplamı. Provider yoksa 0.
+  const social = useSocialOptional();
+  const socialBadge = social?.unreadCount ?? 0;
 
   const categories: Category[] = [
     {
@@ -465,12 +405,12 @@ export default function MobileHome({
         />
       )}
 
-      {themeOpen && (
-        <MobileThemeSheet
+      {socialOpen && (
+        <SocialCenterSheet
           themes={themes}
-          active={activeTheme}
-          onSelect={onSelectTheme}
-          onClose={() => setThemeOpen(false)}
+          activeTheme={activeTheme}
+          onSelectTheme={onSelectTheme}
+          onClose={() => setSocialOpen(false)}
         />
       )}
 
@@ -486,8 +426,11 @@ export default function MobileHome({
           html.is-native-app paints it), so the floating top-right login /
           ranking stack, theme picker and social dock are hidden there and
           these five tabs take over: Profil · Sıralama · Ana Menü · Eşleş ·
-          Tema. Ana Menü is the home tab; Eşleş opens the Quick Match sheet;
-          the rest delegate to the same App handlers the floating chrome used. */}
+          Arkadaşlar. Ana Menü is the home tab; Eşleş opens the Quick Match
+          sheet; Arkadaşlar opens the social center (friends / requests /
+          notifications / theme); the rest delegate to the same App handlers
+          the floating chrome used. Tema artık ayrı sekme değil — sosyal
+          merkezin içinde. */}
       <nav className="mh-bottom-nav" aria-label="Uygulama menüsü">
         <button
           type="button"
@@ -525,7 +468,7 @@ export default function MobileHome({
           onClick={() => {
             playSound("click");
             setOpenId(null);
-            setThemeOpen(false);
+            setSocialOpen(false);
             setMatchOpen(false);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
@@ -536,18 +479,23 @@ export default function MobileHome({
         <button
           type="button"
           className={"mh-nav-item" + (matchOpen ? " mh-nav-item--active" : "")}
-          onClick={() => { playSound("click"); setOpenId(null); setThemeOpen(false); setMatchOpen(true); }}
+          onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(true); }}
         >
           <span className="mh-nav-icon" aria-hidden="true">⚡</span>
           <span className="mh-nav-label">Eşleş</span>
         </button>
         <button
           type="button"
-          className={"mh-nav-item" + (themeOpen ? " mh-nav-item--active" : "")}
-          onClick={() => { playSound("click"); setOpenId(null); setMatchOpen(false); setThemeOpen(true); }}
+          className={"mh-nav-item mh-nav-item--social" + (socialOpen ? " mh-nav-item--active" : "")}
+          onClick={() => { playSound("click"); setOpenId(null); setMatchOpen(false); setSocialOpen(true); }}
         >
-          <span className="mh-nav-icon" aria-hidden="true">🎨</span>
-          <span className="mh-nav-label">Tema</span>
+          <span className="mh-nav-icon-wrap" aria-hidden="true">
+            <span className="mh-nav-icon">👥</span>
+            {socialBadge > 0 && (
+              <span className="mh-nav-badge">{socialBadge > 99 ? "99+" : socialBadge}</span>
+            )}
+          </span>
+          <span className="mh-nav-label">Arkadaşlar</span>
         </button>
       </nav>
     </div>

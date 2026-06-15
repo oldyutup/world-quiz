@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getLevelProgress, fetchTotalXp } from "../lib/progression";
 import type { Profile } from "../lib/auth";
 import type { CountdownSoundMode } from "../lib/sound";
@@ -26,6 +26,10 @@ interface Props {
   onRequestUsernameChange?: () => void;
   /** "Avatarı Değiştir" butonuna basılınca avatar seçim modalını açar. */
   onRequestAvatarChange?: () => void;
+  /** Native profil panelinde gösterilen sosyal menü satırları
+   *  (Bildirimler / Arkadaşlar). Desktop+mobil web'de bunlar üst social-bar'da
+   *  durduğu için verilmez. */
+  socialMenu?: ReactNode;
 }
 
 export function UserProfileDropdown({
@@ -44,6 +48,7 @@ export function UserProfileDropdown({
   controlledOpen,
   onRequestUsernameChange,
   onRequestAvatarChange,
+  socialMenu,
 }: Props) {
   // Open state is internal by default; when `controlledOpen` is provided the
   // parent owns it (native bottom-nav). Either way every open/close routes
@@ -168,6 +173,9 @@ export function UserProfileDropdown({
               <span className="upd-head-level">Seviye {lp.level}</span>
             </div>
           </div>
+
+          {/* — Sosyal menü (native: Bildirimler / Arkadaşlar) — */}
+          {socialMenu && <div className="upd-social-menu">{socialMenu}</div>}
 
           {/* — Edit actions (balanced two-up row, no longer cramped) — */}
           {(onRequestUsernameChange || onRequestAvatarChange) && (

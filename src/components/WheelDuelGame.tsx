@@ -49,6 +49,11 @@ import {
   type XpBreakdown,
 } from "../lib/progression";
 import { recordOnlineMatchResult, recordGameComplete } from "../lib/achievementStats";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import { LobbyInviteBar } from "./LobbyInviteBar";
+import { useRosterProfiles } from "../lib/useRosterProfiles";
+import { useSocialOptional } from "./SocialContext";
 import {
   getFlagPool,
   getContinentIds,
@@ -357,7 +362,15 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
   /* ── Lobby state (Supabase-bound) ─────────────────────────── */
   const [room, setRoom] = useState<WheelDuelRoom | null>(null);
   const [players, setPlayers] = useState<WheelDuelPlayer[]>([]);
-  const [copied, setCopied] = useState(false);
+  // Sosyal: roster avatarları + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    const code = room?.code;
+    if (code) social.setRoomContext({ code, mode: "wheelDuel", roomUrl: `/?wheelDuel=${code}` });
+    return () => social.setRoomContext(null);
+  }, [social, room?.code]);
 
   /* ── Gameplay state ───────────────────────────────────────── */
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -1735,7 +1748,6 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     // UI önce sıfırlansın — DB silinmesini beklemeden setup'a dönelim
     setRoom(null);
     setPlayers([]);
-    setCopied(false);
     setErrorMsg(null);
     setStatusMsg(null);
     setPhase("setup");
@@ -1871,19 +1883,6 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
     }
   }
 
-  function copyInvite() {
-    const text = inviteMessage || shareLink;
-    if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {
-        window.prompt("Linki kopyala:", shareLink);
-      });
-  }
 
   /* ═══════════════════════════════════════════════════════════════
      RENDER
@@ -2163,14 +2162,13 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
               </div>
 
               {/* Invite */}
-              <button
-                className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                onClick={copyInvite}
-              >
-                {copied
-                  ? "✓ Davet mesajı kopyalandı!"
-                  : "📋 Davet Mesajını Kopyala"}
-              </button>
+              <LobbyInviteBar
+                inviteMessage={inviteMessage}
+                shareLink={shareLink}
+                roomCode={room.code}
+                mode="wheelDuel"
+                roomUrl={`/?wheelDuel=${room.code}`}
+              />
 
               <div
                 className="duel-link-preview"
@@ -2203,10 +2201,18 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
                       return (
                         <div
                           key={p.id}
-                          className={"duel-player-chip" + (isMe ? " mine" : "")}
+                          className={"duel-player-chip has-avatar" + (isMe ? " mine" : "")}
                         >
-                          <span className="duel-player-dot" />
-                          <span className="duel-player-name">{p.name}</span>
+                          <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                            <PlayerAvatar
+                              avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                              username={p.name}
+                              size="sm"
+                              highlight={isPlayerHost}
+                              className="duel-player-avatar"
+                            />
+                            <span className="duel-player-name">{p.name}</span>
+                          </PlayerProfileTrigger>
                           <div className="duel-player-tags">
                             {isMe && <span className="duel-tag">Sen</span>}
                             {isPlayerHost && (

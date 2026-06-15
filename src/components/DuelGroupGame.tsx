@@ -69,6 +69,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
+import { LobbyInviteBar } from "./LobbyInviteBar";
 import {
   playSound,
   stopSound,
@@ -355,7 +356,6 @@ export default function DuelGroupGame({
   const [isHost,   setIsHost]   = useState(false);
   const [input,    setInput]    = useState("");
   const [feedback, setFeedback] = useState<"ok" | "err" | "dup" | "region" | null>(null);
-  const [copied,   setCopied]   = useState(false);
   const [showLabels] = useState(true);
   const [quitModal, setQuitModal] = useState(false);
 
@@ -1309,15 +1309,6 @@ Süre bitmeden en çok ülkeyi yazan kazanır.
 Oyuna katıl:
 ${shareLink}`
     : "";
-  const copyInvite = () => {
-    const text = inviteMessage || shareLink;
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    }).catch(() => {
-      window.prompt("Linki kopyala:", shareLink);
-    });
-  };
 
   /* ── NOT: reconcileRoomAfterLeave helper'ı RPC switch'ten önce host transfer
    *  ve boş-oda cleanup'ını client-side yapıyordu. Bu mantık artık
@@ -1832,13 +1823,13 @@ const returnToRoom = useCallback(async () => {
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                    <button
-                      className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                      onClick={copyInvite}
-                      style={{ width: "100%" }}
-                    >
-                      {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-                    </button>
+                    <LobbyInviteBar
+                      inviteMessage={inviteMessage}
+                      shareLink={shareLink}
+                      roomCode={room.code}
+                      mode="duelGroup"
+                      roomUrl={`/?duelGroup=${room.code}`}
+                    />
                     <div onClick={(e) => {
                       const el = (e.currentTarget as HTMLElement).querySelector("input") as HTMLInputElement | null;
                       el?.select();

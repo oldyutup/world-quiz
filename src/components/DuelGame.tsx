@@ -55,6 +55,11 @@ import { validateUsername, type Profile } from "../lib/auth";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import { LobbyInviteBar } from "./LobbyInviteBar";
+import { useRosterProfiles } from "../lib/useRosterProfiles";
+import { useSocialOptional } from "./SocialContext";
 
 /* ─── options ─── */
 const DURATION_OPTS = [
@@ -317,11 +322,19 @@ export default function DuelGame({
   const [room,        setRoom]        = useState<DuelRoom | null>(null);
   const [players,     setPlayers]     = useState<DuelPlayer[]>([]);
   const [claims,      setClaims]      = useState<DuelClaim[]>([]);
+  // Sosyal: roster avatarları (tek batched RPC) + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    const code = room?.code;
+    if (code) social.setRoomContext({ code, mode: "duel", roomUrl: `/?duel=${code}` });
+    return () => social.setRoomContext(null);
+  }, [social, room?.code]);
   const [timeLeft,    setTimeLeft]    = useState(60);
   const [isHost,      setIsHost]      = useState(false);
   const [input,       setInput]       = useState("");
   const [feedback,    setFeedback]    = useState<"ok" | "err" | "dup" | "region" | null>(null);
-  const [copied,      setCopied]      = useState(false);
   const [isQuickMatch,  setIsQuickMatch]  = useState(false);
   const [showLabels,    setShowLabels]    = useState(true);
   const [quitModal,    setQuitModal]    = useState(false);
@@ -1491,17 +1504,6 @@ Katılmak için tıkla:
 ${shareLink}`
     : "";
 
-  const copyInvite = () => {
-    const text = inviteMessage || shareLink;
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    }).catch(() => {
-      // Fallback: show the link in a prompt if clipboard unavailable
-      window.prompt("Linki kopyala:", shareLink);
-    });
-  };
-
 
   /* ════════════════════════════════════════════════════════════════
      HIZLI EŞLEŞ — startQuickMatch / cancelQuickMatch / join
@@ -2374,15 +2376,14 @@ setXpResult(null); xpAwardedRef.current = false;
   </p>
 </div>
 
-                {/* Invite — copy full message button */}
-                <button
-                  className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                  onClick={copyInvite}
-                >
-                  {copied
-                    ? "✓ Davet mesajı kopyalandı!"
-                    : "📋 Davet Mesajını Kopyala"}
-                </button>
+                {/* Invite — kopyala + arkadaş davet et */}
+                <LobbyInviteBar
+                  inviteMessage={inviteMessage}
+                  shareLink={shareLink}
+                  roomCode={room.code}
+                  mode="duel"
+                  roomUrl={`/?duel=${room.code}`}
+                />
                 {/* Link preview (read-only, tap to select) */}
                 <div className="duel-link-preview" style={{ marginBottom: 10 }} onClick={e => {
                   const el = e.currentTarget.querySelector("input") as HTMLInputElement | null;
@@ -2408,10 +2409,18 @@ setXpResult(null); xpAwardedRef.current = false;
       {players.map((p) => (
         <div
           key={p.id}
-          className={"duel-player-chip" + (p.id === myId ? " mine" : "")}
+          className={"duel-player-chip has-avatar" + (p.id === myId ? " mine" : "")}
         >
-          <span className="duel-player-dot" />
-          <span className="duel-player-name">{p.name}</span>
+          <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+            <PlayerAvatar
+              avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+              username={p.name}
+              size="sm"
+              highlight={players[0]?.id === p.id}
+              className="duel-player-avatar"
+            />
+            <span className="duel-player-name">{p.name}</span>
+          </PlayerProfileTrigger>
 
           <div className="duel-player-tags">
             {p.id === myId && <span className="duel-tag">Sen</span>}

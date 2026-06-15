@@ -56,6 +56,9 @@ import AuthModal from "./components/AuthModal";
 import NicknameModal from "./components/NicknameModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
+import { SocialProvider } from "./components/SocialContext";
+import { NotificationCenter } from "./components/NotificationCenter";
+import { FriendsButton } from "./components/FriendsButton";
 import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import {
@@ -2633,44 +2636,66 @@ useEffect(() => {
   setAuthOpen(true);
 }, [authLoading, profile]);
 
+  const renderScreen = () => {
   if (screen === "home")
   return (
     <>
       <div className="top-right-stack">
-        <UserProfileDropdown
-          profile={profile}
-          authLoading={authLoading}
-          gold={gold}
-          canBonus={canBonus}
-          soundEnabled={soundEnabled}
-          countdownSoundMode={countdownSoundMode}
-          onClaimBonus={handleAppClaimBonus}
-          onSetSoundEnabled={handleSetSoundEnabled}
-          onSetCountdownSoundMode={handleSetCountdownSoundMode}
-          onLogout={handleLogout}
-          onLogin={() => setAuthOpen(true)}
-          controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
-          onOpenChange={(o) => { setProfileMenuOpen(o); setProfileNavOpen(o); }}
-          onRequestUsernameChange={
-            profile ? () => setUsernameModalOpen(true) : undefined
-          }
-          onRequestAvatarChange={
-            profile ? () => setAvatarModalOpen(true) : undefined
-          }
-        />
+        {/* Sağ üst sosyal blok (desktop + mobil web). Dikey ve hizalı:
+              1. Profil pill
+              2. Sıralama
+              3. Bildirimler + Arkadaşlar (eşit genişlikte iki buton)
+            Native app'te bu blok gizlenir (pointer-events:none + display:none
+            kuralları); sosyal erişim alt-nav'daki Arkadaşlar sekmesindedir. */}
+        <div className="social-bar">
+          <UserProfileDropdown
+            profile={profile}
+            authLoading={authLoading}
+            gold={gold}
+            canBonus={canBonus}
+            soundEnabled={soundEnabled}
+            countdownSoundMode={countdownSoundMode}
+            onClaimBonus={handleAppClaimBonus}
+            onSetSoundEnabled={handleSetSoundEnabled}
+            onSetCountdownSoundMode={handleSetCountdownSoundMode}
+            onLogout={handleLogout}
+            onLogin={() => setAuthOpen(true)}
+            controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
+            onOpenChange={(o) => { setProfileMenuOpen(o); setProfileNavOpen(o); }}
+            onRequestUsernameChange={
+              profile ? () => setUsernameModalOpen(true) : undefined
+            }
+            onRequestAvatarChange={
+              profile ? () => setAvatarModalOpen(true) : undefined
+            }
+          />
+        </div>
 
-        {/* Profil dropdown açıkken sıralama butonu görsel olarak çakışmasın
-            diye gizleniyor; dropdown kapanınca tekrar görünür. */}
+        {/* Profil dropdown açıkken alttaki Sıralama + sosyal satır görsel
+            olarak panelle çakışmasın diye gizlenir; kapanınca geri gelir.
+            Native app'te tüm blok zaten alt-nav lehine gizli. */}
         {!profileMenuOpen && (
-          <button
-            type="button"
-            className="lb-trigger"
-            onClick={() => setLeaderboardOpen(true)}
-            aria-label="Sıralamayı aç"
-          >
-            <span className="lb-trigger-icon">🏆</span>
-            <span className="lb-trigger-label">Sıralama</span>
-          </button>
+          <>
+            <button
+              type="button"
+              className="lb-trigger"
+              onClick={() => setLeaderboardOpen(true)}
+              aria-label="Sıralamayı aç"
+            >
+              <span className="lb-trigger-icon">🏆</span>
+              <span className="lb-trigger-label">Sıralama</span>
+            </button>
+
+            {/* Bildirimler + Arkadaşlar — eşit genişlikte ikinci satır.
+                İkisi de oturum yoksa null döndürür; satırı yine de profile
+                gate'liyoruz ki misafirde boş flex kalmasın. */}
+            {profile && (
+              <div className="social-row">
+                <NotificationCenter />
+                <FriendsButton />
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -2955,5 +2980,21 @@ useEffect(() => {
   onDurationChange={setSelectedDuration}
   onHome={() => setScreen("home")}
 />
+  );
+  };
+
+  // Sosyal sistem (bildirim + profil kartı + davet) tüm ekranları sarar; böylece
+  // leaderboard, lobiler ve oyun ekranlarında PlayerProfileTrigger/NotificationCenter
+  // ortak bağlamı paylaşır. Web/mobil/native aynı provider.
+  return (
+    <SocialProvider
+      profile={profile}
+      onEditProfile={profile ? () => setUsernameModalOpen(true) : undefined}
+      onChangeAvatar={profile ? () => setAvatarModalOpen(true) : undefined}
+      onOpenRewards={profile ? () => setAvatarModalOpen(true) : undefined}
+      onJoinRoom={(roomUrl) => { window.location.href = roomUrl; }}
+    >
+      {renderScreen()}
+    </SocialProvider>
   );
 }

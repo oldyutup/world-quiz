@@ -38,6 +38,11 @@ import type { Profile } from "../../lib/auth";
 import { useInviteJoin } from "../../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../../lib/themeBackgrounds";
 import { supabase, type TevaturRoom, type TevaturPlayer } from "../../lib/supabase";
+import { PlayerAvatar } from "../../components/PlayerAvatar";
+import { PlayerProfileTrigger } from "../../components/PlayerProfileTrigger";
+import { LobbyInviteBar } from "../../components/LobbyInviteBar";
+import { useRosterProfiles } from "../../lib/useRosterProfiles";
+import { useSocialOptional } from "../../components/SocialContext";
 import { playSound } from "../../lib/sound";
 import KorNoktaGame from "./KorNoktaGame";
 import { buildKnScenePlan, parseKnGameState } from "./korNoktaGameTypes";
@@ -174,7 +179,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   const [joinCode, setJoinCode]   = useState<string>("");
   const [errorMsg, setErrorMsg]   = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [copied, setCopied]       = useState(false);
   const [starting, setStarting]   = useState(false);
 
   /* ── Modal state ─────────────────────────────────────────── */
@@ -186,6 +190,15 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   /* ── Lobby state (Supabase-bound) ────────────────────────── */
   const [room, setRoom]       = useState<TevaturRoom | null>(null);
   const [players, setPlayers] = useState<TevaturPlayer[]>([]);
+  // Sosyal: roster avatarları + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    const code = room?.code;
+    if (code) social.setRoomContext({ code, mode: "korNokta", roomUrl: `/?korNokta=${code}` });
+    return () => social.setRoomContext(null);
+  }, [social, room?.code]);
 
   /* ── Mobile sheets ───────────────────────────────────────── */
   const [playersSheetOpen, setPlayersSheetOpen] = useState(false);
@@ -380,7 +393,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setRoom(null);
     setPlayers([]);
-    setCopied(false);
     setErrorMsg(null);
     setStatusMsg(null);
     setStarting(false);
@@ -465,19 +477,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setKickTarget(null);
   }
 
-  function copyInvite() {
-    const text = inviteMessage || shareLink;
-    if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {
-        window.prompt("Linki kopyala:", shareLink);
-      });
-  }
 
   /* ═══════════════════════════════════════════════════════════
      REALTIME: oda + oyuncular
@@ -790,13 +789,21 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                       style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <span className="duel-player-dot" style={{ flexShrink: 0 }} />
-                        <span style={{
-                          fontSize: 13, fontWeight: 600, minWidth: 0,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>
-                          {p.name}
-                        </span>
+                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                          <PlayerAvatar
+                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                            username={p.name}
+                            size="sm"
+                            highlight={isPlayerHost}
+                            className="duel-player-avatar"
+                          />
+                          <span style={{
+                            fontSize: 13, fontWeight: 600, minWidth: 0,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {p.name}
+                          </span>
+                        </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>
@@ -848,13 +855,13 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
               {/* Davet bölümü */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                <button
-                  className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                  onClick={copyInvite}
-                  style={{ width: "100%" }}
-                >
-                  {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-                </button>
+                <LobbyInviteBar
+                  inviteMessage={inviteMessage}
+                  shareLink={shareLink}
+                  roomCode={room.code}
+                  mode="korNokta"
+                  roomUrl={`/?korNokta=${room.code}`}
+                />
                 <div onClick={e => {
                   const el = (e.currentTarget as HTMLElement).querySelector("input") as HTMLInputElement | null;
                   el?.select();
@@ -1024,10 +1031,18 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                       style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, paddingBottom: 6, minWidth: 0 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <span className="duel-player-dot" style={{ flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {p.name}
-                        </span>
+                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                          <PlayerAvatar
+                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                            username={p.name}
+                            size="sm"
+                            highlight={isPlayerHost}
+                            className="duel-player-avatar"
+                          />
+                          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {p.name}
+                          </span>
+                        </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>

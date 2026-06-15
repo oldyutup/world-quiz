@@ -47,6 +47,8 @@ export type ConquestRoomStatus = "waiting" | "playing" | "finished";
 export interface ConquestPlayer {
   id: string;
   name: string;
+  /** auth.users.id — logged-in oyuncuda dolu, misafirde null (avatar/profil kartı). */
+  profileId?: string | null;
   isHost: boolean;
   /** Reserved for a future per-player color/region tint. */
   colorIndex?: number;

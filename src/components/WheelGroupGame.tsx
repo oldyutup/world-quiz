@@ -62,6 +62,11 @@ import {
   type WheelGroupXpBreakdown,
 } from "../lib/progression";
 import { recordOnlineMatchResult, recordGameComplete } from "../lib/achievementStats";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import { LobbyInviteBar } from "./LobbyInviteBar";
+import { useRosterProfiles } from "../lib/useRosterProfiles";
+import { useSocialOptional } from "./SocialContext";
 import {
   getFlagPool,
   getContinentIds,
@@ -338,8 +343,16 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   /* ── Lobby state (Supabase-bound) ─────────────────────────── */
   const [room, setRoom] = useState<WheelGroupRoom | null>(null);
   const [players, setPlayers] = useState<WheelGroupPlayer[]>([]);
+  // Sosyal: roster avatarları + odadayken davet için room context.
+  const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
+  const social = useSocialOptional();
+  useEffect(() => {
+    if (!social) return;
+    const code = room?.code;
+    if (code) social.setRoomContext({ code, mode: "wheelGroup", roomUrl: `/?wheelGroup=${code}` });
+    return () => social.setRoomContext(null);
+  }, [social, room?.code]);
   const [kickTarget, setKickTarget] = useState<WheelGroupPlayer | null>(null);
-  const [copied, setCopied] = useState(false);
   const [wggPlayersOpen, setWggPlayersOpen] = useState(false);
   const [wggChatOpen,    setWggChatOpen]    = useState(false);
 
@@ -1306,7 +1319,6 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     // UI önce sıfırlansın
     setRoom(null);
     setPlayers([]);
-    setCopied(false);
     setErrorMsg(null);
     setStatusMsg(null);
     setPhase("setup");
@@ -1467,19 +1479,6 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     setPhase("lobby");
   }
 
-  function copyInvite() {
-    const text = inviteMessage || shareLink;
-    if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
-      })
-      .catch(() => {
-        window.prompt("Linki kopyala:", shareLink);
-      });
-  }
 
   /* ═══════════════════════════════════════════════════════════════
      RENDER
@@ -1790,13 +1789,21 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                     >
                       {/* Sol: dot + nick + rozetler — nick kısalır, rozetler nick'e yapışık */}
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <span className="duel-player-dot" style={{ flexShrink: 0 }} />
-                        <span style={{
-                          fontSize: 13, fontWeight: 600, minWidth: 0,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>
-                          {p.name}
-                        </span>
+                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id" >
+                          <PlayerAvatar
+                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                            username={p.name}
+                            size="sm"
+                            highlight={isPlayerHost}
+                            className="duel-player-avatar"
+                          />
+                          <span style={{
+                            fontSize: 13, fontWeight: 600, minWidth: 0,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {p.name}
+                          </span>
+                        </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>
@@ -1851,13 +1858,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
               {/* Davet bölümü */}
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                <button
-                  className={"btn duel-invite-btn" + (copied ? " invited" : "")}
-                  onClick={copyInvite}
-                  style={{ width: "100%" }}
-                >
-                  {copied ? "✓ Davet mesajı kopyalandı!" : "📋 Davet Mesajını Kopyala"}
-                </button>
+                <LobbyInviteBar
+                  inviteMessage={inviteMessage}
+                  shareLink={shareLink}
+                  roomCode={room.code}
+                  mode="wheelGroup"
+                  roomUrl={`/?wheelGroup=${room.code}`}
+                />
                 <div onClick={e => {
                   const el = (e.currentTarget as HTMLElement).querySelector("input") as HTMLInputElement | null;
                   el?.select();
@@ -2083,10 +2090,18 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                       style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, paddingBottom: 6, minWidth: 0 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
-                        <span className="duel-player-dot" style={{ flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {p.name}
-                        </span>
+                        <PlayerProfileTrigger profileId={p.profile_id} as="span" className="duel-player-id">
+                          <PlayerAvatar
+                            avatarId={rosterProfiles.get(p.profile_id ?? "")?.avatarId}
+                            username={p.name}
+                            size="sm"
+                            highlight={isPlayerHost}
+                            className="duel-player-avatar"
+                          />
+                          <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {p.name}
+                          </span>
+                        </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>

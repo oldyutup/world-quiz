@@ -110,6 +110,7 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
   return {
     id:     row.id,
     name:   row.name,
+    profileId: row.profile_id ?? null,
     isHost: row.is_host,
     color:  (row.color ?? undefined) as ConquestPlayerColor | undefined,
     teamId: (row.team_id ?? null) as ConquestTeamId | null,
