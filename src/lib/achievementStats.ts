@@ -310,8 +310,24 @@ async function fetchFromServer(profileId: string, token: number): Promise<void> 
     if (error) return; // ağ/RLS hatası → localStorage fallback'i koru
 
     if (data) {
+      // Sunucu stats'ı otoritedir (Gold claim buna göre). ANCAK: server-side
+      // kalıcılık yeni açıldığında (profile_achievements tablosu geç eklendi)
+      // sunucu satırı eski local ilerlemenin GERİSİNDE olabilir. Daha önce
+      // (yalnız localStorage ile) açılmış avatarların KAYBOLMAMASI için açık
+      // avatar id'lerini sticky olarak birleştiriyoruz — bu yalnız yerel görünüm
+      // içindir, sunucuya yazılmaz, Gold claim'i etkilemez.
+      const prevUnlockedAvatars = cachedUnlocks.unlockedAchievementAvatarIds;
       cachedStats = { ...EMPTY_STATS, ...(data.stats ?? {}) };
-      cachedUnlocks = { ...EMPTY_UNLOCKS, ...(data.unlocks ?? {}) };
+      cachedUnlocks = {
+        ...EMPTY_UNLOCKS,
+        ...(data.unlocks ?? {}),
+        unlockedAchievementAvatarIds: [
+          ...new Set([
+            ...((data.unlocks?.unlockedAchievementAvatarIds ?? []) as string[]),
+            ...prevUnlockedAvatars,
+          ]),
+        ],
+      };
       recomputeUnlocks(); // stats'a göre sticky açık avatarları tazele
       persistStatsLocal();
       persistUnlocksLocal();
@@ -653,6 +669,13 @@ export async function claimAllAchievementRewards(): Promise<ClaimRewardsResult> 
   try {
     const { data, error } = await supabase.rpc("claim_achievement_rewards");
     if (error) {
+      // Hatayı görünür kıl: 404/PGRST202 (RPC yok), 42501 (yetki), 23514 (gold) vb.
+      console.error("[claimAllAchievementRewards] RPC error", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
       return { ok: false, claimedTierIds: [], goldAwarded: 0, code: "network" };
     }
     const res = data as {

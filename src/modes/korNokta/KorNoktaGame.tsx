@@ -735,10 +735,7 @@ export default function KorNoktaGame({
     const scoreR = resR?.score ?? 0;
     const roundWinner: KnTeam | "tie" =
       scoreB > scoreR ? "blue" : scoreR > scoreB ? "red" : "tie";
-    const winnerLabel =
-      roundWinner === "tie"
-        ? "Tur berabere"
-        : `${KN_TEAM_LABELS[roundWinner]} bu turu önde kapattı`;
+    const roundDiff = Math.abs(scoreB - scoreR);
 
     // Takım içi chat: bu turun reveal'i başlangıcından (phaseEndsAt − 15000)
     // sonraki mesajlar; roomCode'a takım son-eki ile Mavi/Kırmızı ayrı kanal.
@@ -758,7 +755,11 @@ export default function KorNoktaGame({
         <div className={"kn-result-col kn-result-col--" + team + (won ? " is-winner" : "")}>
           <div className="kn-result-col__head">
             <span className="kn-result-col__team">{KN_TEAM_LABELS[team]}</span>
-            {won && <span className="kn-result-col__badge">Tur</span>}
+            {won && (
+              <span className="kn-result-col__badge">
+                <span aria-hidden>🏆</span> Tur Lideri
+              </span>
+            )}
           </div>
           <div className="kn-result-col__det">🕵️ {nameOf(det)}</div>
           <div className="kn-result-col__row">
@@ -783,8 +784,26 @@ export default function KorNoktaGame({
         <div className="kn-reveal-shell">
           <div className="kn-reveal kn-reveal--teams">
             <header className="kn-reveal__head kn-reveal__head--panel kn-anim-scale-in">
-              <span className="kn-reveal__eyebrow">Tur {state.roundIndex + 1} Sonucu</span>
-              <h2 className="kn-reveal__title">{winnerLabel}</h2>
+              <span className="kn-reveal__eyebrow">Tur {state.roundIndex + 1} · Tamamlandı</span>
+              {roundWinner === "tie" ? (
+                <h2 className="kn-reveal__title">Tur berabere</h2>
+              ) : (
+                <>
+                  <h2 className="kn-reveal__title">
+                    <span
+                      className={"kn-reveal__winner-team kn-reveal__winner-team--" + roundWinner}
+                    >
+                      {KN_TEAM_LABELS[roundWinner]}
+                    </span>{" "}
+                    bu turu önde kapattı
+                  </h2>
+                  {roundDiff > 0 && (
+                    <span className={"kn-reveal__diff kn-reveal__diff--" + roundWinner}>
+                      Bu tur farkı +{roundDiff.toLocaleString("tr-TR")} puan
+                    </span>
+                  )}
+                </>
+              )}
               {scene && (
                 <p className="kn-reveal__scene">
                   {scene.title} · {scene.regionLabel} · {scene.yearLabel}
@@ -854,7 +873,7 @@ export default function KorNoktaGame({
     return (
       <div {...knScreen("kn-cine")}>
         {topbar}
-        <div className="kn-center-wrap">
+        <div className={"kn-center-wrap" + (xpView && !xpView.dismissed ? " kn-center-wrap--with-xp" : "")}>
           <div className="kn-card kn-final kn-anim-scale-in">
             <span className="kn-final__eyebrow">Dosya Kapandı</span>
             <h2 className="kn-card__title">
@@ -883,20 +902,6 @@ export default function KorNoktaGame({
               </div>
             </div>
 
-            {xpView && !xpView.dismissed && (
-              <XpGainBar
-                modeLabel="Kör Nokta"
-                prevTotalXp={xpView.prevTotalXp}
-                newTotalXp={xpView.totalXp}
-                prevModeXp={xpView.prevModeXp}
-                newModeXp={xpView.modeXp}
-                xpEarned={xpView.xpEarned}
-                awarded={xpView.awarded}
-                breakdown={xpView.breakdown}
-                onDismiss={() => setXpView(v => (v ? { ...v, dismissed: true } : v))}
-              />
-            )}
-
             <button
               type="button"
               className="btn btn-accent kn-wide-btn"
@@ -909,6 +914,20 @@ export default function KorNoktaGame({
             </button>
           </div>
         </div>
+
+        {xpView && !xpView.dismissed && (
+          <XpGainBar
+            modeLabel="Kör Nokta"
+            prevTotalXp={xpView.prevTotalXp}
+            newTotalXp={xpView.totalXp}
+            prevModeXp={xpView.prevModeXp}
+            newModeXp={xpView.modeXp}
+            xpEarned={xpView.xpEarned}
+            awarded={xpView.awarded}
+            breakdown={xpView.breakdown}
+            onDismiss={() => setXpView(v => (v ? { ...v, dismissed: true } : v))}
+          />
+        )}
       </div>
     );
   }
