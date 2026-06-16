@@ -22,10 +22,9 @@ interface Props {
    *  (native bottom-nav Profil sekmesi için). Tanımsızsa bileşen kendi iç
    *  state'ini kullanır — web davranışı değişmez. */
   controlledOpen?: boolean;
-  /** "Adı Değiştir" butonuna basılınca modal açma sinyali parent'a gider. */
-  onRequestUsernameChange?: () => void;
-  /** "Avatarı Değiştir" butonuna basılınca avatar seçim modalını açar. */
-  onRequestAvatarChange?: () => void;
+  /** "Profili Düzenle" — merkezi ProfileEditModal'ı açar (ad/avatar/rozet tek
+   *  merkezden). Profil kartındaki "Profili Düzenle" ile aynı UX. */
+  onRequestEditProfile?: () => void;
   /** Native profil panelinde gösterilen sosyal menü satırları
    *  (Bildirimler / Arkadaşlar). Desktop+mobil web'de bunlar üst social-bar'da
    *  durduğu için verilmez. */
@@ -46,8 +45,7 @@ export function UserProfileDropdown({
   onLogin,
   onOpenChange,
   controlledOpen,
-  onRequestUsernameChange,
-  onRequestAvatarChange,
+  onRequestEditProfile,
   socialMenu,
 }: Props) {
   // Open state is internal by default; when `controlledOpen` is provided the
@@ -143,16 +141,16 @@ export function UserProfileDropdown({
         <div className="upd-dropdown">
           {/* — Header — */}
           <div className="upd-head">
-            {onRequestAvatarChange ? (
+            {onRequestEditProfile ? (
               <button
                 type="button"
                 className="upd-head-avatar-btn"
                 onClick={() => {
                   setOpen(false);
-                  onRequestAvatarChange();
+                  onRequestEditProfile();
                 }}
-                aria-label="Avatarı değiştir"
-                title="Avatarı değiştir"
+                aria-label="Profili düzenle"
+                title="Profili düzenle"
               >
                 <Avatar
                   avatarId={profile.avatar_id}
@@ -177,37 +175,21 @@ export function UserProfileDropdown({
           {/* — Sosyal menü (native: Bildirimler / Arkadaşlar) — */}
           {socialMenu && <div className="upd-social-menu">{socialMenu}</div>}
 
-          {/* — Edit actions (balanced two-up row, no longer cramped) — */}
-          {(onRequestUsernameChange || onRequestAvatarChange) && (
+          {/* — Tek aksiyon: Profili Düzenle (ad/avatar/rozet merkezi hub) — */}
+          {onRequestEditProfile && (
             <div className="upd-edit-actions">
-              {onRequestUsernameChange && (
-                <button
-                  type="button"
-                  className="upd-edit-btn"
-                  onClick={() => {
-                    setOpen(false);
-                    onRequestUsernameChange();
-                  }}
-                  aria-label="Kullanıcı adını değiştir"
-                  title="Kullanıcı adını değiştir"
-                >
-                  Adı Değiştir
-                </button>
-              )}
-              {onRequestAvatarChange && (
-                <button
-                  type="button"
-                  className="upd-edit-btn"
-                  onClick={() => {
-                    setOpen(false);
-                    onRequestAvatarChange();
-                  }}
-                  aria-label="Avatarı değiştir"
-                  title="Avatarı değiştir"
-                >
-                  Avatarı Değiştir
-                </button>
-              )}
+              <button
+                type="button"
+                className="upd-edit-btn"
+                onClick={() => {
+                  setOpen(false);
+                  onRequestEditProfile();
+                }}
+                aria-label="Profili düzenle"
+                title="Profili düzenle"
+              >
+                Profili Düzenle
+              </button>
             </div>
           )}
 

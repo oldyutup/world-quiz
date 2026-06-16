@@ -1,0 +1,153 @@
+/**
+ * ProfileEditModal.tsx — merkezi "Profili Düzenle" modalı (hub).
+ *
+ * Tek giriş noktası: profil kartındaki "Profili Düzenle" bu modalı açar. Modal
+ * yalnızca bir yönlendirme merkezidir — kendi işini yapmaz, mevcut akışları
+ * tetikler:
+ *   - "Adı Değiştir"      → mevcut UsernameChangeModal (App yönetir)
+ *   - "Avatarı Değiştir"  → mevcut AvatarPickerModal   (App yönetir)
+ *   - "Rozetleri Sergile" → yeni BadgeShowcaseEditor    (App yönetir)
+ *
+ * Mevcut username / avatar / achievement sistemlerine DOKUNMAZ; sadece UX'i
+ * tek merkezde toplar. Premium koyu-mavi cam modal stili (.pem-*), apk/uc ile
+ * aynı z-band. Desktop/mobil web ortak; native özel dosyalara dokunulmaz.
+ */
+import { useEffect } from "react";
+import type { Profile } from "../lib/auth";
+
+interface Props {
+  profile: Profile;
+  onClose: () => void;
+  /** "Adı Değiştir" → mevcut kullanıcı adı değiştirme akışı. */
+  onChooseName: () => void;
+  /** "Avatarı Değiştir" → mevcut avatar seçme akışı. */
+  onChooseAvatar: () => void;
+  /** "Rozetleri Sergile" → rozet sergileme editörü. */
+  onChooseBadges: () => void;
+}
+
+function NameIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8.5" r="3.6" />
+      <path d="M4.5 19.5a7.5 7.5 0 0 1 15 0" />
+    </svg>
+  );
+}
+
+function AvatarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="10" r="2.8" />
+      <path d="M6.5 18.2a6 6 0 0 1 11 0" />
+    </svg>
+  );
+}
+
+function BadgeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="9" r="5" />
+      <path d="M9 13.2 7.5 21l4.5-2.4L16.5 21 15 13.2" />
+    </svg>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg className="pem-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+interface Action {
+  key: string;
+  title: string;
+  desc: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}
+
+export function ProfileEditModal({
+  profile,
+  onClose,
+  onChooseName,
+  onChooseAvatar,
+  onChooseBadges,
+}: Props) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const actions: Action[] = [
+    {
+      key: "name",
+      title: "Adı Değiştir",
+      desc: "Kullanıcı adını güncelle.",
+      icon: <NameIcon />,
+      onClick: onChooseName,
+    },
+    {
+      key: "avatar",
+      title: "Avatarı Değiştir",
+      desc: "Açtığın avatarlardan birini seç.",
+      icon: <AvatarIcon />,
+      onClick: onChooseAvatar,
+    },
+    {
+      key: "badges",
+      title: "Rozetleri Sergile",
+      desc: "Profilinde göstermek için 5 başarım seç.",
+      icon: <BadgeIcon />,
+      onClick: onChooseBadges,
+    },
+  ];
+
+  return (
+    <div
+      className="pem-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Profili Düzenle"
+      onClick={onClose}
+    >
+      <div className="pem-modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="pem-close" onClick={onClose} aria-label="Kapat">
+          ×
+        </button>
+
+        <div className="pem-head">
+          <h2 className="pem-title">Profili Düzenle</h2>
+          <p className="pem-sub">Profilini kişiselleştir ve başarımlarını sergile.</p>
+        </div>
+
+        <div className="pem-list">
+          {actions.map((a) => (
+            <button key={a.key} type="button" className="pem-row" onClick={a.onClick}>
+              <span className="pem-row-icon" aria-hidden="true">
+                {a.icon}
+              </span>
+              <span className="pem-row-body">
+                <span className="pem-row-title">{a.title}</span>
+                <span className="pem-row-desc">{a.desc}</span>
+              </span>
+              <Chevron />
+            </button>
+          ))}
+        </div>
+
+        <p className="pem-foot">@{profile.username ?? "—"}</p>
+      </div>
+    </div>
+  );
+}

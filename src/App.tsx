@@ -62,6 +62,8 @@ import { FriendsButton } from "./components/FriendsButton";
 import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
 import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
+import { ProfileEditModal } from "./components/ProfileEditModal";
+import { BadgeShowcaseEditor } from "./components/BadgeShowcaseEditor";
 import {
   getCurrentUser,
   loadOrCreateProfile,
@@ -2258,6 +2260,9 @@ export default function App() {
   const [profileNavOpen, setProfileNavOpen] = useState(false);
   const [usernameModalOpen, setUsernameModalOpen] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  // Merkezi "Profili Düzenle" hub'ı + rozet sergileme editörü (profil kartı akışı).
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [badgeShowcaseOpen, setBadgeShowcaseOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
@@ -2675,11 +2680,8 @@ useEffect(() => {
             onLogin={() => setAuthOpen(true)}
             controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
             onOpenChange={(o) => { setProfileMenuOpen(o); setProfileNavOpen(o); }}
-            onRequestUsernameChange={
-              profile ? () => setUsernameModalOpen(true) : undefined
-            }
-            onRequestAvatarChange={
-              profile ? () => setAvatarModalOpen(true) : undefined
+            onRequestEditProfile={
+              profile ? () => setProfileEditOpen(true) : undefined
             }
           />
         </div>
@@ -2766,6 +2768,35 @@ useEffect(() => {
             );
             setAvatarModalOpen(false);
           }}
+        />
+      )}
+
+      {/* Merkezi profil düzenleme hub'ı — yalnız yönlendirir, mevcut akışları
+          tetikler (username / avatar / rozet). */}
+      {profileEditOpen && profile && (
+        <ProfileEditModal
+          profile={profile}
+          onClose={() => setProfileEditOpen(false)}
+          onChooseName={() => {
+            setProfileEditOpen(false);
+            setUsernameModalOpen(true);
+          }}
+          onChooseAvatar={() => {
+            setProfileEditOpen(false);
+            setAvatarModalOpen(true);
+          }}
+          onChooseBadges={() => {
+            setProfileEditOpen(false);
+            setBadgeShowcaseOpen(true);
+          }}
+        />
+      )}
+
+      {badgeShowcaseOpen && profile && (
+        <BadgeShowcaseEditor
+          profile={profile}
+          onClose={() => setBadgeShowcaseOpen(false)}
+          onSaved={() => setBadgeShowcaseOpen(false)}
         />
       )}
 
@@ -3002,8 +3033,9 @@ useEffect(() => {
   return (
     <SocialProvider
       profile={profile}
-      onEditProfile={profile ? () => setUsernameModalOpen(true) : undefined}
+      onEditProfile={profile ? () => setProfileEditOpen(true) : undefined}
       onChangeAvatar={profile ? () => setAvatarModalOpen(true) : undefined}
+      onShowcaseBadges={profile ? () => setBadgeShowcaseOpen(true) : undefined}
       onOpenRewards={profile ? () => setAvatarModalOpen(true) : undefined}
       onJoinRoom={(roomUrl) => { window.location.href = roomUrl; }}
     >

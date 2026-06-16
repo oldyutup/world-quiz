@@ -142,9 +142,9 @@ export function PlayerProfileTrigger({
                   close();
                   social?.onEditProfile?.();
                 }}
-                onChangeAvatar={() => {
+                onEditBadges={() => {
                   close();
-                  social?.onChangeAvatar?.();
+                  social?.onShowcaseBadges?.();
                 }}
               />
             )}

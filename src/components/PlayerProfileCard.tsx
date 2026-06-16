@@ -7,12 +7,16 @@
  * İçerik:
  *   - Büyük yuvarlak avatar (çerçeve wrapper'ı ileri kozmetik için hazır)
  *   - @kullanıcı adı, Seviye, XP
- *   - 5 rozet sergileme slotu (boşlar silik placeholder)
- *   - Kendi profilim → Profili Düzenle / Avatarı Değiştir
- *   - Başka oyuncu → Arkadaş Ekle (duruma göre etiket) / Davet Et / Engelle
+ *   - Rozet vitrini:
+ *       · Kendi profilim → 5 düzenlenebilir slot (boşlar "+", tıklanınca editör)
+ *       · Başka oyuncu   → yalnız sergilenen rozetler (boş slot gösterilmez)
+ *   - Kendi profilim → tek aksiyon: Profili Düzenle (merkezi modal)
+ *   - Başka oyuncu   → Arkadaş Ekle (duruma göre etiket) / Davet Et / Engelle
  *
- * GOLD GÖSTERİLMEZ (public kart). Premium koyu-cam oyun stili (.ppc-*).
- * Desktop/mobil/native ortak; kapsayıcı overlay'i Trigger yönetir.
+ * GOLD GÖSTERİLMEZ (public kart). Premium koyu-cam oyun stili (.ppc-*). Rozet
+ * ipuçları native title yerine CSS tooltip (data-tip) ile gösterilir (konum
+ * sorunu giderildi). Desktop/mobil/native ortak; kapsayıcı overlay'i Trigger
+ * yönetir.
  */
 import { getAvatar } from "../data/avatars";
 import { PlayerAvatar } from "./PlayerAvatar";
@@ -42,7 +46,8 @@ interface PlayerProfileCardProps {
 
   /** Kendi profil aksiyonları. */
   onEditProfile?: () => void;
-  onChangeAvatar?: () => void;
+  /** Rozet slotuna tıklayınca doğrudan sergileme editörünü açar (yalnız self). */
+  onEditBadges?: () => void;
 }
 
 function friendButtonLabel(status: RelationshipStatus): { label: string; disabled: boolean } {
@@ -72,12 +77,14 @@ export function PlayerProfileCard({
   onBlock,
   canInvite,
   onEditProfile,
-  onChangeAvatar,
+  onEditBadges,
 }: PlayerProfileCardProps) {
   const friendBtn = friendButtonLabel(relationshipStatus);
 
-  // 5 slot: dolu rozetler + boş placeholder'lar.
-  const slots = Array.from({ length: BADGE_SLOTS }, (_, i) => showcasedBadgeIds[i] ?? null);
+  // Başka oyuncu: yalnız gerçek (çözülebilen) rozetleri göster — boş slot yok.
+  const otherBadges = showcasedBadgeIds.filter((id) => getAvatar(id));
+  // Kendi profilim: 5 slot (dolu rozetler + boş "+" placeholder'lar).
+  const selfSlots = Array.from({ length: BADGE_SLOTS }, (_, i) => showcasedBadgeIds[i] ?? null);
 
   return (
     <div className="ppc-card" role="dialog" aria-label="Oyuncu profili">
@@ -92,33 +99,58 @@ export function PlayerProfileCard({
         </div>
       </div>
 
-      {/* Rozet vitrini — 5 slot (kozmetik altyapısı; seçim ekranı ileride). */}
-      <div className="ppc-badges" aria-label="Sergilenen rozetler">
-        {slots.map((badgeId, i) => {
-          const def = badgeId ? getAvatar(badgeId) : null;
-          return (
-            <span
-              key={i}
-              className={`ppc-badge-slot${badgeId ? " ppc-badge-slot--filled" : " ppc-badge-slot--empty"}`}
-              title={def?.label ?? "Boş rozet slotu"}
-            >
-              {def ? <img src={def.image} alt={def.label} className="ppc-badge-img" /> : null}
-            </span>
-          );
-        })}
-      </div>
+      {/* Rozet vitrini */}
+      {isSelf ? (
+        <div className="ppc-badges ppc-badges--self" aria-label="Sergilenen rozetler">
+          {selfSlots.map((badgeId, i) => {
+            const def = badgeId ? getAvatar(badgeId) : null;
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`ppc-badge-slot ppc-badge-slot--btn${
+                  def ? " ppc-badge-slot--filled" : " ppc-badge-slot--empty"
+                }`}
+                onClick={onEditBadges}
+                data-tip={def?.label ?? "Rozet ekle"}
+                aria-label={def?.label ?? "Rozet ekle"}
+              >
+                {def ? (
+                  <img src={def.image} alt={def.label} className="ppc-badge-img" />
+                ) : (
+                  <span className="ppc-badge-plus" aria-hidden="true">
+                    +
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        otherBadges.length > 0 && (
+          <div className="ppc-badges" aria-label="Sergilenen rozetler">
+            {otherBadges.map((badgeId, i) => {
+              const def = getAvatar(badgeId);
+              return (
+                <span
+                  key={i}
+                  className="ppc-badge-slot ppc-badge-slot--filled"
+                  data-tip={def?.label}
+                >
+                  {def ? <img src={def.image} alt={def.label} className="ppc-badge-img" /> : null}
+                </span>
+              );
+            })}
+          </div>
+        )
+      )}
 
       {/* Aksiyonlar */}
       <div className="ppc-actions">
         {isSelf ? (
-          <>
-            <button type="button" className="ppc-btn ppc-btn--primary" onClick={onEditProfile}>
-              Profili Düzenle
-            </button>
-            <button type="button" className="ppc-btn" onClick={onChangeAvatar}>
-              Avatarı Değiştir
-            </button>
-          </>
+          <button type="button" className="ppc-btn ppc-btn--primary" onClick={onEditProfile}>
+            Profili Düzenle
+          </button>
         ) : (
           <>
             <button

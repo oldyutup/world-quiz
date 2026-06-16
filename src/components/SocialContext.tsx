@@ -60,6 +60,8 @@ interface SocialContextValue {
   /** Profil kartı self aksiyonları (App bağlar). */
   onEditProfile?: () => void;
   onChangeAvatar?: () => void;
+  /** Rozet slotuna tıklayınca sergileme editörünü açar (App bağlar). */
+  onShowcaseBadges?: () => void;
   /** reward_ready bildirimi → ödül toplama ekranı (App bağlar). */
   onOpenRewards?: () => void;
   /** room_invite "Katıl" → oda linkine yönlendirme (App bağlar). */
@@ -87,6 +89,7 @@ interface SocialProviderProps {
   profile: Profile | null;
   onEditProfile?: () => void;
   onChangeAvatar?: () => void;
+  onShowcaseBadges?: () => void;
   onOpenRewards?: () => void;
   onJoinRoom?: (roomUrl: string) => void;
   children: ReactNode;
@@ -101,6 +104,7 @@ export function SocialProvider({
   profile,
   onEditProfile,
   onChangeAvatar,
+  onShowcaseBadges,
   onOpenRewards,
   onJoinRoom,
   children,
@@ -185,6 +189,7 @@ export function SocialProvider({
       bumpFriends,
       onEditProfile,
       onChangeAvatar,
+      onShowcaseBadges,
       onOpenRewards,
       onJoinRoom,
       toast,
@@ -201,6 +206,7 @@ export function SocialProvider({
       bumpFriends,
       onEditProfile,
       onChangeAvatar,
+      onShowcaseBadges,
       onOpenRewards,
       onJoinRoom,
       toast,
