@@ -26,10 +26,12 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Profile } from "../lib/auth";
 import { supabase } from "../lib/supabase";
 import {
+  clearMyNotifications,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   subscribeNotifications,
+  type ClearNotificationsResult,
   type NotificationRow,
 } from "../lib/social";
 
@@ -49,6 +51,8 @@ interface SocialContextValue {
   refreshNotifications: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  /** Bildirimleri temizler (aksiyon gerektirenler korunur); sonucu döndürür. */
+  clearNotifications: () => Promise<ClearNotificationsResult>;
 
   roomContext: RoomContext | null;
   setRoomContext: (ctx: RoomContext | null) => void;
@@ -170,6 +174,14 @@ export function SocialProvider({
     await markAllNotificationsRead();
   }, []);
 
+  const clearNotifications = useCallback(async (): Promise<ClearNotificationsResult> => {
+    const res = await clearMyNotifications();
+    // Server hangi satırları koruduğunun otoritesi → başarıda yeniden fetch.
+    // (Realtime yalnız INSERT dinler; DELETE push'u yok, bu yüzden manuel refresh.)
+    if (res.ok) await refreshNotifications();
+    return res;
+  }, [refreshNotifications]);
+
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.read_at).length,
     [notifications]
@@ -183,6 +195,7 @@ export function SocialProvider({
       refreshNotifications,
       markRead,
       markAllRead,
+      clearNotifications,
       roomContext,
       setRoomContext,
       friendsRefreshKey,
@@ -201,6 +214,7 @@ export function SocialProvider({
       refreshNotifications,
       markRead,
       markAllRead,
+      clearNotifications,
       roomContext,
       friendsRefreshKey,
       bumpFriends,

@@ -141,6 +141,35 @@ export async function markAllNotificationsRead(): Promise<void> {
   await supabase.rpc("mark_all_notifications_read");
 }
 
+export interface ClearNotificationsResult {
+  ok: boolean;
+  /** Silinen bildirim sayısı. */
+  deleted: number;
+  /** Aksiyon gerektirdiği için korunan (silinmeyen) bildirim sayısı. */
+  preserved: number;
+  error?: string;
+}
+
+/**
+ * Kendi bildirimlerimi temizler — clear_my_notifications RPC (SECURITY DEFINER).
+ * Yalnız notifications satırları silinir; asıl entity'ler (friend_request,
+ * friendship, davet, achievement reward claim hakkı) ETKİLENMEZ. Hâlâ aksiyon
+ * bekleyen bildirimler (pending friend_request, okunmamış davet) server'da korunur.
+ */
+export async function clearMyNotifications(): Promise<ClearNotificationsResult> {
+  const { data, error } = await supabase.rpc("clear_my_notifications");
+  if (error) {
+    console.error("clear_my_notifications failed", error);
+    return { ok: false, deleted: 0, preserved: 0, error: error.message };
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    deleted: (r.deleted as number) ?? 0,
+    preserved: (r.preserved as number) ?? 0,
+  };
+}
+
 /**
  * notifications tablosunda recipient = benim profilim olan YENİ satırları dinler.
  * Lifecycle: çağıran dönen channel'ı saklar ve unmount'ta
