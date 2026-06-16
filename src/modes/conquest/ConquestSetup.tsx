@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import {
   CONQUEST_DEFAULT_SETTINGS,
   CONQUEST_MAPS,
@@ -64,9 +65,9 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
     return (
       <div className="duel-lobby">
         <div className="duel-lobby-card cq-setup-card">
-          <h2 className="duel-lobby-title">🛡️ Kuşatma · Oda Kur</h2>
+          <h2 className="duel-lobby-title"><EmojiIcon name="shield" /> Kuşatma · Oda Kur</h2>
           <p className="duel-error" style={{ textAlign: "left" }}>
-            🔒 Kuşatma odası kurmak için giriş yapmalısın.
+            <EmojiIcon name="lock" /> Kuşatma odası kurmak için giriş yapmalısın.
           </p>
           <button
             type="button"
@@ -83,7 +84,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
   return (
     <div className="duel-lobby">
       <div className="duel-lobby-card cq-setup-card">
-        <h2 className="duel-lobby-title">🛡️ Kuşatma · Oda Kur</h2>
+        <h2 className="duel-lobby-title"><EmojiIcon name="shield" /> Kuşatma · Oda Kur</h2>
         <p className="duel-lobby-desc">
           2–4 oyuncu. Bölgeleri kuşatarak haritayı ele geçir.
         </p>
@@ -93,7 +94,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
           {isLoggedInPlayer ? (
             <div className="cq-name-readonly" aria-readonly="true" title="Login olduğun için adın profil hesabından alınır">
               <span className="cq-name-chip">
-                <span aria-hidden>👤</span>
+                <span aria-hidden><EmojiIcon name="bust" /></span>
                 <span>@{profile?.username}</span>
               </span>
               <span className="cq-name-readonly-hint">olarak oynuyorsun</span>
@@ -112,11 +113,11 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
         </div>
 
         <div className="cq-settings-block">
-          <p className="duel-settings-title">⚙️ Oda Ayarları</p>
+          <p className="duel-settings-title"><EmojiIcon name="gear" /> Oda Ayarları</p>
 
           <div className="cq-settings-selects">
             <div className="duel-select-wrap">
-              <label className="duel-select-label">👥 Oyuncu Sayısı</label>
+              <label className="duel-select-label"><EmojiIcon name="people" /> Oyuncu Sayısı</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -132,7 +133,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🗺️ Harita</label>
+              <label className="duel-select-label"><EmojiIcon name="map" /> Harita</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -148,7 +149,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🔄 Tur Sayısı</label>
+              <label className="duel-select-label"><EmojiIcon name="refresh" /> Tur Sayısı</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -164,7 +165,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🔓 Oda Görünürlüğü</label>
+              <label className="duel-select-label"><EmojiIcon name="unlock" /> Oda Görünürlüğü</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -184,7 +185,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             onClick={handleSubmit}
             type="button"
           >
-            🛡️ Oda Kur
+            <EmojiIcon name="shield" /> Oda Kur
           </button>
         </div>
 

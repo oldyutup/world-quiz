@@ -63,13 +63,13 @@ export function getBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "🎭",
-        title:  `🎭 ${where} fethedildi: Gizli Operasyon aktif!`,
+        title:  `${where} fethedildi: Gizli Operasyon aktif!`,
         detail: "Kendi bölgeni gizlice koruyabilir veya tarafsız bir bölgeyi gizlice fethedebilirsin (komşuluk şartı yok).",
       };
     }
     return {
       icon:   "🎭",
-      title:  `🎭 Rakip ${where} bölgesini fethetti (${toast.playerName})`,
+      title:  `Rakip ${where} bölgesini fethetti (${toast.playerName})`,
       detail: "Haritada gizli bir operasyon yapabilir. Dikkatli saldır!",
     };
   }
@@ -85,13 +85,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🌾",
         title:  `${where} Bonusu`,
-        detail: "🌾 Bereketli Ova fethedildi: +2 bonus puan kazandın. 3 tur elinde tutarsan bir kereye mahsus +4 puanlık hasat bonusu alırsın.",
+        detail: "Bereketli Ova fethedildi: +2 bonus puan kazandın. 3 tur elinde tutarsan bir kereye mahsus +4 puanlık hasat bonusu alırsın.",
       };
     }
     return {
       icon:   "🌾",
       title:  `${where} Ele Geçirildi`,
-      detail: `🌾 Rakip ${where}'dan +2 bonus puan aldı. 3 tur boyunca elinde tutarsa bir kereye mahsus +4 hasat bonusu kazanır — geri almak dengeleyebilir.`,
+      detail: `Rakip ${where}'dan +2 bonus puan aldı. 3 tur boyunca elinde tutarsa bir kereye mahsus +4 hasat bonusu kazanır — geri almak dengeleyebilir.`,
     };
   }
 
@@ -100,13 +100,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "⏳",
         title:  `${where} Bonusu`,
-        detail: "⏳ Zaman Takviyesi sende! Soru süresine +5 saniye eklendi.",
+        detail: "Zaman Takviyesi sende! Soru süresine +5 saniye eklendi.",
       };
     }
     return {
       icon:   "⏳",
       title:  `${where} Ele Geçirildi`,
-      detail: "⏳ Rakip Zaman Takviyesi'ni eline geçirdi. Sıradaki sorusunda +5 saniye avantajı olacak.",
+      detail: "Rakip Zaman Takviyesi'ni eline geçirdi. Sıradaki sorusunda +5 saniye avantajı olacak.",
     };
   }
 
@@ -115,13 +115,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🛡️",
         title:  `${where} Bonusu`,
-        detail: `🛡️ Açık kalkan kuruldu: ${where} bölgesine gelen ilk düşman saldırısı bölgeyi değil kalkanı kırar.`,
+        detail: `Açık kalkan kuruldu: ${where} bölgesine gelen ilk düşman saldırısı bölgeyi değil kalkanı kırar.`,
       };
     }
     return {
       icon:   "🛡️",
       title:  `${where} Ele Geçirildi`,
-      detail: `🛡️ Rakip ${where} bölgesini kalkanla korumaya aldı. İlk saldırı kalkanı kıracak.`,
+      detail: `Rakip ${where} bölgesini kalkanla korumaya aldı. İlk saldırı kalkanı kıracak.`,
     };
   }
 
@@ -130,13 +130,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🎯",
         title:  `${where} Bonusu`,
-        detail: "🎯 Mancınık hazır! Bir sonraki saldırında komşuluk şartı olmadan haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı yok saymaz.",
+        detail: "Mancınık hazır! Bir sonraki saldırında komşuluk şartı olmadan haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı yok saymaz.",
       };
     }
     return {
       icon:   "🎯",
       title:  `${where} Ele Geçirildi`,
-      detail: `🎯 Rakip Mancınık'ı eline geçirdi. Bir sonraki saldırısında uzak bir bölgeni vurabilir — dikkatli ol.`,
+      detail: `Rakip Mancınık'ı eline geçirdi. Bir sonraki saldırısında uzak bir bölgeni vurabilir — dikkatli ol.`,
     };
   }
 
@@ -152,13 +152,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🪵",
         title:  `${where} Bonusu`,
-        detail: "🪵 Koçbaşı sende! Kalkanları aşar, rakip bölge fethedince +1 puan kazandırır.",
+        detail: "Koçbaşı sende! Kalkanları aşar, rakip bölge fethedince +1 puan kazandırır.",
       };
     }
     return {
       icon:   "🪵",
       title:  `${where} Ele Geçirildi`,
-      detail: `🪵 Rakip Koçbaşı'nı eline geçirdi. Saldırırken kalkanlar yetersiz kalabilir, dikkat et.`,
+      detail: `Rakip Koçbaşı'nı eline geçirdi. Saldırırken kalkanlar yetersiz kalabilir, dikkat et.`,
     };
   }
 
@@ -175,13 +175,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "⚓",
         title:  `${where} Bonusu`,
-        detail: `⚓ Liman sende! Her tur sonunda +1 puan ve +5 Gold kazanırsın (en fazla 10 kez).`,
+        detail: `Liman sende! Her tur sonunda +1 puan ve +5 Gold kazanırsın (en fazla 10 kez).`,
       };
     }
     return {
       icon:   "⚓",
       title:  `${where} Ele Geçirildi`,
-      detail: `⚓ Rakip Liman'ı eline geçirdi. Her tur sonunda gelir kazanacak — geri almak ekonomiyi dengeler.`,
+      detail: `Rakip Liman'ı eline geçirdi. Her tur sonunda gelir kazanacak — geri almak ekonomiyi dengeler.`,
     };
   }
 
@@ -190,13 +190,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🔮",
         title:  `${where} Bonusu`,
-        detail: "🔮 Kâhin Büyüsü sende! Sıradaki sorunun türünü önceden görüyorsun. Bölgeyi elinde tuttuğun sürece görü devam eder.",
+        detail: "Kâhin Büyüsü sende! Sıradaki sorunun türünü önceden görüyorsun. Bölgeyi elinde tuttuğun sürece görü devam eder.",
       };
     }
     return {
       icon:   "🔮",
       title:  `${where} Ele Geçirildi`,
-      detail: `🔮 Rakip Kâhin Büyüsü'nü eline geçirdi. Sıradaki soruların türünü önden görüyor — bölgeyi geri almak bilgi avantajını sıfırlar.`,
+      detail: `Rakip Kâhin Büyüsü'nü eline geçirdi. Sıradaki soruların türünü önden görüyor — bölgeyi geri almak bilgi avantajını sıfırlar.`,
     };
   }
 
@@ -204,13 +204,13 @@ export function getBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "👁️",
-        title:  `👁️ İstihbarat Ağı Kuruldu!`,
+        title:  `İstihbarat Ağı Kuruldu!`,
         detail: `${where} artık senin kontrolünde. Rakiplerin gizli bonus keşiflerini ve Gizli Operasyon hamlelerini rapor olarak görebileceksin.`,
       };
     }
     return {
       icon:   "👁️",
-      title:  `👁️ Rakip İstihbarat Ağı Kurdu!`,
+      title:  `Rakip İstihbarat Ağı Kurdu!`,
       detail: `${toast.playerName} ${where} bölgesini kontrol altına aldı. Gizli hamleler artık onun için daha görünür olacak.`,
     };
   }
@@ -224,13 +224,13 @@ export function getBonusToastCopyForViewer(
       if (isOwner) {
         return {
           icon:   "🏰",
-          title:  `🏰 Mevzi direndi: ${pts} puan korundu.`,
+          title:  `Mevzi direndi: ${pts} puan korundu.`,
           detail: `${where} bölgesini kaybettin ama mevzi puanın hâlâ sende — toplam skoruna sayılır.`,
         };
       }
       return {
         icon:   "🏰",
-        title:  `🏰 ${where} mevzi direndi`,
+        title:  `${where} mevzi direndi`,
         detail: `${toast.playerName} ${where} bölgesini kaybetti ama ${pts} puanını mevzi koruması olarak kurtardı.`,
       };
     }
@@ -240,13 +240,13 @@ export function getBonusToastCopyForViewer(
       return {
         icon:   "🏰",
         title:  `${where} Bonusu`,
-        detail: `🏰 Mevzi Bekçisi: ${where} bölgesini kaybetsen bile puanını korursun.`,
+        detail: `Mevzi Bekçisi: ${where} bölgesini kaybetsen bile puanını korursun.`,
       };
     }
     return {
       icon:   "🏰",
       title:  `${where} Ele Geçirildi`,
-      detail: `🏰 Rakip ${where} bölgesinde Mevzi Bekçisi avantajı kazandı: bu bölgeyi kaybetse bile puanını korur.`,
+      detail: `Rakip ${where} bölgesinde Mevzi Bekçisi avantajı kazandı: bu bölgeyi kaybetse bile puanını korur.`,
     };
   }
 
@@ -468,8 +468,8 @@ export function buildKocbasiCaptureToast(
     regionId,
     icon:             "🪵",
     title:            shieldBypassed
-      ? "🪵 Koçbaşı kalkanı aştı: +1 puan"
-      : "🪵 Koçbaşı: +1 puan",
+      ? "Koçbaşı kalkanı aştı: +1 puan"
+      : "Koçbaşı: +1 puan",
     detail:           shieldBypassed
       ? "Kalkan aşıldı ve rakip bölgesi fethedildi. +1 bonus puan kazandın."
       : "Rakip bölgesi fethedildi. +1 bonus puan kazandın.",
@@ -500,7 +500,7 @@ export function buildMevziLossToast(
     bonusType:        "mevzi_bekcisi",
     regionId,
     icon:             "🏰",
-    title:            "🏰 Mevzi Direndi",
+    title:            "Mevzi Direndi",
     detail:           `${pointsPreserved} puan korundu.`,
     playerId:         previousOwnerId,
     playerName:       previousOwnerName,

@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useSocial } from "./SocialContext";
 import { NotificationList } from "./NotificationList";
+import { EmojiIcon } from "./EmojiIcon";
 
 interface NotificationCenterProps {
   variant?: "bar" | "icon" | "row";
@@ -75,7 +76,7 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="social-menu-row-icon" aria-hidden="true">🔔</span>
+        <span className="social-menu-row-icon" aria-hidden="true"><EmojiIcon name="bell" /></span>
         <span className="social-menu-row-label">Bildirimler</span>
         {badge}
       </button>
@@ -87,7 +88,7 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
         aria-label="Bildirimler"
         aria-expanded={open}
       >
-        <span className="social-btn-icon" aria-hidden="true">🔔</span>
+        <span className="social-btn-icon" aria-hidden="true"><EmojiIcon name="bell" /></span>
         <span className="social-btn-label">Bildirimler</span>
         {badge}
       </button>
@@ -99,7 +100,7 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
         aria-label="Bildirimler"
         aria-expanded={open}
       >
-        <span className="notif-bell-icon" aria-hidden="true">🔔</span>
+        <span className="notif-bell-icon" aria-hidden="true"><EmojiIcon name="bell" /></span>
         {badge}
       </button>
     );

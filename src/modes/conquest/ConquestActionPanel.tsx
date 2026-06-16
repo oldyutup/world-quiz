@@ -13,6 +13,7 @@
  */
 
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import type {
   ConquestActionResult,
   ConquestPlayer,
@@ -86,7 +87,7 @@ export default function ConquestActionPanel({
         >
           <span className="cq-action-holder-dot" aria-hidden="true" />
           <span className="cq-action-holder-name">{actionHolder.name}</span>
-          <span className="cq-action-holder-tag">⚔ HAMLE SENDE</span>
+          <span className="cq-action-holder-tag"><EmojiIcon name="swords" /> HAMLE SENDE</span>
         </span>
 
         {noMovesLeft ? (
@@ -121,20 +122,20 @@ export default function ConquestActionPanel({
 
       {showError && (
         <p className="cq-action-error" role="alert">
-          ⚠ {lastResult!.message}
+          <EmojiIcon name="warning" /> {lastResult!.message}
         </p>
       )}
 
       {hasPendingHiddenShield && (
         <p className="cq-action-hint cq-action-hint--bonus" role="status">
-          🎭 Gizli Operasyon hazır — kendi bölgene tıklarsan gizli kalkan,
+          <EmojiIcon name="masks" /> Gizli Operasyon hazır — kendi bölgene tıklarsan gizli kalkan,
           tarafsız bir bölgeye tıklarsan gizli fetih kurulur.
         </p>
       )}
 
       {hasMancinikCharge && (
         <p className="cq-action-hint cq-action-hint--bonus" role="status">
-          🎯 Mancınık hazır — bir sonraki saldırında komşuluk şartı olmadan
+          <EmojiIcon name="target" /> Mancınık hazır — bir sonraki saldırında komşuluk şartı olmadan
           haritadaki herhangi bir bölgeyi hedefleyebilirsin. Kale Surları'nı
           yok saymaz.
         </p>
@@ -142,7 +143,7 @@ export default function ConquestActionPanel({
 
       {fogActive && (
         <p className="cq-action-hint cq-action-hint--bonus" role="status">
-          🌫️ Sis Çöktü — bölge puanları ve hedef göstergeleri gizli. Bir bölge
+          <EmojiIcon name="fog" /> Sis Çöktü — bölge puanları ve hedef göstergeleri gizli. Bir bölge
           fethederek sisi dağıtırsın.
         </p>
       )}

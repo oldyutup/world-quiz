@@ -170,6 +170,7 @@ import ConquestBonusGuide, {
   type ConquestBonusGuideEntry,
 } from "./ConquestBonusGuide";
 import XpGainBar from "../../components/XpGainBar";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import {
   awardXpEvent,
   calculateConquestXp,
@@ -3032,7 +3033,7 @@ export default function ConquestGame({
             <span className="back-label">Çık</span>
           </button>
           <div className="duel-header-center">
-            <span className="duel-mode-label">🛡️ Kuşatma</span>
+            <span className="duel-mode-label"><EmojiIcon name="shield" /> Kuşatma</span>
           </div>
           <div style={{ width: 80 }} />
         </div>
@@ -3056,7 +3057,7 @@ export default function ConquestGame({
             <span className="back-label">Çık</span>
           </button>
           <div className="duel-header-center">
-            <span className="duel-mode-label">🛡️ Kuşatma</span>
+            <span className="duel-mode-label"><EmojiIcon name="shield" /> Kuşatma</span>
           </div>
           <div style={{ width: 80 }} />
         </div>
@@ -4299,7 +4300,7 @@ export default function ConquestGame({
             aria-live="polite"
           >
             <span className="cq-bonus-toast-icon" aria-hidden="true">
-              {copy.icon}
+              <EmojiIcon char={copy.icon} />
             </span>
             <div className="cq-bonus-toast-text">
               <div className="cq-bonus-toast-title">
@@ -4330,7 +4331,7 @@ export default function ConquestGame({
           aria-live="polite"
         >
           <span className="cq-bonus-toast-icon" aria-hidden="true">
-            {hiddenBonusToastCopy.icon}
+            <EmojiIcon char={hiddenBonusToastCopy.icon} />
           </span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">
@@ -4357,7 +4358,7 @@ export default function ConquestGame({
           aria-live="polite"
         >
           <span className="cq-bonus-toast-icon" aria-hidden="true">
-            {intelReportCopy.icon}
+            <EmojiIcon char={intelReportCopy.icon} />
           </span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">
@@ -4383,7 +4384,7 @@ export default function ConquestGame({
           aria-live="polite"
         >
           <span className="cq-major-bonus-notice-icon" aria-hidden="true">
-            {majorBonusNotice.icon}
+            <EmojiIcon char={majorBonusNotice.icon} />
           </span>
           <div className="cq-major-bonus-notice-text">
             <div className="cq-major-bonus-notice-title">
@@ -4406,7 +4407,7 @@ export default function ConquestGame({
           role="status"
           aria-live="polite"
         >
-          <span className="cq-bonus-toast-icon" aria-hidden="true">⚔️</span>
+          <span className="cq-bonus-toast-icon" aria-hidden="true"><EmojiIcon name="swords" /></span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">Kuşatma başlıyor</div>
             <div className="cq-bonus-toast-detail">
@@ -4443,7 +4444,7 @@ export default function ConquestGame({
           role="status"
           aria-live="polite"
         >
-          <span className="cq-bonus-toast-icon" aria-hidden="true">🚩</span>
+          <span className="cq-bonus-toast-icon" aria-hidden="true"><EmojiIcon name="flag" /></span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">
               Tur {gameState.round.roundNumber} Başlıyor
@@ -4821,7 +4822,7 @@ export default function ConquestGame({
       className: "cq-duel-overlay-toast cq-round-intro-overlay",
       content: (
         <>
-          <span className="cq-bonus-toast-icon" aria-hidden="true">🚩</span>
+          <span className="cq-bonus-toast-icon" aria-hidden="true"><EmojiIcon name="flag" /></span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">
               Tur {gameState.round.roundNumber} Başlıyor

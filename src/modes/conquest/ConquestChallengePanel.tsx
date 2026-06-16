@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import { CONQUEST_CHALLENGE_META } from "./conquestChallenges";
 import { flagEmojiToCountryCode } from "./utils";
 import type {
@@ -181,7 +182,7 @@ export default function ConquestChallengePanel({
           role="status"
           aria-label="Eleme Yetkisi: bir yanlış şık silindi"
         >
-          <span aria-hidden="true">🃏</span>
+          <span aria-hidden="true"><EmojiIcon name="joker" /></span>
           <span>1 yanlış şık elendi</span>
         </p>
       )}
@@ -260,14 +261,14 @@ export default function ConquestChallengePanel({
       )}
       {isActive && !isEligible && (
         <p className="cq-challenge-feedback" role="status">
-          👀 Bu tur izleyicisin.
+          <EmojiIcon name="eyes" /> Bu tur izleyicisin.
         </p>
       )}
 
       {/* Resolved (winner picked) */}
       {status === "resolved" && winnerName && (
         <p className="cq-challenge-resolved-line" role="status">
-          🏆{" "}
+          <EmojiIcon name="trophy" />{" "}
           <span
             className="cq-challenge-winner-tag"
             data-color={winnerPlayerId ? playerColors[winnerPlayerId] : undefined}
@@ -282,7 +283,7 @@ export default function ConquestChallengePanel({
       {/* Expired with no winner */}
       {status === "skipped" && (
         <p className="cq-challenge-resolved-line" role="status">
-          ⏰ Süre bitti. Kimse doğru cevap veremedi.
+          <EmojiIcon name="alarm" /> Süre bitti. Kimse doğru cevap veremedi.
         </p>
       )}
     </section>

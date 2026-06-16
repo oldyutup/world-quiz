@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { playSound } from "../../lib/sound";
 import { mapLabel } from "./types";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import type { ConquestRoomStatus } from "./types";
 import {
   fetchPublicConquestRooms,
@@ -74,7 +75,7 @@ export default function ConquestRoomList({
       <div className="duel-lobby-card cq-rooms-card">
         <div className="cq-rooms-head">
           <div>
-            <h2 className="duel-lobby-title">🔎 Kuşatma Odaları</h2>
+            <h2 className="duel-lobby-title"><EmojiIcon name="search" /> Kuşatma Odaları</h2>
             <p className="duel-lobby-desc">
               Açık Kuşatma odalarını gör ve katıl.
             </p>
@@ -103,19 +104,19 @@ export default function ConquestRoomList({
 
         {!isLoggedIn && (
           <p className="duel-error" style={{ textAlign: "left", marginBottom: 4 }}>
-            🔒 Açık Kuşatma odalarına katılmak için giriş yapmalısın.
+            <EmojiIcon name="lock" /> Açık Kuşatma odalarına katılmak için giriş yapmalısın.
           </p>
         )}
 
         {errorMsg && (
           <p className="duel-error" style={{ textAlign: "left", marginBottom: 4 }}>
-            ⚠️ {errorMsg}
+            <EmojiIcon name="warning" /> {errorMsg}
           </p>
         )}
 
         {isLoggedIn && rooms.length === 0 && !loading ? (
           <div className="cq-rooms-empty" role="status">
-            <div className="cq-rooms-empty-icon" aria-hidden>🛡️</div>
+            <div className="cq-rooms-empty-icon" aria-hidden><EmojiIcon name="shield" /></div>
             <p className="cq-rooms-empty-title">
               Şu anda açık Kuşatma odası yok.
             </p>
@@ -125,7 +126,7 @@ export default function ConquestRoomList({
           </div>
         ) : !isLoggedIn ? (
           <div className="cq-rooms-empty" role="status">
-            <div className="cq-rooms-empty-icon" aria-hidden>🛡️</div>
+            <div className="cq-rooms-empty-icon" aria-hidden><EmojiIcon name="shield" /></div>
             <p className="cq-rooms-empty-title">
               Giriş yaparak Kuşatma odalarına katılabilirsin.
             </p>
@@ -147,14 +148,14 @@ export default function ConquestRoomList({
                   <div className="cq-room-card-main">
                     <div className="cq-room-code">#{room.room_code}</div>
                     <div className="cq-room-meta">
-                      <span className="cq-room-host">👑 {room.host_name}</span>
+                      <span className="cq-room-host"><EmojiIcon name="crown" /> {room.host_name}</span>
                       <span className="cq-room-map">
-                        🗺️ {mapLabel(room.map_id as Parameters<typeof mapLabel>[0])}
+                        <EmojiIcon name="map" /> {mapLabel(room.map_id as Parameters<typeof mapLabel>[0])}
                       </span>
-                      <span className="cq-room-rounds">🔄 {room.round_count} Tur</span>
+                      <span className="cq-room-rounds"><EmojiIcon name="refresh" /> {room.round_count} Tur</span>
                       {room.team_mode === "teams_2v2" && (
                         <span className="cq-room-team-tag" title="2v2 Takımlı mod">
-                          🛡️ 2v2 Takımlı
+                          <EmojiIcon name="shield" /> 2v2 Takımlı
                         </span>
                       )}
                     </div>

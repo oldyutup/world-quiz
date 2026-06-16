@@ -166,6 +166,23 @@ body {
 }
 
 .mode-card-icon { font-size: 2.4rem; line-height: 1; }
+
+/* Fluent Emoji SVG ikonları (EmojiIcon) — native emoji yerine platform-bağımsız.
+   Varsayılan 1em: kapsayan elemanın font-size'ını miras alır, böylece mevcut
+   hizalama/spacing değişmez (mod kartı 2.4rem, üst menü pill'leri 14–16px). */
+.emoji-icon {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.15em;
+  object-fit: contain;
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+/* "icon" varyantı (kompakt zil — yedek yerleşim) açık font-size taşımıyordu. */
+.notif-bell-icon { font-size: 20px; line-height: 1; }
 .mode-card-title { font-family: var(--font-head); font-size: 1.5rem; letter-spacing: .05em; }
 .mode-card-desc { font-size: .82rem; color: var(--muted); line-height: 1.45; }
 .mode-card-btn { margin-top: 4px; width: 100%; }
@@ -7761,7 +7778,7 @@ body {
   background: rgba(26, 38, 60, 0.95);
 }
 .social-btn:active { transform: translateY(1px); }
-.social-btn-icon { font-size: 14px; line-height: 1; }
+.social-btn-icon { font-size: 16px; line-height: 1; }
 .social-btn-label { line-height: 1; overflow: hidden; text-overflow: ellipsis; }
 .social-btn-badge {
   position: absolute;
@@ -8135,7 +8152,7 @@ body {
   background: rgba(60, 44, 16, 0.92);
 }
 .lb-trigger:active { transform: translateY(1px); }
-.lb-trigger-icon { font-size: 14px; line-height: 1; }
+.lb-trigger-icon { font-size: 16px; line-height: 1; }
 .lb-trigger-label { line-height: 1; }
 
 @media (max-width: 520px) {

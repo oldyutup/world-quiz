@@ -13,6 +13,7 @@
 
 import { useState, type CSSProperties } from "react";
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 
 interface Props {
   overlayStyle?: CSSProperties;
@@ -67,23 +68,23 @@ export default function ConquestModeSelectModal({
       onClick={onClose}
     >
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>🛡️ Kuşatma</h2>
+        <h2><EmojiIcon name="shield" /> Kuşatma</h2>
 
         <button className="modal-btn" onClick={handleCreate}>
-          🏠 Oda Kur
+          <EmojiIcon name="house" /> Oda Kur
         </button>
 
         <button className="modal-btn" onClick={handleJoinByCode}>
-          🔑 Oda Koduyla Katıl
+          <EmojiIcon name="key" /> Oda Koduyla Katıl
         </button>
 
         <button className="modal-btn" onClick={handleBrowse}>
-          🔎 Odalara Göz At
+          <EmojiIcon name="search" /> Odalara Göz At
         </button>
 
         {warnMsg && (
           <p className="duel-error" style={{ marginTop: 8, marginBottom: 0 }}>
-            🔒 {warnMsg}
+            <EmojiIcon name="lock" /> {warnMsg}
           </p>
         )}
 

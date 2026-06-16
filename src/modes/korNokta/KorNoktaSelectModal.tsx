@@ -10,6 +10,7 @@
 
 import { type CSSProperties } from "react";
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 
 interface Props {
   overlayStyle?: CSSProperties;
@@ -59,14 +60,14 @@ export default function KorNoktaSelectModal({
       onClick={onClose}
     >
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>🕵️‍♂️ Kör Nokta</h2>
+        <h2><EmojiIcon name="detective" /> Kör Nokta</h2>
 
         <button className="modal-btn" onClick={handleCreate}>
-          🏠 Oda Kur
+          <EmojiIcon name="house" /> Oda Kur
         </button>
 
         <button className="modal-btn" onClick={handleJoin}>
-          🔑 Odaya Katıl
+          <EmojiIcon name="key" /> Odaya Katıl
         </button>
 
         <button

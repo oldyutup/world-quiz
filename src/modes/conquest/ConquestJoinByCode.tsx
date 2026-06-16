@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import { normalizeConquestRoomCode } from "./conquestService";
 import { validateConquestName } from "./utils";
 
@@ -75,7 +76,7 @@ export default function ConquestJoinByCode({
   return (
     <div className="duel-lobby">
       <div className="duel-lobby-card cq-setup-card">
-        <h2 className="duel-lobby-title">🛡️ Kuşatma · Oda Koduyla Katıl</h2>
+        <h2 className="duel-lobby-title"><EmojiIcon name="shield" /> Kuşatma · Oda Koduyla Katıl</h2>
         <p className="duel-lobby-desc">
           Arkadaşının verdiği 6 haneli kuşatma kodunu gir.
         </p>
@@ -105,7 +106,7 @@ export default function ConquestJoinByCode({
           {isLoggedInPlayer ? (
             <div className="cq-name-readonly" aria-readonly="true">
               <span className="cq-name-chip">
-                <span aria-hidden>👤</span>
+                <span aria-hidden><EmojiIcon name="bust" /></span>
                 <span>@{profile?.username}</span>
               </span>
               <span className="cq-name-readonly-hint">olarak katılıyorsun</span>
@@ -128,7 +129,7 @@ export default function ConquestJoinByCode({
           onClick={handleSubmit}
           type="button"
         >
-          🚪 Odaya Katıl
+          <EmojiIcon name="door" /> Odaya Katıl
         </button>
 
         {errorMsg && <p className="duel-error">{errorMsg}</p>}

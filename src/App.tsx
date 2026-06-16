@@ -59,6 +59,7 @@ import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
+import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
 import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import {
@@ -401,14 +402,14 @@ const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
 useEffect(() => {
   try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
 }, [homeTheme]);
-  const modes = [
-  { id: "map-game" as AppScreen, icon: "🌍", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
-  { id: "flag-game" as AppScreen, icon: "🚩", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
-  { id: "silhouette-game" as AppScreen, icon: "🗺️", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
-  { id: "route-game" as AppScreen, icon: "🧭", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
-  { id: "wheel-game" as AppScreen, icon: "🎯", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
-  { id: "conquest-game" as AppScreen, icon: "🛡️", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
-  { id: "kornokta-create" as AppScreen, icon: "🕵️‍♂️", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
+  const modes: { id: AppScreen; icon: EmojiIconName; title: string; desc: string; available: boolean }[] = [
+  { id: "map-game", icon: "globe", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
+  { id: "flag-game", icon: "flag", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
+  { id: "silhouette-game", icon: "map", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
+  { id: "route-game", icon: "compass", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
+  { id: "wheel-game", icon: "target", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
+  { id: "conquest-game", icon: "shield", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
+  { id: "kornokta-create", icon: "detective", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
 ];
   return (
     <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : "")}>
@@ -424,7 +425,7 @@ useEffect(() => {
         {modes.map((m, i) => (
           <div key={i} className={"mode-card" + (m.available ? "" : " mode-card--soon")}>
             {!m.available && <span className="soon-badge">Yakında</span>}
-            <div className="mode-card-icon">{m.icon}</div>
+            <div className="mode-card-icon"><EmojiIcon name={m.icon} /></div>
             <div className="mode-card-content">
               <h2 className="mode-card-title">{m.title}</h2>
               <p className="mode-card-desc">{m.desc}</p>
@@ -482,7 +483,7 @@ useEffect(() => {
   >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
-      <h2>🌍 Ülke Yaz</h2>
+      <h2><EmojiIcon name="globe" /> Ülke Yaz</h2>
 
       <button
         className="modal-btn"
@@ -492,7 +493,7 @@ useEffect(() => {
           onSelect("map-game");
         }}
       >
-        🎮 Tek Oyuncu
+        <EmojiIcon name="gamepad" /> Tek Oyuncu
       </button>
 
       <button
@@ -503,7 +504,7 @@ useEffect(() => {
           onSelect("duel-game");
         }}
       >
-        ⚔️ Online 1v1
+        <EmojiIcon name="swords" /> Online 1v1
       </button>
 
       <button
@@ -514,7 +515,7 @@ useEffect(() => {
           onSelect("duel-group-game");
         }}
       >
-        🏆 Çok Oyunculu
+        <EmojiIcon name="trophy" /> Çok Oyunculu
       </button>
 
       <button
@@ -540,7 +541,7 @@ useEffect(() => {
   >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
-      <h2>🚩 Bayrak Modu</h2>
+      <h2><EmojiIcon name="flag" /> Bayrak Modu</h2>
 
       <button
         className="modal-btn"
@@ -550,7 +551,7 @@ useEffect(() => {
           onSelect("flag-game");
         }}
       >
-        🎮 Tek Oyuncu
+        <EmojiIcon name="gamepad" /> Tek Oyuncu
       </button>
 
       <button
@@ -561,7 +562,7 @@ useEffect(() => {
           onSelect("flag-duel-game");
         }}
       >
-        ⚔️ Online 1v1
+        <EmojiIcon name="swords" /> Online 1v1
       </button>
 
       <button
@@ -587,7 +588,7 @@ useEffect(() => {
   >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
-      <h2>🎯 Çark Modu</h2>
+      <h2><EmojiIcon name="target" /> Çark Modu</h2>
 
       <button
         className="modal-btn"
@@ -597,7 +598,7 @@ useEffect(() => {
           onSelect("wheel-game");
         }}
       >
-        🎮 Tek Oyuncu
+        <EmojiIcon name="gamepad" /> Tek Oyuncu
       </button>
 
       <button
@@ -608,7 +609,7 @@ useEffect(() => {
           onSelect("wheel-duel-game");
         }}
       >
-        ⚔️ Online 1v1
+        <EmojiIcon name="swords" /> Online 1v1
       </button>
 
       <button
@@ -619,7 +620,7 @@ useEffect(() => {
           onSelect("wheel-group-game");
         }}
       >
-        🏆 Çok Oyunculu
+        <EmojiIcon name="trophy" /> Çok Oyunculu
       </button>
 
       <button
@@ -918,7 +919,7 @@ function GoldBar({ gold, canBonus, onClaimBonus }: GoldBarProps) {
   return (
     <div className="gold-bar">
       <span className="gold-amount">
-        <span className="gold-icon">🟡</span>
+        <span className="gold-icon"><EmojiIcon name="yellow-circle" /></span>
         <span className="gold-num">{gold}</span>
         <span className="gold-label">Gold</span>
       </span>
@@ -976,7 +977,7 @@ function HintPanel({ gold, hints, currentEntry, isPlaying, mode = "flag", onBuyH
 
   return (
     <div className="hint-panel">
-      <span className="hint-title">💡 İpucu:</span>
+      <span className="hint-title"><EmojiIcon name="bulb" /> İpucu:</span>
       {defs.map(h => {
         const bought     = hints[h.type];
         const affordable = gold >= h.cost;
@@ -992,7 +993,7 @@ function HintPanel({ gold, hints, currentEntry, isPlaying, mode = "flag", onBuyH
                 title={affordable ? `${h.cost} gold harca` : `Yetersiz gold (${h.cost} gerekli)`}
               >
                 <span className="hint-label">{h.label}</span>
-                <span className="hint-cost">🟡{h.cost}</span>
+                <span className="hint-cost"><EmojiIcon name="yellow-circle" />{h.cost}</span>
               </button>
             )}
           </div>
@@ -1024,7 +1025,7 @@ function ResultModal(p: ModalProps) {
   return (
     <div className="modal-backdrop" onClick={p.onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-emoji">{isAllFound ? "🏆" : "⏰"}</div>
+        <div className="modal-emoji"><EmojiIcon name={isAllFound ? "trophy" : "alarm"} /></div>
         <h2 className="modal-title">{isAllFound ? "Tebrikler!" : "Süre Doldu"}</h2>
         <div className="modal-score-wrap">
           <div className="modal-score-big">
@@ -1039,7 +1040,7 @@ function ResultModal(p: ModalProps) {
         </div>
         <div className="modal-bar-bg"><div className="modal-bar-fg" style={{ width: p.pct + "%" }} /></div>
         <p className="modal-context">
-          {p.gameType === "flag-game" ? "🚩 Bayrak" : p.gameType === "silhouette-game" ? "🗺️ Silüet" : "🌍 Ülke Yaz"}
+          {p.gameType === "flag-game" ? <><EmojiIcon name="flag" /> Bayrak</> : p.gameType === "silhouette-game" ? <><EmojiIcon name="map" /> Silüet</> : <><EmojiIcon name="globe" /> Ülke Yaz</>}
           {" · "}{CONTINENT_OPTIONS.find(c => c.value === p.continent)?.label}
           {diffLabel && <> · <span className="modal-diff">{diffLabel}</span></>}
           {" · "}{DURATION_OPTIONS.find(d => d.value === p.selectedDuration)?.label ?? p.selectedDuration + "sn"}
@@ -1047,14 +1048,14 @@ function ResultModal(p: ModalProps) {
         {/* Gold earned */}
         {p.earnedGold > 0 && (
           <div className="modal-gold-earned">
-            <span className="modal-gold-icon">🟡</span>
+            <span className="modal-gold-icon"><EmojiIcon name="yellow-circle" /></span>
             <span className="modal-gold-text">+{p.earnedGold} Gold kazandın!</span>
           </div>
         )}
         {p.currentBest && (
           <p className="modal-best">
             {p.score > p.currentBest.score
-              ? "🎉 Yeni rekor!"
+              ? <><EmojiIcon name="party" /> Yeni rekor!</>
               : `En iyi: ${p.currentBest.score}/${p.currentBest.total} — ${DURATION_OPTIONS.find(d => d.value === p.currentBest!.duration)?.label} (${p.currentBest.date})`}
           </p>
         )}
@@ -1162,7 +1163,7 @@ function TopBar(p: TopBarProps) {
       {/* Mobile-only compact info chip — non-interactive, shown during active map play */}
       <div className="bar-mobile-info" aria-hidden="true">
         <span className="bar-mobile-info-text">
-          🌍 {p.continentLabel.replace(/^[^\p{L}]+/u, "")}
+          <EmojiIcon name="globe" /> {p.continentLabel.replace(/^[^\p{L}]+/u, "")}
           {diffOpt && p.difficulty && p.difficulty !== "all" ? ` • ${diffOpt.label.replace(/^[^\p{L}]+/u, "")}` : ""}
           {" • "}{p.durationLabel.replace(/^[^\p{L}\d]+/u, "")}
           {" • "}{modeShort}
@@ -1346,7 +1347,7 @@ function TopBar(p: TopBarProps) {
         </div>
         {p.currentBest && (
           <div className="best-badge" title={"Tarih: " + p.currentBest.date}>
-            <span className="best-icon">🏆</span>
+            <span className="best-icon"><EmojiIcon name="trophy" /></span>
             <span className="best-val">{p.currentBest.score}/{p.currentBest.total}</span>
             <span className="best-meta">
               {DURATION_OPTIONS.find(d => d.value === p.currentBest!.duration)?.label}
@@ -1928,7 +1929,7 @@ function FlagGame({
       <div className="flag-area">
         {g.mode === "idle" && (
           <div className="flag-idle">
-            <div className="flag-idle-icon">🚩</div>
+            <div className="flag-idle-icon"><EmojiIcon name="flag" /></div>
             <p className="flag-idle-text">Bayrak Modu</p>
             <p className="flag-idle-sub">{diffOpt?.label} · {continentLabel} · {flagTotal} bayrak</p>
             <p className="flag-idle-sub" style={{ marginTop: "4px", fontSize: ".78rem", opacity: .6 }}>Başlamak için bir mod seç</p>
@@ -1962,7 +1963,7 @@ function FlagGame({
         )}
         {g.mode === "finished" && (
           <div className="flag-idle">
-            <div className="flag-idle-icon">{flagScore >= flagTotal ? "🏆" : "⏰"}</div>
+            <div className="flag-idle-icon"><EmojiIcon name={flagScore >= flagTotal ? "trophy" : "alarm"} /></div>
             <p className="flag-idle-text">{flagScore >= flagTotal ? "Tebrikler!" : "Süre Doldu"}</p>
           </div>
         )}
@@ -2168,7 +2169,7 @@ function SilhouetteGame({
       <div className="sil-area">
         {g.mode === "idle" && (
           <div className="flag-idle">
-            <div className="flag-idle-icon">🗺️</div>
+            <div className="flag-idle-icon"><EmojiIcon name="map" /></div>
             <p className="flag-idle-text">Silüet Modu</p>
             <p className="flag-idle-sub">{diffOpt?.label} · {continentLabel} · {silTotal} ülke</p>
             <p className="flag-idle-sub" style={{ marginTop: "4px", fontSize: ".78rem", opacity: .6 }}>Başlamak için bir mod seç</p>
@@ -2195,7 +2196,7 @@ function SilhouetteGame({
         )}
         {g.mode === "finished" && (
           <div className="flag-idle">
-            <div className="flag-idle-icon">{silScore >= silTotal ? "🏆" : "⏰"}</div>
+            <div className="flag-idle-icon"><EmojiIcon name={silScore >= silTotal ? "trophy" : "alarm"} /></div>
             <p className="flag-idle-text">{silScore >= silTotal ? "Tebrikler!" : "Süre Doldu"}</p>
           </div>
         )}
@@ -2694,7 +2695,7 @@ useEffect(() => {
               onClick={() => setLeaderboardOpen(true)}
               aria-label="Sıralamayı aç"
             >
-              <span className="lb-trigger-icon">🏆</span>
+              <span className="lb-trigger-icon"><EmojiIcon name="trophy" /></span>
               <span className="lb-trigger-label">Sıralama</span>
             </button>
 

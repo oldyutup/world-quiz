@@ -835,20 +835,20 @@ export function getHiddenBonusToastCopyForViewer(
     if (isCaster) {
       return {
         icon:   "🗡️",
-        title:  "🗡️ Suikast Başarılı!",
+        title:  "Suikast Başarılı!",
         detail: `${targetName} hedef alındı ve ${points} puan kaybetti.`,
       };
     }
     if (isTarget) {
       return {
         icon:   "🗡️",
-        title:  "🗡️ Suikast!",
+        title:  "Suikast!",
         detail: `Gizli bir saldırıya uğradın ve ${points} puan kaybettin.`,
       };
     }
     return {
       icon:   "🗡️",
-      title:  "🗡️ Suikast Gerçekleşti!",
+      title:  "Suikast Gerçekleşti!",
       detail: `${targetName} gizli bir saldırıya uğradı ve ${points} puan kaybetti.`,
     };
   }
@@ -861,20 +861,20 @@ export function getHiddenBonusToastCopyForViewer(
     if (isCaster) {
       return {
         icon:   "🧿",
-        title:  "🧿 Lanet Mührü Uygulandı!",
+        title:  "Lanet Mührü Uygulandı!",
         detail: `${targetName} lanetlendi. Bir sonraki doğru cevabında hamle hakkı mühürlenecek.`,
       };
     }
     if (isTarget) {
       return {
         icon:   "🧿",
-        title:  "🧿 Lanetlendin!",
+        title:  "Lanetlendin!",
         detail: "Üzerine Lanet Mührü uygulandı. Bir sonraki doğru cevabında hamle hakkın mühürlenecek.",
       };
     }
     return {
       icon:   "🧿",
-      title:  "🧿 Lanet Mührü Kullanıldı!",
+      title:  "Lanet Mührü Kullanıldı!",
       detail: `${targetName} lanetlendi. Bir sonraki doğru cevabında hamle hakkı mühürlenecek.`,
     };
   }
@@ -888,7 +888,7 @@ export function getHiddenBonusToastCopyForViewer(
     if (isOwner) {
       return {
         icon:   "🕳️",
-        title:  "🕳️ Pusu Kuruldu!",
+        title:  "Pusu Kuruldu!",
         detail: "Seçtiğin bölgeye gizli pusu kuruldu. Rakip bu bölgeyi hedeflerse saldırısı gerçekleşmeyecek.",
       };
     }
@@ -907,20 +907,20 @@ export function getHiddenBonusToastCopyForViewer(
     if (isAttacker) {
       return {
         icon:   "🕳️",
-        title:  "🕳️ Gizli Bonus Ortaya Çıktı!",
+        title:  "Gizli Bonus Ortaya Çıktı!",
         detail: "Rakip, saldırmaya gittiğin bölgenin istihbaratını önceden aldı ve yola pusu kurdu. Saldırın gerçekleşemedi!",
       };
     }
     if (isOwner) {
       return {
         icon:   "🕳️",
-        title:  "🕳️ Pusu Başarılı!",
+        title:  "Pusu Başarılı!",
         detail: "Rakibin hedeflediğin bölgeye saldırmaya çalıştı ama kurduğun pusu saldırıyı durdurdu.",
       };
     }
     return {
       icon:   "🕳️",
-      title:  "🕳️ Pusu Ortaya Çıktı!",
+      title:  "Pusu Ortaya Çıktı!",
       detail: "Bir saldırı, gizli pusu nedeniyle gerçekleşemedi.",
     };
   }
@@ -932,13 +932,13 @@ export function getHiddenBonusToastCopyForViewer(
     if (isTarget) {
       return {
         icon:   "🧿",
-        title:  "🧿 Hamlen Mühürlendi!",
+        title:  "Hamlen Mühürlendi!",
         detail: "Doğru bildin ancak Lanet Mührü hamle hakkını engelledi.",
       };
     }
     return {
       icon:   "🧿",
-      title:  "🧿 Lanet Mührü Devreye Girdi!",
+      title:  "Lanet Mührü Devreye Girdi!",
       detail: `${targetName} doğru bildi ancak Lanet Mührü nedeniyle hamle yapamadı.`,
     };
   }
@@ -949,13 +949,13 @@ export function getHiddenBonusToastCopyForViewer(
     const label = getHiddenBonusLabel(toast.type);
     return {
       icon:   "🎁",
-      title:  "🎁 Gizli Bonus Bulundu!",
+      title:  "Gizli Bonus Bulundu!",
       detail: `Bu bölgede gizli bir güç vardı: ${label}. Bu bonus tek kullanımlık olarak envanterine eklendi.`,
     };
   }
   return {
     icon:   "❓",
-    title:  "❓ Rakip Gizli Bonus Keşfetti!",
+    title:  "Rakip Gizli Bonus Keşfetti!",
     detail: "Rakibin haritada gizli bir bonus buldu. Hangi bonus olduğunu, özelliği kullandığında öğreneceksin.",
   };
 }
@@ -1034,7 +1034,7 @@ export function getIntelReportCopy(
       : "bilinmeyen bonus";
     return {
       icon:   "👁️",
-      title:  "👁️ İstihbarat Raporu",
+      title:  "İstihbarat Raporu",
       detail: `${report.actorPlayerName} gizli bonus keşfetti: ${label}.`,
     };
   }
@@ -1042,7 +1042,7 @@ export function getIntelReportCopy(
   const where = regionLabel ?? "bilinmeyen bölge";
   return {
     icon:   "👁️",
-    title:  "👁️ İstihbarat Raporu",
+    title:  "İstihbarat Raporu",
     detail: `${report.actorPlayerName} Gizli Operasyon kullandı. Hedef bölge: ${where}.`,
   };
 }

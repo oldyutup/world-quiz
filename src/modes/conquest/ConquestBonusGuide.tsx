@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import type {
   ConquestRegionBonusDef,
   ConquestRegionBonusType,
@@ -79,7 +80,7 @@ export default function ConquestBonusGuide({
     >
       <div className="cq-bonus-guide-head">
         <h3 id="cq-bonus-guide-title" className="cq-bonus-guide-title">
-          <span aria-hidden="true">⚔️</span>
+          <EmojiIcon name="swords" />
           <span>{title}</span>
         </h3>
         <button
@@ -113,7 +114,7 @@ export default function ConquestBonusGuide({
                 aria-controls={`cq-bonus-guide-effect-${regionId}`}
               >
                 <span className="cq-bonus-guide-icon" aria-hidden="true">
-                  {def.icon}
+                  <EmojiIcon char={def.icon} />
                 </span>
                 <span className="cq-bonus-guide-meta">
                   <span className="cq-bonus-guide-label">{def.label}</span>

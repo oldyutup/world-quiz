@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import type { Profile } from "../../lib/auth";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { playSound } from "../../lib/sound";
@@ -1061,7 +1062,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         </button>
 
         <div className="duel-header-center">
-          <span className="duel-mode-label">🛡️ Kuşatma</span>
+          <span className="duel-mode-label"><EmojiIcon name="shield" /> Kuşatma</span>
           {phase === "lobby" && roomRow && (
             <>
               <span className="duel-code-badge">#{roomRow.room_code}</span>
@@ -1079,7 +1080,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         <div className="cq-banner-wrap" role="status">
           <div className="cq-banner">
             <span className="cq-banner-msg">
-              {hostClosed ? "🛑 Ev sahibi odayı kapattı." : statusMsg}
+              {hostClosed ? <><EmojiIcon name="cross-mark" /> Ev sahibi odayı kapattı.</> : statusMsg}
             </span>
             <button
               type="button"
@@ -1098,7 +1099,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       {phase === "lobby" && hostTransferBanner && (
         <div className="cq-banner-wrap" role="status">
           <div className="cq-banner">
-            <span className="cq-banner-msg">👑 {hostTransferBanner}</span>
+            <span className="cq-banner-msg"><EmojiIcon name="crown" /> {hostTransferBanner}</span>
             <button
               type="button"
               className="cq-banner-close"
@@ -1116,7 +1117,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       {phase === "lobby" && startBlockedMsg && (
         <div className="cq-banner-wrap" role="status">
           <div className="cq-banner">
-            <span className="cq-banner-msg">⚠️ {startBlockedMsg}</span>
+            <span className="cq-banner-msg"><EmojiIcon name="warning" /> {startBlockedMsg}</span>
             <button
               type="button"
               className="cq-banner-close"
@@ -1158,7 +1159,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
       {phase === "joining" && (
         <div className="duel-lobby">
           <div className="duel-lobby-card cq-setup-card">
-            <h2 className="duel-lobby-title">🛡️ Kuşatma</h2>
+            <h2 className="duel-lobby-title"><EmojiIcon name="shield" /> Kuşatma</h2>
             <p className="duel-lobby-desc">{statusMsg ?? "Yükleniyor…"}</p>
           </div>
         </div>

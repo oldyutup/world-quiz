@@ -33,6 +33,7 @@ import { PlayerProfileTrigger } from "../../components/PlayerProfileTrigger";
 import { LobbyInviteBar } from "../../components/LobbyInviteBar";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
 import { useSocialOptional } from "../../components/SocialContext";
+import { EmojiIcon } from "../../components/EmojiIcon";
 import { playSound } from "../../lib/sound";
 import { recallConquestClaim } from "./conquestClaim";
 import {
@@ -362,7 +363,7 @@ export default function ConquestLobby({
         onClick={e => e.stopPropagation()}
       >
         <div className="cq-color-popover-head">
-          <span className="cq-color-popover-title">🎨 Rengini seç</span>
+          <span className="cq-color-popover-title"><EmojiIcon name="palette" /> Rengini seç</span>
           {myColor && (
             <span className="cq-color-picker-current" data-color={myColor}>
               <span className="cq-color-picker-current-dot" aria-hidden />
@@ -397,7 +398,7 @@ export default function ConquestLobby({
               >
                 <span className="cq-color-swatch-dot" aria-hidden />
                 {selected && <span className="cq-color-swatch-check" aria-hidden>✓</span>}
-                {taken && !selected && <span className="cq-color-swatch-lock" aria-hidden>🔒</span>}
+                {taken && !selected && <span className="cq-color-swatch-lock" aria-hidden><EmojiIcon name="lock" /></span>}
               </button>
             );
           })}
@@ -438,7 +439,7 @@ export default function ConquestLobby({
             <span className="cq-player-name">{p.name}</span>
           </PlayerProfileTrigger>
           {isMe && <span className="cq-player-you-tag">sen</span>}
-          {p.isHost && <span className="duel-tag host">👑</span>}
+          {p.isHost && <span className="duel-tag host"><EmojiIcon name="crown" /></span>}
           {isRematch && ready && (
             <span className="cq-player-status-tag cq-player-status-tag--ready">Hazır</span>
           )}
@@ -464,7 +465,7 @@ export default function ConquestLobby({
                 onClick={handleTeamToggle}
               >
                 <span aria-hidden>
-                  {myTeamForChip === 1 ? "🔵" : myTeamForChip === 2 ? "🔴" : "⚪"}
+                  {myTeamForChip === 1 ? <EmojiIcon name="blue-circle" /> : myTeamForChip === 2 ? <EmojiIcon name="red-circle" /> : <EmojiIcon name="white-circle" />}
                 </span>
               </button>
             ) : (
@@ -478,7 +479,7 @@ export default function ConquestLobby({
                 }
               >
                 <span aria-hidden>
-                  {myTeamForChip === 1 ? "🔵" : myTeamForChip === 2 ? "🔴" : "⚪"}
+                  {myTeamForChip === 1 ? <EmojiIcon name="blue-circle" /> : myTeamForChip === 2 ? <EmojiIcon name="red-circle" /> : <EmojiIcon name="white-circle" />}
                 </span>
               </span>
             )
@@ -553,7 +554,7 @@ export default function ConquestLobby({
         className="cq-team-notice cq-team-notice--standalone"
         role="status"
       >
-        <span className="cq-team-notice-msg">⚠️ {displayedTeamNotice}</span>
+        <span className="cq-team-notice-msg"><EmojiIcon name="warning" /> {displayedTeamNotice}</span>
         <button
           type="button"
           className="cq-team-notice-close"
@@ -568,7 +569,7 @@ export default function ConquestLobby({
 
   function renderBonusPanel(keyPrefix: string) {
     const isVoting = bonusMode === "vote";
-    const title    = isVoting ? "🗳️ Bonus Oylaması" : "🎁 Bu Maçtaki Bonuslar";
+    const title    = isVoting ? "Bonus Oylaması" : "Bu Maçtaki Bonuslar";
     return (
       <div
         className={"cq-bonus-vote" + (isVoting ? "" : " cq-bonus-vote--readonly")}
@@ -660,7 +661,7 @@ export default function ConquestLobby({
    */
   function renderMobileBonusPanel() {
     const isVoting    = bonusMode === "vote";
-    const title       = isVoting ? "🗳️ Bonus Oylaması" : "🎁 Bu Maçtaki Bonuslar";
+    const title       = isVoting ? "Bonus Oylaması" : "Bu Maçtaki Bonuslar";
     const detailEntry = mobileBonusDetail
       ? VOTEABLE_BONUS_POOL.find(e => e.type === mobileBonusDetail) ?? null
       : null;
@@ -795,7 +796,7 @@ export default function ConquestLobby({
         {/* ══ LEFT: Oyuncular ══ */}
         <div className="duel-lobby-card wgg-players-card cq-players-card">
           <div className="cq-players-head">
-            <span className="cq-players-title">👥 Oyuncular</span>
+            <span className="cq-players-title"><EmojiIcon name="people" /> Oyuncular</span>
             <span className="cq-players-count">{countLabel}</span>
           </div>
 
@@ -807,7 +808,7 @@ export default function ConquestLobby({
                 if (isClosed) {
                   return (
                     <div key={`closed-${i}`} className="wgg-slot-closed" aria-disabled="true">
-                      <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                      <span className="wgg-slot-closed-icon" aria-hidden="true"><EmojiIcon name="lock" /></span>
                       <span className="wgg-slot-closed-label">Kapalı slot</span>
                     </div>
                   );
@@ -874,7 +875,7 @@ export default function ConquestLobby({
           {/* ── Editable settings (selects for host, disabled for guests) ── */}
           <div className="cq-settings-selects" role="group" aria-label="Kuşatma oda ayarları">
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🗺️ Harita</label>
+              <label className="duel-select-label"><EmojiIcon name="map" /> Harita</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -892,7 +893,7 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">👥 Oyuncu</label>
+              <label className="duel-select-label"><EmojiIcon name="people" /> Oyuncu</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -920,7 +921,7 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🔄 Tur</label>
+              <label className="duel-select-label"><EmojiIcon name="refresh" /> Tur</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -938,7 +939,7 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🔓 Görünürlük</label>
+              <label className="duel-select-label"><EmojiIcon name="unlock" /> Görünürlük</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -972,7 +973,7 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">⚔️ Oyun Tipi</label>
+              <label className="duel-select-label"><EmojiIcon name="swords" /> Oyun Tipi</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -1025,7 +1026,7 @@ export default function ConquestLobby({
                     ? "Oyunu başlat"
                     : startBlockedHelper ?? `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli`}
                 >
-                  🚀 Oyunu Başlat
+                  <EmojiIcon name="rocket" /> Oyunu Başlat
                 </button>
                 {startBlockedHelper && (
                   <p className="cq-start-helper" role="status">{startBlockedHelper}</p>
@@ -1065,7 +1066,7 @@ export default function ConquestLobby({
             />
           ) : (
             <div className="cq-chat-guest">
-              <span className="cq-chat-guest-icon" aria-hidden>💬</span>
+              <span className="cq-chat-guest-icon" aria-hidden><EmojiIcon name="speech" /></span>
               <p className="cq-chat-guest-msg">
                 Sohbete yazmak için giriş yapmalısın.
               </p>
@@ -1082,7 +1083,7 @@ export default function ConquestLobby({
           aria-label="Oyuncuları aç"
           onClick={() => { playSound("click"); setPlayersOpen(true); setChatOpen(false); }}
         >
-          <span>👥</span>
+          <span><EmojiIcon name="people" /></span>
           <span>Oyuncular</span>
           <span className="wgg-players-fab-badge">{countLabel}</span>
         </button>
@@ -1109,7 +1110,7 @@ export default function ConquestLobby({
             <div className="wgg-ps-handle" />
             <header className="wgg-ps-header">
               <span className="wgg-ps-title">
-                <span>👥</span>
+                <span><EmojiIcon name="people" /></span>
                 <span>Oyuncular</span>
               </span>
               <span className="cq-players-count">{countLabel}</span>
@@ -1131,7 +1132,7 @@ export default function ConquestLobby({
                     if (isClosed) {
                       return (
                         <div key={`m-closed-${i}`} className="wgg-slot-closed">
-                          <span className="wgg-slot-closed-icon" aria-hidden="true">🔒</span>
+                          <span className="wgg-slot-closed-icon" aria-hidden="true"><EmojiIcon name="lock" /></span>
                           <span className="wgg-slot-closed-label">Kapalı slot</span>
                         </div>
                       );

@@ -34,6 +34,7 @@ import {
 import { useSocial } from "./SocialContext";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import { EmojiIcon } from "./EmojiIcon";
 
 interface FriendsButtonProps {
   variant?: "bar" | "icon" | "row";
@@ -182,9 +183,7 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        <span className="social-menu-row-icon" aria-hidden="true">
-          👥
-        </span>
+        <span className="social-menu-row-icon" aria-hidden="true"><EmojiIcon name="people" /></span>
         <span className="social-menu-row-label">Arkadaşlar</span>
         {badge}
       </button>
@@ -196,7 +195,7 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
         aria-label="Arkadaşlar"
         aria-expanded={open}
       >
-        <span className="social-btn-icon" aria-hidden="true">👥</span>
+        <span className="social-btn-icon" aria-hidden="true"><EmojiIcon name="people" /></span>
         <span className="social-btn-label">Arkadaşlar</span>
         {badge}
       </button>
@@ -208,9 +207,7 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
         aria-label="Arkadaşlar"
         aria-expanded={open}
       >
-        <span className="notif-bell-icon" aria-hidden="true">
-          👥
-        </span>
+        <span className="notif-bell-icon" aria-hidden="true"><EmojiIcon name="people" /></span>
         {badge}
       </button>
     );

@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { EmojiIcon, type EmojiIconName } from "../../components/EmojiIcon";
 import {
   getConquestMasterVolume,
   setConquestMasterVolume,
@@ -26,11 +27,11 @@ interface Props {
   onOpen?: () => void;
 }
 
-function volumeIcon(v: number): string {
-  if (v <= 0)    return "🔇";
-  if (v < 0.34)  return "🔈";
-  if (v < 0.67)  return "🔉";
-  return "🔊";
+function volumeIcon(v: number): EmojiIconName {
+  if (v <= 0)    return "speaker-mute";
+  if (v < 0.34)  return "speaker-low";
+  if (v < 0.67)  return "speaker-med";
+  return "speaker-high";
 }
 
 export default function ConquestVolumeControl({ variant = "desktop", closeKey, onOpen }: Props) {
@@ -95,7 +96,7 @@ export default function ConquestVolumeControl({ variant = "desktop", closeKey, o
         aria-expanded={open}
         title={`Kuşatma sesi: %${pct}`}
       >
-        <span aria-hidden="true">{volumeIcon(volume)}</span>
+        <span aria-hidden="true"><EmojiIcon name={volumeIcon(volume)} /></span>
       </button>
 
       {open && (
