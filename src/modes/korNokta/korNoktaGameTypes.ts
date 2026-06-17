@@ -20,7 +20,7 @@ import { korNoktaRealScenes } from "./korNoktaRealScenes";
  * BİREBİR aynıdır (yalnız AI/tarihi sahneler). Tam oyun-döngüsü testi için true yap.
  * (Kör Nokta web-only; gerçek sahneler native bundle'a girmez.)
  */
-export const KN_INCLUDE_REAL_SCENES = false;
+export const KN_INCLUDE_REAL_SCENES = true;
 
 /** Tüm bilinen sahneler (AI + gerçek). findKnScene id'leri her zaman buradan çözer. */
 export const korNoktaAllScenes: KorNoktaScene[] = [...korNoktaScenes, ...korNoktaRealScenes];
