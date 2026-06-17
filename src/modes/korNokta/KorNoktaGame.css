@@ -610,6 +610,381 @@
   min-height: 220px;
 }
 
+/* ════════════════════════════════════════════════════════════
+   SORU-CEVAP AKIŞI (v3) — dedektif soru seçimi, raporcu cevap,
+   dedektif anonim cevap kartları. App.css token'larını kullanır.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── Dedektif soru seçme ekranı (observe_report) ───────────── */
+.kn-screen--qselect { overflow: hidden; }
+
+.kn-qselect {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: 2px 16px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.kn-qselect__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.kn-qselect__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--accent));
+}
+
+.kn-qselect__title {
+  font-family: var(--font-head);
+  font-size: 1.8rem;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  color: #fff;
+}
+
+.kn-qselect__sub {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 52ch;
+}
+
+.kn-qselect__counter {
+  margin-top: 2px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: rgba(13, 17, 23, 0.7);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.kn-qselect__counter.is-full {
+  border-color: rgba(63, 185, 80, 0.7);
+  background: rgba(63, 185, 80, 0.14);
+  color: var(--green);
+}
+
+.kn-qgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  gap: 10px;
+}
+
+.kn-qcard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 12px 13px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: rgba(22, 27, 34, 0.88);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.32;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s ease-out;
+}
+
+.kn-qcard:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+.kn-qcard__check {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.kn-qcard__text { flex: 1; min-width: 0; }
+
+.kn-qcard.is-on {
+  border-color: var(--accent);
+  background: rgba(88, 166, 255, 0.15);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.kn-qcard.is-on .kn-qcard__check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #06121f;
+}
+
+.kn-qcard.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.kn-qcard.is-disabled:hover { border-color: var(--border); transform: none; }
+
+/* ── Raporcu/casus cevap sayfası (answer_questions) ────────── */
+.kn-answersheet {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 14px;
+  z-index: 2;
+  width: min(620px, calc(100% - 20px));
+  max-height: min(72%, 540px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(4px);
+}
+
+.kn-answersheet--mole { border-color: rgba(255, 91, 91, 0.5); }
+
+.kn-answersheet__head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.kn-answersheet--mole .kn-mission__eyebrow { color: #ff8a8a; }
+
+.kn-answersheet__note {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.kn-answersheet--mole .kn-answersheet__note { color: var(--amber); }
+
+.kn-answersheet__sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.kn-answersheet__empty {
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: center;
+  padding: 14px 0;
+}
+
+.kn-qanswer-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-right: 2px;
+}
+
+.kn-qanswer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: rgba(22, 27, 34, 0.7);
+}
+
+.kn-qanswer__q {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.kn-qanswer__num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(88, 166, 255, 0.18);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.kn-qanswer__opts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.kn-ans-btn {
+  min-height: 38px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1.5px solid var(--border);
+  background: rgba(13, 17, 23, 0.6);
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.13s, background 0.13s, color 0.13s;
+}
+
+.kn-ans-btn:hover { color: var(--text); }
+
+.kn-ans-btn--yes.is-on {
+  border-color: rgba(63, 185, 80, 0.8);
+  background: rgba(63, 185, 80, 0.18);
+  color: var(--green);
+}
+
+.kn-ans-btn--no.is-on {
+  border-color: rgba(239, 68, 68, 0.8);
+  background: rgba(239, 68, 68, 0.18);
+  color: #ff7a7a;
+}
+
+.kn-ans-btn--unsure.is-on {
+  border-color: rgba(148, 163, 184, 0.8);
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+/* ── Dedektif anonim cevap kartları (detective_guess) ──────── */
+.kn-answer-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(22, 27, 34, 0.92);
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kn-answer-card__meta {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--kn-accent, var(--accent));
+}
+
+.kn-answer-card__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kn-answer-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.kn-answer-card__q {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+}
+
+.kn-answer-pill {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.kn-answer-pill--yes {
+  border-color: rgba(63, 185, 80, 0.7);
+  background: rgba(63, 185, 80, 0.14);
+  color: var(--green);
+}
+
+.kn-answer-pill--no {
+  border-color: rgba(239, 68, 68, 0.7);
+  background: rgba(239, 68, 68, 0.14);
+  color: #ff7a7a;
+}
+
+.kn-answer-pill--unsure {
+  border-color: rgba(148, 163, 184, 0.6);
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+
+.kn-answer-pill--none { color: var(--muted); }
+
+/* ── Dedektif "cevaplar toplanıyor" geniş brifing + soru listesi ── */
+.kn-briefing--wide { width: min(520px, 100%); }
+
+.kn-briefing__qlist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.kn-briefing__qlist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.55);
+  font-size: 0.84rem;
+  line-height: 1.32;
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .kn-qgrid { grid-template-columns: 1fr; }
+  .kn-answersheet {
+    bottom: 10px;
+    max-height: 76%;
+    width: calc(100% - 16px);
+  }
+  .kn-qanswer__opts { gap: 6px; }
+  .kn-ans-btn { font-size: 11.5px; padding: 6px 4px; }
+}
+
 /* ── Rapor değerlendirme (report_judgement) ────────────────── */
 
 .kn-judge {

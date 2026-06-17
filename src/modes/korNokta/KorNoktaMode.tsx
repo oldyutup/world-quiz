@@ -46,6 +46,7 @@ import { useSocialOptional } from "../../components/SocialContext";
 import { playSound } from "../../lib/sound";
 import KorNoktaGame from "./KorNoktaGame";
 import { buildKnScenePlan, parseKnGameState } from "./korNoktaGameTypes";
+import { buildKnQuestionPool } from "./korNoktaQuestions";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES & CONSTANTS
@@ -441,6 +442,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       p_host_player_id: myIdRef.current,
       p_claim_token:    myClaimTokenRef.current,
       p_scenes:         buildKnScenePlan(room.round_count),
+      p_question_pool:  buildKnQuestionPool(),
     });
 
     if (error) {
@@ -983,8 +985,8 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                     </div>
                   </div>
                   <div className="duel-select-wrap" style={{ minWidth: 0, gap: 3 }}>
-                    <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>🎭 Köstebek</label>
-                    <div className="duel-select-box" title={moleEligible ? "Köstebek 3v3 ve üzerinde etkin" : "Köstebek yalnız 3v3+ açılabilir (2v2'de yok)"}>
+                    <label className="duel-select-label" style={{ fontSize: "0.62rem" }}>🎭 Casus</label>
+                    <div className="duel-select-box" title={moleEligible ? "Casus 3v3 ve üzerinde etkin" : "Casus yalnız 3v3+ açılabilir (2v2'de yok)"}>
                       <select
                         className="duel-select"
                         value={(room.mole_enabled ?? true) ? "on" : "off"}
@@ -1000,10 +1002,10 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                   </div>
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.55, lineHeight: 1.5 }}>
-                  📝 Rapor limiti: 2–5 kelime
+                  🕵️ Dedektif 5 soru seçer; raporcular Evet/Hayır/Emin değilim ile cevaplar.
                   <br />
-                  🎭 Köstebek: {moleOn
-                    ? "açık — her takımda 1, raporu karşı takım dedektifine gider."
+                  🎭 Casus: {moleOn
+                    ? "açık — her takımda 1, cevapları karşı takım dedektifine gider."
                     : (moleEligible ? "kapalı." : "2v2'de yok (3v3+ gerekir).")}
                 </div>
               </section>

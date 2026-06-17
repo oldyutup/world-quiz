@@ -1,5 +1,5 @@
 /**
- * KorNoktaGame — Kör Nokta TAKIM modu gameplay (game_state version 2).
+ * KorNoktaGame — Kör Nokta TAKIM modu gameplay (game_state version 3).
  *
  * KorNoktaMode lobby'sinin altında, room.status 'playing'/'finished' iken
  * render edilir. Oyun durumu tevatur_rooms.game_state jsonb blob'undan okunur
@@ -7,26 +7,31 @@
  * AÇMAZ, room prop'u değiştikçe yeniden render olur.
  *
  * Takım modeli: iki takım (Mavi/Kırmızı) aynı sahneyle oynar. Her turda her
- * takımda 1 dedektif rotasyonla döner; dedektif sahneyi görmez, kendi takımının
- * (anonim) raporlarını okuyup haritada tahmin yapar. Köstebek (yalnız 3v3+)
- * raporunu KARŞI takım dedektifine gönderir; kimliği hiç açıklanmaz. Puanlama
- * mesafe bazlı 0–5000 (takım başına, tur tur birikir); finalde toplamı yüksek
- * takım kazanır. Şüpheli seçme / köstebek yakalama YOK.
+ * takımda 1 dedektif rotasyonla döner; dedektif sahneyi görmez. Yeni soru-cevap
+ * akışı:
+ *   1) observe_report — herkes sahneyi inceler; dedektif havuzdan ≤5 soru seçer.
+ *   2) answer_questions — raporcular/casuslar hedef dedektifin sorularını
+ *      Evet/Hayır/Emin değilim ile cevaplar (birbirini görmez).
+ *   3) detective_guess — dedektif anonim cevap kartlarına göre haritada tahmin yapar.
+ * Casus (iç değer "mole"; yalnız 3v3+) KARŞI takım dedektifinin sorularını
+ * cevaplar; cevabı yalnız o dedektifin tahmin ekranında anonim görünür. Puanlama
+ * mesafe bazlı 0–5000 (takım başına); finalde toplamı yüksek takım kazanır.
  *
  * Yetki: faz ilerletme host-authoritative (advance_phase, expected-state guard);
- * rapor/tahmin yazmaları yalnız ilgili oyuncunun RPC'siyle olur.
+ * soru-seçimi/cevap/tahmin yazmaları yalnız ilgili oyuncunun RPC'siyle olur.
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { supabase, type TevaturRoom, type TevaturPlayer } from "../../lib/supabase";
 import { getSyncedNowMs, initServerClockSync } from "../../lib/serverClock";
 import { playSound, stopSound, getCountdownSoundMode } from "../../lib/sound";
 import {
-  KN_CATEGORY_HINTS,
-  KN_CATEGORY_LABELS,
   KN_TEAM_LABELS,
   findKnScene,
+  getKnAnswerTargetTeam,
+  getKnPlayerAnswers,
   getKnRole,
+  getKnSelectedQuestions,
   getKnTeam,
   knReportLetter,
   parseKnGameState,
@@ -35,7 +40,15 @@ import {
   type KnTeam,
   type KnTeamRound,
 } from "./korNoktaGameTypes";
-import { validateReport } from "./reportValidation";
+import {
+  KN_ANSWER_GLYPHS,
+  KN_ANSWER_LABELS,
+  KN_ANSWER_VALUES,
+  KN_QUESTION_PICK_COUNT,
+  knQuestionText,
+  shuffleQuestions,
+  type KnAnswerValue,
+} from "./korNoktaQuestions";
 import { resolveKnBackground } from "./korNoktaBackgrounds";
 import Panorama360 from "./Panorama360";
 import KorNoktaGuessMap, { type KnLatLng, type KnRevealGuess } from "./KorNoktaGuessMap";
@@ -62,13 +75,12 @@ function describeKnGameError(
 ): string | null {
   if (!error) return null;
   const msg = (error.message ?? "").toLowerCase();
-  if (msg.includes("report_banned"))
-    return "Raporun konumu fazla doğrudan ele veriyor. Daha genel tarif et.";
-  if (msg.includes("report_word_count")) return "Rapor 2–5 kelime arasında olmalı.";
-  if (msg.includes("report_too_long"))   return "Rapor çok uzun. Daha kısa tarif et.";
+  if (msg.includes("questions_invalid")) return "Soru seçimi geçersiz. Tekrar dene.";
+  if (msg.includes("question_invalid"))  return "Bu soru artık geçerli değil.";
+  if (msg.includes("answer_invalid"))    return "Cevap geçersiz.";
   if (msg.includes("already_submitted")) return "Bu tur için zaten gönderdin.";
   if (msg.includes("wrong_phase"))       return "Bu aşama kapandı.";
-  if (msg.includes("not_reporter"))      return "Bu turda raporcu değilsin.";
+  if (msg.includes("not_reporter"))      return "Bu turda cevap veremezsin.";
   if (msg.includes("not_detective"))     return "Bu turda dedektif değilsin.";
   if (msg.includes("guess_required"))    return "Önce haritaya pin koymalısın.";
   if (msg.includes("game_not_active"))   return "Oyun aktif değil.";
@@ -80,6 +92,7 @@ function describeKnGameError(
 const PHASE_LABELS: Record<KnPhase, string> = {
   role_reveal:      "Roller",
   observe_report:   "İnceleme",
+  answer_questions: "Cevaplama",
   detective_guess:  "Tahmin",
   round_reveal:     "Tur Sonucu",
   final_results:    "Sonuçlar",
@@ -206,7 +219,8 @@ export default function KorNoktaGame({
     if (!phase || phase === "final_results" || phaseEndsAt == null) return;
     if (getCountdownSoundMode() === "off") return;
     const remaining = Math.max(0, Math.ceil((phaseEndsAt - getSyncedNowMs()) / 1000));
-    const countdownThreshold = phase === "observe_report" ? 10 : 5;
+    const countdownThreshold =
+      phase === "observe_report" || phase === "answer_questions" ? 10 : 5;
     if (remaining <= countdownThreshold && remaining > 0) {
       const key = `${roundIndex}:${phase}`;
       if (countdownPhaseRef.current !== key) {
@@ -220,14 +234,16 @@ export default function KorNoktaGame({
     return () => stopSound("countdown20");
   }, [phase, roundIndex]);
 
-  /* ── observe_report ambient müziği (yalnız bu client) ── */
+  /* ── inceleme/cevaplama ambient müziği (yalnız bu client) ── */
   useEffect(() => {
     const remaining =
       phaseEndsAt == null
         ? null
         : Math.max(0, Math.ceil((phaseEndsAt - getSyncedNowMs()) / 1000));
     const ambientOn =
-      phase === "observe_report" && remaining != null && remaining > 10;
+      (phase === "observe_report" || phase === "answer_questions") &&
+      remaining != null &&
+      remaining > 8;
     if (ambientOn) {
       playSound("korNoktaReportAmbient");
     } else {
@@ -239,22 +255,27 @@ export default function KorNoktaGame({
     return () => stopSound("korNoktaReportAmbient");
   }, []);
 
-  /* ── Tur-lokal form state'leri (tur değişince sıfırlanır) ── */
-  const [reportText, setReportText]         = useState("");
-  const [reportError, setReportError]       = useState<string | null>(null);
-  const [reportSubmitting, setReportSubmitting] = useState(false);
+  /* ── Tur-lokal form state'leri (tur değişince sıfırlanır) ──
+   * picked/answers null iken render server state'ini gösterir (refresh/reconnect
+   * geri yükler); ilk kullanıcı aksiyonundan sonra local önde gider. */
+  const [pickedLocal, setPickedLocal]       = useState<string[] | null>(null);
+  const [answersLocal, setAnswersLocal]     = useState<Record<string, KnAnswerValue> | null>(null);
   const [guess, setGuess]                   = useState<KnLatLng | null>(null);
+  const [actionError, setActionError]       = useState<string | null>(null);
   const [guessError, setGuessError]         = useState<string | null>(null);
   const [guessSubmitting, setGuessSubmitting] = useState(false);
 
   useEffect(() => {
-    setReportText("");
-    setReportError(null);
-    setReportSubmitting(false);
+    setPickedLocal(null);
+    setAnswersLocal(null);
+    setActionError(null);
     setGuess(null);
     setGuessError(null);
     setGuessSubmitting(false);
   }, [roundIndex]);
+
+  /* ── Dedektif soru grid'i: tur başına deterministic karıştırma ── */
+  const shuffledQuestions = useMemo(() => shuffleQuestions(roundIndex), [roundIndex]);
 
   /* ── Maç sonu XP (her oyuncu kendi profili, idempotent RPC) ── */
   const myProfileId = players.find(p => p.id === myId)?.profile_id ?? null;
@@ -356,38 +377,73 @@ export default function KorNoktaGame({
       ? null
       : Math.max(0, Math.ceil((state.phaseEndsAt - nowMs) / 1000));
 
-  const myCategory = round.assignments[myId] ?? null;
-  const myReportSubmitted = !!round.reports[myId];
-  const reporterIds = Object.keys(round.assignments);
-  const submittedCount = Object.keys(round.reports).length;
+  /* ── Soru-cevap türetilmiş değerler ── */
+  // Dedektif: bu turda kendi takımının seçtiği sorular (local-or-server).
+  const serverPicked = myTeam ? getKnSelectedQuestions(round, myTeam) : [];
+  const picked = pickedLocal ?? serverPicked;
+
+  // Cevaplayıcı: hangi dedektife düştüğü + o dedektifin soruları + verdiği cevaplar.
+  const myAnswerTarget = getKnAnswerTargetTeam(round, myId);
+  const targetQuestions = myAnswerTarget ? getKnSelectedQuestions(round, myAnswerTarget) : [];
+  const serverAnswers = getKnPlayerAnswers(round, myId);
+  const answers = answersLocal ?? serverAnswers;
+  const answeredCount = targetQuestions.filter(qid => !!answers[qid]).length;
+
+  // Dedektif tahmin ekranı: kendi seçtiği sorular + göreceği anonim cevaplayıcılar.
+  const mySelected = myTeam ? getKnSelectedQuestions(round, myTeam) : [];
+  const myReportOrder = myTeam ? round.reportOrder[myTeam] : [];
   const myGuessSubmitted = myTeam ? !!round.guesses[myTeam] : false;
 
   /* ── Aksiyonlar ── */
-  async function submitReport() {
-    if (!scene || reportSubmitting || myReportSubmitted) return;
-    const verdict = validateReport(reportText, scene.bannedWords);
-    if (!verdict.ok) {
-      setReportError(verdict.message);
-      playSound("wrong");
-      return;
-    }
+  // Dedektif soru seçimi: tam listeyi gönderir (overwrite); local optimistik.
+  function selectQuestions(ids: string[]) {
+    setPickedLocal(ids);
+    setActionError(null);
+    (async () => {
+      const { data, error } = await supabase.rpc("tevatur_kn_select_questions", {
+        p_room_id:      room.id,
+        p_player_id:    myId,
+        p_claim_token:  claimToken,
+        p_question_ids: ids,
+      });
+      if (error) {
+        console.error("[KorNokta] select_questions RPC failed", error);
+        setActionError(describeKnGameError(error));
+        return;
+      }
+      if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
+    })();
+  }
+
+  function toggleQuestion(qid: string) {
+    const on = picked.includes(qid);
+    if (!on && picked.length >= KN_QUESTION_PICK_COUNT) return; // 5'ten fazla yok
     playSound("click");
-    setReportSubmitting(true);
-    setReportError(null);
-    const { data, error } = await supabase.rpc("tevatur_kn_submit_report", {
-      p_room_id:     room.id,
-      p_player_id:   myId,
-      p_claim_token: claimToken,
-      p_text:        reportText.trim(),
-    });
-    setReportSubmitting(false);
-    if (error) {
-      setReportError(describeKnGameError(error) ?? "Rapor gönderilemedi. Tekrar dene.");
-      playSound("wrong");
-      return;
-    }
-    if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
-    playSound("correct");
+    selectQuestions(on ? picked.filter(id => id !== qid) : [...picked, qid]);
+  }
+
+  // Raporcu/casus cevabı: tek soru gönderir (merge); local optimistik.
+  function submitAnswer(qid: string, value: KnAnswerValue) {
+    if (answers[qid] === value) return;
+    playSound("click");
+    const next = { ...answers, [qid]: value };
+    setAnswersLocal(next);
+    setActionError(null);
+    (async () => {
+      const { data, error } = await supabase.rpc("tevatur_kn_submit_answer", {
+        p_room_id:     room.id,
+        p_player_id:   myId,
+        p_claim_token: claimToken,
+        p_question_id: qid,
+        p_answer:      value,
+      });
+      if (error) {
+        console.error("[KorNokta] submit_answer RPC failed", error);
+        setActionError(describeKnGameError(error));
+        return;
+      }
+      if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
+    })();
   }
 
   async function submitGuess() {
@@ -429,7 +485,7 @@ export default function KorNoktaGame({
       )}
       {myRole === "detective" && <span className="kn-chip kn-chip--detective">🕵️ Dedektif</span>}
       {myRole === "reporter" && <span className="kn-chip kn-chip--reporter">👁️ Raporcu</span>}
-      {myRole === "mole" && <span className="kn-chip kn-chip--mole">🎭 Köstebek</span>}
+      {myRole === "mole" && <span className="kn-chip kn-chip--mole">🎭 Casus</span>}
     </div>
   );
 
@@ -446,7 +502,8 @@ export default function KorNoktaGame({
               <h2 className="kn-rolecard__title">Dedektifsin</h2>
               <span className="kn-rolecard__rule" aria-hidden />
               <p className="kn-rolecard__desc">
-                Fotoğrafı görmeyeceksin. Takımının raporlarına göre konumu bul.
+                Fotoğrafı görmeyeceksin. Önce 5 soru seç; sonra gelen anonim
+                cevaplara göre konumu bul.
               </p>
             </div>
           )}
@@ -457,7 +514,8 @@ export default function KorNoktaGame({
               <h2 className="kn-rolecard__title">Raporcusun</h2>
               <span className="kn-rolecard__rule" aria-hidden />
               <p className="kn-rolecard__desc">
-                Kategorine uygun kısa ve faydalı bir rapor yaz; dedektifine yardım et.
+                Sahneyi incele. Dedektifinin seçtiği sorulara dürüst cevap ver;
+                onu doğru yere yönlendir.
               </p>
             </div>
           )}
@@ -465,10 +523,11 @@ export default function KorNoktaGame({
             <div className="kn-rolecard kn-rolecard--mole kn-anim-scale-in">
               <span className="kn-rolecard__eyebrow">Gizli Talimat</span>
               <span className="kn-rolecard__emoji" aria-hidden>🎭</span>
-              <h2 className="kn-rolecard__title">Köstebeksin</h2>
+              <h2 className="kn-rolecard__title">Casussun</h2>
               <span className="kn-rolecard__rule" aria-hidden />
               <p className="kn-rolecard__desc">
-                Raporun karşı takımın dedektifine gidecek. Onu yanlış yere yönlendir.
+                Cevapların KARŞI takımın dedektifine gidecek. Onu yanılt — ama
+                belli etme.
               </p>
             </div>
           )}
@@ -486,128 +545,82 @@ export default function KorNoktaGame({
     );
   }
 
-  /* ════════ SAHNE BULUNAMADI (raporcu/köstebek görünümünde) ════════ */
-  if (
-    !scene &&
-    (state.phase === "observe_report" || state.phase === "detective_guess") &&
-    myRole !== "detective"
-  ) {
+  /* ════════ OBSERVE — dedektif: soru seçimi ════════ */
+  if (state.phase === "observe_report" && myRole === "detective") {
     return (
-      <div {...knScreen()}>
+      <div {...knScreen("kn-screen--qselect")}>
         {topbar}
-        <div className="kn-center-wrap">
-          <div className="kn-card kn-card--center">
-            <h2 className="kn-card__title">Sahne bulunamadı</h2>
-            <p className="kn-card__desc">
-              Bu tur için sahne verisi yüklenemedi. Uygulamanın güncel
-              sürümünü kullandığından emin ol.
+        <div className="kn-qselect">
+          <header className="kn-qselect__head kn-anim-scale-in">
+            <span className="kn-qselect__eyebrow">İnceleme · Soru Seçimi</span>
+            <h2 className="kn-qselect__title">5 Soru Seç</h2>
+            <p className="kn-qselect__sub">
+              Havuzdan en fazla {KN_QUESTION_PICK_COUNT} soru seç. Süre dolunca
+              seçimin kilitlenir; eksik kalırsa otomatik tamamlanır.
             </p>
+            <span
+              className={
+                "kn-qselect__counter" +
+                (picked.length >= KN_QUESTION_PICK_COUNT ? " is-full" : "")
+              }
+            >
+              {picked.length}/{KN_QUESTION_PICK_COUNT} soru seçildi
+            </span>
+            {actionError && <p className="kn-error">{actionError}</p>}
+          </header>
+
+          <div className="kn-qgrid">
+            {shuffledQuestions.map(q => {
+              const on = picked.includes(q.id);
+              const disabled = !on && picked.length >= KN_QUESTION_PICK_COUNT;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  className={
+                    "kn-qcard" + (on ? " is-on" : "") + (disabled ? " is-disabled" : "")
+                  }
+                  onClick={() => toggleQuestion(q.id)}
+                  disabled={disabled}
+                  aria-pressed={on}
+                >
+                  <span className="kn-qcard__check" aria-hidden>{on ? "✓" : "+"}</span>
+                  <span className="kn-qcard__text">{q.text}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
     );
   }
 
-  /* ════════ OBSERVE + GUESS — raporcu/köstebek görünümü ════════ */
+  /* ════════ OBSERVE — raporcu/casus: sahneyi incele (henüz cevap yok) ════════ */
   if (
-    (state.phase === "observe_report" || state.phase === "detective_guess") &&
+    state.phase === "observe_report" &&
     (myRole === "reporter" || myRole === "mole")
   ) {
-    const isObserve = state.phase === "observe_report";
     return (
       <div {...knScreen("kn-screen--stage")}>
-        <Panorama360 src={scene?.imagePath ?? ""} className="kn-stage-pano" attribution={scene?.attribution} mirrorX={scene?.sourceType === "real_world"} />
+        <Panorama360
+          src={scene?.imagePath ?? ""}
+          className="kn-stage-pano"
+          attribution={scene?.attribution}
+          mirrorX={scene?.sourceType === "real_world"}
+        />
         <div className="kn-stage-top">{topbar}</div>
-
         <div className={"kn-reportbar kn-anim-fade-up" + (myRole === "mole" ? " kn-reportbar--mole" : "")}>
-          {isObserve && !myReportSubmitted && myCategory && (
-            <>
-              <div className="kn-reportbar__head">
-                <span className="kn-mission__eyebrow">
-                  {myRole === "mole" ? "Gizli Görev" : "Sahneyi İncele"}
-                </span>
-                <span className="kn-reportbar__category">
-                  Kategori: {KN_CATEGORY_LABELS[myCategory]}
-                </span>
-                <span className="kn-reportbar__hint">{KN_CATEGORY_HINTS[myCategory]}</span>
-                {myRole === "mole" && (
-                  <span className="kn-reportbar__mole-note">
-                    🎭 Raporun karşı takım dedektifine gidecek — yanılt ama belli etme.
-                  </span>
-                )}
-              </div>
-              <div className="kn-reportbar__row">
-                <input
-                  className="kn-reportbar__input"
-                  type="text"
-                  value={reportText}
-                  maxLength={60}
-                  placeholder="2–5 kelimelik rapor yaz…"
-                  onChange={e => {
-                    setReportText(e.target.value);
-                    if (reportError) setReportError(null);
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") void submitReport();
-                  }}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  className="btn btn-accent kn-reportbar__send"
-                  onClick={() => void submitReport()}
-                  disabled={reportSubmitting || reportText.trim().length === 0}
-                >
-                  {reportSubmitting ? "Gönderiliyor…" : "Raporu Gönder"}
-                </button>
-              </div>
-              {reportError && <p className="kn-error">{reportError}</p>}
-            </>
-          )}
-
-          {isObserve && myReportSubmitted && (
-            <div className="kn-reportbar__done kn-anim-scale-in">
-              <span className="kn-reportbar__done-check">✓ Raporun iletildi</span>
-              <span className="kn-reportbar__done-sub">
-                Diğer raporcular bekleniyor ({submittedCount}/{reporterIds.length})
-              </span>
-            </div>
-          )}
-
-          {!isObserve && (
-            <div className="kn-reportbar__done">
-              <span className="kn-reportbar__done-check kn-reportbar__done-check--neutral">🕵️ Dedektifler karar veriyor…</span>
-              <span className="kn-reportbar__done-sub">
-                İki takım dedektifi de raporlardan yola çıkarak haritada tahmin yapıyor.
-              </span>
-              <span className="kn-reportbar__done-sub">
-                {myReportSubmitted && round.reports[myId]
-                  ? `Raporun: "${round.reports[myId].text}"`
-                  : "Bu tur rapor göndermedin."}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  /* ════════ OBSERVE — dedektif bekleme ════════ */
-  if (state.phase === "observe_report" && myRole === "detective") {
-    return (
-      <div {...knScreen("kn-cine")}>
-        {topbar}
-        <div className="kn-center-wrap">
-          <div className="kn-briefing kn-anim-scale-in">
-            <div className="kn-radar" aria-hidden />
-            <span className="kn-briefing__eyebrow">İstihbarat Bekleniyor</span>
-            <h2 className="kn-briefing__title">Raporlar Bekleniyor</h2>
-            <p className="kn-briefing__desc">
-              Takımının tanıkları sahneyi inceliyor. Birazdan gizli raporlar önüne düşecek.
-            </p>
-            <span className="kn-progress-pill">
-              {submittedCount}/{reporterIds.length} rapor geldi
+          <div className="kn-reportbar__head">
+            <span className="kn-mission__eyebrow">
+              {myRole === "mole" ? "Gizli Görev" : "Sahneyi İncele"}
+            </span>
+            <span className="kn-reportbar__category">
+              Dedektif soruları seçiyor…
+            </span>
+            <span className="kn-reportbar__hint">
+              {myRole === "mole"
+                ? "İyi bak. Birazdan KARŞI takım dedektifinin soruları gelecek — onu yanıltacaksın."
+                : "İyi bak. Birazdan dedektifinin seçtiği sorular gelecek ve cevaplayacaksın."}
             </span>
           </div>
         </div>
@@ -615,7 +628,137 @@ export default function KorNoktaGame({
     );
   }
 
-  /* ════════ GUESS — dedektif tahmin ekranı (kendi takımının raporları) ════════ */
+  /* ════════ OBSERVE — gözlemci bekleme ════════ */
+  if (state.phase === "observe_report") {
+    return (
+      <div {...knScreen("kn-cine")}>
+        {topbar}
+        <div className="kn-center-wrap">
+          <div className="kn-briefing kn-anim-scale-in">
+            <div className="kn-radar" aria-hidden />
+            <span className="kn-briefing__eyebrow">İnceleme</span>
+            <h2 className="kn-briefing__title">Tur Hazırlanıyor</h2>
+            <p className="kn-briefing__desc">
+              Dedektifler sorularını seçiyor. Birazdan cevaplar toplanacak.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ════════ ANSWER — raporcu/casus: soruları cevapla ════════ */
+  if (
+    state.phase === "answer_questions" &&
+    (myRole === "reporter" || myRole === "mole")
+  ) {
+    return (
+      <div {...knScreen("kn-screen--stage")}>
+        <Panorama360
+          src={scene?.imagePath ?? ""}
+          className="kn-stage-pano"
+          attribution={scene?.attribution}
+          mirrorX={scene?.sourceType === "real_world"}
+        />
+        <div className="kn-stage-top">{topbar}</div>
+
+        <div className={"kn-answersheet kn-anim-fade-up" + (myRole === "mole" ? " kn-answersheet--mole" : "")}>
+          <header className="kn-answersheet__head">
+            <span className="kn-mission__eyebrow">
+              {myRole === "mole" ? "Gizli Görev" : "Cevapla"}
+            </span>
+            <span className="kn-answersheet__note">
+              {myRole === "mole"
+                ? "Casus: cevapların rakip dedektife gidecek. Onu yanıltmaya çalış."
+                : "Raporcu: dedektifine doğru ipucu ver."}
+            </span>
+            <span className="kn-answersheet__sub">
+              Cevapların dedektife anonim gönderilecek · {answeredCount}/{targetQuestions.length}
+            </span>
+          </header>
+
+          {targetQuestions.length === 0 ? (
+            <p className="kn-answersheet__empty">Soru bekleniyor…</p>
+          ) : (
+            <div className="kn-qanswer-list">
+              {targetQuestions.map((qid, i) => (
+                <div className="kn-qanswer" key={qid}>
+                  <div className="kn-qanswer__q">
+                    <span className="kn-qanswer__num">{i + 1}</span>
+                    {knQuestionText(qid)}
+                  </div>
+                  <div className="kn-qanswer__opts">
+                    {KN_ANSWER_VALUES.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={
+                          "kn-ans-btn kn-ans-btn--" + v + (answers[qid] === v ? " is-on" : "")
+                        }
+                        onClick={() => submitAnswer(qid, v)}
+                        aria-pressed={answers[qid] === v}
+                      >
+                        {KN_ANSWER_LABELS[v]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {actionError && <p className="kn-error">{actionError}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  /* ════════ ANSWER — dedektif: seçtiği soruları görür, cevapları bekler ════════ */
+  if (state.phase === "answer_questions" && myRole === "detective") {
+    return (
+      <div {...knScreen("kn-cine")}>
+        {topbar}
+        <div className="kn-center-wrap">
+          <div className="kn-briefing kn-briefing--wide kn-anim-scale-in">
+            <div className="kn-radar" aria-hidden />
+            <span className="kn-briefing__eyebrow">İstihbarat Bekleniyor</span>
+            <h2 className="kn-briefing__title">Cevaplar Toplanıyor</h2>
+            <p className="kn-briefing__desc">
+              Seçtiğin sorular tanıklara gönderildi. Anonim cevaplar birazdan önüne düşecek.
+            </p>
+            <ul className="kn-briefing__qlist">
+              {mySelected.map((qid, i) => (
+                <li key={qid}>
+                  <span className="kn-qanswer__num">{i + 1}</span>
+                  {knQuestionText(qid)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ════════ ANSWER — gözlemci bekleme ════════ */
+  if (state.phase === "answer_questions") {
+    return (
+      <div {...knScreen("kn-cine")}>
+        {topbar}
+        <div className="kn-center-wrap">
+          <div className="kn-briefing kn-anim-scale-in">
+            <div className="kn-radar" aria-hidden />
+            <span className="kn-briefing__eyebrow">Cevaplama</span>
+            <h2 className="kn-briefing__title">Tanıklar Cevaplıyor</h2>
+            <p className="kn-briefing__desc">
+              Raporcular dedektiflerin sorularını cevaplıyor.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ════════ GUESS — dedektif: anonim cevaplar + harita tahmini ════════ */
   if (state.phase === "detective_guess" && myRole === "detective") {
     if (myGuessSubmitted) {
       return (
@@ -635,7 +778,6 @@ export default function KorNoktaGame({
       );
     }
 
-    const myReportOrder = myTeam ? round.reportOrder[myTeam] : [];
     const canSubmitGuess = !!guess && !guessSubmitting;
 
     return (
@@ -645,29 +787,43 @@ export default function KorNoktaGame({
           <div className="kn-guess__reports">
             <header className="kn-guess__head">
               <span className="kn-guess__eyebrow">Dosya Hazır</span>
-              <h2 className="kn-guess__title">Gizli Raporlar</h2>
-              <p className="kn-guess__sub">Takımının raporlarını incele ve konumu işaretle.</p>
+              <h2 className="kn-guess__title">Anonim Cevaplar</h2>
+              <p className="kn-guess__sub">
+                Tanıkların cevaplarını incele ve konumu işaretle. Hangi cevabın
+                kimden geldiği gizlidir.
+              </p>
             </header>
 
             {myReportOrder.map((pid, i) => {
-              const report = round.reports[pid] ?? null;
-              const category = round.assignments[pid];
+              const ans = getKnPlayerAnswers(round, pid);
               return (
                 <article
                   key={pid}
-                  className="kn-report-card kn-report-card--file kn-anim-fade-up"
+                  className="kn-answer-card kn-anim-fade-up"
                   style={{ "--kn-delay": `${i * 0.06}s` } as CSSProperties}
                 >
-                  <div className="kn-report-card__meta">
-                    Rapor {knReportLetter(i)}{category ? ` · ${KN_CATEGORY_LABELS[category]}` : ""}
-                  </div>
-                  {report ? (
-                    <p className="kn-report-card__text">“{report.text}”</p>
-                  ) : (
-                    <p className="kn-report-card__text kn-report-card__text--missing">
-                      Rapor verilmedi
-                    </p>
-                  )}
+                  <div className="kn-answer-card__meta">Cevap {knReportLetter(i)}</div>
+                  <ul className="kn-answer-card__rows">
+                    {mySelected.map((qid, qi) => {
+                      const v = ans[qid];
+                      return (
+                        <li key={qid} className="kn-answer-card__row">
+                          <span className="kn-answer-card__q">
+                            <span className="kn-qanswer__num">{qi + 1}</span>
+                            {knQuestionText(qid)}
+                          </span>
+                          <span
+                            className={
+                              "kn-answer-pill " +
+                              (v ? "kn-answer-pill--" + v : "kn-answer-pill--none")
+                            }
+                          >
+                            {v ? KN_ANSWER_GLYPHS[v] : "—"}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </article>
               );
             })}

@@ -1,18 +1,25 @@
 /**
- * korNoktaGameTypes — Kör Nokta TAKIM modu (game_state version 2) tipleri.
+ * korNoktaGameTypes — Kör Nokta TAKIM modu (game_state version 3) tipleri.
  *
- * game_state jsonb kontratı 20260714123000_kornokta_teams_gameplay.sql ile
+ * game_state jsonb kontratı 20260618120000_kornokta_question_flow.sql ile
  * birebir aynıdır; server tek yazıcıdır, client yalnız okur. İki takım
  * (Mavi/Kırmızı) aynı sahneyle oynar; her takımda her tur 1 dedektif rotasyonla
- * döner. Köstebek (yalnız 3v3+) raporunu KARŞI takım dedektifine anonim
- * gönderir. Puanlama mesafe bazlı 0–5000 (takım başına, tur tur birikir).
+ * döner. Casus (iç değer "mole"; yalnız 3v3+) KARŞI takım dedektifinin seçtiği
+ * sorulara anonim cevap verir — cevabı yalnız o dedektifin tahmin ekranında
+ * görünür. Puanlama mesafe bazlı 0–5000 (takım başına, tur tur birikir).
  *
- * Faz süreleri server'da sabittir (role 4 / observe 30 / guess 20 / reveal 15);
- * client geri sayımı phaseEndsAt − getSyncedNowMs() üzerinden render eder.
+ * Yeni akış (v3): dedektif inceleme fazında soru havuzundan 5 soru seçer
+ * (observe_report), raporcular/casuslar bu sorulara Evet/Hayır/Emin değilim ile
+ * cevap verir (answer_questions), dedektif anonim cevaplara göre haritada tahmin
+ * yapar (detective_guess). Eski serbest-metin rapor akışı kaldırıldı.
+ *
+ * Faz süreleri server'da sabittir (role 4 / observe 20 / answer 20 / guess 20 /
+ * reveal 15); client geri sayımı phaseEndsAt − getSyncedNowMs() üzerinden render eder.
  */
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
 import { korNoktaRealScenes } from "./korNoktaRealScenes";
+import type { KnAnswerValue } from "./korNoktaQuestions";
 
 /**
  * Gerçek dünya (Panoramax, CC-BY-SA) test sahnelerini CANLI eşleşme havuzuna
@@ -32,23 +39,29 @@ const korNoktaActivePool: KorNoktaScene[] = KN_INCLUDE_REAL_SCENES
 
 export type KnPhase =
   | "role_reveal"
-  | "observe_report"
+  | "observe_report"   // inceleme + dedektif soru seçimi
+  | "answer_questions" // raporcu/casus cevaplama
   | "detective_guess"
   | "round_reveal"
   | "final_results";
 
 export type KnCategory = "geography" | "architecture" | "people" | "period";
 
+/** İç rol değeri; UI'da "mole" → "Casus" gösterilir (DB/state değişmez). */
 export type KnRole = "detective" | "reporter" | "mole" | "spectator";
 
 /** Takım sabiti — hardcode yerine kullanılır (ileride 3. takım eklenebilir). */
 export type KnTeam = "blue" | "red";
 export const KN_TEAMS = ["blue", "red"] as const;
 
+/** Eski serbest-metin rapor (v2). v3 akışında YAZILMAZ; tip geri-uyumluluk için durur. */
 export interface KnReport {
   text: string;
   at: number;
 }
+
+/** Bir oyuncunun bir tura verdiği cevaplar: soru id → Evet/Hayır/Emin değilim. */
+export type KnAnswerMap = Record<string, KnAnswerValue>;
 
 /** detective_guess fazında kilitlenen pin (yalnız konum). */
 export interface KnGuess {
@@ -66,10 +79,15 @@ export interface KnTeamRound {
   sceneId: string;
   detectives: Record<KnTeam, string>;
   moles: Record<KnTeam, string | null>;
-  /** İki takımın tüm raporcuları → kategori. */
+  /** İki takımın tüm raporcuları (casus dahil) → kategori (rol tespiti için anahtar set). */
   assignments: Record<string, KnCategory>;
-  /** Her dedektifin GÖRECEĞİ anonim rapor sırası (köstebek routing dahil). */
+  /** Her dedektifin GÖRECEĞİ anonim cevaplayıcı sırası (casus routing dahil). */
   reportOrder: Record<KnTeam, string[]>;
+  /** Her takım dedektifinin bu tur seçtiği soru id'leri (kilitlenince en fazla 5). */
+  selectedQuestions: Record<KnTeam, string[]>;
+  /** Cevaplar: oyuncu id → (soru id → cevap). Casus karşı dedektifin sorularını cevaplar. */
+  answers: Record<string, KnAnswerMap>;
+  /** Eski serbest rapor (v2). v3'te boş kalır. */
   reports: Record<string, KnReport>;
   guesses: Record<KnTeam, KnGuess | null>;
   results: Record<KnTeam, KnTeamResult> | null;
@@ -82,6 +100,8 @@ export interface KnGameState {
   teams: Record<KnTeam, string[]>;
   detectiveOrder: Record<KnTeam, string[]>;
   scenes: Array<{ id: string; lat: number; lng: number; banned: string[]; cats: KnCategory[] }>;
+  /** Dedektif soru havuzunun id listesi (server auto-fill kaynağı). */
+  questionPool: string[];
   totals: Record<KnTeam, number>;
   roundIndex: number;
   phase: KnPhase;
@@ -92,17 +112,20 @@ export interface KnGameState {
 const KN_PHASES: readonly string[] = [
   "role_reveal",
   "observe_report",
+  "answer_questions",
   "detective_guess",
   "round_reveal",
   "final_results",
 ];
 
-/** Realtime'dan gelen jsonb'yi güvenli şekilde v2 KnGameState'e indirger.
- *  Şekil tutmuyorsa (veya eski v1 blob) null döner; UI fallback'e düşer. */
+/** Realtime'dan gelen jsonb'yi güvenli şekilde v3 KnGameState'e indirger.
+ *  Şekil tutmuyorsa (veya eski v1/v2 blob) null döner; UI fallback'e düşer.
+ *  v3'e atlama bilinçlidir: eski rapor-temelli oyunlar yeni client'ta render
+ *  edilmesin (fallback ekranı → yeniden katıl). */
 export function parseKnGameState(value: unknown): KnGameState | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
-  if (v.version !== 2) return null;
+  if (v.version !== 3) return null;
   if (typeof v.roundIndex !== "number") return null;
   if (typeof v.phase !== "string" || !KN_PHASES.includes(v.phase)) return null;
   if (typeof v.roundCount !== "number") return null;
@@ -130,6 +153,27 @@ export function getKnTeam(state: KnGameState, playerId: string): KnTeam | null {
   if (state.teams.blue.includes(playerId)) return "blue";
   if (state.teams.red.includes(playerId)) return "red";
   return null;
+}
+
+/**
+ * Cevaplayıcının HANGİ dedektifin sorularını cevaplayacağı = reportOrder'da
+ * yer aldığı takım. Dürüst raporcu kendi takımının, casus KARŞI takımın
+ * dedektifine düşer (routing build_round'da reportOrder'a kodlanır). Bulunamazsa null.
+ */
+export function getKnAnswerTargetTeam(round: KnTeamRound, playerId: string): KnTeam | null {
+  if ((round.reportOrder?.blue ?? []).includes(playerId)) return "blue";
+  if ((round.reportOrder?.red ?? []).includes(playerId)) return "red";
+  return null;
+}
+
+/** Bir takım dedektifinin bu tur seçtiği soru id'leri (eksik alan → boş). */
+export function getKnSelectedQuestions(round: KnTeamRound, team: KnTeam): string[] {
+  return round.selectedQuestions?.[team] ?? [];
+}
+
+/** Bir oyuncunun bu turdaki cevapları (eksik alan → boş). */
+export function getKnPlayerAnswers(round: KnTeamRound, playerId: string): KnAnswerMap {
+  return round.answers?.[playerId] ?? {};
 }
 
 export const KN_TEAM_LABELS: Record<KnTeam, string> = {
