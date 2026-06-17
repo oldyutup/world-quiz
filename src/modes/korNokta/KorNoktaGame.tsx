@@ -69,12 +69,46 @@ const TEAM_COLORS: Record<KnTeam, string> = {
   red:  "#ef4444",
 };
 
+/* ── Supabase RPC hata şekli (PostgrestError: code/message/details/hint) ── */
+type KnRpcError =
+  | { code?: string; message?: string; details?: string | null; hint?: string | null }
+  | null
+  | undefined;
+
+/**
+ * RPC hatasını konsola AÇIKÇA döker — code/message/details/hint + gönderilen
+ * payload. Canlı testte gerçek sebebi görmek için tek kaynak (jenerik toast
+ * artık tek başına yeterli değil).
+ */
+function logKnRpcError(label: string, error: KnRpcError, payload?: unknown): void {
+  // eslint-disable-next-line no-console
+  console.error(`[KorNokta] ${label} RPC failed`, {
+    code:    error?.code,
+    message: error?.message,
+    details: error?.details ?? null,
+    hint:    error?.hint ?? null,
+    payload,
+  });
+}
+
 /* ── RPC hata etiketleri → kullanıcı dostu Türkçe ── */
-function describeKnGameError(
-  error: { code?: string; message?: string } | null | undefined,
-): string | null {
+function describeKnGameError(error: KnRpcError): string | null {
   if (!error) return null;
-  const msg = (error.message ?? "").toLowerCase();
+  const msg  = (error.message ?? "").toLowerCase();
+  const code = (error.code ?? "").toUpperCase();
+
+  // Fonksiyon/şema bulunamadı → migration canlıya uygulanmamış olabilir.
+  // PostgREST: PGRST202 (şema cache'inde yok), Postgres: 42883 (undefined_function).
+  if (
+    code === "PGRST202" ||
+    code === "42883" ||
+    msg.includes("could not find the function") ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  ) {
+    return "Kör Nokta veritabanı güncel değil (migration eksik olabilir). Yöneticiye bildir.";
+  }
+
   if (msg.includes("questions_invalid")) return "Soru seçimi geçersiz. Tekrar dene.";
   if (msg.includes("question_invalid"))  return "Bu soru artık geçerli değil.";
   if (msg.includes("answer_invalid"))    return "Cevap geçersiz.";
@@ -84,9 +118,25 @@ function describeKnGameError(
   if (msg.includes("not_detective"))     return "Bu turda dedektif değilsin.";
   if (msg.includes("guess_required"))    return "Önce haritaya pin koymalısın.";
   if (msg.includes("game_not_active"))   return "Oyun aktif değil.";
+  if (msg.includes("room_not_found"))    return "Oda bulunamadı. Sayfayı yenile.";
   if (msg.includes("unauthorized"))
     return "Yetki hatası. Sayfayı yenileyip tekrar dene.";
   return null;
+}
+
+/**
+ * Toast metni: bilinen hata → Türkçe; bilinmeyen → temel mesaj. Geliştirme
+ * modunda (import.meta.env.DEV) ham code/message eklenir ki canlı-olmayan
+ * testte sebep ekranda da görünsün; production'da kısa kalır.
+ */
+function knActionErrorText(error: KnRpcError, base: string): string {
+  const known = describeKnGameError(error);
+  if (known) return known;
+  if (import.meta.env.DEV && error) {
+    const detail = [error.code, error.message].filter(Boolean).join(": ");
+    return detail ? `${base} (${detail})` : base;
+  }
+  return base;
 }
 
 const PHASE_LABELS: Record<KnPhase, string> = {
@@ -407,9 +457,14 @@ export default function KorNoktaGame({
         p_question_ids: ids,
       });
       if (error) {
-        console.error("[KorNokta] select_questions RPC failed", error);
+        logKnRpcError("select_questions", error, {
+          ids,
+          count: ids.length,
+          roundIndex,
+          candidateCount: candidateQuestions.length,
+        });
         setActionError(
-          describeKnGameError(error) ?? "Soru seçimin kaydedilemedi. Tekrar dene.",
+          knActionErrorText(error, "Soru seçimin kaydedilemedi. Tekrar dene."),
         );
         return;
       }
@@ -440,9 +495,9 @@ export default function KorNoktaGame({
         p_answer:      value,
       });
       if (error) {
-        console.error("[KorNokta] submit_answer RPC failed", error);
+        logKnRpcError("submit_answer", error, { qid, value });
         setActionError(
-          describeKnGameError(error) ?? "Cevabın kaydedilemedi. Tekrar dene.",
+          knActionErrorText(error, "Cevabın kaydedilemedi. Tekrar dene."),
         );
         return;
       }
@@ -464,7 +519,8 @@ export default function KorNoktaGame({
     });
     setGuessSubmitting(false);
     if (error) {
-      setGuessError(describeKnGameError(error) ?? "Tahmin gönderilemedi. Tekrar dene.");
+      logKnRpcError("submit_guess", error, { lat: guess.lat, lng: guess.lng });
+      setGuessError(knActionErrorText(error, "Tahmin gönderilemedi. Tekrar dene."));
       return;
     }
     if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
@@ -572,6 +628,12 @@ export default function KorNoktaGame({
               {picked.length}/{KN_QUESTION_PICK_COUNT} soru seçildi
             </span>
             {actionError && <p className="kn-error">{actionError}</p>}
+            {candidateQuestions.length === 0 && (
+              <p className="kn-error">
+                Bu tur için aday sorular yüklenemedi. Oda eski sürümle açılmış veya
+                veritabanı güncel olmayabilir.
+              </p>
+            )}
           </header>
 
           <div className="kn-qgrid">
