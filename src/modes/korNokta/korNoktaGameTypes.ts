@@ -19,7 +19,7 @@
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
 import { korNoktaRealScenes } from "./korNoktaRealScenes";
-import type { KnAnswerValue } from "./korNoktaQuestions";
+import type { KnAnswerValue, KnQuestionCategory } from "./korNoktaQuestions";
 
 /**
  * Gerçek dünya (Panoramax, CC-BY-SA) test sahnelerini CANLI eşleşme havuzuna
@@ -83,7 +83,13 @@ export interface KnTeamRound {
   assignments: Record<string, KnCategory>;
   /** Her dedektifin GÖRECEĞİ anonim cevaplayıcı sırası (casus routing dahil). */
   reportOrder: Record<KnTeam, string[]>;
-  /** Her takım dedektifinin bu tur seçtiği soru id'leri (kilitlenince en fazla 5). */
+  /**
+   * Bu turun 12 aday soru id'si — server build_round'da bir kez üretip KALICI
+   * yazar (3/kategori, karışık sıra). İki takım dedektifi de AYNI listeyi görür;
+   * seçim/fallback/cevap-eşleşmesi yalnız bu sete dayanır (tek doğru kaynak).
+   */
+  questionCandidates: string[];
+  /** Her takım dedektifinin bu tur seçtiği soru id'leri (questionCandidates altkümesi, ≤5). */
   selectedQuestions: Record<KnTeam, string[]>;
   /** Cevaplar: oyuncu id → (soru id → cevap). Casus karşı dedektifin sorularını cevaplar. */
   answers: Record<string, KnAnswerMap>;
@@ -100,8 +106,8 @@ export interface KnGameState {
   teams: Record<KnTeam, string[]>;
   detectiveOrder: Record<KnTeam, string[]>;
   scenes: Array<{ id: string; lat: number; lng: number; banned: string[]; cats: KnCategory[] }>;
-  /** Dedektif soru havuzunun id listesi (server auto-fill kaynağı). */
-  questionPool: string[];
+  /** Kategori → soru id[] sözlüğü (server tur başına aday üretirken kullanır). */
+  questionPool: Record<KnQuestionCategory, string[]>;
   totals: Record<KnTeam, number>;
   roundIndex: number;
   phase: KnPhase;
@@ -164,6 +170,11 @@ export function getKnAnswerTargetTeam(round: KnTeamRound, playerId: string): KnT
   if ((round.reportOrder?.blue ?? []).includes(playerId)) return "blue";
   if ((round.reportOrder?.red ?? []).includes(playerId)) return "red";
   return null;
+}
+
+/** Bu turun 12 aday soru id'si (server üretti; eksik/eski tur → boş). */
+export function getKnQuestionCandidates(round: KnTeamRound): string[] {
+  return round.questionCandidates ?? [];
 }
 
 /** Bir takım dedektifinin bu tur seçtiği soru id'leri (eksik alan → boş). */

@@ -681,7 +681,8 @@
 
 .kn-qgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  /* 12 aday = 3 sütun × 4 satır (desktop); dar ekranda aşağıda 2/1 sütuna iner. */
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 
@@ -974,8 +975,15 @@
   color: var(--text);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
+  .kn-qgrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 460px) {
   .kn-qgrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
   .kn-answersheet {
     bottom: 10px;
     max-height: 76%;

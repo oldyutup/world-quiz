@@ -1,67 +1,88 @@
 /**
- * korNoktaQuestions — Kör Nokta soru bankası (yeni soru-cevap akışı).
+ * korNoktaQuestions — Kör Nokta soru bankası (gizli-kategori dengeli akış).
  *
- * Dedektif her tur bu havuzdan 5 soru seçer; raporcular/casuslar bu sorulara
- * Evet / Hayır / Emin değilim ile cevap verir. Sorular YALNIZ gözlem/kanıt
- * sorar — hiçbir soru doğrudan ülke/şehir/bölge adı sormaz (spec §soru havuzu).
+ * Dedektif her tur, server'ın ürettiği 12 ADAY soru içinden 5 soru seçer;
+ * raporcular/casuslar bu sorulara Evet / Hayır / Emin değilim ile cevap verir.
+ * Sorular YALNIZ gözlem/kanıt sorar — hiçbir soru doğrudan ülke/şehir/bölge adı
+ * sormaz (spec §soru havuzu).
  *
- * id'ler kalıcıdır ve game_state içinde (selectedQuestions / answers) ve
- * start_game'in p_question_pool payload'ında ham string olarak taşınır; server
- * yalnız id'lerle çalışır (metin client tarafında kalır). Bir id'yi ASLA yeniden
- * anlamlandırma — soruyu değiştireceksen yeni id ver, eskisini havuzdan çıkar.
+ * Gizli kategori dengesi: havuz 4 kategoriye ayrılır (alphabet / traffic /
+ * architecture / nature; her kategoride ≥8 soru). Server her tur HER kategoriden
+ * 3 soru çekip 12'yi karıştırır ve game_state'e round.questionCandidates olarak
+ * KALICI yazar. Kategori başlıkları UI'da GÖSTERİLMEZ; dedektif yalnız 12 karışık
+ * kart görür. Aynı tur içinde (refresh/reconnect) aday seti ve sıra sabittir;
+ * yeni turda yeniden üretilir (build_round bir kez random çalışır, sonuç saklanır).
+ *
+ * id'ler kalıcıdır ve game_state içinde (questionCandidates / selectedQuestions /
+ * answers) ham string olarak taşınır; server yalnız id'lerle çalışır (metin client
+ * tarafında kalır). Bir id'yi ASLA yeniden anlamlandırma — soruyu değiştireceksen
+ * yeni id ver, eskisini havuzdan çıkar.
  *
  * Tek yazıcı server kuralı korunur: bu dosya saf veridir, hiçbir state yazmaz.
  */
 
+/** Gizli kategoriler — yalnız tasarım/denge içindir, UI'da ASLA gösterilmez. */
+export type KnQuestionCategory = "alphabet" | "traffic" | "architecture" | "nature";
+
+export const KN_QUESTION_CATEGORIES: readonly KnQuestionCategory[] = [
+  "alphabet",
+  "traffic",
+  "architecture",
+  "nature",
+];
+
 export interface KorNoktaQuestion {
   id: string;
   text: string;
+  /** Gizli kategori — server denge için kullanır; kullanıcıya gösterilmez. */
+  category: KnQuestionCategory;
 }
 
 /**
- * Aktif soru havuzu (~30 soru, gözlem-temelli). Sıra burada sabittir; dedektife
- * gösterilirken tur başına deterministic olarak karıştırılır (shuffleQuestions).
+ * Aktif soru havuzu. Her kategoride en az 8 soru (toplam 32). Sıra burada
+ * sabittir ama dedektife gösterilmez — server tur başına HER kategoriden 3 soru
+ * seçip 12'yi karıştırarak round.questionCandidates üretir.
  */
 export const korNoktaQuestions: KorNoktaQuestion[] = [
-  // Yazı / Alfabe
-  { id: "q_sign_clear",        text: "Tabela veya yazı net görünüyor mu?" },
-  { id: "q_latin_script",      text: "Latin alfabesi var mı?" },
-  { id: "q_nonlatin_script",   text: "Latin dışı alfabe var mı?" },
-  { id: "q_east_asian_script", text: "Yazılar Doğu Asya dili gibi mi?" },
-  { id: "q_script_strong",     text: "Yazı/tabela ipucu güçlü mü?" },
+  /* ── Yazı / Alfabe (alphabet) ── */
+  { id: "q_sign_clear",         category: "alphabet",     text: "Tabela veya yazı net görünüyor mu?" },
+  { id: "q_latin_script",       category: "alphabet",     text: "Latin alfabesi var mı?" },
+  { id: "q_nonlatin_script",    category: "alphabet",     text: "Latin dışı alfabe var mı?" },
+  { id: "q_east_asian_script",  category: "alphabet",     text: "Yazılar Doğu Asya dili gibi mi?" },
+  { id: "q_script_strong",      category: "alphabet",     text: "Yazı/tabela ipucu güçlü mü?" },
+  { id: "q_script_letters_clue", category: "alphabet",    text: "Harfler/alfabe konum için belirgin ipucu veriyor mu?" },
+  { id: "q_script_navigation",  category: "alphabet",     text: "Tabelalar şehir içi yönlendirme gibi mi?" },
+  { id: "q_no_script",          category: "alphabet",     text: "Yazı hiç görünmüyor mu?" },
 
-  // Yol / Trafik
-  { id: "q_traffic_right",     text: "Trafik sağdan akıyor gibi mi?" },
-  { id: "q_traffic_left",      text: "Trafik soldan akıyor gibi mi?" },
-  { id: "q_highway",           text: "Otoyol veya geniş ana yol var mı?" },
-  { id: "q_road_markings",     text: "Yol çizgileri belirgin bir ipucu veriyor mu?" },
-  { id: "q_road_europe",       text: "Yol çevresi Avrupa düzenine benziyor mu?" },
+  /* ── Yol / Trafik (traffic) ── */
+  { id: "q_traffic_right",      category: "traffic",      text: "Trafik sağdan akıyor gibi mi?" },
+  { id: "q_traffic_left",       category: "traffic",      text: "Trafik soldan akıyor gibi mi?" },
+  { id: "q_highway",            category: "traffic",      text: "Otoyol veya geniş ana yol var mı?" },
+  { id: "q_road_markings",      category: "traffic",      text: "Yol çizgileri belirgin bir ipucu veriyor mu?" },
+  { id: "q_road_europe",        category: "traffic",      text: "Yol çevresi Avrupa düzenine benziyor mu?" },
+  { id: "q_road_narrow_local",  category: "traffic",      text: "Yol dar ve yerel/kırsal gibi mi?" },
+  { id: "q_vehicles_clue",      category: "traffic",      text: "Araçlar güçlü ipucu veriyor mu?" },
+  { id: "q_tidy_layout",        category: "traffic",      text: "Sokak düzeni temiz ve planlı mı?" },
 
-  // Mimari / Şehir dokusu
-  { id: "q_arch_europe",       text: "Avrupa mimarisi gibi mi?" },
-  { id: "q_modern_city",       text: "Modern şehir dokusu baskın mı?" },
-  { id: "q_village",           text: "Köy/kasaba havası var mı?" },
-  { id: "q_suburb",            text: "Banliyö hissi var mı?" },
-  { id: "q_historic_buildings", text: "Binalar eski/tarihi doku taşıyor mu?" },
-  { id: "q_dense_buildings",   text: "Binalar yoğun ve bitişik mi?" },
+  /* ── Mimari / Şehir dokusu (architecture) ── */
+  { id: "q_arch_europe",        category: "architecture", text: "Avrupa mimarisi gibi mi?" },
+  { id: "q_modern_city",        category: "architecture", text: "Modern şehir dokusu baskın mı?" },
+  { id: "q_village",            category: "architecture", text: "Köy/kasaba havası var mı?" },
+  { id: "q_suburb",             category: "architecture", text: "Banliyö hissi var mı?" },
+  { id: "q_historic_buildings", category: "architecture", text: "Binalar eski/tarihi doku taşıyor mu?" },
+  { id: "q_dense_buildings",    category: "architecture", text: "Binalar yoğun ve bitişik mi?" },
+  { id: "q_market_district",    category: "architecture", text: "Dükkan/çarşı dokusu belirgin mi?" },
+  { id: "q_touristic",          category: "architecture", text: "Turistik/tarihi çevre hissi var mı?" },
 
-  // Doğa / İklim
-  { id: "q_mountainous",       text: "Dağlık alan hissi var mı?" },
-  { id: "q_coastal",           text: "Deniz/kıyı etkisi hissediliyor mu?" },
-  { id: "q_green_forest",      text: "Yeşil/ormanlık alan baskın mı?" },
-  { id: "q_arid_hot",          text: "Kurak/sıcak iklim gibi mi?" },
-  { id: "q_flat_plain",        text: "Düz ova/polder hissi var mı?" },
-
-  // Ortam / İnsan / Araç
-  { id: "q_big_city",          text: "Büyük şehir gibi mi?" },
-  { id: "q_rural_road",        text: "Kırsal yol gibi mi?" },
-  { id: "q_crowded_street",    text: "Kalabalık cadde/pazar hissi var mı?" },
-  { id: "q_motorcycles",       text: "Motosiklet yoğunluğu dikkat çekiyor mu?" },
-  { id: "q_vehicles_clue",     text: "Araçlar güçlü ipucu veriyor mu?" },
-  { id: "q_tidy_layout",       text: "Sokak düzeni temiz ve planlı mı?" },
-  { id: "q_touristic",         text: "Görselde turistik/tarihi çevre hissi var mı?" },
-  { id: "q_feels_europe",      text: "Sahne daha çok Avrupa'ya mı yakın hissettiriyor?" },
-  { id: "q_feels_asia",        text: "Sahne daha çok Asya'ya mı yakın hissettiriyor?" },
+  /* ── Doğa / İklim / Ortam (nature) ── */
+  { id: "q_mountainous",        category: "nature",       text: "Dağlık alan hissi var mı?" },
+  { id: "q_coastal",            category: "nature",       text: "Deniz/kıyı etkisi hissediliyor mu?" },
+  { id: "q_green_forest",       category: "nature",       text: "Yeşil/ormanlık alan baskın mı?" },
+  { id: "q_arid_hot",           category: "nature",       text: "Kurak/sıcak iklim gibi mi?" },
+  { id: "q_flat_plain",         category: "nature",       text: "Düz ova/polder hissi var mı?" },
+  { id: "q_rural_road",         category: "nature",       text: "Kırsal yol gibi mi?" },
+  { id: "q_big_city",           category: "nature",       text: "Büyük şehir gibi mi?" },
+  { id: "q_motorcycles",        category: "nature",       text: "Motosiklet yoğunluğu dikkat çekiyor mu?" },
 ];
 
 /** id → soru hızlı arama. */
@@ -78,13 +99,30 @@ export function knQuestionText(id: string): string {
   return questionById.get(id)?.text ?? "Bilinmeyen soru";
 }
 
-/** start_game payload'ı: havuzdaki tüm soru id'leri (server auto-fill için). */
-export function buildKnQuestionPool(): string[] {
-  return korNoktaQuestions.map(q => q.id);
+/**
+ * start_game payload'ı: kategori → id[] sözlüğü. Server bu sözlükten her tur
+ * kategori başına {KN_QUESTION_PER_CATEGORY} soru çekerek 12 aday üretir.
+ * (Önceden düz string[] idi; gizli-kategori dengesi için sözlüğe geçildi.)
+ */
+export function buildKnQuestionPool(): Record<KnQuestionCategory, string[]> {
+  const pool = {
+    alphabet:     [] as string[],
+    traffic:      [] as string[],
+    architecture: [] as string[],
+    nature:       [] as string[],
+  };
+  for (const q of korNoktaQuestions) pool[q.category].push(q.id);
+  return pool;
 }
 
 /** Dedektifin tur başına seçebileceği soru sayısı. */
 export const KN_QUESTION_PICK_COUNT = 5;
+
+/** Server'ın tur başına ürettiği toplam aday soru sayısı (3 × 4 kategori). */
+export const KN_QUESTION_CANDIDATE_COUNT = 12;
+
+/** Aday üretiminde kategori başına çekilen soru sayısı. */
+export const KN_QUESTION_PER_CATEGORY = 3;
 
 /* ── Cevap seçenekleri (game_state kontratı) ── */
 export type KnAnswerValue = "yes" | "no" | "unsure";
@@ -105,30 +143,4 @@ export const KN_ANSWER_GLYPHS: Record<KnAnswerValue, string> = {
 
 export function isKnAnswerValue(value: unknown): value is KnAnswerValue {
   return value === "yes" || value === "no" || value === "unsure";
-}
-
-/* ── Deterministic karıştırma (tur başına sabit sıra) ──────────────────────
- * Dedektif grid'i her render'da yeniden karışmasın diye sıra roundIndex'e
- * bağlı seed'li PRNG ile belirlenir. Saf fonksiyon; aynı seed → aynı sıra. */
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Soru havuzunu verilen tur için deterministic karıştırılmış kopyasıyla döner. */
-export function shuffleQuestions(roundIndex: number): KorNoktaQuestion[] {
-  const rng = mulberry32((roundIndex + 1) * 0x9e3779b1);
-  const deck = [...korNoktaQuestions];
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
 }

@@ -21,7 +21,7 @@
  * soru-seçimi/cevap/tahmin yazmaları yalnız ilgili oyuncunun RPC'siyle olur.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { supabase, type TevaturRoom, type TevaturPlayer } from "../../lib/supabase";
 import { getSyncedNowMs, initServerClockSync } from "../../lib/serverClock";
 import { playSound, stopSound, getCountdownSoundMode } from "../../lib/sound";
@@ -30,6 +30,7 @@ import {
   findKnScene,
   getKnAnswerTargetTeam,
   getKnPlayerAnswers,
+  getKnQuestionCandidates,
   getKnRole,
   getKnSelectedQuestions,
   getKnTeam,
@@ -46,7 +47,6 @@ import {
   KN_ANSWER_VALUES,
   KN_QUESTION_PICK_COUNT,
   knQuestionText,
-  shuffleQuestions,
   type KnAnswerValue,
 } from "./korNoktaQuestions";
 import { resolveKnBackground } from "./korNoktaBackgrounds";
@@ -274,9 +274,6 @@ export default function KorNoktaGame({
     setGuessSubmitting(false);
   }, [roundIndex]);
 
-  /* ── Dedektif soru grid'i: tur başına deterministic karıştırma ── */
-  const shuffledQuestions = useMemo(() => shuffleQuestions(roundIndex), [roundIndex]);
-
   /* ── Maç sonu XP (her oyuncu kendi profili, idempotent RPC) ── */
   const myProfileId = players.find(p => p.id === myId)?.profile_id ?? null;
   const [xpView, setXpView] = useState<KnXpView | null>(null);
@@ -378,6 +375,9 @@ export default function KorNoktaGame({
       : Math.max(0, Math.ceil((state.phaseEndsAt - nowMs) / 1000));
 
   /* ── Soru-cevap türetilmiş değerler ── */
+  // Bu turun 12 aday sorusu (server üretti; iki takım da aynı listeyi görür).
+  const candidateQuestions = getKnQuestionCandidates(round);
+
   // Dedektif: bu turda kendi takımının seçtiği sorular (local-or-server).
   const serverPicked = myTeam ? getKnSelectedQuestions(round, myTeam) : [];
   const picked = pickedLocal ?? serverPicked;
@@ -408,7 +408,9 @@ export default function KorNoktaGame({
       });
       if (error) {
         console.error("[KorNokta] select_questions RPC failed", error);
-        setActionError(describeKnGameError(error));
+        setActionError(
+          describeKnGameError(error) ?? "Soru seçimin kaydedilemedi. Tekrar dene.",
+        );
         return;
       }
       if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
@@ -439,7 +441,9 @@ export default function KorNoktaGame({
       });
       if (error) {
         console.error("[KorNokta] submit_answer RPC failed", error);
-        setActionError(describeKnGameError(error));
+        setActionError(
+          describeKnGameError(error) ?? "Cevabın kaydedilemedi. Tekrar dene.",
+        );
         return;
       }
       if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
@@ -555,8 +559,9 @@ export default function KorNoktaGame({
             <span className="kn-qselect__eyebrow">İnceleme · Soru Seçimi</span>
             <h2 className="kn-qselect__title">5 Soru Seç</h2>
             <p className="kn-qselect__sub">
-              Havuzdan en fazla {KN_QUESTION_PICK_COUNT} soru seç. Süre dolunca
-              seçimin kilitlenir; eksik kalırsa otomatik tamamlanır.
+              {candidateQuestions.length} sorudan en fazla {KN_QUESTION_PICK_COUNT}
+              {" "}tanesini seç. Süre dolunca seçimin kilitlenir; eksik kalırsa
+              otomatik tamamlanır.
             </p>
             <span
               className={
@@ -570,22 +575,22 @@ export default function KorNoktaGame({
           </header>
 
           <div className="kn-qgrid">
-            {shuffledQuestions.map(q => {
-              const on = picked.includes(q.id);
+            {candidateQuestions.map(qid => {
+              const on = picked.includes(qid);
               const disabled = !on && picked.length >= KN_QUESTION_PICK_COUNT;
               return (
                 <button
-                  key={q.id}
+                  key={qid}
                   type="button"
                   className={
                     "kn-qcard" + (on ? " is-on" : "") + (disabled ? " is-disabled" : "")
                   }
-                  onClick={() => toggleQuestion(q.id)}
+                  onClick={() => toggleQuestion(qid)}
                   disabled={disabled}
                   aria-pressed={on}
                 >
                   <span className="kn-qcard__check" aria-hidden>{on ? "✓" : "+"}</span>
-                  <span className="kn-qcard__text">{q.text}</span>
+                  <span className="kn-qcard__text">{knQuestionText(qid)}</span>
                 </button>
               );
             })}
