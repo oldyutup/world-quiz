@@ -19,11 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useSocial } from "./SocialContext";
 import { NotificationList } from "./NotificationList";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ClearNotificationsButton } from "./ClearNotificationsButton";
 import { EmojiIcon } from "./EmojiIcon";
-
-/** "Bir daha sorma" tercihi — ileride ayarlardan sıfırlanabilir. */
-const SKIP_CLEAR_CONFIRM_KEY = "torble_skip_clear_notifications_confirm";
 
 interface NotificationCenterProps {
   variant?: "bar" | "icon" | "row";
@@ -33,57 +30,10 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
   const social = useSocial();
   const { isMobile } = useIsMobile();
   const [open, setOpen] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const { notifications, unreadCount, markAllRead, refreshNotifications } = social;
   const hasNotifications = notifications.length > 0;
-
-  // Temizleme: sonucu toast'a çevirir (panel/badge zaten context refresh ile düşer).
-  const runClear = async () => {
-    if (clearing) return;
-    setClearing(true);
-    try {
-      const res = await social.clearNotifications();
-      if (!res.ok) {
-        social.toast("Bildirimler temizlenemedi, tekrar dene.");
-      } else if (res.preserved > 0) {
-        social.toast("Bildirimler temizlendi. Aksiyon gerektiren bildirimler korundu.");
-      } else {
-        social.toast("Bildirimler temizlendi.");
-      }
-    } finally {
-      setClearing(false);
-    }
-  };
-
-  // "Temizle" tıklaması: "bir daha sorma" işaretliyse direkt temizle, değilse onay iste.
-  const handleClearClick = () => {
-    let skip = false;
-    try {
-      skip = localStorage.getItem(SKIP_CLEAR_CONFIRM_KEY) === "1";
-    } catch {
-      skip = false;
-    }
-    if (skip) {
-      void runClear();
-    } else {
-      setConfirmClear(true);
-    }
-  };
-
-  const handleConfirmClear = (dontAskAgain: boolean) => {
-    if (dontAskAgain) {
-      try {
-        localStorage.setItem(SKIP_CLEAR_CONFIRM_KEY, "1");
-      } catch {
-        /* localStorage erişilemezse tercih saklanmaz; akış bozulmaz. */
-      }
-    }
-    setConfirmClear(false);
-    void runClear();
-  };
 
   // Açılışta taze veri (realtime fallback).
   useEffect(() => {
@@ -174,35 +124,12 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
                       Tümünü okundu yap
                     </button>
                   )}
-                  {hasNotifications && (
-                    <button
-                      type="button"
-                      className="notif-clear"
-                      onClick={handleClearClick}
-                      disabled={clearing}
-                    >
-                      Temizle
-                    </button>
-                  )}
+                  {hasNotifications && <ClearNotificationsButton />}
                 </div>
               )}
             </div>
             <NotificationList onNavigate={() => setOpen(false)} />
           </div>
-
-          {confirmClear && (
-            <ConfirmDialog
-              title="Bildirimleri temizle?"
-              description="Bu işlem bildirim panelindeki bildirimleri temizler. Devam etmek istiyor musun?"
-              confirmLabel="Temizle"
-              cancelLabel="Vazgeç"
-              dontAskAgainLabel="Bir daha sorma"
-              destructive
-              busy={clearing}
-              onConfirm={handleConfirmClear}
-              onCancel={() => setConfirmClear(false)}
-            />
-          )}
         </>
       )}
     </div>

@@ -12,6 +12,23 @@
  */
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
+import { korNoktaRealScenes } from "./korNoktaRealScenes";
+
+/**
+ * Gerçek dünya (Panoramax, CC-BY-SA) test sahnelerini CANLI eşleşme havuzuna
+ * dahil eder. Varsayılan KAPALI: kapalıyken buildKnScenePlan davranışı eskisiyle
+ * BİREBİR aynıdır (yalnız AI/tarihi sahneler). Tam oyun-döngüsü testi için true yap.
+ * (Kör Nokta web-only; gerçek sahneler native bundle'a girmez.)
+ */
+export const KN_INCLUDE_REAL_SCENES = false;
+
+/** Tüm bilinen sahneler (AI + gerçek). findKnScene id'leri her zaman buradan çözer. */
+export const korNoktaAllScenes: KorNoktaScene[] = [...korNoktaScenes, ...korNoktaRealScenes];
+
+/** start_game'in kullandığı aktif havuz (flag'e göre). */
+const korNoktaActivePool: KorNoktaScene[] = KN_INCLUDE_REAL_SCENES
+  ? korNoktaAllScenes
+  : korNoktaScenes;
 
 export type KnPhase =
   | "role_reveal"
@@ -121,7 +138,7 @@ export const KN_TEAM_LABELS: Record<KnTeam, string> = {
 };
 
 export function findKnScene(sceneId: string): KorNoktaScene | null {
-  return korNoktaScenes.find(s => s.id === sceneId) ?? null;
+  return korNoktaAllScenes.find(s => s.id === sceneId) ?? null;
 }
 
 export const KN_CATEGORY_LABELS: Record<KnCategory, string> = {
@@ -159,7 +176,7 @@ export function buildKnScenePlan(roundCount: number): Array<{
   let deck: KorNoktaScene[] = [];
   while (plan.length < roundCount) {
     if (deck.length === 0) {
-      deck = [...korNoktaScenes];
+      deck = [...korNoktaActivePool];
       for (let i = deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [deck[i], deck[j]] = [deck[j], deck[i]];

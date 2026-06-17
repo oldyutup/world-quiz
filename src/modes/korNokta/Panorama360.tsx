@@ -10,10 +10,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import type { KorNoktaAttribution } from "./korNoktaScenes";
 
 interface Panorama360Props {
   src: string;
   className?: string;
+  /** Gerçek dünya sahnelerinde dolu — köşede tıklanabilir atıf kredisi gösterilir. */
+  attribution?: KorNoktaAttribution;
+  /**
+   * Dokuyu yatay olarak çevirir (yazılar düz okunur). Bu viewer küreyi
+   * `BackSide` ile çiziyor ama three.js'in equirectangular reçetesindeki
+   * `geometry.scale(-1,1,1)` adımını UYGULAMIYOR; sonuçta panorama yatayda
+   * AYNALANIR. AI/tarihi sahnelerde fark edilmez (okunur tabela yok) ve onların
+   * görünümü KORUNMALI olduğu için viewer'ı global düzeltmiyoruz. Gerçek dünya
+   * (Panoramax) sahnelerinde tabela/alfabe önemli ipucu → yalnız onlarda
+   * `mirrorX` ile aynalamayı geri alıyoruz. Görsel asset'e DOKUNULMAZ
+   * (kaynağa sadık), düzeltme sadece dokuyu örneklerken yapılır.
+   */
+  mirrorX?: boolean;
+}
+
+function sourceLabel(source: KorNoktaAttribution["source"]): string {
+  return source === "mapillary" ? "Mapillary" : "Panoramax";
 }
 
 const DEG2RAD = Math.PI / 180;
@@ -45,7 +63,7 @@ function yawPitchDegToDirection(yawDeg: number, pitchDeg: number, out: THREE.Vec
   return out;
 }
 
-export default function Panorama360({ src, className }: Panorama360Props) {
+export default function Panorama360({ src, className, attribution, mirrorX = false }: Panorama360Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,6 +146,13 @@ export default function Panorama360({ src, className }: Panorama360Props) {
           (loaded as any).colorSpace = colorSpace;
         }
         loaded.mapping = THREE.EquirectangularReflectionMapping;
+        if (mirrorX) {
+          // Dokuyu U ekseninde ters örnekle (1 - u): kürenin BackSide aynalamasını
+          // geri alır, yazılar düz okunur. wrapS=Repeat, 360 dikişinde zaten doğru.
+          loaded.wrapS = THREE.RepeatWrapping;
+          loaded.repeat.x = -1;
+          loaded.offset.x = 1;
+        }
         loaded.anisotropy = maxAnisotropy;
         loaded.minFilter = THREE.LinearMipmapLinearFilter;
         loaded.magFilter = THREE.LinearFilter;
@@ -244,7 +269,7 @@ export default function Panorama360({ src, className }: Panorama360Props) {
         container.removeChild(canvas);
       }
     };
-  }, [src]);
+  }, [src, mirrorX]);
 
   return (
     <div className={"kn-pano" + (className ? ` ${className}` : "")}>
@@ -260,6 +285,23 @@ export default function Panorama360({ src, className }: Panorama360Props) {
           <strong>Sahne yüklenemedi</strong>
           <span>{loadError}</span>
         </div>
+      )}
+      {attribution && isLoaded && (
+        <a
+          className="kn-pano__credit"
+          href={attribution.attributionUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`${sourceLabel(attribution.source)} · ${attribution.license} · ${attribution.author}${attribution.captureDate ? ` · ${attribution.captureDate}` : ""} — kaynağı yeni sekmede aç`}
+        >
+          <span className="kn-pano__credit-src">{sourceLabel(attribution.source)}</span>
+          <span className="kn-pano__credit-dot" aria-hidden="true">·</span>
+          <span className="kn-pano__credit-lic">{attribution.license}</span>
+          <span className="kn-pano__credit-author">
+            <span className="kn-pano__credit-dot" aria-hidden="true">·</span>
+            {attribution.author}
+          </span>
+        </a>
       )}
     </div>
   );

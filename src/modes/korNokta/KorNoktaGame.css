@@ -285,6 +285,63 @@
 
 @keyframes knSpin { to { transform: rotate(360deg); } }
 
+/* ── Atıf kredisi (yalnız gerçek dünya sahneleri) ──────────────
+   Viewer'ın sağ-alt köşesinde küçük, yarı saydam kredi. z-index 3 →
+   reportbar'ın (z2) üstünde, her zaman tıklanabilir. Link dışında
+   pano sürüklemesini engellemez (yalnız <a> pointer olayı yakalar). */
+.kn-pano__credit {
+  position: absolute;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 16px);
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-decoration: none;
+  color: rgba(237, 242, 247, 0.92);
+  background: rgba(13, 17, 23, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0.78;
+  transition: opacity 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.kn-pano__credit:hover,
+.kn-pano__credit:focus-visible {
+  opacity: 1;
+  background: rgba(13, 17, 23, 0.88);
+  border-color: rgba(255, 255, 255, 0.3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.kn-pano__credit-src { font-weight: 800; }
+.kn-pano__credit-dot { opacity: 0.5; }
+
+.kn-pano__credit-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+  /* Dar ekranda raporbar tabanı genişler; krediyi küçült ve yazarı gizle
+     (lisans görünür kalır — CC-BY-SA atıf gereği). Tam bilgi title'da. */
+  .kn-pano__credit { font-size: 10px; padding: 3px 8px; }
+  .kn-pano__credit-author { display: none; }
+}
+
 /* ── Raporcu sahne yerleşimi ───────────────────────────────── */
 
 .kn-stage-pano {

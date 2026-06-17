@@ -1,0 +1,5 @@
+# Ara çıktılar — commit edilmez. Finaller public/assets/kor-nokta-real/ altına
+# (webp) ve manifest.json'a yazılır; sahneler korNoktaRealScenes.ts'e codegen edilir.
+raw/
+preview/
+candidates.json

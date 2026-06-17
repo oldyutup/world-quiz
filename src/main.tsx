@@ -33,7 +33,14 @@ const History360TestPage =
     ? lazy(() => import("./dev/History360TestPage"))
     : null;
 
-const DevPage = History360TestPage ?? PanoramaTestPage;
+// Dev-only Kör Nokta gerçek dünya 360 sahne testi (Panoramax pipeline çıktısı +
+// atıf badge). Aynı koruma: production build'de bu dal ve chunk hiç oluşmaz.
+const KorNoktaRealTestPage =
+  import.meta.env.DEV && window.location.pathname === "/kor-nokta-real-test"
+    ? lazy(() => import("./dev/KorNoktaRealTestPage"))
+    : null;
+
+const DevPage = History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

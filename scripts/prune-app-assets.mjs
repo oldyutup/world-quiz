@@ -22,6 +22,7 @@ const REMOVE_PATHS = [
   'assets/history',
   'assets/detective-scenes',
   'assets/backgrounds/kor-nokta',
+  'assets/kor-nokta-real',
   'debug',
   'sounds/kor-nokta-report-ambient.mp3',
 ];

@@ -25,6 +25,7 @@ import {
 } from "../lib/social";
 import { useSocial } from "./SocialContext";
 import { NotificationList } from "./NotificationList";
+import { ClearNotificationsButton } from "./ClearNotificationsButton";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
 
@@ -88,7 +89,7 @@ export function SocialCenterSheet({
   const [searching, setSearching] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
 
-  const { notifications, friendsRefreshKey } = social;
+  const { notifications, friendsRefreshKey, markAllRead, refreshNotifications } = social;
 
   // Arama için trim + baştaki "@" temizlenmiş hali; min uzunluk kontrolü buna göre.
   const trimmedQuery = query.replace(/^@+/, "").trim();
@@ -140,6 +141,13 @@ export function SocialCenterSheet({
       alive = false;
     };
   }, [tab, friendsRefreshKey]);
+
+  // Bildirim/İstek sekmesi açılınca taze veri çek (desktop panelinin açılışta
+  // refresh davranışıyla aynı; realtime fallback). refreshNotifications profile
+  // id'ye bağlı stabil bir callback olduğundan her bildirim değişiminde tetiklenmez.
+  useEffect(() => {
+    if (tab === "notifications" || tab === "requests") void refreshNotifications();
+  }, [tab, refreshNotifications]);
 
   // Friends sekmesinden çıkınca aramayı sıfırla (geri dönüşte temiz başlasın).
   useEffect(() => {
@@ -392,7 +400,23 @@ export function SocialCenterSheet({
           )}
 
           {tab === "notifications" && (
-            <NotificationList emptyText="Henüz bildirim yok." onNavigate={onClose} />
+            <>
+              {notifications.length > 0 && (
+                <div className="social-notif-actions">
+                  {unreadCount > 0 && (
+                    <button
+                      type="button"
+                      className="notif-markall"
+                      onClick={() => void markAllRead()}
+                    >
+                      Tümünü okundu yap
+                    </button>
+                  )}
+                  <ClearNotificationsButton />
+                </div>
+              )}
+              <NotificationList emptyText="Henüz bildirim yok." onNavigate={onClose} />
+            </>
           )}
 
           {tab === "theme" && (

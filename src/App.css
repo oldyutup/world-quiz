@@ -18231,6 +18231,18 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   /* İçteki liste satırları sheet'in kendi scroll'unu kullanır — taşma yok. */
   .social-tab-body .notif-list { display: flex; flex-direction: column; }
 
+  /* Bildirimler sekmesi üst aksiyon çubuğu (Tümünü okundu yap · Temizle).
+     Desktop panelindeki .notif-panel-actions ile aynı metin butonlarını
+     (.notif-markall / .notif-clear) sheet düzenine taşır. */
+  .social-notif-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(160, 196, 255, .12);
+  }
+
   /* Arama açıkken bölüm başlıkları ("Arkadaşlar" / "Oyuncular"). */
   .social-search-section-label {
     padding: 9px 14px 5px;

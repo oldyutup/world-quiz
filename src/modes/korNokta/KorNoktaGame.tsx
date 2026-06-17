@@ -516,7 +516,7 @@ export default function KorNoktaGame({
     const isObserve = state.phase === "observe_report";
     return (
       <div {...knScreen("kn-screen--stage")}>
-        <Panorama360 src={scene?.imagePath ?? ""} className="kn-stage-pano" />
+        <Panorama360 src={scene?.imagePath ?? ""} className="kn-stage-pano" attribution={scene?.attribution} mirrorX={scene?.sourceType === "real_world"} />
         <div className="kn-stage-top">{topbar}</div>
 
         <div className={"kn-reportbar kn-anim-fade-up" + (myRole === "mole" ? " kn-reportbar--mole" : "")}>

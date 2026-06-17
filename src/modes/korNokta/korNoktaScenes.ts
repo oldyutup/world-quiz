@@ -7,6 +7,21 @@
 // + boşluk/tire temizliği ("t r", "t-r" -> "tr"). Bu sayede "tr" gibi kısa
 // yasaklılar da kaçaklarıyla birlikte yakalanır.
 
+/** Sahne kaynağı: AI üretimi tarihi sahne mi, açık-lisanslı gerçek dünya 360 mı. */
+export type KorNoktaSceneSource = "panoramax" | "mapillary";
+
+/** Gerçek dünya sahneleri için lisans/atıf bilgisi (real_world'de zorunlu). */
+export interface KorNoktaAttribution {
+  source: KorNoktaSceneSource;
+  sourceImageId: string;
+  author: string;
+  attributionUrl: string;
+  license: string;       // ör. "CC-BY-SA 4.0"
+  licenseUrl?: string;
+  captureDate?: string;  // ISO yyyy-mm-dd
+  modified?: boolean;    // görsel resize/yeniden encode edildiyse true
+}
+
 export type KorNoktaScene = {
   id: string;
   title: string;
@@ -22,6 +37,10 @@ export type KorNoktaScene = {
   categories: Array<"geography" | "architecture" | "people" | "period">;
   bannedWords: string[];
   notes?: string;
+  /** undefined => "historical_ai" (mevcut AI sahneleri). */
+  sourceType?: "historical_ai" | "real_world";
+  /** Yalnız real_world sahnelerde dolu; viewer köşesinde atıf badge'i render eder. */
+  attribution?: KorNoktaAttribution;
 };
 
 export const korNoktaScenes: KorNoktaScene[] = [
