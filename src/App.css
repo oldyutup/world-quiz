@@ -20114,6 +20114,10 @@ html:not(.is-native-app) .apk-photo-card {
 .ppc-overlay--sheet { align-items: flex-end; padding: 0; }
 .ppc-overlay-inner { position: relative; width: 100%; max-width: 360px; }
 .ppc-overlay--sheet .ppc-overlay-inner { max-width: 100%; }
+/* Profil kartı v2 yatay/dikdörtgen — yalnız bu modifier'da geniş (paylaşılan
+   .ppc-overlay-inner'ı global genişletmeden). Mobil sheet'te 100% (yukarıdaki
+   --sheet kuralı daha yüksek specificity ile kazanır). */
+.ppc-overlay-inner--card { max-width: 540px; }
 .ppc-close {
   position: absolute;
   top: 8px;
@@ -20137,40 +20141,115 @@ html:not(.is-native-app) .apk-photo-card {
   border: 1px solid rgba(120, 160, 230, 0.25);
   border-radius: 18px;
 }
+/* ── Profil kartı v2 — yatay/dikdörtgen oyuncu kartı ── */
 .ppc-card {
+  position: relative;
+  isolation: isolate; /* ::before glow için yerel stacking context */
   background: linear-gradient(160deg, rgba(22, 30, 48, 0.97), rgba(14, 20, 34, 0.97));
   border: 1px solid rgba(120, 160, 230, 0.25);
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
   color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
 }
+/* Üstten hafif mavi glow (premium oyun kartı hissi). Kozmetik temalar ileride
+   .ppc-card[data-theme="<key>"] ile bu default'u geçersiz kılabilir. */
+.ppc-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: radial-gradient(125% 65% at 50% -12%, rgba(88, 166, 255, 0.12), transparent 60%);
+  pointer-events: none;
+}
+.ppc-hero,
+.ppc-section,
+.ppc-actions { position: relative; z-index: 1; }
+
 .ppc-overlay--sheet .ppc-card {
   border-radius: 18px 18px 0 0;
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
 }
-.ppc-head { display: flex; align-items: center; gap: 14px; }
-.ppc-identity { min-width: 0; }
+
+/* HERO */
+.ppc-hero { display: flex; align-items: center; gap: 16px; }
+.ppc-avatar-wrap { flex: 0 0 auto; }
+/* Çerçevesiz avatarlarda yumuşak halka; kozmetik çerçeve (--framed) varsa kendi
+   halkasını korur (bu yüzden :not(--framed)). */
+.ppc-avatar-wrap .player-avatar:not(.player-avatar--framed) {
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.18), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.ppc-identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .ppc-uname {
   display: block;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 800;
   color: #eaf1ff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ppc-meta { display: flex; gap: 8px; margin-top: 5px; align-items: center; }
+.ppc-title-tag {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffd9a0;
+  background: rgba(245, 180, 80, 0.12);
+  border: 1px solid rgba(245, 180, 80, 0.28);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.ppc-level-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ppc-level {
   font-size: 12px;
   font-weight: 800;
-  color: #bcd0f0;
-  background: rgba(88, 166, 255, 0.16);
-  padding: 3px 9px;
+  color: #ffe2b0;
+  background: rgba(245, 180, 80, 0.16);
+  border: 1px solid rgba(245, 180, 80, 0.25);
+  padding: 3px 10px;
   border-radius: 999px;
 }
-.ppc-xp { font-size: 12px; color: var(--muted); }
-.ppc-badges { display: flex; gap: 8px; margin: 16px 0; }
+.ppc-xp-label { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.ppc-xp-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(120, 150, 200, 0.14);
+  border: 1px solid rgba(120, 160, 230, 0.12);
+  overflow: hidden;
+}
+.ppc-xp-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4f9bff, #7cc0ff);
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* SECTION (rozet + istatistik başlıkları) */
+.ppc-section { display: flex; flex-direction: column; gap: 9px; }
+.ppc-section-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(150, 178, 220, 0.6);
+}
+
+/* ROZETLER */
+.ppc-badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
 .ppc-badge-slot {
   width: 46px;
   height: 46px;
@@ -20189,9 +20268,41 @@ html:not(.is-native-app) .apk-photo-card {
   background: rgba(88, 166, 255, 0.08);
 }
 .ppc-badge-img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
-.ppc-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* MİNİ İSTATİSTİKLER (native emoji) */
+.ppc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.ppc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(120, 160, 230, 0.16);
+  border-radius: 12px;
+  min-width: 0;
+}
+.ppc-stat-emoji { font-size: 18px; line-height: 1.1; }
+.ppc-stat-value { font-size: 16px; font-weight: 800; color: #eaf1ff; }
+.ppc-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+/* AKSİYONLAR */
+.ppc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ppc-btn {
   all: unset;
+  flex: 1 1 auto;
+  min-width: 124px;
   text-align: center;
   padding: 11px;
   border-radius: 10px;
@@ -20202,11 +20313,35 @@ html:not(.is-native-app) .apk-photo-card {
   border: 1px solid var(--border);
   color: var(--text);
   box-sizing: border-box;
+  transition: border-color 0.15s ease-out, background 0.15s ease-out, color 0.15s ease-out;
 }
 .ppc-btn:hover:not(:disabled) { border-color: var(--accent); }
 .ppc-btn--primary { background: var(--accent); color: #04111f; border-color: transparent; }
+.ppc-btn--primary:hover:not(:disabled) { background: #6fb4ff; }
 .ppc-btn--ghost { color: var(--muted); }
+/* Engelle: tehlikeli ama baskın değil — nötr çerçeve, soluk kırmızı yazı;
+   vurgu yalnız hover'da. */
+.ppc-btn--danger { color: #e8a39d; }
+.ppc-btn--danger:hover:not(:disabled) {
+  border-color: var(--red);
+  color: #ffc4bf;
+  background: rgba(248, 81, 73, 0.08);
+}
 .ppc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* MOBİL: dikey stack, 2x2 istatistik, tam genişlik aksiyon */
+@media (max-width: 520px) {
+  .ppc-hero { flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+  .ppc-identity { align-items: center; width: 100%; }
+  .ppc-title-tag { align-self: center; }
+  .ppc-level-row { justify-content: center; }
+  .ppc-xp-track { width: 100%; }
+  .ppc-section-label { text-align: center; }
+  .ppc-badges { justify-content: center; }
+  .ppc-stats { grid-template-columns: repeat(2, 1fr); }
+  .ppc-actions { flex-direction: column; }
+  .ppc-btn { width: 100%; min-width: 0; }
+}
 
 /* ── Bildirim merkezi ── */
 .notif-wrap { position: relative; }
@@ -20858,6 +20993,28 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   border-color: rgba(140, 180, 255, 0.42);
 }
 .pem-row:active { transform: translateY(1px); }
+/* "Yakında" — altyapı hazır, henüz aktif değil. Tıklanamaz, soluk. */
+.pem-row--soon {
+  cursor: default;
+  opacity: 0.6;
+}
+.pem-row--soon:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(140, 170, 220, 0.18);
+}
+.pem-row--soon:active { transform: none; }
+.pem-soon {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cdb98a;
+  background: rgba(245, 180, 80, 0.13);
+  border: 1px solid rgba(245, 180, 80, 0.3);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
 .pem-row-icon {
   flex-shrink: 0;
   width: 42px;

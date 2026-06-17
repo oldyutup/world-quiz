@@ -69,6 +69,18 @@ function BlockedIcon() {
   );
 }
 
+function CosmeticsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-3.6-4-6.6-9-6.6Z" />
+      <circle cx="7.5" cy="11.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="11" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function Chevron() {
   return (
     <svg className="pem-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -84,6 +96,8 @@ interface Action {
   desc: string;
   icon: React.ReactNode;
   onClick: () => void;
+  /** Altyapı hazır ama henüz aktif değil → "Yakında" rozeti, tıklanamaz. */
+  comingSoon?: boolean;
 }
 
 export function ProfileEditModal({
@@ -131,6 +145,16 @@ export function ProfileEditModal({
       icon: <BlockedIcon />,
       onClick: onChooseBlocked,
     },
+    {
+      // Kozmetik altyapı hazır (profile_cosmetics: frame/theme/name color/title/
+      // effect); editör + mağaza sonraki faza bırakıldı. Şimdilik placeholder.
+      key: "appearance",
+      title: "Profil Görünümü",
+      desc: "Kart temaları, çerçeveler ve unvanlar yakında.",
+      icon: <CosmeticsIcon />,
+      onClick: () => {},
+      comingSoon: true,
+    },
   ];
 
   return (
@@ -153,7 +177,14 @@ export function ProfileEditModal({
 
         <div className="pem-list">
           {actions.map((a) => (
-            <button key={a.key} type="button" className="pem-row" onClick={a.onClick}>
+            <button
+              key={a.key}
+              type="button"
+              className={`pem-row${a.comingSoon ? " pem-row--soon" : ""}`}
+              onClick={a.comingSoon ? undefined : a.onClick}
+              disabled={a.comingSoon}
+              aria-disabled={a.comingSoon || undefined}
+            >
               <span className="pem-row-icon" aria-hidden="true">
                 {a.icon}
               </span>
@@ -161,7 +192,7 @@ export function ProfileEditModal({
                 <span className="pem-row-title">{a.title}</span>
                 <span className="pem-row-desc">{a.desc}</span>
               </span>
-              <Chevron />
+              {a.comingSoon ? <span className="pem-soon">Yakında</span> : <Chevron />}
             </button>
           ))}
         </div>

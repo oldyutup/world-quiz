@@ -58,10 +58,26 @@ export interface PublicProfile {
   username: string | null;
   avatarId: string | null;
   level: number;
+  /** Toplam XP (sum xp_events.xp_earned) — XP barı için. */
+  xp: number;
+  /** XP kazandıran maç sayısı (count xp_events). */
+  matchesCount: number;
+  /** Galibiyet sayısı (xp_events.result = 'win'). */
+  winsCount: number;
+  /** Mevcut online galibiyet serisi. */
+  currentStreak: number;
+  /** Açılan başarım (tier) sayısı — sticky, sunucu otoriteli. */
+  achievementsCount: number;
   showcasedBadgeIds: string[];
   activeAvatarFrameId: string | null;
   activeProfileThemeId: string | null;
   activeNameColorId: string | null;
+  /** Kart teması / kart stili kozmetik id'si (default null). */
+  activeProfileCardStyleId: string | null;
+  /** Profil unvanı kozmetik id'si (default null → unvan gösterilmez). */
+  activeProfileTitleId: string | null;
+  /** Kart efekti kozmetik id'si (default null → efekt yok). */
+  activeProfileEffectId: string | null;
   relationshipStatus: RelationshipStatus;
 }
 
@@ -111,6 +127,8 @@ export interface MyCosmetics {
   activeProfileThemeId: string | null;
   activeNameColorId: string | null;
   activeProfileCardStyleId: string | null;
+  activeProfileTitleId: string | null;
+  activeProfileEffectId: string | null;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -392,10 +410,18 @@ export async function getPublicProfile(profileId: string): Promise<PublicProfile
     username: (r.username as string) ?? null,
     avatarId: (r.avatar_id as string) ?? null,
     level: (r.level as number) ?? 1,
+    xp: (r.xp as number) ?? 0,
+    matchesCount: (r.matches_count as number) ?? 0,
+    winsCount: (r.wins_count as number) ?? 0,
+    currentStreak: (r.current_streak as number) ?? 0,
+    achievementsCount: (r.achievements_count as number) ?? 0,
     showcasedBadgeIds: (r.showcased_badge_ids as string[]) ?? [],
     activeAvatarFrameId: (r.active_avatar_frame_id as string) ?? null,
     activeProfileThemeId: (r.active_profile_theme_id as string) ?? null,
     activeNameColorId: (r.active_name_color_id as string) ?? null,
+    activeProfileCardStyleId: (r.active_profile_card_style_id as string) ?? null,
+    activeProfileTitleId: (r.active_profile_title_id as string) ?? null,
+    activeProfileEffectId: (r.active_profile_effect_id as string) ?? null,
     relationshipStatus: ((r.relationship_status as RelationshipStatus) ?? "none"),
   };
 }
@@ -437,6 +463,8 @@ export async function getMyCosmetics(profileId: string): Promise<MyCosmetics> {
     activeProfileThemeId: null,
     activeNameColorId: null,
     activeProfileCardStyleId: null,
+    activeProfileTitleId: null,
+    activeProfileEffectId: null,
   };
   const { data, error } = await supabase
     .from("profile_cosmetics")
@@ -451,6 +479,8 @@ export async function getMyCosmetics(profileId: string): Promise<MyCosmetics> {
     activeProfileThemeId: (r.active_profile_theme_id as string) ?? null,
     activeNameColorId: (r.active_name_color_id as string) ?? null,
     activeProfileCardStyleId: (r.active_profile_card_style_id as string) ?? null,
+    activeProfileTitleId: (r.active_profile_title_id as string) ?? null,
+    activeProfileEffectId: (r.active_profile_effect_id as string) ?? null,
   };
 }
 

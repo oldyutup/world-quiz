@@ -168,7 +168,10 @@ export function PlayerProfileTrigger({
           onClick={close}
           role="presentation"
         >
-          <div className="ppc-overlay-inner" onClick={(e) => e.stopPropagation()}>
+          {/* --card: yalnız profil kartı için geniş varyant. LobbyInviteBar
+              aynı .ppc-overlay-inner kabuğunu paylaştığından genişlik global
+              değil, bu modifier ile verilir. */}
+          <div className="ppc-overlay-inner ppc-overlay-inner--card" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="ppc-close" onClick={close} aria-label="Kapat">
               ×
             </button>
@@ -179,8 +182,17 @@ export function PlayerProfileTrigger({
                 username={profile.username}
                 avatarId={profile.avatarId}
                 level={profile.level}
+                xp={profile.xp}
+                winsCount={profile.winsCount}
+                matchesCount={profile.matchesCount}
+                currentStreak={profile.currentStreak}
+                achievementsCount={profile.achievementsCount}
                 showcasedBadgeIds={profile.showcasedBadgeIds}
                 frameId={profile.activeAvatarFrameId}
+                cardThemeId={profile.activeProfileThemeId}
+                nameColorId={profile.activeNameColorId}
+                titleId={profile.activeProfileTitleId}
+                effectId={profile.activeProfileEffectId}
                 isSelf={isSelf}
                 relationshipStatus={profile.relationshipStatus}
                 canInvite={!!social?.roomContext}
