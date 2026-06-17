@@ -24,6 +24,8 @@ interface Props {
   onChooseAvatar: () => void;
   /** "Rozetleri Sergile" → rozet sergileme editörü. */
   onChooseBadges: () => void;
+  /** "Engellenen Kullanıcılar" → engelli kullanıcı yönetim modalı. */
+  onChooseBlocked: () => void;
 }
 
 function NameIcon() {
@@ -57,6 +59,16 @@ function BadgeIcon() {
   );
 }
 
+function BlockedIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 function Chevron() {
   return (
     <svg className="pem-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -80,6 +92,7 @@ export function ProfileEditModal({
   onChooseName,
   onChooseAvatar,
   onChooseBadges,
+  onChooseBlocked,
 }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -110,6 +123,13 @@ export function ProfileEditModal({
       desc: "Profilinde göstermek için 5 başarım seç.",
       icon: <BadgeIcon />,
       onClick: onChooseBadges,
+    },
+    {
+      key: "blocked",
+      title: "Engellenen Kullanıcılar",
+      desc: "Engellediğin kullanıcıları görüntüle ve yönet.",
+      icon: <BlockedIcon />,
+      onClick: onChooseBlocked,
     },
   ];
 

@@ -41,6 +41,10 @@ interface PlayerProfileCardProps {
   onAddFriend?: () => void;
   onInvite?: () => void;
   onBlock?: () => void;
+  /** Arkadaşlıktan çıkar (yalnız status === "friends"). */
+  onRemoveFriend?: () => void;
+  /** Engeli kaldır (yalnız status === "blocked"). */
+  onUnblock?: () => void;
   /** Davet edilebilir mi (aktif oda context'i var mı). */
   canInvite?: boolean;
 
@@ -75,11 +79,15 @@ export function PlayerProfileCard({
   onAddFriend,
   onInvite,
   onBlock,
+  onRemoveFriend,
+  onUnblock,
   canInvite,
   onEditProfile,
   onEditBadges,
 }: PlayerProfileCardProps) {
   const friendBtn = friendButtonLabel(relationshipStatus);
+  const isBlocked = relationshipStatus === "blocked";
+  const isFriend = relationshipStatus === "friends";
 
   // Başka oyuncu: yalnız gerçek (çözülebilen) rozetleri göster — boş slot yok.
   const otherBadges = showcasedBadgeIds.filter((id) => getAvatar(id));
@@ -151,6 +159,15 @@ export function PlayerProfileCard({
           <button type="button" className="ppc-btn ppc-btn--primary" onClick={onEditProfile}>
             Profili Düzenle
           </button>
+        ) : isBlocked ? (
+          <>
+            <button type="button" className="ppc-btn" disabled>
+              Engellendi
+            </button>
+            <button type="button" className="ppc-btn ppc-btn--primary" onClick={onUnblock}>
+              Engeli Kaldır
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -170,13 +187,12 @@ export function PlayerProfileCard({
             >
               Davet Et
             </button>
-            <button
-              type="button"
-              className="ppc-btn ppc-btn--ghost"
-              onClick={onBlock}
-              disabled
-              title="Engelleme sistemi yakında"
-            >
+            {isFriend && (
+              <button type="button" className="ppc-btn" onClick={onRemoveFriend}>
+                Arkadaşlıktan Çıkar
+              </button>
+            )}
+            <button type="button" className="ppc-btn ppc-btn--ghost" onClick={onBlock}>
               Engelle
             </button>
           </>

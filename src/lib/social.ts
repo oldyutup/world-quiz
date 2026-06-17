@@ -46,6 +46,10 @@ export type RelationshipStatus =
   | "friends"
   | "request_sent"
   | "request_received"
+  /** Ben bu kullanıcıyı engelledim. */
+  | "blocked"
+  /** Bu kullanıcı beni engelledi. */
+  | "blocked_by"
   | "none";
 
 /** get_public_profile dönüşü — Gold içermez (public kart). */
@@ -78,6 +82,16 @@ export interface FriendRow {
   level: number;
   activeAvatarFrameId: string | null;
   friendsSince: string | null;
+}
+
+/** list_blocked_users dönüşü — engellenen kullanıcı satırı (gold içermez). */
+export interface BlockedUserRow {
+  profileId: string;
+  username: string | null;
+  avatarId: string | null;
+  level: number;
+  activeAvatarFrameId: string | null;
+  blockedAt: string | null;
 }
 
 /** search_public_profiles dönüşü — oyuncu arama satırı (gold içermez). */
@@ -114,6 +128,8 @@ export function describeSocialError(message: string | undefined | null): string 
   if (m.includes("request_not_found")) return "İstek bulunamadı.";
   if (m.includes("cannot_invite_self")) return "Kendini davet edemezsin.";
   if (m.includes("recipient_not_found")) return "Oyuncu bulunamadı.";
+  if (m.includes("cannot_block_self")) return "Kendini engelleyemezsin.";
+  if (m.includes("blocked_between")) return "Bu kullanıcıyla etkileşemezsin.";
   if (m.includes("auth_required")) return "Bu işlem için giriş yapmalısın.";
   return "Bir hata oluştu, tekrar dene.";
 }
@@ -209,7 +225,12 @@ export async function sendFriendRequest(recipientProfileId: string): Promise<Rpc
   const { error } = await supabase.rpc("send_friend_request", {
     p_recipient: recipientProfileId,
   });
-  if (error) return { ok: false, error: describeSocialError(error.message) };
+  if (error) {
+    if ((error.message ?? "").toLowerCase().includes("blocked_between")) {
+      return { ok: false, error: "Bu kullanıcıya istek gönderemezsin." };
+    }
+    return { ok: false, error: describeSocialError(error.message) };
+  }
   return { ok: true };
 }
 
@@ -226,6 +247,64 @@ export async function respondFriendRequest(
     return { ok: false, error: describeSocialError(error.message) };
   }
   return { ok: true };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   İlişki yönetimi: arkadaşlıktan çıkar + engelle / engeli kaldır / liste
+   Tüm yazma yolları SECURITY DEFINER RPC (bkz.
+   20260716160000_social_block_and_remove_friend.sql). Client doğrudan
+   blocked_profiles / friends tablolarına YAZMAZ.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/** İki yönlü arkadaşlık ilişkisini kaldırır (engellemez). */
+export async function removeFriend(targetProfileId: string): Promise<RpcResult> {
+  const { error } = await supabase.rpc("remove_friend", { p_target: targetProfileId });
+  if (error) {
+    console.error("remove_friend failed", error);
+    return { ok: false, error: describeSocialError(error.message) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Kullanıcıyı engeller (idempotent, sessiz). Server: varsa arkadaşlığı kaldırır,
+ * iki yönlü pending istekleri iptal eder, ilgili friend_request bildirimlerini
+ * temizler. Engellenen kişiye bildirim ÜRETİLMEZ.
+ */
+export async function blockUser(targetProfileId: string): Promise<RpcResult> {
+  const { error } = await supabase.rpc("block_user", { p_target: targetProfileId });
+  if (error) {
+    console.error("block_user failed", error);
+    return { ok: false, error: describeSocialError(error.message) };
+  }
+  return { ok: true };
+}
+
+/** Engeli kaldırır (idempotent). Otomatik arkadaşlık KURMAZ. */
+export async function unblockUser(targetProfileId: string): Promise<RpcResult> {
+  const { error } = await supabase.rpc("unblock_user", { p_target: targetProfileId });
+  if (error) {
+    console.error("unblock_user failed", error);
+    return { ok: false, error: describeSocialError(error.message) };
+  }
+  return { ok: true };
+}
+
+/** Kendi engellediğim kullanıcılar — TEK çağrı (list_blocked_users RPC), N+1 yok. */
+export async function listBlockedUsers(): Promise<BlockedUserRow[]> {
+  const { data, error } = await supabase.rpc("list_blocked_users");
+  if (error || !Array.isArray(data)) {
+    if (error) console.error("list_blocked_users failed", error);
+    return [];
+  }
+  return (data as Record<string, unknown>[]).map((r) => ({
+    profileId: r.profile_id as string,
+    username: (r.username as string) ?? null,
+    avatarId: (r.avatar_id as string) ?? null,
+    level: (r.level as number) ?? 1,
+    activeAvatarFrameId: (r.active_avatar_frame_id as string) ?? null,
+    blockedAt: (r.blocked_at as string) ?? null,
+  }));
 }
 
 /**
@@ -289,7 +368,12 @@ export async function sendRoomInvite(args: {
     p_mode: args.mode,
     p_room_url: args.roomUrl,
   });
-  if (error) return { ok: false, error: describeSocialError(error.message) };
+  if (error) {
+    if ((error.message ?? "").toLowerCase().includes("blocked_between")) {
+      return { ok: false, error: "Bu kullanıcıya davet gönderemezsin." };
+    }
+    return { ok: false, error: describeSocialError(error.message) };
+  }
   return { ok: true };
 }
 

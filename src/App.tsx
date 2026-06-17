@@ -64,6 +64,7 @@ import { UsernameChangeModal } from "./components/UsernameChangeModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { BadgeShowcaseEditor } from "./components/BadgeShowcaseEditor";
+import { BlockedUsersModal } from "./components/BlockedUsersModal";
 import {
   getCurrentUser,
   loadOrCreateProfile,
@@ -2263,6 +2264,7 @@ export default function App() {
   // Merkezi "Profili Düzenle" hub'ı + rozet sergileme editörü (profil kartı akışı).
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [badgeShowcaseOpen, setBadgeShowcaseOpen] = useState(false);
+  const [blockedUsersOpen, setBlockedUsersOpen] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   /* Why the auth modal was opened. "conquest-invite" swaps the header copy to
@@ -2789,6 +2791,10 @@ useEffect(() => {
             setProfileEditOpen(false);
             setBadgeShowcaseOpen(true);
           }}
+          onChooseBlocked={() => {
+            setProfileEditOpen(false);
+            setBlockedUsersOpen(true);
+          }}
         />
       )}
 
@@ -2798,6 +2804,10 @@ useEffect(() => {
           onClose={() => setBadgeShowcaseOpen(false)}
           onSaved={() => setBadgeShowcaseOpen(false)}
         />
+      )}
+
+      {blockedUsersOpen && profile && (
+        <BlockedUsersModal onClose={() => setBlockedUsersOpen(false)} />
       )}
 
       {authOpen && (

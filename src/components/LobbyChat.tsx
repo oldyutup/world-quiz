@@ -16,10 +16,16 @@
  *   - Desktop: kartın sağında 320px panel, collapse edilebilir.
  *   - Mobile : sağ alt FAB → bottom-sheet.
  */
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase, type DuelMessage } from "../lib/supabase";
+import { listBlockedUsers } from "../lib/social";
 
 const MAX_LEN = 200;
+
+/** Sohbet adı katlama — engelli kullanıcı adıyla eşleştirmek için (TR-duyarlı). */
+function foldName(s: string | null | undefined): string {
+  return (s ?? "").trim().toLocaleLowerCase("tr");
+}
 
 interface Props {
   roomCode:   string;
@@ -165,6 +171,22 @@ export default function LobbyChat({
   const isControlled = onMobileSheetOpenChange !== undefined;
 
   const [messages, setMessages] = useState<DuelMessage[]>([]);
+  // Engellenen kullanıcıların adları (katlanmış). Mount'ta bir kez çekilir;
+  // engelli oyuncuların mesajları HEM geçmişte HEM realtime'da gizlenir.
+  // Sınır: chat mesajları profile_id taşımaz (yalnız player_name) → eşleşme
+  // kullanıcı adı üzerinden yapılır (giriş yapan oyuncuda ad = username).
+  const [blockedNames, setBlockedNames] = useState<Set<string>>(() => new Set());
+  const blockedNamesRef = useRef<Set<string>>(blockedNames);
+  useEffect(() => { blockedNamesRef.current = blockedNames; }, [blockedNames]);
+  useEffect(() => {
+    let alive = true;
+    void listBlockedUsers().then((list) => {
+      if (!alive) return;
+      setBlockedNames(new Set(list.map((u) => foldName(u.username)).filter(Boolean)));
+    });
+    return () => { alive = false; };
+  }, []);
+
   const [draft,    setDraft]    = useState("");
   const [open,     setOpen]     = useState(true);
   const [sheetOpen,setSheetOpen]= useState(false);
@@ -208,11 +230,23 @@ export default function LobbyChat({
   const addMessage = useCallback((msg: DuelMessage) => {
     const floor = minCreatedAtRef.current;
     if (floor && msg.created_at && msg.created_at < floor) return;
+    // Engellenen kullanıcının mesajı local state'e hiç girmesin.
+    if (blockedNamesRef.current.has(foldName(msg.player_name))) return;
     setMessages(prev => {
       if (prev.some(m => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
   }, []);
+
+  /* ── Görünür mesajlar: engelli kullanıcı mesajları gizlenir. Geçmiş yüklemesi
+     setMessages'i doğrudan kullandığından (addMessage'i atlar) ve block seti
+     async geldiğinden, render + unread bu türetilmiş listeden beslenir. ── */
+  const visibleMessages = useMemo(
+    () => (blockedNames.size === 0
+      ? messages
+      : messages.filter(m => !blockedNames.has(foldName(m.player_name)))),
+    [messages, blockedNames],
+  );
 
   /* ── 1) Geçmişi yükle (minCreatedAt verilirse yalnız o andan sonrası) ── */
   useEffect(() => {
@@ -298,12 +332,12 @@ export default function LobbyChat({
   }, [effectiveSheetOpen, scrollToBottom]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
-    const last = messages[messages.length - 1];
+    if (visibleMessages.length === 0) return;
+    const last = visibleMessages[visibleMessages.length - 1];
     if (last.player_name === myName) return; // kendi mesajım sayılmaz
     if (last.player_name !== myName) setUnread(u => u + 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
+  }, [visibleMessages]);
 
   useEffect(() => { if (open) setUnread(0); }, [open]);
   useEffect(() => { if (effectiveSheetOpen) setUnread(0); }, [effectiveSheetOpen]);
@@ -453,7 +487,7 @@ export default function LobbyChat({
 
         {open && (
           <>
-            <MsgList messages={messages} myName={myName} scrollRef={scrollRef} />
+            <MsgList messages={visibleMessages} myName={myName} scrollRef={scrollRef} />
             {notice && (
               <div
                 role="status"
@@ -518,7 +552,7 @@ fontWeight: 700,
                 ✕
               </button>
             </header>
-            <MsgList messages={messages} myName={myName} scrollRef={scrollRef} />
+            <MsgList messages={visibleMessages} myName={myName} scrollRef={scrollRef} />
             {notice && (
               <div
                 role="status"

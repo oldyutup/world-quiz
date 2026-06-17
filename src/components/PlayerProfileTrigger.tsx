@@ -14,13 +14,17 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import {
+  blockUser,
   getPublicProfile,
+  removeFriend,
   sendFriendRequest,
   sendRoomInvite,
+  unblockUser,
   type PublicProfile,
 } from "../lib/social";
 import { useSocialOptional } from "./SocialContext";
 import { PlayerProfileCard } from "./PlayerProfileCard";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface PlayerProfileTriggerProps {
   /** Hedef oyuncunun profil id'si. null/undefined → guest, tıklama no-op. */
@@ -42,10 +46,15 @@ export function PlayerProfileTrigger({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
+  /** Onay diyaloğu: arkadaşlıktan çıkar veya engelle. */
+  const [confirmKind, setConfirmKind] = useState<null | "remove" | "block">(null);
+  const [busy, setBusy] = useState(false);
 
   const close = useCallback(() => {
     setOpen(false);
     setProfile(null);
+    setConfirmKind(null);
+    setBusy(false);
   }, []);
 
   const handleOpen = useCallback(async () => {
@@ -84,6 +93,45 @@ export function PlayerProfileTrigger({
     const res = await sendRoomInvite({ recipientProfileId: profileId, roomCode: code, mode, roomUrl });
     social.toast(res.ok ? "Oyun daveti gönderildi." : res.error ?? "Davet gönderilemedi.");
   }, [profileId, social]);
+
+  // Engeli kaldırma onay gerektirmez (geri-dönüşlü, düşük riskli aksiyon).
+  const handleUnblock = useCallback(async () => {
+    if (!profileId) return;
+    const res = await unblockUser(profileId);
+    if (res.ok) {
+      social?.toast("Engel kaldırıldı.");
+      setProfile((prev) => (prev ? { ...prev, relationshipStatus: "none" } : prev));
+    } else {
+      social?.toast("Engel kaldırılamadı, tekrar dene.");
+    }
+  }, [profileId, social]);
+
+  // Onay diyaloğundaki "Onayla" → arkadaşlıktan çıkar veya engelle.
+  const handleConfirm = useCallback(async () => {
+    if (!profileId || !confirmKind) return;
+    setBusy(true);
+    if (confirmKind === "remove") {
+      const res = await removeFriend(profileId);
+      if (res.ok) {
+        social?.toast("Arkadaşlıktan çıkarıldı.");
+        social?.bumpFriends();
+        setProfile((prev) => (prev ? { ...prev, relationshipStatus: "none" } : prev));
+      } else {
+        social?.toast("İşlem tamamlanamadı, tekrar dene.");
+      }
+    } else {
+      const res = await blockUser(profileId);
+      if (res.ok) {
+        social?.toast("Kullanıcı engellendi.");
+        social?.bumpFriends();
+        setProfile((prev) => (prev ? { ...prev, relationshipStatus: "blocked" } : prev));
+      } else {
+        social?.toast("Kullanıcı engellenemedi, tekrar dene.");
+      }
+    }
+    setBusy(false);
+    setConfirmKind(null);
+  }, [profileId, confirmKind, social]);
 
   const isSelf = profile?.relationshipStatus === "self";
   const Tag = as;
@@ -138,6 +186,9 @@ export function PlayerProfileTrigger({
                 canInvite={!!social?.roomContext}
                 onAddFriend={handleAddFriend}
                 onInvite={handleInvite}
+                onRemoveFriend={() => setConfirmKind("remove")}
+                onBlock={() => setConfirmKind("block")}
+                onUnblock={handleUnblock}
                 onEditProfile={() => {
                   close();
                   social?.onEditProfile?.();
@@ -150,6 +201,32 @@ export function PlayerProfileTrigger({
             )}
           </div>
         </div>
+      )}
+
+      {confirmKind === "remove" && (
+        <ConfirmDialog
+          title="Arkadaşlıktan çıkar?"
+          description="Bu kullanıcı arkadaş listenden kaldırılacak."
+          confirmLabel="Arkadaşlıktan Çıkar"
+          cancelLabel="Vazgeç"
+          destructive
+          busy={busy}
+          onConfirm={() => void handleConfirm()}
+          onCancel={() => !busy && setConfirmKind(null)}
+        />
+      )}
+
+      {confirmKind === "block" && (
+        <ConfirmDialog
+          title="Kullanıcıyı engelle?"
+          description="Bu kullanıcı sana istek veya davet gönderemez. Mesajları görünmez. İstersen daha sonra engeli kaldırabilirsin."
+          confirmLabel="Engelle"
+          cancelLabel="Vazgeç"
+          destructive
+          busy={busy}
+          onConfirm={() => void handleConfirm()}
+          onCancel={() => !busy && setConfirmKind(null)}
+        />
       )}
     </>
   );

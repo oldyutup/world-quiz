@@ -20903,6 +20903,68 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   color: rgba(150, 178, 220, 0.55);
 }
 
+/* ── Engellenen kullanıcılar listesi (BlockedUsersModal — .bul-*) ──
+   .pem-* modal kabuğunu kullanır; yalnız liste/satır stilini ekler. */
+.bul-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: min(56vh, 420px);
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.bul-empty {
+  margin: 0;
+  padding: 28px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(170, 195, 230, 0.66);
+}
+.bul-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 13px;
+  border: 1px solid rgba(140, 170, 220, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+.bul-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.bul-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(232, 240, 255, 0.95);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bul-level {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(170, 195, 230, 0.72);
+}
+.bul-unblock {
+  flex-shrink: 0;
+  padding: 8px 13px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  color: rgba(232, 240, 255, 0.94);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  transition: border-color 0.12s, background 0.12s;
+}
+.bul-unblock:hover:not(:disabled) { border-color: var(--accent); }
+.bul-unblock:disabled { opacity: 0.5; cursor: default; }
+
 /* ════════════════════════════════════════════════════════════════════════
    Rozet sergileme editörü (BadgeShowcaseEditor — .bse-*)
    ════════════════════════════════════════════════════════════════════════ */
