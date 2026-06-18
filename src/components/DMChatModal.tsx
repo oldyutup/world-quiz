@@ -50,6 +50,12 @@ interface DMChatModalProps {
 
 export function DMChatModal({ friend, conversationId, loading, myProfileId }: DMChatModalProps) {
   const dm = useDm();
+  // KRİTİK: Bağlam metotları (useCallback ile) STABİL kimliklidir; ama `dm`
+  // (context value) `unread` her değişince YENİDEN oluşur. Bu metotları ayrı
+  // çekmezsek hydrate effect'i her unread güncellemesinde yeniden tetiklenir →
+  // sonsuz dm_list_messages/dm_mark_read/dm_unread_summary döngüsü. Stabil
+  // referansları kullanmak bu döngüyü kıran asıl düzeltmedir.
+  const { refreshUnread, bindIncoming, unbindIncoming, closeChat, getDraft, setDraft: setCtxDraft } = dm;
   const presence = usePresenceOptional();
   const { isMobile } = useIsMobile();
 
@@ -57,7 +63,7 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
   const [messages, setMessages] = useState<DmMessage[]>([]);
   // Geçmiş yükleme durumu — açık state'lerle: yükleniyor / hazır / hata.
   const [historyStatus, setHistoryStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [draft, setDraftState] = useState<string>(() => dm.getDraft(draftKey));
+  const [draft, setDraftState] = useState<string>(() => getDraft(draftKey));
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -71,6 +77,13 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
   // En az bir kez geçmiş BAŞARIYLA yüklendi mi? (Arka plan tazeleme hatası, hazır
   // görünümü hata ekranına düşürmesin diye.)
   const hasLoadedOnce = useRef(false);
+  // Aynı konuşma için aynı anda yalnız BİR fetch uçsun (initial + focus çakışması
+  // / focus+visibility ikili tetiklemesi ikinci isteği başlatmasın). Farklı
+  // konuşma serbest (sohbet değişiminde yeni hydrate gerekir).
+  const inFlightConvRef = useRef<string | null>(null);
+  // Monoton istek jetonu: geç gelen (bayat) fetch sonucu daha yeni state'i
+  // ezmesin. Konuşma değişince eski uçuş sonucu yutulur.
+  const reqTokenRef = useRef(0);
 
   const refreshPresence = presence.refresh; // stabil kimlik (useCallback)
   const username = friend.username ?? "—";
@@ -86,9 +99,9 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
     (value: string) => {
       const v = value.slice(0, MAX_LEN);
       setDraftState(v);
-      dm.setDraft(draftKey, v);
+      setCtxDraft(draftKey, v);
     },
-    [dm, draftKey]
+    [setCtxDraft, draftKey]
   );
 
   const showNotice = useCallback((text: string) => {
@@ -124,46 +137,77 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
                  arka plan tazelemesi sessiz başarısız, "ready" korunur. */
   const hydrate = useCallback(
     async (convId: string, isInitial: boolean) => {
+      // Aynı konuşma için zaten bir fetch uçuyorsa ikinciyi başlatma.
+      if (inFlightConvRef.current === convId) return;
+      inFlightConvRef.current = convId;
+      const token = ++reqTokenRef.current;
       if (isInitial) setHistoryStatus("loading");
-      const { ok, rows } = await fetchConversationHistory(convId);
-      if (ok) {
-        setMessages(rows);
-        hasLoadedOnce.current = true;
-        setHistoryStatus("ready");
-        scrollToBottom("auto");
-        await markConversationRead(convId);
-        void dm.refreshUnread();
-      } else if (!hasLoadedOnce.current) {
-        setHistoryStatus("error");
+      try {
+        const { ok, rows } = await fetchConversationHistory(convId);
+        // Bu sırada daha yeni bir fetch (ör. konuşma değişimi) başladıysa bayat
+        // sonucu YUT: ne listeyi ne durumu ezme.
+        if (token !== reqTokenRef.current) return;
+        if (ok) {
+          setMessages(rows);
+          hasLoadedOnce.current = true;
+          setHistoryStatus("ready");
+          scrollToBottom("auto");
+          // mark-read YALNIZ gerçek okunmamış GELEN mesaj varsa (kendi
+          // gönderdiklerim recipient değil; boş/okunmuş sohbette RPC israfı yok).
+          const hasUnreadInbound = rows.some(
+            (m) => m.recipientId === myProfileId && m.readAt === null
+          );
+          if (hasUnreadInbound) {
+            await markConversationRead(convId);
+            if (token === reqTokenRef.current) void refreshUnread();
+          }
+        } else if (!hasLoadedOnce.current) {
+          // Hiç başarılı yükleme olmadıysa hata (boş değil → retry). Daha önce
+          // yüklendiyse arka plan tazelemesi sessiz başarısız, "ready" korunur.
+          setHistoryStatus("error");
+        }
+      } finally {
+        // Yalnız hâlâ bu konuşma uçuştaysa serbest bırak (yeni konuşma
+        // başladıysa onun bayrağını silme).
+        if (inFlightConvRef.current === convId) inFlightConvRef.current = null;
       }
     },
-    [dm, scrollToBottom]
+    [refreshUnread, scrollToBottom, myProfileId]
   );
 
-  /* ── Konuşma hazır olunca: hydrate + realtime bağla. ── */
+  /* ── Konuşma hazır olunca: hydrate + realtime bağla. Tüm bağımlılıklar STABİL
+       (hydrate/bindIncoming/unbindIncoming/addMessage/scrollToBottom) → bu effect
+       YALNIZ conversationId değişiminde çalışır; unread güncellemeleri yeniden
+       tetiklemez (sonsuz fetch döngüsü buradan engellenir). ── */
   useEffect(() => {
     if (!conversationId) return;
     hasLoadedOnce.current = false; // yeni konuşma → temiz başla
-    // Her açılışta geçmişi SERVER'dan yeniden yükle (tek gerçek kaynak).
+    // Açılışta geçmişi SERVER'dan TEK SEFER yükle (tek gerçek kaynak).
     void hydrate(conversationId, true);
     // Realtime: bu konuşmaya gelen mesajları doğrudan listeye düşür (dedupe id).
-    dm.bindIncoming(conversationId, (m) => {
+    bindIncoming(conversationId, (m) => {
       addMessage(m);
       scrollToBottom("smooth");
     });
     return () => {
-      dm.unbindIncoming();
+      unbindIncoming();
     };
-    // dm yöntemleri stabil (useCallback); conversationId değişiminde yeniden bağla.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, addMessage, scrollToBottom, hydrate]);
+  }, [conversationId, addMessage, scrollToBottom, hydrate, bindIncoming, unbindIncoming]);
 
   /* ── Emniyet ağı: sekmeye/pencereye dönünce geçmişi DB'den tazele (arka planda
        kaçan realtime olabilir; tek gerçek kaynak yine server). ── */
   useEffect(() => {
     if (!conversationId) return;
+    // Debounce: sekmeye dönüş çoğu tarayıcıda focus + visibilitychange'i ART ARDA
+    // tetikler; kısa pencerede tek tazeleme yeter (inFlightConvRef de ikinciyi
+    // ayrıca eler). Aksiyon yoksa periyodik istek OLUŞMAZ — yalnız gerçek dönüşte.
+    let last = 0;
     const onActive = () => {
-      if (document.visibilityState === "visible") void hydrate(conversationId, false);
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - last < 2000) return;
+      last = now;
+      void hydrate(conversationId, false);
     };
     window.addEventListener("focus", onActive);
     document.addEventListener("visibilitychange", onActive);
@@ -185,11 +229,11 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
         setConfirmClear(false);
         return;
       }
-      dm.closeChat();
+      closeChat();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [dm, menuOpen, confirmClear]);
+  }, [closeChat, menuOpen, confirmClear]);
 
   /* ── Üç-nokta menüsü: dışarı tık ile kapan. ── */
   useEffect(() => {
@@ -267,20 +311,20 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
     setClearing(false);
     if (ok) {
       setMessages([]); // boş duruma dön; karşı taraf etkilenmez
-      void dm.refreshUnread();
+      void refreshUnread();
       setConfirmClear(false);
     } else {
       setConfirmClear(false);
       showNotice("Sohbet temizlenemedi, tekrar dene.");
     }
-  }, [conversationId, clearing, dm, showNotice]);
+  }, [conversationId, clearing, refreshUnread, showNotice]);
 
   const ready = !loading && !!conversationId;
 
   return (
     <div
       className={`dm-overlay${isMobile ? " dm-overlay--sheet" : ""}`}
-      onClick={() => dm.closeChat()}
+      onClick={() => closeChat()}
       role="presentation"
     >
       <div className="dm-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -338,7 +382,7 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
                 </div>
               )}
             </div>
-            <button type="button" className="dm-close" onClick={() => dm.closeChat()} aria-label="Kapat">
+            <button type="button" className="dm-close" onClick={() => closeChat()} aria-label="Kapat">
               ×
             </button>
           </div>
