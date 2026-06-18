@@ -4,9 +4,9 @@
  * Tek giriş noktası: profil kartındaki "Profili Düzenle" bu modalı açar. Modal
  * yalnızca bir yönlendirme merkezidir — kendi işini yapmaz, mevcut akışları
  * tetikler:
- *   - "Adı Değiştir"      → mevcut UsernameChangeModal (App yönetir)
- *   - "Avatarı Değiştir"  → mevcut AvatarPickerModal   (App yönetir)
- *   - "Rozetleri Sergile" → yeni BadgeShowcaseEditor    (App yönetir)
+ *   - "Kullanıcı adı ve şifre" → AccountSettingsModal (App yönetir)
+ *   - "Avatarı Değiştir"       → mevcut AvatarPickerModal (App yönetir)
+ *   - "Rozetleri Sergile"      → yeni BadgeShowcaseEditor (App yönetir)
  *
  * Mevcut username / avatar / achievement sistemlerine DOKUNMAZ; sadece UX'i
  * tek merkezde toplar. Premium koyu-mavi cam modal stili (.pem-*), apk/uc ile
@@ -18,8 +18,8 @@ import type { Profile } from "../lib/auth";
 interface Props {
   profile: Profile;
   onClose: () => void;
-  /** "Adı Değiştir" → mevcut kullanıcı adı değiştirme akışı. */
-  onChooseName: () => void;
+  /** "Kullanıcı adı ve şifre" → AccountSettingsModal (ad + şifre yönetimi). */
+  onChooseAccount: () => void;
   /** "Avatarı Değiştir" → mevcut avatar seçme akışı. */
   onChooseAvatar: () => void;
   /** "Rozetleri Sergile" → rozet sergileme editörü. */
@@ -103,7 +103,7 @@ interface Action {
 export function ProfileEditModal({
   profile,
   onClose,
-  onChooseName,
+  onChooseAccount,
   onChooseAvatar,
   onChooseBadges,
   onChooseBlocked,
@@ -118,11 +118,11 @@ export function ProfileEditModal({
 
   const actions: Action[] = [
     {
-      key: "name",
-      title: "Adı Değiştir",
-      desc: "Kullanıcı adını güncelle.",
+      key: "account",
+      title: "Kullanıcı adı ve şifre",
+      desc: "Kullanıcı adını veya giriş şifreni yönet.",
       icon: <NameIcon />,
-      onClick: onChooseName,
+      onClick: onChooseAccount,
     },
     {
       key: "avatar",

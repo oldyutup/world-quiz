@@ -43,6 +43,38 @@ const USERNAME_REGEX = /^[a-z0-9_çğıöşü]{3,16}$/;
 export const USERNAME_CHANGE_COST = 500;
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 14;
 
+/** Minimum şifre uzunluğu (client tarafı). Supabase password policy daha katıysa
+ *  updateUser/signUp hata döndürür ve o mesaj kullanıcıya yansıtılır. */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Tüm e-posta tabanlı auth çağrıları için tek normalleştirme: baş/son boşlukları
+ * kırp ve küçük harfe çevir. Aynı Google hesabının e-postası + sonradan
+ * belirlenen şifreyle tutarlı giriş için giriş, kayıt, sıfırlama ve reauth
+ * yollarının HEPSİ aynı kanonik formu kullanır.
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * E-posta tabanlı auth yönlendirmeleri (kayıt onayı, şifre sıfırlama) için
+ * kanonik origin. Production'da gerçek domaine gitmesi gerektiği ve KAYNAKTA
+ * localhost/geçici URL hardcode edilmemesi için sıra:
+ *   1. VITE_PUBLIC_SITE_URL (production'da .env ile verilir — native shell'de de
+ *      doğru web domainine işaret eder, capacitor://localhost'a DEĞİL)
+ *   2. window.location.origin (web dev + web prod için doğru çalışır)
+ * Sondaki '/' tekilleştirilir.
+ */
+export function getAuthRedirectOrigin(): string {
+  const fromEnv =
+    (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined)?.trim() || "";
+  const base =
+    fromEnv ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return base.replace(/\/+$/, "");
+}
+
 export type ChangeUsernameResult =
   | {
       ok: true;
@@ -129,10 +161,10 @@ export async function signUpWithEmail(
   username: string
 ) {
   return supabase.auth.signUp({
-    email: email.trim(),
+    email: normalizeEmail(email),
     password,
     options: {
-      emailRedirectTo: `${window.location.origin}/`,
+      emailRedirectTo: `${getAuthRedirectOrigin()}/`,
       data: {
         username,
       },
@@ -142,7 +174,7 @@ export async function signUpWithEmail(
 
 export async function signInWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({
-    email: email.trim(),
+    email: normalizeEmail(email),
     password,
   });
 }
@@ -151,9 +183,93 @@ export async function signInWithGoogle() {
   return supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: getAuthRedirectOrigin(),
     },
   });
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Şifre yönetimi — TAMAMEN Supabase Auth üzerinden. Şifre hiçbir zaman
+   profiles tablosunda, localStorage'da, uygulama state'inde veya ayrı bir DB
+   kolonunda tutulmaz. Client'ta service-role key YOKTUR.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * "Şifremi unuttum" — kayıtlı e-postaya şifre yenileme bağlantısı gönderir.
+ * Çağıran HER ZAMAN aynı genel başarı mesajını göstermeli (kullanıcı/sağlayıcı
+ * enumeration'ı önlemek için hata da başarı gibi ele alınır). redirectTo, e-posta
+ * linki açıldığında PASSWORD_RECOVERY akışını tetikleyen kanonik web origin'idir.
+ */
+export async function requestPasswordReset(email: string) {
+  return supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+    redirectTo: `${getAuthRedirectOrigin()}/`,
+  });
+}
+
+/**
+ * Aktif oturumdaki kullanıcının şifresini günceller/belirler (Supabase Auth).
+ * Üç yerde kullanılır: onboarding (Google ilk kayıt), profil "Şifre belirle"
+ * (Google-only) ve profil "Şifreyi değiştir" (reauth sonrası). Yeni auth user
+ * oluşturmaz; aynı hesaba (OAuth bağlantısı, profil, Gold, XP korunur) şifre
+ * ekler/değiştirir.
+ *
+ * `currentPassword` verilirse `current_password` olarak iletilir: bu alan YALNIZ
+ * sunucuda GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_CURRENT_PASSWORD açıkken
+ * dikkate alınır (varsayılan KAPALI; o durumda yok sayılır). Bu yüzden mevcut
+ * şifre doğrulaması tek başına buna BIRAKILMAZ; çağıran ayrıca güvenli reauth
+ * (verifyCurrentPassword) yapar. Bu parametre, ileride o bayrak açılırsa şifre
+ * değişiminin yine çalışması için ileri-uyumluluk sağlar.
+ */
+export async function updatePassword(newPassword: string, currentPassword?: string) {
+  // `current_password` DOĞRUDAN (spread değil) property olarak veriliyor ki
+  // TypeScript anahtar adını SDK'nın UserAttributes tipine göre doğrulasın:
+  // kurulu @supabase/auth-js 2.105.1 snake_case `current_password` bekler
+  // (`currentPassword` DEĞİL); spread, excess-property kontrolünü atlatır ve
+  // yanlış ad sessizce geçerdi. currentPassword undefined ise anahtar JSON
+  // serializasyonunda düşer; set/recovery/onboarding yollarında fazladan alan
+  // gönderilmez. Cast/any YOK.
+  return supabase.auth.updateUser({
+    password: newPassword,
+    current_password: currentPassword,
+  });
+}
+
+/**
+ * Mevcut şifreyi doğrular (reauthentication). Şifre değiştirmeden ÖNCE mevcut
+ * şifreyi güvenli biçimde teyit etmek için kullanılır: aynı kullanıcı için
+ * signInWithPassword çağrılır — doğruysa aynı kullanıcının oturumu tazelenir
+ * (duplicate user/profil OLUŞMAZ), yanlışsa error döner. Şifre hiçbir yerde
+ * saklanmaz; sadece bu çağrı boyunca bellekte kalır.
+ */
+export async function verifyCurrentPassword(email: string, currentPassword: string) {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: normalizeEmail(email),
+    password: currentPassword,
+  });
+  return { ok: !error, error };
+}
+
+/**
+ * Aktif oturumdaki kullanıcının e-posta/şifre kimliğine sahip olup olmadığını
+ * döndürür. Google-only kullanıcıda yalnız 'google' identity bulunur → false;
+ * şifre belirlendikten (ya da e-posta kayıt) sonra 'email' identity oluşur → true.
+ * "Şifre belirle" mi "Şifreyi değiştir" mi gösterileceğini seçmek için kullanılır.
+ * Tespitte tereddüt halinde güvenli taraf: false (yeni şifre belirleme akışı).
+ */
+export async function getAccountAuthInfo(): Promise<{
+  email: string | null;
+  hasPassword: boolean;
+}> {
+  const { data } = await supabase.auth.getUser();
+  const user = data.user;
+  if (!user) return { email: null, hasPassword: false };
+  const providers = new Set<string>();
+  for (const idn of user.identities ?? []) {
+    if (idn.provider) providers.add(idn.provider);
+  }
+  const metaProviders = (user.app_metadata?.providers as string[] | undefined) ?? [];
+  for (const p of metaProviders) providers.add(p);
+  return { email: user.email ?? null, hasPassword: providers.has("email") };
 }
 
 export async function signOut() {

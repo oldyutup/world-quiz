@@ -54,6 +54,7 @@ import {
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
 import NicknameModal from "./components/NicknameModal";
+import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
@@ -62,7 +63,7 @@ import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
 import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
-import { UsernameChangeModal } from "./components/UsernameChangeModal";
+import { AccountSettingsModal } from "./components/AccountSettingsModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { BadgeShowcaseEditor } from "./components/BadgeShowcaseEditor";
@@ -2250,6 +2251,58 @@ function needsUsernameSelection(p: Profile | null): boolean {
   return p.has_chosen_username !== true;
 }
 
+/** Şifre yenileme (recovery) bağlantısı açıldı mı? Supabase web flow'da recovery
+ *  token URL hash'ine yazılır. PASSWORD_RECOVERY event'i (App.onAuthStateChange)
+ *  asenkron geldiği için ilk paint'te de algılayabilmek adına URL senkron okunur:
+ *    - type=recovery (+access_token) → geçerli recovery → "valid"
+ *    - error_code=otp_expired / "expired" açıklaması → süresi dolmuş → "expired"
+ *  detectSessionInUrl hash'i tükettiğinden, çağrı App mount'unda erken yapılmalı. */
+function readRecoveryUrlState(): "valid" | "expired" | "none" {
+  if (typeof window === "undefined") return "none";
+  const raw =
+    (window.location.hash || "").replace(/^#/, "") +
+    "&" +
+    (window.location.search || "").replace(/^\?/, "");
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(raw);
+  } catch {
+    return "none";
+  }
+  if (params.get("type") === "recovery") return "valid";
+  const errBlob = `${params.get("error_code") ?? ""} ${
+    params.get("error_description") ?? ""
+  }`.toLowerCase();
+  if (/otp_expired|expired/.test(errBlob)) return "expired";
+  return "none";
+}
+
+/** Recovery token'larını URL'den (hash + ilgili query paramları) temizler ki
+ *  reload aynı recovery ekranını tekrar açmasın ve token adres çubuğunda kalmasın. */
+function clearRecoveryUrl() {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    for (const k of [
+      "type",
+      "error",
+      "error_code",
+      "error_description",
+      "access_token",
+      "refresh_token",
+      "expires_in",
+      "expires_at",
+      "token_type",
+    ]) {
+      url.searchParams.delete(k);
+    }
+    window.history.replaceState({}, "", url.toString());
+  } catch {
+    /* best effort */
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [continent, setContinent] = useState<ContinentFilter>("world");
@@ -2266,7 +2319,7 @@ export default function App() {
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
   const [profileNavOpen, setProfileNavOpen] = useState(false);
-  const [usernameModalOpen, setUsernameModalOpen] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   // Merkezi "Profili Düzenle" hub'ı + rozet sergileme editörü (profil kartı akışı).
   const [profileEditOpen, setProfileEditOpen] = useState(false);
@@ -2288,6 +2341,15 @@ export default function App() {
    * routing until the player picks a handle. Never set on web (gated on
    * IS_NATIVE_APP) — desktop/web social login is unchanged. */
   const [pendingNicknameUserId, setPendingNicknameUserId] = useState<string | null>(null);
+  /* Şifre yenileme (recovery) ekranı. İlk değer URL'den senkron okunur; geçerli
+   * recovery oturumu PASSWORD_RECOVERY event'iyle de doğrulanır (auth listener).
+   * "valid" iken normal giriş yerine güvenli yeni-şifre ekranı gösterilir. */
+  const [recoveryState, setRecoveryState] = useState<"none" | "valid" | "expired">(
+    () => readRecoveryUrlState()
+  );
+  /* AuthModal'ı doğrudan "Şifremi unuttum" görünümünde açmak için (geçersiz
+   * recovery bağlantısından "yeni bağlantı iste"). */
+  const [authStartInForgot, setAuthStartInForgot] = useState(false);
   const [soundEnabled, setSoundEnabledState] = useState(() => isSoundEnabled());
   const [countdownSoundMode, setCountdownSoundModeState] =
   useState<CountdownSoundMode>(() => getCountdownSoundMode());
@@ -2433,6 +2495,12 @@ useEffect(() => {
   // (gold / xp / username) with a stale row. Web behavior is unchanged: email
   // and Google logins set the same profile they already did, just idempotently.
   const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
+    // Şifre yenileme bağlantısı algılandı: geçerli recovery oturumu kuruldu.
+    // Güvenli yeni-şifre ekranını aç (normal home/giriş akışı yerine).
+    if (event === "PASSWORD_RECOVERY") {
+      if (alive) setRecoveryState("valid");
+      return;
+    }
     if (event === "SIGNED_OUT") {
       if (alive) setProfile(null);
       return;
@@ -2661,6 +2729,36 @@ useEffect(() => {
 }, [authLoading, profile]);
 
   const renderScreen = () => {
+  // Şifre yenileme bağlantısı açıldıysa her şeyin ÜSTÜNDE güvenli yeni-şifre
+  // ekranını göster (normal home/giriş akışına düşürme). Yalnızca geçerli
+  // recovery oturumunda form çalışır.
+  if (recoveryState !== "none") {
+    return (
+      <PasswordRecoveryScreen
+        valid={recoveryState === "valid"}
+        onDone={() => {
+          // Şifre güncellendi → recovery oturumunu kapat, kullanıcı yeni
+          // şifresiyle tekrar giriş yapsın (mesaj bunu vaat ediyor).
+          void signOut();
+          setProfile(null);
+          setRecoveryState("none");
+          clearRecoveryUrl();
+          setAuthStartInForgot(false);
+          setAuthOpen(true);
+        }}
+        onRequestNew={() => {
+          setRecoveryState("none");
+          clearRecoveryUrl();
+          setAuthStartInForgot(true);
+          setAuthOpen(true);
+        }}
+        onClose={() => {
+          setRecoveryState("none");
+          clearRecoveryUrl();
+        }}
+      />
+    );
+  }
   if (screen === "home")
   return (
     <>
@@ -2741,12 +2839,12 @@ useEffect(() => {
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
       )}
 
-      {usernameModalOpen && profile && (
-        <UsernameChangeModal
+      {accountModalOpen && profile && (
+        <AccountSettingsModal
           profile={profile}
           gold={gold}
-          onClose={() => setUsernameModalOpen(false)}
-          onSuccess={({ username, gold: newGold }) => {
+          onClose={() => setAccountModalOpen(false)}
+          onUsernameSuccess={({ username, gold: newGold }) => {
             setProfile((prev) =>
               prev
                 ? {
@@ -2759,7 +2857,7 @@ useEffect(() => {
                   }
                 : prev
             );
-            setUsernameModalOpen(false);
+            setAccountModalOpen(false);
           }}
         />
       )}
@@ -2783,9 +2881,9 @@ useEffect(() => {
         <ProfileEditModal
           profile={profile}
           onClose={() => setProfileEditOpen(false)}
-          onChooseName={() => {
+          onChooseAccount={() => {
             setProfileEditOpen(false);
-            setUsernameModalOpen(true);
+            setAccountModalOpen(true);
           }}
           onChooseAvatar={() => {
             setProfileEditOpen(false);
@@ -2817,6 +2915,7 @@ useEffect(() => {
       {authOpen && (
   <AuthModal
     isNative={IS_NATIVE_APP}
+    startInForgot={authStartInForgot}
     onNeedsUsername={(userId) => {
       // Native first-login social user with no handle. Hide the auth modal and
       // hand off to the NicknameModal, KEEPING pendingOnlineTarget +
@@ -2849,6 +2948,7 @@ useEffect(() => {
     }
     onClose={() => {
       setAuthOpen(false);
+      setAuthStartInForgot(false);
       // Dismissing the conquest auth prompt drops the pending invite so
       // a reload doesn't pester the user with the same login modal.
       if (authPromptReason === "conquest-invite") {
