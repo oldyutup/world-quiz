@@ -57,6 +57,8 @@ import NicknameModal from "./components/NicknameModal";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
+import { DmProvider } from "./components/DmContext";
+import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
 import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
@@ -78,6 +80,8 @@ import {
   spendGold as spendGoldStore,
   canClaimDailyBonus,
   claimDailyBonus,
+  useDailyReward,
+  refreshDailyReward,
   setActiveProfile as setActiveGoldProfile,
   DAILY_BONUS,
 } from "./lib/gold";
@@ -2251,7 +2255,10 @@ export default function App() {
   const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);
   const gold = useGold();
-  const [canBonus, setCanBonus] = useState<boolean>(() => canClaimDailyBonus());
+  // Günlük bonus uygunluğu artık tek kaynaktan (gold.ts gözlemlenebilir) gelir;
+  // böylece üst-sağ GoldBar ile Bildirimler panelindeki bonus kartı senkron kalır.
+  const dailyReward = useDailyReward();
+  const canBonus = dailyReward.available;
   const [authOpen, setAuthOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -2335,12 +2342,9 @@ export default function App() {
   };
 
   const handleAppClaimBonus = () => {
-  const result = claimDailyBonus();
-  if (result === null) {
-    setCanBonus(false);
-    return;
-  }
-  setCanBonus(false);
+  // claimDailyBonus() günlük-bonus gözlemlenebilirini false yapar → canBonus
+  // (useDailyReward) ve Bildirimler panelindeki kart birlikte güncellenir.
+  claimDailyBonus();
 };
 const handleSpendGold = (amount: number): boolean => {
   return spendGoldStore(amount);
@@ -2373,7 +2377,7 @@ useEffect(() => {
 // Refresh daily-bonus availability when returning to home (date may have rolled over
 // during a long session, or user might have claimed via another path).
 useEffect(() => {
-  if (screen === "home") setCanBonus(canClaimDailyBonus());
+  if (screen === "home") void refreshDailyReward();
 }, [screen]);
 
 // Tell the gold module who the active user is. Triggered only when profile.id changes
@@ -3049,7 +3053,11 @@ useEffect(() => {
       onOpenRewards={profile ? () => setAvatarModalOpen(true) : undefined}
       onJoinRoom={(roomUrl) => { window.location.href = roomUrl; }}
     >
-      {renderScreen()}
+      <PresenceProvider profile={profile}>
+        <DmProvider profile={profile}>
+          {renderScreen()}
+        </DmProvider>
+      </PresenceProvider>
     </SocialProvider>
   );
 }

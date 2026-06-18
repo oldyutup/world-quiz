@@ -21,7 +21,7 @@
  *
  * Arama aktifken (input dolu) sonuçlar, boşken arkadaş listesi gösterilir.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import {
   fetchFriends,
@@ -32,6 +32,8 @@ import {
   type SearchProfileResult,
 } from "../lib/social";
 import { useSocial } from "./SocialContext";
+import { useDm } from "./DmContext";
+import { usePresenceOptional } from "./PresenceContext";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
 import { EmojiIcon } from "./EmojiIcon";
@@ -58,6 +60,9 @@ function relationLabel(status: RelationshipStatus): { label: string; disabled: b
 
 export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
   const social = useSocial();
+  const dm = useDm();
+  const presence = usePresenceOptional();
+  const refreshPresence = presence.refresh; // stabil kimlik (useCallback)
   const { isMobile } = useIsMobile();
   const [open, setOpen] = useState(false);
   const [friends, setFriends] = useState<FriendRow[]>([]);
@@ -87,10 +92,12 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
         setLoading(false);
       }
     });
+    // Panel açılırken online arkadaş kümesini hemen tazele (nokta anlık doğru olsun).
+    void refreshPresence();
     return () => {
       alive = false;
     };
-  }, [open, friendsRefreshKey]);
+  }, [open, friendsRefreshKey, refreshPresence]);
 
   // Panel kapanınca aramayı sıfırla (yeniden açılışta temiz başlasın).
   useEffect(() => {
@@ -142,20 +149,37 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
 
   if (!social.profile) return null;
 
-  // Bekleyen (okunmamış) arkadaşlık isteği sayısı → Arkadaşlar butonu badge'i.
+  // Bekleyen (okunmamış) arkadaşlık isteği sayısı + okunmamış DM toplamı.
+  // İkisi de kırmızı "dikkat" göstergesi; tek badge'te toplanır (arkadaş
+  // toplamı ayrı, panel başlığındaki .notif-panel-count olarak korunur).
   const pendingRequests = social.notifications.filter(
     (n) => n.type === "friend_request" && !n.read_at
   ).length;
+  const attentionCount = pendingRequests + dm.totalUnread;
 
   const badge =
-    pendingRequests > 0 ? (
+    attentionCount > 0 ? (
       <span
         className={variant === "row" ? "social-menu-row-badge" : "social-btn-badge"}
-        aria-label={`${pendingRequests} bekleyen arkadaşlık isteği`}
+        aria-label={`${dm.totalUnread} okunmamış mesaj, ${pendingRequests} bekleyen istek`}
       >
-        {pendingRequests > 99 ? "99+" : pendingRequests}
+        {attentionCount > 99 ? "99+" : attentionCount}
       </span>
     ) : null;
+
+  // Okunmamış DM'i olan arkadaşları üste taşı (stabil; mevcut sıra korunur).
+  const sortedFriends = useMemo(() => {
+    return friends
+      .map((f, i) => ({ f, i }))
+      .sort((a, b) => {
+        const ua = dm.unreadFor(a.f.profileId);
+        const ub = dm.unreadFor(b.f.profileId);
+        if (ua !== ub) return ub - ua;
+        return a.i - b.i;
+      })
+      .map((x) => x.f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [friends, dm.unread]);
 
   // Arama sonucundan arkadaş isteği gönder — yine send_friend_request RPC.
   const addFriend = async (r: SearchProfileResult) => {
@@ -307,26 +331,62 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
                   </span>
                 </div>
               ) : (
-                friends.map((f) => (
-                  <PlayerProfileTrigger
-                    key={f.profileId}
-                    profileId={f.profileId}
-                    className="friend-row"
-                  >
-                    <PlayerAvatar
-                      avatarId={f.avatarId}
-                      username={f.username}
-                      size="sm"
-                      frameId={f.activeAvatarFrameId}
-                      className="friend-row-avatar"
-                    />
-                    <span className="friend-row-id">
-                      <span className="friend-row-name">@{f.username ?? "—"}</span>
-                      <span className="friend-row-level">Seviye {f.level}</span>
-                    </span>
-                    <span className="friend-row-status" aria-hidden="true" />
-                  </PlayerProfileTrigger>
-                ))
+                sortedFriends.map((f) => {
+                  const unread = dm.unreadFor(f.profileId);
+                  const online = presence.isOnline(f.profileId);
+                  return (
+                    <div key={f.profileId} className="friend-row-wrap">
+                      <PlayerProfileTrigger
+                        profileId={f.profileId}
+                        className="friend-row friend-row--dm"
+                      >
+                        <span className="friend-avatar-wrap">
+                          <PlayerAvatar
+                            avatarId={f.avatarId}
+                            username={f.username}
+                            size="sm"
+                            frameId={f.activeAvatarFrameId}
+                            className="friend-row-avatar"
+                          />
+                          <span
+                            className={`presence-dot presence-dot--${online ? "online" : "offline"}`}
+                            aria-label={online ? "Çevrimiçi" : "Çevrimdışı"}
+                          />
+                        </span>
+                        <span className="friend-row-id">
+                          <span className="friend-row-name">@{f.username ?? "—"}</span>
+                          <span className="friend-row-level">Seviye {f.level}</span>
+                        </span>
+                      </PlayerProfileTrigger>
+                      <button
+                        type="button"
+                        className={"friend-dm-btn" + (unread > 0 ? " friend-dm-btn--unread" : "")}
+                        onClick={() =>
+                          dm.openChatWith({
+                            profileId: f.profileId,
+                            username: f.username,
+                            avatarId: f.avatarId,
+                            frameId: f.activeAvatarFrameId,
+                          })
+                        }
+                        aria-label={`@${f.username ?? ""} kişisine mesaj gönder`}
+                        title="Mesaj gönder"
+                      >
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                          <path
+                            fill="currentColor"
+                            d="M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4V6a2 2 0 0 1 2-2z"
+                          />
+                        </svg>
+                        {unread > 0 && (
+                          <span className="friend-dm-badge" aria-label={`${unread} okunmamış mesaj`}>
+                            {unread > 9 ? "9+" : unread}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

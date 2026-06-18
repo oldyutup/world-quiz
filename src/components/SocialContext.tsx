@@ -34,6 +34,11 @@ import {
   type ClearNotificationsResult,
   type NotificationRow,
 } from "../lib/social";
+import {
+  claimDailyBonusAsync,
+  refreshDailyReward,
+  useDailyReward,
+} from "../lib/gold";
 
 export interface RoomContext {
   /** 6 karakterli oda kodu. */
@@ -53,6 +58,11 @@ interface SocialContextValue {
   markAllRead: () => Promise<void>;
   /** Bildirimleri temizler (aksiyon gerektirenler korunur); sonucu döndürür. */
   clearNotifications: () => Promise<ClearNotificationsResult>;
+
+  /** Günlük +50 Gold bonusu şu an alınabilir mi? (server-otoriteli) */
+  dailyRewardAvailable: boolean;
+  /** "+50 Gold'u Al" — claim_daily_gold_bonus üzerinden alır, toast gösterir. */
+  claimDailyReward: () => Promise<void>;
 
   roomContext: RoomContext | null;
   setRoomContext: (ctx: RoomContext | null) => void;
@@ -182,6 +192,58 @@ export function SocialProvider({
     return res;
   }, [refreshNotifications]);
 
+  /* ── Günlük +50 Gold bonusu (server-otoriteli, gold.ts gözlemlenebilir) ──
+   * Tek otorite: claim_daily_gold_bonus + gold_transactions. Burada yalnız
+   * uygunluğu tazeleyip badge'e + bildirim kartına yansıtıyoruz. İkinci bir
+   * sayaç/state yok; "+50 Gold'u Al" yine mevcut RPC'den geçer. */
+  const daily = useDailyReward();
+
+  // Login değişiminde uygunluğu server'dan tazele.
+  useEffect(() => {
+    if (profileId) void refreshDailyReward();
+  }, [profileId]);
+
+  // Sekmeye geri dönünce / görünür olunca tazele (gün dönmüş olabilir,
+  // ya da başka sekmede claim edilmiş olabilir).
+  useEffect(() => {
+    if (!profileId) return;
+    const onActive = () => {
+      if (document.visibilityState === "visible") void refreshDailyReward();
+    };
+    window.addEventListener("focus", onActive);
+    document.addEventListener("visibilitychange", onActive);
+    return () => {
+      window.removeEventListener("focus", onActive);
+      document.removeEventListener("visibilitychange", onActive);
+    };
+  }, [profileId]);
+
+  // Uygulama açıkken bonus zamanı gelince (server availableAt) durumu yenile.
+  useEffect(() => {
+    if (!profileId || daily.available || !daily.availableAt) return;
+    const ms = new Date(daily.availableAt).getTime() - Date.now();
+    if (ms <= 0) {
+      void refreshDailyReward();
+      return;
+    }
+    // setTimeout 32-bit sınırı; uzun beklemede de güvenli.
+    const t = window.setTimeout(() => void refreshDailyReward(), Math.min(ms + 1000, 2_000_000_000));
+    return () => window.clearTimeout(t);
+  }, [profileId, daily.available, daily.availableAt]);
+
+  const claimDailyReward = useCallback(async () => {
+    const res = await claimDailyBonusAsync();
+    if (res.ok) {
+      toast("Günlük bonusun hesabına eklendi: +50 Gold 🎁");
+    } else if (res.code === "already_claimed") {
+      toast("Günlük bonusu bugün zaten aldın.");
+    } else {
+      toast("Bonus alınamadı, tekrar dene.");
+    }
+    // Bir sonraki uygunluk anını (availableAt) server'dan al.
+    void refreshDailyReward();
+  }, [toast]);
+
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.read_at).length,
     [notifications]
@@ -196,6 +258,8 @@ export function SocialProvider({
       markRead,
       markAllRead,
       clearNotifications,
+      dailyRewardAvailable: daily.available,
+      claimDailyReward,
       roomContext,
       setRoomContext,
       friendsRefreshKey,
@@ -215,6 +279,8 @@ export function SocialProvider({
       markRead,
       markAllRead,
       clearNotifications,
+      daily.available,
+      claimDailyReward,
       roomContext,
       friendsRefreshKey,
       bumpFriends,

@@ -32,8 +32,10 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  const { notifications, unreadCount, markAllRead, refreshNotifications } = social;
+  const { notifications, unreadCount, markAllRead, refreshNotifications, dailyRewardAvailable } = social;
   const hasNotifications = notifications.length > 0;
+  // Bell badge'i okunmamış bildirimler + (varsa) aksiyon bekleyen günlük bonus.
+  const badgeCount = unreadCount + (dailyRewardAvailable ? 1 : 0);
 
   // Açılışta taze veri (realtime fallback).
   useEffect(() => {
@@ -61,12 +63,12 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
   if (!social.profile) return null;
 
   const badge =
-    unreadCount > 0 ? (
+    badgeCount > 0 ? (
       <span
         className={variant === "bar" ? "social-btn-badge" : variant === "row" ? "social-menu-row-badge" : "notif-badge"}
-        aria-label={`${unreadCount} okunmamış bildirim`}
+        aria-label={`${badgeCount} okunmamış bildirim`}
       >
-        {unreadCount > 99 ? "99+" : unreadCount}
+        {badgeCount > 99 ? "99+" : badgeCount}
       </span>
     ) : null;
 

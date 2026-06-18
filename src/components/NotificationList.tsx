@@ -15,6 +15,49 @@ import { useState } from "react";
 import { respondFriendRequest, type NotificationRow } from "../lib/social";
 import { useSocial } from "./SocialContext";
 
+/**
+ * Günlük +50 Gold bonus kartı — oyun daveti kartıyla aynı görsel dilde,
+ * aksiyon gerektiren (action-required) bir karttır. Claim mevcut server RPC'sine
+ * (claim_daily_gold_bonus) gider; alınınca SocialContext.dailyRewardAvailable
+ * false olur ve kart listeden kalkar.
+ */
+function DailyRewardCard() {
+  const social = useSocial();
+  const [claiming, setClaiming] = useState(false);
+
+  const handleClaim = async () => {
+    if (claiming) return;
+    setClaiming(true);
+    await social.claimDailyReward();
+    // Başarı/zaten-alındı durumunda kart, dailyRewardAvailable=false ile kalkar.
+    setClaiming(false);
+  };
+
+  return (
+    <div className="notif-item notif-item--unread notif-item--daily">
+      <div className="notif-item-main">
+        <span className="notif-item-title">
+          <span className="notif-daily-gift" aria-hidden="true">🎁</span> Günlük bonusun hazır
+        </span>
+        <span className="notif-item-body">+50 Gold seni bekliyor.</span>
+      </div>
+      <div className="notif-item-actions">
+        <button
+          type="button"
+          className="notif-act notif-act--accept"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleClaim();
+          }}
+          disabled={claiming}
+        >
+          {claiming ? "Alınıyor…" : "+50 Gold'u Al"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(iso: string): string {
   const then = new Date(iso).getTime();
   const diff = Date.now() - then;
@@ -89,12 +132,17 @@ export function NotificationList({
     onNavigate?.();
   };
 
-  if (rows.length === 0) {
+  // Günlük bonus kartı yalnız genel bildirim görünümünde (filtreli sekmelerde
+  // değil) ve bonus alınabilir durumdayken gösterilir.
+  const showDaily = !filter && social.dailyRewardAvailable;
+
+  if (rows.length === 0 && !showDaily) {
     return <div className="notif-empty">{emptyText}</div>;
   }
 
   return (
     <div className="notif-list">
+      {showDaily && <DailyRewardCard />}
       {rows.map((n) => (
         <div
           key={n.id}

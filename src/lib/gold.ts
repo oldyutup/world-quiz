@@ -45,6 +45,34 @@ let activeProfileId: string | null = null;
 let cachedGold = readLocal();
 let listeners: Array<(n: number) => void> = [];
 
+/* ── Günlük bonus uygunluğu (server-otoriteli gözlemlenebilir) ──────────────
+ * Hem üst-sağ GoldBar ("+50 Günlük Bonus") hem de Bildirimler panelindeki
+ * "Günlük bonusun hazır" kartı AYNI kaynaktan beslensin diye günlük uygunluğu
+ * burada tutuyoruz. Tek otorite yine server: misafirde localStorage,
+ * giriş yapmışta daily_gold_reward_status RPC'si. Hiçbir ikinci timer/sayaç
+ * burada yaşamaz; UI yalnızca refreshDailyReward()/claim sonrası bu cache'i okur.
+ */
+export interface DailyRewardState {
+  /** Günlük bonus şu an alınabilir mi? */
+  available: boolean;
+  /** Alınamıyorsa bir sonraki uygunluk anı (ISO, server). Hafif yenileme için. */
+  availableAt: string | null;
+}
+let dailyAvailable: boolean = canClaimDailyBonus();
+let dailyAvailableAt: string | null = null;
+let dailyListeners: Array<(s: DailyRewardState) => void> = [];
+
+function emitDaily() {
+  const snap: DailyRewardState = { available: dailyAvailable, availableAt: dailyAvailableAt };
+  for (const cb of dailyListeners) cb(snap);
+}
+
+function setDailyReward(available: boolean, availableAt: string | null): void {
+  dailyAvailable = available;
+  dailyAvailableAt = availableAt;
+  emitDaily();
+}
+
 function readLocal(): number {
   try {
     return Math.max(0, parseInt(localStorage.getItem(GOLD_KEY) ?? "0", 10) || 0);
@@ -100,6 +128,8 @@ export function setActiveProfile(
     cachedGold = next;
     emit(next);
   }
+  // Login/logout → günlük bonus uygunluğunu (server-otoriteli) tazele.
+  void refreshDailyReward();
 }
 
 /**
@@ -322,6 +352,8 @@ export function claimDailyBonus(): number | null {
   } catch {
     /* ignore */
   }
+  // Optimistic: bonus alındı → her iki UI (GoldBar + bildirim kartı) gizlensin.
+  setDailyReward(false, dailyAvailableAt);
 
   if (!activeProfileId) {
     // Misafir: lokal mod, RPC yok.
@@ -336,6 +368,8 @@ export function claimDailyBonus(): number | null {
       if (error) {
         console.error("[gold] claim_daily_gold_bonus RPC error:", error);
         setCache(Math.max(0, cachedGold - DAILY_BONUS));
+        // Hata: gerçek durumu server'dan tazele (optimistic geri alınabilir).
+        void refreshDailyReward();
         return;
       }
       if (data && typeof data === "object") {
@@ -349,12 +383,105 @@ export function claimDailyBonus(): number | null {
           setCache(res.gold);
           return;
         }
-        // Diger durumlar: optimistic'i geri al.
+        // Diger durumlar: optimistic'i geri al + durumu tazele.
         setCache(Math.max(0, cachedGold - DAILY_BONUS));
+        void refreshDailyReward();
       }
     });
 
   return optimistic;
+}
+
+/**
+ * Günlük bonus durumunu server'dan tazeler (tek otorite). Sonucu
+ * gözlemlenebilir cache'e yazar; UI useDailyReward() ile dinler.
+ *
+ *  - Misafir: localStorage işaretine göre (cihaz-yerel).
+ *  - Giriş yapmış: daily_gold_reward_status RPC (gold_transactions üzerinden,
+ *    client saatine güvenmez).
+ */
+export async function refreshDailyReward(): Promise<void> {
+  if (!activeProfileId) {
+    setDailyReward(canClaimDailyBonus(), null);
+    return;
+  }
+  const { data, error } = await supabase.rpc("daily_gold_reward_status");
+  if (error) {
+    console.error("[gold] daily_gold_reward_status RPC error:", error);
+    return; // mevcut durumu koru
+  }
+  const res = (data ?? {}) as { ok?: boolean; available?: boolean; available_at?: string | null };
+  if (res.ok) {
+    setDailyReward(!!res.available, res.available_at ?? null);
+  }
+}
+
+/**
+ * Awaited günlük bonus claim — Bildirimler panelindeki "+50 Gold'u Al" kartı
+ * için. claimDailyBonus() ile AYNI server kaynağını (claim_daily_gold_bonus)
+ * kullanır; iki sekme aynı anda çağırsa bile server idempotent/atomik olduğu
+ * için yalnızca bir kez +50 verir. Donus: { ok, gold?, code? }.
+ */
+export async function claimDailyBonusAsync(): Promise<{ ok: boolean; gold?: number; code?: string }> {
+  if (!activeProfileId) {
+    // Misafir: lokal mod.
+    if (!canClaimDailyBonus()) {
+      setDailyReward(false, dailyAvailableAt);
+      return { ok: false, code: "already_claimed", gold: cachedGold };
+    }
+    try {
+      localStorage.setItem(GOLD_BONUS_KEY, new Date().toDateString());
+    } catch {
+      /* ignore */
+    }
+    setDailyReward(false, null);
+    return { ok: true, gold: setCache(cachedGold + DAILY_BONUS) };
+  }
+
+  const { data, error } = await supabase.rpc("claim_daily_gold_bonus");
+  if (error) {
+    console.error("[gold] claim_daily_gold_bonus RPC error:", error);
+    return { ok: false, code: "error" };
+  }
+  const res = (data ?? {}) as { ok?: boolean; gold?: number; code?: string };
+
+  if (res.ok && typeof res.gold === "number") {
+    try {
+      localStorage.setItem(GOLD_BONUS_KEY, new Date().toDateString());
+    } catch {
+      /* ignore */
+    }
+    setCache(res.gold);
+    setDailyReward(false, dailyAvailableAt);
+    return { ok: true, gold: res.gold };
+  }
+  if (res.code === "already_claimed") {
+    if (typeof res.gold === "number") setCache(res.gold);
+    setDailyReward(false, dailyAvailableAt);
+    return { ok: false, code: "already_claimed", gold: res.gold };
+  }
+  return { ok: false, code: res.code ?? "error" };
+}
+
+/** Senkron okuma — UI initial state için. */
+export function getDailyReward(): DailyRewardState {
+  return { available: dailyAvailable, availableAt: dailyAvailableAt };
+}
+
+/**
+ * React hook: günlük bonus uygunluğunu abone olarak okur. GoldBar ve bildirim
+ * kartı bu tek kaynaktan beslenir; biri claim edince diğeri de güncellenir.
+ */
+export function useDailyReward(): DailyRewardState {
+  const [state, setState] = useState<DailyRewardState>(getDailyReward);
+  useEffect(() => {
+    dailyListeners.push(setState);
+    setState(getDailyReward());
+    return () => {
+      dailyListeners = dailyListeners.filter((l) => l !== setState);
+    };
+  }, []);
+  return state;
 }
 
 /**

@@ -21484,3 +21484,400 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Günlük bonus bildirim kartı + Arkadaşlar DM (mesaj ikonu, badge, modal)
+   Mevcut koyu-lacivert Torble panel dili; oyun daveti kartıyla aynı aile.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Bildirimler panelindeki "Günlük bonusun hazır" kartı ── */
+.notif-item--daily {
+  background:
+    linear-gradient(90deg, rgba(245, 200, 90, 0.10), rgba(88, 166, 255, 0.06));
+  border-bottom: 1px solid rgba(245, 205, 110, 0.16);
+}
+.notif-item--daily .notif-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.notif-daily-gift {
+  font-size: 15px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* ── Arkadaş satırı + mesaj (DM) butonu ── */
+.friend-row-wrap {
+  position: relative;
+  display: block;
+}
+.friend-row-wrap .friend-row--dm {
+  /* Sağ alt köşedeki mesaj butonuna yer aç. */
+  padding-right: 52px;
+}
+.friend-dm-btn {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 170, 220, 0.22);
+  background: rgba(88, 166, 255, 0.10);
+  color: rgba(200, 222, 255, 0.92);
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, color 0.14s, transform 0.05s;
+}
+.friend-dm-btn:hover {
+  background: rgba(88, 166, 255, 0.22);
+  border-color: var(--accent);
+  color: #eaf3ff;
+}
+.friend-dm-btn:active { transform: translateY(-50%) scale(0.94); }
+.friend-dm-btn--unread {
+  background: rgba(248, 81, 73, 0.16);
+  border-color: rgba(248, 81, 73, 0.5);
+  color: #ffd9d6;
+}
+.friend-dm-btn--unread:hover {
+  background: rgba(248, 81, 73, 0.26);
+  border-color: var(--red);
+}
+.friend-dm-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 2px rgba(14, 20, 34, 0.95);
+}
+
+/* ════ DM sohbet modalı ════ */
+.dm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 10, 18, 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: uc-fade-in 0.16s ease-out;
+}
+.dm-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100%);
+  height: min(560px, 82vh);
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(140, 170, 220, 0.22);
+  background: linear-gradient(170deg, rgba(22, 30, 48, 0.985), rgba(13, 19, 32, 0.985));
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.58);
+  color: rgba(232, 240, 255, 0.94);
+  animation: uc-pop 0.18s cubic-bezier(0.18, 0.9, 0.32, 1.18);
+}
+.dm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(140, 170, 220, 0.14);
+  background: rgba(16, 22, 36, 0.7);
+}
+.dm-head-avatar { flex: 0 0 auto; }
+.dm-head-id {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.dm-head-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: #eaf1ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dm-head-sub { font-size: 11.5px; color: var(--muted); }
+.dm-close {
+  all: unset;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  font-size: 20px;
+  line-height: 1;
+  color: rgba(210, 220, 240, 0.7);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.dm-close:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+
+.dm-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+.dm-loading,
+.dm-empty,
+.dm-error {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* Geçmiş yüklenemedi: boş state DEĞİL → açık hata + tekrar dene (mesajlar
+   read EDİLMEZ; DB'deki geçmiş kaybolmaz, retry yeniden çeker). */
+.dm-error {
+  flex-direction: column;
+  gap: 12px;
+}
+.dm-error-text { color: #e8f0ff; font-weight: 600; }
+.dm-retry {
+  all: unset;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 170, 220, 0.3);
+  background: rgba(88, 166, 255, 0.12);
+  color: #eaf3ff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s;
+}
+.dm-retry:hover { background: rgba(88, 166, 255, 0.22); border-color: var(--accent); }
+.dm-retry:active { transform: translateY(1px); }
+.dm-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dm-msg {
+  display: flex;
+  max-width: 82%;
+}
+.dm-msg--me { align-self: flex-end; justify-content: flex-end; }
+.dm-msg--them { align-self: flex-start; }
+.dm-bubble {
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dm-msg--them .dm-bubble {
+  background: rgba(120, 150, 200, 0.14);
+  border: 1px solid rgba(140, 170, 220, 0.16);
+  border-bottom-left-radius: 5px;
+  color: #e8f0ff;
+}
+.dm-msg--me .dm-bubble {
+  background: linear-gradient(135deg, rgba(60, 130, 230, 0.95), rgba(96, 92, 224, 0.95));
+  border: 1px solid rgba(140, 170, 255, 0.45);
+  border-bottom-right-radius: 5px;
+  color: #fff;
+}
+
+.dm-notice {
+  margin: 0 14px 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dm-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(140, 170, 220, 0.14);
+  background: rgba(16, 22, 36, 0.6);
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.dm-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  min-height: 38px;
+  resize: none;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(140, 170, 220, 0.26);
+  background: rgba(10, 15, 26, 0.85);
+  color: #eaf1ff;
+  font-size: 13.5px;
+  line-height: 1.4;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.14s;
+}
+.dm-input:focus { border-color: var(--accent); }
+.dm-input::placeholder { color: rgba(150, 168, 200, 0.6); }
+.dm-input:disabled { opacity: 0.6; }
+.dm-send {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(60, 130, 230, 0.95), rgba(96, 92, 224, 0.95));
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: filter 0.14s, opacity 0.14s, transform 0.05s;
+}
+.dm-send:hover:not(:disabled) { filter: brightness(1.1); }
+.dm-send:active:not(:disabled) { transform: translateY(1px); }
+.dm-send:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Presence (çevrimiçi/çevrimdışı) noktası ──
+   Çok küçük, sade bir durum pip'i. Avatarın alt-sol köşesine oturur; sağdaki
+   kırmızı okunmamış badge'iyle KARIŞMAZ (o mesaj ikonunda/satır sağında kalır).
+   Belirsizlik = gri (offline); yalnız canlı presence yeşil yapar. */
+.friend-avatar-wrap,
+.dm-head-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.presence-dot {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(14, 20, 34, 0.95);
+  pointer-events: none;
+}
+.presence-dot--head { box-shadow: 0 0 0 2px rgba(17, 23, 38, 0.96); }
+.presence-dot--online {
+  background: #3fb950;
+  box-shadow: 0 0 0 2px rgba(14, 20, 34, 0.95), 0 0 6px rgba(63, 185, 80, 0.6);
+}
+.presence-dot--head.presence-dot--online {
+  box-shadow: 0 0 0 2px rgba(17, 23, 38, 0.96), 0 0 6px rgba(63, 185, 80, 0.6);
+}
+.presence-dot--offline { background: rgba(150, 170, 200, 0.45); }
+.dm-head-sub--online { color: #56d364; font-weight: 700; }
+
+/* ── DM başlık aksiyonları: üç-nokta menü + kapat ── */
+.dm-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.dm-menu-wrap { position: relative; }
+.dm-menu-btn {
+  all: unset;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: rgba(210, 220, 240, 0.7);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.dm-menu-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.dm-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(140, 170, 220, 0.22);
+  background: linear-gradient(170deg, rgba(26, 34, 52, 0.99), rgba(18, 24, 40, 0.99));
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  animation: uc-pop 0.14s ease-out;
+}
+.dm-menu-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8f0ff;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.dm-menu-item:hover { background: rgba(120, 150, 200, 0.14); }
+.dm-menu-item--danger { color: #ff9b94; }
+.dm-menu-item--danger:hover { background: rgba(248, 81, 73, 0.16); color: #ffd9d6; }
+.dm-menu-item:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Karşı taraf çevrimdışıyken input üstü sade bilgi (tam çerçeveli, kenar
+   şeridi YOK). Online olunca render edilmez → otomatik kaybolur. ── */
+.dm-offline-hint {
+  margin: 0 14px 8px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: rgba(120, 150, 200, 0.10);
+  border: 1px solid rgba(140, 170, 220, 0.16);
+  color: rgba(202, 215, 240, 0.82);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Dar ekran: modal alt sayfaya (bottom-sheet) yapışsın. */
+.dm-overlay--sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+.dm-overlay--sheet .dm-modal {
+  width: 100%;
+  height: 86vh;
+  border-radius: 18px 18px 0 0;
+  animation: uc-slide-up 0.2s cubic-bezier(0.18, 0.9, 0.32, 1.1);
+}
+@keyframes uc-slide-up {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to   { transform: translateY(0); opacity: 1; }
+}
