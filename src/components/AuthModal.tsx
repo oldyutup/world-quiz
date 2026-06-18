@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import {
   getCurrentUser,
   getProfile,
   loadOrCreateProfile,
+  requestPasswordReset,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
@@ -18,6 +19,24 @@ import { signInWithApple } from "../lib/appleAuth";
 import { signInWithGoogleNative } from "../lib/googleAuth";
 
 type AuthMode = "login" | "signup";
+/** Modal gövdesi: normal giriş/kayıt görünümü ya da "Şifremi unuttum" akışı.
+ *  Aynı koyu-lacivert modal kabuğu içinde view değiştirilir (ayrı overlay yok). */
+type AuthView = "auth" | "forgot";
+
+/** "Şifremi unuttum" spam'ini önlemek için kısa istemci-tarafı cooldown.
+ *  Sunucu tarafında Supabase Auth ayrıca rate-limit uygular. */
+const RESET_COOLDOWN_SECONDS = 45;
+const RESET_COOLDOWN_KEY = "torble_pwreset_cooldown_until";
+
+function readResetCooldownRemaining(): number {
+  try {
+    const until = Number(localStorage.getItem(RESET_COOLDOWN_KEY) || 0);
+    if (!Number.isFinite(until)) return 0;
+    return Math.max(0, Math.ceil((until - Date.now()) / 1000));
+  } catch {
+    return 0;
+  }
+}
 
 type AuthModalProps = {
   onClose: () => void;
@@ -37,6 +56,9 @@ type AuthModalProps = {
    *  the NicknameModal, preserving the pending online target. Web never wires
    *  this and never reaches the native social branch that calls it. */
   onNeedsUsername?: (userId: string) => void;
+  /** Modal açılışında doğrudan "Şifremi unuttum" görünümünü göster (geçersiz/
+   *  süresi dolmuş recovery bağlantısından "yeni bağlantı iste" akışı için). */
+  startInForgot?: boolean;
 };
 
 export default function AuthModal({
@@ -47,8 +69,15 @@ export default function AuthModal({
   hideGuest,
   isNative = false,
   onNeedsUsername,
+  startInForgot = false,
 }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
+  // "Şifremi unuttum" görünümü — giriş görünümünden link ile geçilir.
+  const [view, setView] = useState<AuthView>(startInForgot ? "forgot" : "auth");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetCooldown, setResetCooldown] = useState(0);
   // Native only: the email/password form starts collapsed behind a disclosure
   // button. On web it's effectively always open (the render gate below never
   // hides it), so this flag has no web-visible effect.
@@ -73,6 +102,60 @@ export default function AuthModal({
   // (Android) the Apple button keeps its prior "coming soon" stub behavior so
   // we don't trigger a misconfigured flow. Web never renders the button at all.
   const isApplePlatform = isNative && Capacitor.getPlatform() === "ios";
+
+  // Forgot görünümü açıkken cooldown sayacını saniyede bir tazele (timestamp'ten
+  // hesaplanır, böylece modal kapanıp açılsa da süre korunur).
+  useEffect(() => {
+    if (view !== "forgot") return;
+    setResetCooldown(readResetCooldownRemaining());
+    const id = setInterval(() => setResetCooldown(readResetCooldownRemaining()), 1000);
+    return () => clearInterval(id);
+  }, [view]);
+
+  function openForgotView() {
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setResetSent(false);
+    // Giriş formundaki e-postayı taşı (kullanıcı yeniden yazmasın).
+    setResetEmail(email.trim());
+    setView("forgot");
+  }
+
+  function backToAuthView() {
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setView("auth");
+  }
+
+  async function handleForgotSubmit() {
+    setErrorMsg(null);
+    if (!resetEmail.trim()) {
+      setErrorMsg("E-posta adresini yazmalısın.");
+      return;
+    }
+    if (resetCooldown > 0 || resetLoading) return;
+
+    setResetLoading(true);
+    try {
+      // Sonucu KASITLI yok sayıyoruz: e-posta kayıtlı olsa da olmasa da aynı
+      // genel mesajı gösteririz (kullanıcı/sağlayıcı enumeration'ı yok).
+      await requestPasswordReset(resetEmail);
+    } catch {
+      /* ağ hatası bile olsa kullanıcıya enumeration sinyali verme */
+    } finally {
+      try {
+        localStorage.setItem(
+          RESET_COOLDOWN_KEY,
+          String(Date.now() + RESET_COOLDOWN_SECONDS * 1000)
+        );
+      } catch {
+        /* localStorage kapalı — best effort */
+      }
+      setResetCooldown(RESET_COOLDOWN_SECONDS);
+      setResetSent(true);
+      setResetLoading(false);
+    }
+  }
 
   async function handleLogin() {
     setErrorMsg(null);
@@ -312,6 +395,55 @@ return;
           ×
         </button>
 
+        {view === "forgot" ? (
+          <div className="auth-forgot">
+            <div className="auth-head">
+              <div className="auth-icon">🔑</div>
+              <h2>Şifreni yenile</h2>
+              <p>
+                E-posta adresini gir. Hesabın varsa şifre yenileme bağlantısı
+                gönderilecektir.
+              </p>
+            </div>
+
+            <label className="auth-field">
+              <span>E-posta adresi</span>
+              <input
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="ornek@mail.com"
+                type="email"
+                autoComplete="email"
+              />
+            </label>
+
+            {errorMsg && <div className="auth-error">{errorMsg}</div>}
+            {resetSent && (
+              <div className="auth-status">
+                Hesabın varsa şifre yenileme bağlantısı e-posta adresine
+                gönderildi.
+              </div>
+            )}
+
+            <button
+              className="auth-primary"
+              type="button"
+              disabled={resetLoading || resetCooldown > 0}
+              onClick={handleForgotSubmit}
+            >
+              {resetLoading
+                ? "Gönderiliyor…"
+                : resetCooldown > 0
+                ? `Tekrar gönder (${resetCooldown}s)`
+                : "Yenileme bağlantısı gönder"}
+            </button>
+
+            <button className="auth-ghost" type="button" onClick={backToAuthView}>
+              Girişe dön
+            </button>
+          </div>
+        ) : (
+        <>
         {isNative ? (
           <div className="auth-head">
             <div className="auth-icon">🌍</div>
@@ -449,6 +581,16 @@ return;
   </div>
 </label>
 
+{!isSignup && (
+  <button
+    type="button"
+    className="auth-forgot-link"
+    onClick={openForgotView}
+  >
+    Şifremi unuttum
+  </button>
+)}
+
         {errorMsg && <div className="auth-error">{errorMsg}</div>}
         {statusMsg && <div className="auth-status">{statusMsg}</div>}
 
@@ -494,6 +636,8 @@ return;
           >
             Misafir olarak devam et
           </button>
+        )}
+        </>
         )}
       </div>
     </div>
