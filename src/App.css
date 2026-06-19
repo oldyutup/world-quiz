@@ -5843,6 +5843,41 @@ body {
   margin-top: 10px;
 }
 
+/* ── Web/desktop "Apple ile devam et" (AuthModal !isNative branch) ──
+   Self-contained so it shares the exact size + vertical rhythm of the web
+   .auth-google secondary button (46px height, full width, 10px top gap) while
+   adopting Apple's supported dark/black appearance. A subtle light border keeps
+   it distinguishable from the dark modal AND from the translucent Google button.
+   The native .auth-apple (white) class is untouched — native uses a different
+   class and is unaffected. */
+.auth-apple--web {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: #000000;
+  color: #ffffff;
+  font-weight: 900;
+  font-size: 15px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.auth-apple--web:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-apple-logo {
+  flex: 0 0 auto;
+  /* The Apple glyph's optical centre sits slightly low; nudge it up a touch. */
+  margin-top: -2px;
+}
+
 .auth-ghost,
 .auth-guest {
   border: 1px solid rgba(140, 160, 190, 0.18);
