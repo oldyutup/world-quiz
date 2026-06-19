@@ -188,6 +188,24 @@ export async function signInWithGoogle() {
   });
 }
 
+/**
+ * Web/desktop "Apple ile devam et" — tam-sayfa Supabase OAuth redirect'i.
+ * Yalnız web içindir; native iOS'ta saf ASAuthorization akışı kullanılır
+ * (lib/appleAuth.ts#signInWithApple, ayrı bırakıldı). Google web akışıyla
+ * birebir aynı redirect mantığını (getAuthRedirectOrigin) paylaşır; dönüşte
+ * session loadOrCreateProfile + NicknameModal yoluna düşer (App.tsx auth
+ * listener + loadAuth). Supabase Apple provider'ında Web Services ID
+ * (com.kavakgames.torble.web) ve redirect URL'leri yapılandırılmış olmalı.
+ */
+export async function signInWithAppleWeb() {
+  return supabase.auth.signInWithOAuth({
+    provider: "apple",
+    options: {
+      redirectTo: getAuthRedirectOrigin(),
+    },
+  });
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Şifre yönetimi — TAMAMEN Supabase Auth üzerinden. Şifre hiçbir zaman
    profiles tablosunda, localStorage'da, uygulama state'inde veya ayrı bir DB

@@ -31,6 +31,12 @@
  *       · Kendi profilim → Profili Düzenle
  *       · Başka oyuncu   → Arkadaş Ekle (duruma göre) / Davet Et /
  *                          Arkadaşlıktan Çıkar / Engelle (veya Engeli Kaldır)
+ *       · Mesaj Gönder   → YALNIZ arkadaşken VE çağıran onMessage verirse
+ *                          (mobil/native profil yüzeyi). Web'in DM kuralıyla
+ *                          birebir: DM yalnız karşılıklı arkadaşlar arasında.
+ *                          Desktop onMessage GÖNDERMEZ → buton görünmez, masaüstü
+ *                          davranışı değişmez. Mevcut DM sistemine (DmContext)
+ *                          bağlanır; bu bileşen yalnız callback'i tetikler.
  *
  * GOLD GÖSTERİLMEZ (public kart). Kozmetik dikiş KORUNUR: kart teması
  * (data-theme → parşömen/kasa/foil/damga token'larını ezebilir), efekt
@@ -80,6 +86,9 @@ interface PlayerProfileCardProps {
   onAddFriend?: () => void;
   onInvite?: () => void;
   onBlock?: () => void;
+  /** DM aç (yalnız arkadaşken gösterilir; verilmezse buton render edilmez —
+   *  desktop bunu GÖNDERMEZ, böylece masaüstü kart davranışı aynı kalır). */
+  onMessage?: () => void;
   /** Arkadaşlıktan çıkar (yalnız status === "friends"). */
   onRemoveFriend?: () => void;
   /** Engeli kaldır (yalnız status === "blocked"). */
@@ -199,6 +208,7 @@ export function PlayerProfileCard({
   onAddFriend,
   onInvite,
   onBlock,
+  onMessage,
   onRemoveFriend,
   onUnblock,
   canInvite,
@@ -383,9 +393,18 @@ export function PlayerProfileCard({
           </>
         ) : (
           <>
+            {/* Mesaj Gönder — yalnız arkadaşken VE çağıran onMessage verirse
+                (mobil/native). Arkadaşken birincil aksiyon mesajlaşmadır; bu
+                durumda "Arkadaşsınız" rozeti nötr satıra iner. Desktop onMessage
+                vermez → buton görünmez, "Arkadaşsınız" primary kalır (aynı). */}
+            {onMessage && isFriend && (
+              <button type="button" className="ppc-btn ppc-btn--primary" onClick={onMessage}>
+                Mesaj Gönder
+              </button>
+            )}
             <button
               type="button"
-              className="ppc-btn ppc-btn--primary"
+              className={"ppc-btn" + (onMessage && isFriend ? "" : " ppc-btn--primary")}
               onClick={onAddFriend}
               disabled={friendBtn.disabled}
             >

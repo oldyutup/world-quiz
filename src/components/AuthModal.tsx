@@ -5,6 +5,7 @@ import {
   getProfile,
   loadOrCreateProfile,
   requestPasswordReset,
+  signInWithAppleWeb,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
@@ -364,6 +365,28 @@ return;
     }
   }
 
+  // Web/desktop-only: real "Apple ile devam et". Mirrors handleGoogle — a
+  // full-page Supabase OAuth redirect; the return is handled by App.tsx's auth
+  // listener / loadAuth (loadOrCreateProfile → NicknameModal). Native iOS uses
+  // handleApple() above (pure ASAuthorization) and never reaches this.
+  async function handleAppleWeb() {
+    setErrorMsg(null);
+    setStatusMsg(null);
+    setLoading(true);
+
+    try {
+      const { error } = await signInWithAppleWeb();
+
+      if (error) {
+        setErrorMsg("Apple ile giriş başlatılamadı.");
+        setLoading(false);
+      }
+    } catch {
+      setErrorMsg("Apple ile giriş başlatılamadı.");
+      setLoading(false);
+    }
+  }
+
   async function handleRefreshSession() {
     setErrorMsg(null);
     setStatusMsg(null);
@@ -602,6 +625,17 @@ return;
         >
           {loading ? "İşleniyor..." : isSignup ? "Hesap Oluştur" : "Giriş Yap"}
         </button>
+
+        {!isNative && (
+          <button
+            className="auth-apple"
+            type="button"
+            disabled={loading}
+            onClick={handleAppleWeb}
+          >
+            Apple ile devam et
+          </button>
+        )}
 
         {!isNative && (
           <button

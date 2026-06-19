@@ -23,6 +23,7 @@ import {
   type PublicProfile,
 } from "../lib/social";
 import { useSocialOptional } from "./SocialContext";
+import { useDmOptional } from "./DmContext";
 import { PlayerProfileCard } from "./PlayerProfileCard";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -42,6 +43,7 @@ export function PlayerProfileTrigger({
   as = "button",
 }: PlayerProfileTriggerProps) {
   const social = useSocialOptional();
+  const dm = useDmOptional();
   const { isMobile } = useIsMobile();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -93,6 +95,24 @@ export function PlayerProfileTrigger({
     const res = await sendRoomInvite({ recipientProfileId: profileId, roomCode: code, mode, roomUrl });
     social.toast(res.ok ? "Oyun daveti gönderildi." : res.error ?? "Davet gönderilemedi.");
   }, [profileId, social]);
+
+  // Mesaj (DM) — yalnız mobil/native profil yüzeyinde gösterilir (desktop'ta DM
+  // girişi arkadaşlar panelindedir, kart değişmez). Mevcut DM sistemini kullanır:
+  // önce profil sheet'ini KAPAT (çakışan sheet/modal kalmasın) → sonra global DM
+  // modalını aç. Konuşma yoksa mevcut web mantığıyla (getOrCreateConversation)
+  // başlatılır; varsa o açılır. Sohbet kapanınca kullanıcı arkasındaki sosyal
+  // bağlama (arkadaş listesi sheet'i / önceki yüzey) döner. Buton yalnız
+  // arkadaşken render edilir (bkz. PlayerProfileCard) → web kuralıyla aynı.
+  const handleMessage = useCallback(() => {
+    if (!profile || !profileId) return;
+    close();
+    dm?.openChatWith({
+      profileId,
+      username: profile.username,
+      avatarId: profile.avatarId,
+      frameId: profile.activeAvatarFrameId,
+    });
+  }, [profile, profileId, close, dm]);
 
   // Engeli kaldırma onay gerektirmez (geri-dönüşlü, düşük riskli aksiyon).
   const handleUnblock = useCallback(async () => {
@@ -198,6 +218,7 @@ export function PlayerProfileTrigger({
                 canInvite={!!social?.roomContext}
                 onAddFriend={handleAddFriend}
                 onInvite={handleInvite}
+                onMessage={isMobile ? handleMessage : undefined}
                 onRemoveFriend={() => setConfirmKind("remove")}
                 onBlock={() => setConfirmKind("block")}
                 onUnblock={handleUnblock}

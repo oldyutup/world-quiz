@@ -28,6 +28,7 @@ import { playSound } from "../lib/sound";
 import { Avatar } from "./Avatar";
 import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
+import { useDmOptional } from "./DmContext";
 
 /** Screens the mobile home can launch directly — a subset of App's AppScreen ids. */
 export type MobileHomeTarget =
@@ -332,9 +333,12 @@ export default function MobileHome({
   const [matchOpen, setMatchOpen] = useState(false);
 
   // Arkadaşlar alt-nav badge'i: okunmamış bildirim (arkadaşlık isteği, davet,
-  // ödül vs. hepsi bildirim olarak gelir) toplamı. Provider yoksa 0.
+  // ödül vs. hepsi bildirim olarak gelir) + okunmamış DM toplamı. Desktop'taki
+  // FriendsButton badge'iyle aynı "dikkat" mantığı; native path'te DM unread'i de
+  // yüzeye taşır (sosyal merkez bu sekmeden açılır). Provider yoksa 0.
   const social = useSocialOptional();
-  const socialBadge = social?.unreadCount ?? 0;
+  const dm = useDmOptional();
+  const socialBadge = (social?.unreadCount ?? 0) + (dm?.totalUnread ?? 0);
 
   const categories: Category[] = [
     {

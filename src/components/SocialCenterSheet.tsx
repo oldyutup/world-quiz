@@ -24,6 +24,7 @@ import {
   type SearchProfileResult,
 } from "../lib/social";
 import { useSocial } from "./SocialContext";
+import { useDm } from "./DmContext";
 import { NotificationList } from "./NotificationList";
 import { ClearNotificationsButton } from "./ClearNotificationsButton";
 import { PlayerAvatar } from "./PlayerAvatar";
@@ -77,6 +78,7 @@ export function SocialCenterSheet({
   onClose,
 }: SocialCenterSheetProps) {
   const social = useSocial();
+  const dm = useDm();
   const sheetRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SocialTab>("friends");
   const [friends, setFriends] = useState<FriendRow[]>([]);
@@ -198,6 +200,58 @@ export function SocialCenterSheet({
     }
   };
 
+  // Arkadaş satırı — desktop FriendsButton paneliyle birebir: profil tetikleyici
+  // + sağda mesaj (DM) butonu (okunmamış badge'li). DM butonu mevcut DM sistemini
+  // kullanır (dm.openChatWith → getOrCreateConversation → global DMChatModal);
+  // yeni sistem/sosyal akış YOK. Native "Arkadaşlar" sekmesinin doğrudan DM
+  // giriş noktası budur; profil kartındaki "Mesaj Gönder" ile aynı thread'i açar.
+  const renderFriendRow = (f: FriendRow) => {
+    const unread = dm.unreadFor(f.profileId);
+    return (
+      <div key={f.profileId} className="friend-row-wrap">
+        <PlayerProfileTrigger profileId={f.profileId} className="friend-row friend-row--dm">
+          <PlayerAvatar
+            avatarId={f.avatarId}
+            username={f.username}
+            size="sm"
+            frameId={f.activeAvatarFrameId}
+            className="friend-row-avatar"
+          />
+          <span className="friend-row-id">
+            <span className="friend-row-name">@{f.username ?? "—"}</span>
+            <span className="friend-row-level">Seviye {f.level}</span>
+          </span>
+        </PlayerProfileTrigger>
+        <button
+          type="button"
+          className={"friend-dm-btn" + (unread > 0 ? " friend-dm-btn--unread" : "")}
+          onClick={() =>
+            dm.openChatWith({
+              profileId: f.profileId,
+              username: f.username,
+              avatarId: f.avatarId,
+              frameId: f.activeAvatarFrameId,
+            })
+          }
+          aria-label={`@${f.username ?? ""} kişisine mesaj gönder`}
+          title="Mesaj gönder"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 4V6a2 2 0 0 1 2-2z"
+            />
+          </svg>
+          {unread > 0 && (
+            <span className="friend-dm-badge" aria-label={`${unread} okunmamış mesaj`}>
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  };
+
   return createPortal(
     <>
       <div
@@ -297,26 +351,7 @@ export function SocialCenterSheet({
                       </span>
                     </div>
                   ) : (
-                    friends.map((f) => (
-                      <PlayerProfileTrigger
-                        key={f.profileId}
-                        profileId={f.profileId}
-                        className="friend-row"
-                      >
-                        <PlayerAvatar
-                          avatarId={f.avatarId}
-                          username={f.username}
-                          size="sm"
-                          frameId={f.activeAvatarFrameId}
-                          className="friend-row-avatar"
-                        />
-                        <span className="friend-row-id">
-                          <span className="friend-row-name">@{f.username ?? "—"}</span>
-                          <span className="friend-row-level">Seviye {f.level}</span>
-                        </span>
-                        <span className="friend-row-status" aria-hidden="true" />
-                      </PlayerProfileTrigger>
-                    ))
+                    friends.map((f) => renderFriendRow(f))
                   )
                 ) : (
                   <>
@@ -325,26 +360,7 @@ export function SocialCenterSheet({
                     {filteredFriends.length === 0 ? (
                       <div className="notif-empty">Eşleşen arkadaş yok.</div>
                     ) : (
-                      filteredFriends.map((f) => (
-                        <PlayerProfileTrigger
-                          key={f.profileId}
-                          profileId={f.profileId}
-                          className="friend-row"
-                        >
-                          <PlayerAvatar
-                            avatarId={f.avatarId}
-                            username={f.username}
-                            size="sm"
-                            frameId={f.activeAvatarFrameId}
-                            className="friend-row-avatar"
-                          />
-                          <span className="friend-row-id">
-                            <span className="friend-row-name">@{f.username ?? "—"}</span>
-                            <span className="friend-row-level">Seviye {f.level}</span>
-                          </span>
-                          <span className="friend-row-status" aria-hidden="true" />
-                        </PlayerProfileTrigger>
-                      ))
+                      filteredFriends.map((f) => renderFriendRow(f))
                     )}
 
                     {/* B) Ekli olmayan oyuncular — RPC arama, istek atılabilir */}
