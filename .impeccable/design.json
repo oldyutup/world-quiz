@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-18T00:00:00.000Z",
+  "title": "Design System: Torble",
+  "extensions": {
+    "colorMeta": {
+      "accent":       { "role": "primary",  "displayName": "Gökyüzü Mavisi",  "canonical": "#58a6ff", "tonalRamp": ["#0b1f3a", "#123255", "#1c4a7d", "#2864a8", "#3a86d4", "#58a6ff", "#8cc3ff", "#c4e0ff"] },
+      "guessed":      { "role": "primary",  "displayName": "Tahmin Mavisi",   "canonical": "#3b82f6", "tonalRamp": ["#0c1c3d", "#132a5e", "#1c3d86", "#2756b8", "#356fe0", "#3b82f6", "#7aa8fb", "#bcd2fd"] },
+      "green":        { "role": "secondary","displayName": "Doğru Yeşili",    "canonical": "#3fb950", "tonalRamp": ["#0c2912", "#11401b", "#185c27", "#1f7d34", "#2f9a42", "#3fb950", "#79d586", "#bdeec6"] },
+      "red":          { "role": "secondary","displayName": "Hata Kırmızısı",  "canonical": "#f85149", "tonalRamp": ["#3a0f0d", "#561512", "#7d1f1a", "#a82a24", "#d43a33", "#f85149", "#fb8a85", "#fdc7c4"] },
+      "amber":        { "role": "secondary","displayName": "Ödül Kehribarı",  "canonical": "#f59e0b", "tonalRamp": ["#3a2503", "#56360a", "#7d4d0e", "#a86714", "#d4831a", "#f59e0b", "#fbc164", "#fde0b2"] },
+      "bg":           { "role": "neutral",  "displayName": "Uzay Zemini",     "canonical": "#0d1117", "tonalRamp": ["#0d1117", "#161b22", "#21262d", "#2d333b", "#444c56", "#7d8590", "#c9d1d9", "#e6edf3"] },
+      "surface":      { "role": "neutral",  "displayName": "Yüzey",           "canonical": "#161b22", "tonalRamp": ["#0d1117", "#161b22", "#21262d", "#2d333b", "#444c56", "#7d8590", "#c9d1d9", "#e6edf3"] },
+      "surface2":     { "role": "neutral",  "displayName": "Yüzey-2",         "canonical": "#21262d", "tonalRamp": ["#0d1117", "#161b22", "#21262d", "#2d333b", "#444c56", "#7d8590", "#c9d1d9", "#e6edf3"] },
+      "surface3":     { "role": "neutral",  "displayName": "Yüzey-3",         "canonical": "#2d333b", "tonalRamp": ["#0d1117", "#161b22", "#21262d", "#2d333b", "#444c56", "#7d8590", "#c9d1d9", "#e6edf3"] },
+      "border":       { "role": "neutral",  "displayName": "Kenar",           "canonical": "#30363d", "tonalRamp": ["#0d1117", "#161b22", "#21262d", "#2d333b", "#30363d", "#444c56", "#7d8590", "#c9d1d9"] },
+      "text":         { "role": "neutral",  "displayName": "Metin",           "canonical": "#e6edf3", "tonalRamp": ["#161b22", "#21262d", "#444c56", "#7d8590", "#9aa4ae", "#c9d1d9", "#e6edf3", "#f5f8fb"] },
+      "muted":        { "role": "neutral",  "displayName": "Sönük",           "canonical": "#7d8590", "tonalRamp": ["#21262d", "#2d333b", "#444c56", "#5c636d", "#7d8590", "#9aa4ae", "#c9d1d9", "#e6edf3"] },
+      "ocean":        { "role": "neutral",  "displayName": "Okyanus (harita)","canonical": "#0d2137", "tonalRamp": ["#071321", "#0d2137", "#123050", "#1b446e", "#26588c", "#356faf", "#5a93cf", "#9cc2e8"] },
+      "land":         { "role": "neutral",  "displayName": "Kara (harita)",   "canonical": "#1e2d40", "tonalRamp": ["#0f1822", "#1e2d40", "#2a3e55", "#37516e", "#476688", "#6386ab", "#8eaccc", "#c2d4e8"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display / Bebas Neue", "purpose": "Skor, sayaç, yüzde ve büyük başlıklar; oyunun 'büyük an' tipografisi. Asla paragrafa konmaz." },
+      "body":    { "displayName": "Body / DM Sans",       "purpose": "Açıklama, cümle, form, genel metin. Satır uzunluğu 65–75ch ile sınırlı." },
+      "label":   { "displayName": "Label / DM Sans 600",  "purpose": "Buton metni, pill etiketleri, rozetler, sönük üst-bilgi." }
+    },
+    "shadows": [
+      { "name": "floating-modal",  "value": "0 24px 60px rgba(0,0,0,0.6)",        "purpose": "Modallar ve tam-overlay paneller; sahneden tamamen koparır." },
+      { "name": "lifted-panel",    "value": "0 8px 24px rgba(0,0,0,0.5)",         "purpose": "Dropdown, harita kontrolleri, küçük açılır paneller." },
+      { "name": "lifted-panel-sm", "value": "0 4px 16px rgba(0,0,0,0.4)",         "purpose": "Hafif kalkık küçük yüzeyler (zoom/tema butonları)." },
+      { "name": "card-hover-glow", "value": "0 12px 36px rgba(88,166,255,0.15)",  "purpose": "Mod kartı hover'da yukarı kalkar ve altına mavi hale düşer." },
+      { "name": "focus-ring-accent", "value": "0 0 0 3px rgba(88,166,255,0.22)",  "purpose": "Girdi/buton focus ve hover halkası. Yapısal, durum-tetiklemeli." },
+      { "name": "focus-ring-green",  "value": "0 0 0 3px rgba(63,185,80,0.22)",   "purpose": "Doğru cevap geri bildirimi." },
+      { "name": "focus-ring-red",    "value": "0 0 0 3px rgba(248,81,73,0.22)",   "purpose": "Hata/yanlış geri bildirimi." }
+    ],
+    "motion": [
+      { "name": "ease-out-soft",      "value": "cubic-bezier(0.16, 1, 0.3, 1)",     "purpose": "Varsayılan giriş/geçiş easing'i (en yaygın). Yumuşak ease-out, bounce yok." },
+      { "name": "ease-out-quint",     "value": "cubic-bezier(0.22, 1, 0.36, 1)",    "purpose": "Panel/sheet açılışları için ikincil ease-out." },
+      { "name": "ease-overshoot-soft","value": "cubic-bezier(0.2, 0.8, 0.2, 1.05)", "purpose": "Hafif taşma; yalnız oyuncu/kutlama öğelerinde." },
+      { "name": "ease-standard",      "value": "cubic-bezier(0.4, 0, 0.2, 1)",      "purpose": "Nötr durum geçişleri (ilerleme çubuğu vb.)." },
+      { "name": "dur-state",          "value": "0.12s–0.15s",                       "purpose": "Hover/focus/renk durum değişimleri." },
+      { "name": "dur-enter",          "value": "0.2s–0.25s",                        "purpose": "Modal/panel giriş animasyonları (fadeIn, slideUp)." },
+      { "name": "dur-celebrate",      "value": "0.4s",                              "purpose": "Kutlama (pop, inputPulse) anları." }
+    ],
+    "breakpoints": [
+      { "name": "back-label", "value": "480px" },
+      { "name": "mobile-app", "value": "600px" },
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "landscape-short", "value": "(max-height: 500px) and (orientation: landscape)" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button (Accent)",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Birincil eylem butonu. Gökyüzü mavisi zemin + siyah metin; hover'da mavi glow halkası, active'te hafif küçülme.",
+      "html": "<button class=\"ds-btn-accent\">Oyna</button>",
+      "css": ".ds-btn-accent { display:inline-flex; align-items:center; justify-content:center; gap:5px; height:40px; padding:0 15px; border-radius:9px; border:1.5px solid transparent; background:#58a6ff; color:#000; font-family:'DM Sans',sans-serif; font-size:.88rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:box-shadow .15s, transform .1s; } .ds-btn-accent:hover { box-shadow:0 0 0 3px rgba(88,166,255,.22); } .ds-btn-accent:active { transform:scale(.97); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "İkincil/sessiz eylem. Şeffaf zemin, kenarlık + sönük metin; hover'da metin aydınlanır.",
+      "html": "<button class=\"ds-btn-ghost\">İptal</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; justify-content:center; gap:5px; height:40px; padding:0 11px; border-radius:9px; border:1.5px solid #30363d; background:transparent; color:#7d8590; font-family:'DM Sans',sans-serif; font-size:.88rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:color .15s, border-color .15s, transform .1s; } .ds-btn-ghost:hover { color:#e6edf3; border-color:#7d8590; } .ds-btn-ghost:active { transform:scale(.97); }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Yıkıcı/tehlikeli eylem. Kırmızı zemin + beyaz metin; hover'da kırmızı glow halkası.",
+      "html": "<button class=\"ds-btn-danger\">Sil</button>",
+      "css": ".ds-btn-danger { display:inline-flex; align-items:center; justify-content:center; gap:5px; height:40px; padding:0 15px; border-radius:9px; border:1.5px solid transparent; background:#f85149; color:#fff; font-family:'DM Sans',sans-serif; font-size:.88rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:box-shadow .15s, transform .1s; } .ds-btn-danger:hover { box-shadow:0 0 0 3px rgba(248,81,73,.22); } .ds-btn-danger:active { transform:scale(.97); }"
+    },
+    {
+      "name": "Mode Card",
+      "kind": "card",
+      "refersTo": "mode-card",
+      "description": "İmza bileşen: ana ekran oyun modu kartı. Dinlenmede gölgesiz/tonal; hover'da yukarı kalkar + mavi hale.",
+      "html": "<div class=\"ds-mode-card\"><div class=\"ds-mode-card-icon\">🌍</div><div class=\"ds-mode-card-title\">DÜELLO</div><div class=\"ds-mode-card-desc\">Arkadaşınla karşılıklı yarış.</div></div>",
+      "css": ".ds-mode-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; background:#161b22; border:1.5px solid #30363d; border-radius:14px; padding:22px 18px; transition:border-color .2s, transform .2s, box-shadow .2s; cursor:pointer; } .ds-mode-card:hover { border-color:#58a6ff; transform:translateY(-3px); box-shadow:0 12px 36px rgba(88,166,255,.15); } .ds-mode-card-icon { font-size:2.4rem; line-height:1; } .ds-mode-card-title { font-family:'Bebas Neue',sans-serif; font-size:1.5rem; letter-spacing:.05em; color:#e6edf3; } .ds-mode-card-desc { font-family:'DM Sans',sans-serif; font-size:.82rem; color:#7d8590; line-height:1.45; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Genel metin girdisi. Koyu yüzey + kenarlık; focus'ta kenar maviye döner ve mavi glow halkası belirir.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Ülke adı yaz...\" />",
+      "css": ".ds-input { height:40px; padding:0 13px; border:1.5px solid #30363d; border-radius:9px; background:#161b22; color:#e6edf3; font-family:'DM Sans',sans-serif; font-size:max(16px,1rem); outline:none; transition:border-color .15s, box-shadow .15s; } .ds-input::placeholder { color:#7d8590; } .ds-input:focus { border-color:#58a6ff; box-shadow:0 0 0 3px rgba(88,166,255,.22); } .ds-input:disabled { opacity:.38; cursor:not-allowed; }"
+    },
+    {
+      "name": "Score Pill",
+      "kind": "chip",
+      "refersTo": "score-pill",
+      "description": "Skor göstergesi pill'i: Bebas sayı + sönük toplam, kapsül kenarlı.",
+      "html": "<div class=\"ds-score-pill\"><span class=\"ds-score-n\">12</span><span class=\"ds-score-total\">/50</span></div>",
+      "css": ".ds-score-pill { display:inline-flex; align-items:baseline; gap:2px; background:#21262d; border:1px solid #30363d; border-radius:999px; padding:3px 11px; white-space:nowrap; } .ds-score-n { font-family:'Bebas Neue',sans-serif; font-size:1.35rem; color:#58a6ff; line-height:1; } .ds-score-total { font-family:'Bebas Neue',sans-serif; font-size:1.05rem; color:#7d8590; }"
+    },
+    {
+      "name": "Modal",
+      "kind": "custom",
+      "refersTo": "modal",
+      "description": "Merkezi diyalog yüzeyi: koyu yüzey, derin ortam gölgesi, slideUp girişi. Yalnız gerçekten gereken yerde.",
+      "html": "<div class=\"ds-modal\"><div class=\"ds-modal-title\">SONUÇ</div><div class=\"ds-modal-body\">Harika tur!</div></div>",
+      "css": ".ds-modal { position:relative; display:flex; flex-direction:column; align-items:center; gap:14px; background:#161b22; border:1px solid #30363d; border-radius:16px; padding:28px 24px 22px; max-width:440px; box-shadow:0 24px 60px rgba(0,0,0,.6); } .ds-modal-title { font-family:'Bebas Neue',sans-serif; font-size:2rem; letter-spacing:.05em; color:#e6edf3; } .ds-modal-body { font-family:'DM Sans',sans-serif; font-size:1rem; color:#e6edf3; line-height:1.45; text-align:center; }"
+    },
+    {
+      "name": "Back Button",
+      "kind": "nav",
+      "refersTo": "back-btn",
+      "description": "Control-bar geri butonu. Yüzey-2 zemin + sönük metin; hover'da maviye döner. Etiket yalnız ≥480px.",
+      "html": "<button class=\"ds-back-btn\"><span>←</span><span class=\"ds-back-label\">Geri</span></button>",
+      "css": ".ds-back-btn { display:flex; align-items:center; gap:4px; height:32px; padding:0 10px; background:#21262d; border:1.5px solid #30363d; border-radius:9px; color:#7d8590; font-family:'DM Sans',sans-serif; font-size:.78rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:border-color .15s, color .15s; } .ds-back-btn:hover { border-color:#58a6ff; color:#e6edf3; } .ds-back-label { display:none; } @media (min-width:480px) { .ds-back-label { display:inline; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Gece Gökyüzü Atlası",
+    "overview": "Torble bir gece gökyüzü atlasıdır. Karanlık, derin bir uzay-laciverti zemin üzerinde süzülen bir dünya, yıldız tozu serpintileri ve etkileşim anında uyanan mavi/yeşil parıltılar. Zemin sessiz ve koyu durur ki üzerindeki dünya, bayraklar ve oyuncunun her doğru hamlesi parlasın. Sistem koyu bir tonal katmanlama (bg → surface → surface2 → surface3) üzerine kuruludur; renk ölçülüdür, kimliği ve birincil eylemi tek bir mavi taşır; yeşil/kırmızı/kehribar yalnız anlam içindir. Tipografi sıkıştırılmış Bebas Neue başlıklar ile DM Sans gövde arasındaki güçlü ölçek kontrastından beslenir. Mevcut görsel dil bilinçli koyu/teknik; 'eğlenceli & sıcak' kişiliğe doğru sıcaklaştırma yalnız gelecekteki profil yüzeylerinde uygulanacaktır.",
+    "keyCharacteristics": [
+      "Gece gökyüzü / uzay atmosferi: koyu lacivert zemin, yıldız alanı, süzülen dünya logosu.",
+      "Tonal katmanlı derinlik (4 yüzey adımı), gölge değil ton.",
+      "Tek-ses renk stratejisi: mavi kimlik + anlam-yüklü yeşil/kırmızı/kehribar.",
+      "Bebas Neue (sıkış. başlık) × DM Sans (gövde) güçlü ölçek kontrastı.",
+      "Parıltıyla canlanan etkileşim: hover/focus'ta glow halkaları.",
+      "Sakin ease-out hareket; coşku yalnızca kutlamada."
+    ],
+    "rules": [
+      { "name": "Tek Ses Kuralı", "body": "Kimlik ve birincil eylem yalnız Gökyüzü Mavisi'yle konuşur. Yeşil, kırmızı ve kehribar yalnızca anlam taşır (doğru/yanlış/ödül); süsleme için asla kullanılmaz.", "section": "colors" },
+      { "name": "Parıltı Renk Değil Kuraldır", "body": "Glow tokenları bir renk değil, durum geri bildirimidir. Yalnız focus, hover ve kutlama anlarında belirir; dinlenmedeki yüzeye boyanmaz.", "section": "colors" },
+      { "name": "Sayılar Bebas, Cümleler DM Kuralı", "body": "Sayısal/kahraman öğeler Bebas Neue; okunacak her şey DM Sans. Bebas paragrafa, DM Sans dev skora konmaz.", "section": "typography" },
+      { "name": "16px Taban Kuralı", "body": "Hiçbir girdi mobilde 16px'in altına düşmez; aksi halde iOS odakta sayfayı zoom'lar.", "section": "typography" },
+      { "name": "Önce Ton, Sonra Gölge Kuralı", "body": "Yeni yüzeyi ayırmak için ilk araç ton adımı + ince kenardır. Gölge yalnız öğe 'yüzüyorsa' (modal, dropdown) kullanılır.", "section": "elevation" },
+      { "name": "Cam Yalnız Harita Kuralı", "body": "backdrop-filter blur yalnız harita/oyun üstü yüzen kontrollerde amaçlıdır. Yeni bileşenlerde dekoratif cam varsayılan değildir.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do kimliği ve birincil eylemi yalnız Gökyüzü Mavisi (#58a6ff) ile taşı; yeşil/kırmızı/kehribarı yalnız anlam için kullan.",
+      "Do derinliği önce tonla kur (bg → surface → surface2 → surface3 + 1.5px kenar); gölgeyi yalnız yüzen öğeye sakla.",
+      "Do etkileşimi parıltıyla bildir: focus/hover'da 0 0 0 3px *-glow halkası, :active'te scale(.97).",
+      "Do sayıları Bebas Neue, cümleleri DM Sans ile diz; ölçek kontrastını koru.",
+      "Do her girdiyi mobilde ≥16px font ile ver ve ~44px dokunma hedefini koru.",
+      "Do prefers-reduced-motion'a uy: yıldız alanı, parıltı ve geçişleri sönümle.",
+      "Do anlamı renkten bağımsız da ver: doğru/yanlış ve takım ayrımı ikon/etiket/şekille de okunabilsin."
+    ],
+    "donts": [
+      "Don't ucuz/spam mobil oyun diline kay: agresif pop-up, sahte aciliyet, reklam, ucuz parlak gradyan yok.",
+      "Don't aşırı ciddi sınav/eğitim yazılımı kuruluğu üret: gri, neşesiz, cezalandırıcı ton yok.",
+      "Don't bilgi kirliliği / kalabalık UI yarat: aynı anda bağıran onlarca öğe yok; tek net birincil eylemi koru.",
+      "Don't sıkıcı kurumsal/SaaS dashboard hissi ver: aynı kart ızgaraları ve klişe hero-metric şablonu yok.",
+      "Don't 1px'i aşan renkli yan-şerit ekleme; takım kimliği şeridi tek istisnadır.",
+      "Don't gradyanlı metin (background-clip: text) kullanma.",
+      "Don't dekoratif cam/blur'ü varsayılan yapma; backdrop-filter yalnız harita/overlay yüzeylerinde.",
+      "Don't yeni bir yüzeyde ilk düşünce olarak modal'a koşma; önce inline/kademeli alternatifleri tüket.",
+      "Don't ikinci bir kimlik rengi icat etme; mavi tek sestir."
+    ]
+  }
+}

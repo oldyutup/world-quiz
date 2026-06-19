@@ -399,17 +399,17 @@ interface HomeProps {
   /** Native-app only: true while the profile dropdown is open, so the bottom-nav
    *  Profil avatar can show its active (lifted/glowing) state. */
   profileOpen?: boolean;
+  /** Aktif ana ekran teması — App seviyesinde tutulur (sağ-üst profil paneli de
+   *  aynı temayı okuyabilsin diye, bkz. UserProfileDropdown homeTheme prop'u). */
+  homeTheme: HomeTheme;
+  onThemeChange: (t: HomeTheme) => void;
 }
-function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen }: HomeProps) {
+function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
-const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
-useEffect(() => {
-  try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
-}, [homeTheme]);
   const modes: { id: AppScreen; icon: EmojiIconName; title: string; desc: string; available: boolean }[] = [
   { id: "map-game", icon: "globe", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game", icon: "flag", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -420,7 +420,7 @@ useEffect(() => {
   { id: "kornokta-create", icon: "detective", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
 ];
   return (
-    <div className={"home-screen" + (homeTheme === "earth" ? " home-screen--earth" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : "")}>
+    <div className={"home-screen" + (homeTheme === "turkiye" ? " home-screen--turkiye" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : " home-screen--default")}>
       <div className="home-hero">
         <img
           src="/assets/brand/torble-logo.png"
@@ -480,7 +480,7 @@ useEffect(() => {
         profileActive={profileOpen}
         themes={HOME_THEMES}
         activeTheme={homeTheme}
-        onSelectTheme={(id) => setHomeTheme(id as HomeTheme)}
+        onSelectTheme={(id) => onThemeChange(id as HomeTheme)}
       />
       {showCountryMenu && (
   <div
@@ -693,11 +693,9 @@ useEffect(() => {
   />
 )}
 
-      {homeTheme === "earth" && <BlueEarthDecor />}
-
       <div className="home-studio-credit" aria-label="Yayıncı: Kavak Games">Kavak Games</div>
       <HomeSocialDock />
-      <HomeThemePicker active={homeTheme} onChange={setHomeTheme} />
+      <HomeThemePicker active={homeTheme} onChange={onThemeChange} />
     </div>
   );
 }
@@ -776,10 +774,10 @@ function HomeSocialDock() {
 }
 
 const HOME_THEMES: { id: HomeTheme; name: string; swatch: string }[] = [
-  { id: "default",    name: "Varsayılan",   swatch: "linear-gradient(135deg, #0a101d 0%, #1c3358 100%)" },
-  { id: "earth",      name: "Mavi Dünya",   swatch: "linear-gradient(135deg, #1e6bd9 0%, #5fb3ff 100%)" },
+  { id: "default",    name: "Gece",         swatch: "linear-gradient(135deg, #0b1430 0%, #115e67 100%)" },
+  { id: "turkiye",    name: "Türkiye",      swatch: "linear-gradient(135deg, #16c0c8 0%, #1e6bd9 100%)" },
   { id: "adventure",  name: "Adventure",    swatch: "linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%)" },
-  { id: "dark-space", name: "Karanlık Uzay", swatch: "linear-gradient(135deg, #050810 0%, #0d1b3e 100%)" },
+  { id: "dark-space", name: "Zümrüt Vadi", swatch: "linear-gradient(135deg, #102a22 0%, #1f5a45 100%)" },
 ];
 
 function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t: HomeTheme) => void }) {
@@ -836,86 +834,6 @@ function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t
   );
 }
 
-/* ─── Blue Earth decorative layer: half-earth img + CSS cartoon eyes ─── */
-function BlueEarthDecor() {
-  const leftEyeRef   = useRef<HTMLDivElement>(null);
-  const rightEyeRef  = useRef<HTMLDivElement>(null);
-  const leftPupilRef  = useRef<HTMLDivElement>(null);
-  const rightPupilRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Touch/no-hover devices: keep pupils centered, skip listeners entirely.
-    if (typeof window === "undefined") return;
-    if (!window.matchMedia("(hover: hover)").matches) return;
-
-    const MAX_OFFSET = 5; // px — pupil never leaves the white eye
-    const target = { x: 0, y: 0, active: false };
-    let rafId: number | null = null;
-
-    const applyOne = (eye: HTMLDivElement | null, pupil: HTMLDivElement | null) => {
-      if (!eye || !pupil) return;
-      if (!target.active) {
-        pupil.style.transform = "translate(-50%, -50%)";
-        return;
-      }
-      const r = eye.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const dx = target.x - cx;
-      const dy = target.y - cy;
-      const d = Math.hypot(dx, dy);
-      const k = d > 0 ? Math.min(MAX_OFFSET, d) / d : 0;
-      pupil.style.transform = `translate(calc(-50% + ${dx * k}px), calc(-50% + ${dy * k}px))`;
-    };
-
-    const tick = () => {
-      applyOne(leftEyeRef.current, leftPupilRef.current);
-      applyOne(rightEyeRef.current, rightPupilRef.current);
-      rafId = null;
-    };
-    const schedule = () => { if (rafId == null) rafId = requestAnimationFrame(tick); };
-
-    const onMove = (e: MouseEvent) => {
-      target.x = e.clientX; target.y = e.clientY; target.active = true;
-      schedule();
-    };
-    const onLeave = () => { target.active = false; schedule(); };
-
-    window.addEventListener("mousemove", onMove, { passive: true });
-    document.addEventListener("mouseleave", onLeave);
-    window.addEventListener("blur", onLeave);
-
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseleave", onLeave);
-      window.removeEventListener("blur", onLeave);
-      if (rafId != null) cancelAnimationFrame(rafId);
-    };
-  }, []);
-
-  return (
-    <div className="home-earth" aria-hidden="true">
-      <img
-        src="/assets/brand/earth-half.png"
-        alt=""
-        className="home-earth-img"
-        draggable={false}
-      />
-      <div className="home-earth-eyes">
-        <div ref={leftEyeRef} className="ee-eye">
-          <div ref={leftPupilRef} className="ee-pupil">
-            <span className="ee-highlight" />
-          </div>
-        </div>
-        <div ref={rightEyeRef} className="ee-eye">
-          <div ref={rightPupilRef} className="ee-pupil">
-            <span className="ee-highlight" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ═══════════════════════════════════════════════════════════════
    GOLD BAR
@@ -2305,6 +2223,12 @@ function clearRecoveryUrl() {
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
+  // Ana ekran teması App seviyesinde tutulur ki hem HomeScreen hem de sağ-üst
+  // UserProfileDropdown aynı temayı (profil paneli skin'i için) okuyabilsin.
+  const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
+  useEffect(() => {
+    try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
+  }, [homeTheme]);
   const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);
   const gold = useGold();
@@ -2771,6 +2695,7 @@ useEffect(() => {
             kuralları); sosyal erişim alt-nav'daki Arkadaşlar sekmesindedir. */}
         <div className="social-bar">
           <UserProfileDropdown
+            homeTheme={homeTheme}
             profile={profile}
             authLoading={authLoading}
             gold={gold}
@@ -2833,6 +2758,8 @@ useEffect(() => {
           else setAuthOpen(true);
         }}
         profileOpen={IS_NATIVE_APP ? profileNavOpen : false}
+        homeTheme={homeTheme}
+        onThemeChange={setHomeTheme}
       />
 
       {leaderboardOpen && (

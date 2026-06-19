@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-export type HomeTheme = "default" | "earth" | "adventure" | "dark-space";
+export type HomeTheme = "default" | "turkiye" | "adventure" | "dark-space";
 
 export const HOME_THEME_KEY = "torble-theme";
 
@@ -12,9 +12,12 @@ export function readStoredHomeTheme(): HomeTheme {
   try {
     const saved = localStorage.getItem(HOME_THEME_KEY);
     if (saved === "default")    return "default";
-    if (saved === "earth")      return "earth";
+    if (saved === "turkiye")    return "turkiye";
     if (saved === "adventure")  return "adventure";
     if (saved === "dark-space") return "dark-space";
+    // Legacy: the removed "Mavi Dünya" (earth) theme normalizes to Türkiye so an
+    // old saved preference never resolves to an unknown/blank theme.
+    if (saved === "earth")      return "turkiye";
     return "adventure";
   } catch {
     return "adventure";
@@ -30,11 +33,11 @@ const BG_BASE: CSSProperties = {
 
 export function getThemeBackgroundStyle(theme: HomeTheme): CSSProperties {
   switch (theme) {
-    case "earth":
+    case "turkiye":
       return {
         ...BG_BASE,
         backgroundImage:
-          "linear-gradient(rgba(3, 7, 18, 0.42), rgba(3, 7, 18, 0.66)), url('/assets/backgrounds/arkaplan.webp')",
+          "linear-gradient(rgba(3, 7, 18, 0.26), rgba(3, 7, 18, 0.52)), url('/assets/backgrounds/turkiye.webp')",
       };
     case "adventure":
       return {

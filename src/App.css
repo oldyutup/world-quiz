@@ -75,12 +75,12 @@ body {
   position: relative;
   isolation: isolate;
   overflow-x: hidden;
+  /* Default theme = "Gece": aurora night-atlas photo backdrop. A light scrim
+     keeps the white hero text legible without crushing the already-dark image. */
   background:
-  radial-gradient(circle at 50% 8%, rgba(88,166,255,.22), transparent 28%),
-  radial-gradient(circle at 18% 24%, rgba(34,197,94,.10), transparent 22%),
-  radial-gradient(circle at 82% 18%, rgba(59,130,246,.12), transparent 26%),
-  radial-gradient(circle at 50% 100%, rgba(15,23,42,.85), transparent 45%),
-  linear-gradient(180deg, #070b14 0%, #0a101d 45%, #05070d 100%);
+    linear-gradient(rgba(3,7,18,.20), rgba(3,7,18,.46)),
+    url('/assets/backgrounds/night-atlas.webp') center / cover no-repeat;
+  background-color: #070b14;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -98,7 +98,7 @@ body {
     radial-gradient(circle, rgba(88,166,255,.45) 0 1px, transparent 1.6px);
   background-size: 90px 90px, 140px 140px;
   background-position: 12px 18px, 48px 70px;
-  opacity: .22;
+  opacity: .10;
 }
 
 .home-screen::after {
@@ -109,7 +109,7 @@ body {
   pointer-events: none;
   background:
     radial-gradient(circle at 50% 35%, transparent 0 34%, rgba(4,7,13,.52) 62%, rgba(4,7,13,.84) 100%);
-  opacity: .9;
+  opacity: .5;
 }
 
 .home-hero {
@@ -583,99 +583,53 @@ body {
   }
 }
 
-/* ─── Main-menu "Blue Earth" theme: replace background, tone down decorative layers ─── */
-.home-screen.home-screen--earth {
+/* ─── "Gece" (default) theme: aurora night-atlas backdrop, mode-card glass ───
+   Gece, fotoğraflı arka planı (night-atlas.webp) olup kartları hâlâ düz opak
+   --surface'e düşen TEK temaydı; aurora foto üstünde kopuk/yapıştırılmış
+   görünüyordu. Türkiye/Adventure cam diliyle akraba, ama daha soğuk ve sakin
+   bir lacivert yüzey: üst kenarda tek, çok düşük opaklıklı aurora ışık bandı
+   (teal→mavi, ~ilk üçte birde söner) imzayı taşır; ortaya yayılıp ikon/başlık/
+   açıklamayla yarışmaz. Yüzey okunabilirlik için bilinçle daha opak; blur 9px
+   (Zümrüt 4 ile Türkiye/Adventure 12 arası). Base .mode-card, "Oyna" butonu ve
+   diğer temalar DEĞİŞMEZ. */
+.home-screen.home-screen--default .mode-card {
   background:
-    linear-gradient(rgba(3,7,18,.42), rgba(3,7,18,.70)),
-    url('/assets/backgrounds/arkaplan.webp') center / cover no-repeat;
+    linear-gradient(180deg, rgba(110, 225, 200, 0.055) 0%, rgba(120, 170, 255, 0.05) 16%, transparent 33%),
+    linear-gradient(180deg, rgba(14, 24, 48, 0.82), rgba(9, 15, 32, 0.88));
+  border-color: rgba(130, 175, 255, 0.22);
+  box-shadow:
+    0 18px 45px rgba(2, 7, 22, 0.40),
+    inset 0 1px 0 rgba(195, 218, 255, 0.07);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
 }
-.home-screen.home-screen--earth::before { opacity: .08; }
-.home-screen.home-screen--earth::after  { opacity: .55; }
-
-/* Decorative half-earth horizon — only rendered under the Blue Earth theme */
-.home-earth {
-  position: fixed;
-  left: 50%;
-  bottom: -80px;
-  transform: translateX(-50%);
-  width: min(820px, 92vw);
-  pointer-events: none;
-  user-select: none;
-  z-index: 0;
+.home-screen.home-screen--default .mode-card:not(.mode-card--soon):hover {
+  border-color: rgba(150, 190, 255, 0.42);
+  transform: translateY(-2px);
+  box-shadow:
+    0 22px 50px rgba(2, 7, 22, 0.48),
+    0 0 0 3px rgba(88, 166, 255, 0.10),
+    inset 0 1px 0 rgba(195, 218, 255, 0.09);
 }
-.home-earth-img {
-  display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-  user-select: none;
-  filter: drop-shadow(0 -14px 40px rgba(88,166,255,.18));
+.home-screen.home-screen--default .mode-card-desc {
+  color: rgba(202, 218, 242, 0.74);
 }
-@media (max-width: 900px) {
-  .home-earth { width: min(620px, 96vw); bottom: -64px; }
-}
-@media (max-width: 600px) {
-  .home-earth { width: 460px; bottom: -48px; }
-}
-@media (max-width: 380px) {
-  .home-earth { display: none; }
+.home-screen.home-screen--default .mode-card--soon {
+  opacity: .55;
 }
 
-/* Cartoon eyes overlay (CSS-only — no image asset) */
-.home-earth-eyes {
-  position: absolute;
-  top: 28%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  gap: 36px;
-  pointer-events: none;
+/* ─── Main-menu "Türkiye" theme: bright Istanbul/Bosphorus backdrop, tone down decorative layers ─── */
+.home-screen.home-screen--turkiye {
+  background:
+    linear-gradient(rgba(3,7,18,.26), rgba(3,7,18,.52)),
+    url('/assets/backgrounds/turkiye.webp') center / cover no-repeat;
 }
-.ee-eye {
-  position: relative;
-  width: 64px;
-  height: 64px;
-  background: #fff;
-  border: 4px solid #0b1220;
-  border-radius: 50%;
-  box-shadow: 0 4px 10px rgba(2, 8, 23, .35);
-}
-.ee-pupil {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 26px;
-  height: 26px;
-  background: #0b1220;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  transition: transform 120ms ease-out;
-}
-.ee-highlight {
-  position: absolute;
-  top: 4px;
-  left: 5px;
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 50%;
-}
-@media (max-width: 900px) {
-  .home-earth-eyes { gap: 28px; }
-  .ee-eye   { width: 52px; height: 52px; border-width: 3.5px; }
-  .ee-pupil { width: 22px; height: 22px; }
-  .ee-highlight { top: 3px; left: 4px; width: 7px; height: 7px; }
-}
-@media (max-width: 600px) {
-  .home-earth-eyes { gap: 22px; }
-  .ee-eye   { width: 44px; height: 44px; border-width: 3px; }
-  .ee-pupil { width: 18px; height: 18px; }
-  .ee-highlight { top: 3px; left: 3px; width: 6px; height: 6px; }
-}
+.home-screen.home-screen--turkiye::before { opacity: .08; }
+.home-screen.home-screen--turkiye::after  { opacity: .55; }
 
-/* Lift the menu content above the earth layer, earth-theme only */
-.home-screen.home-screen--earth .home-hero,
-.home-screen.home-screen--earth .mode-grid {
+/* Lift the menu content above the background/decor layers (Türkiye theme) */
+.home-screen.home-screen--turkiye .home-hero,
+.home-screen.home-screen--turkiye .mode-grid {
   position: relative;
   z-index: 1;
 }
@@ -694,28 +648,52 @@ body {
   position: relative;
   z-index: 1;
 }
+/* Zümrüt Vadi kart yüzeyi: lacivert blok yerine koyu petrol-zümrüt nötr +
+   tek, düşük kontrastlı atlas/satin parlaması. Üstteki çapraz gradyan band =
+   yumuşak ipek ışığı (statik, animasyonsuz); alttaki dikey gradyan = yarı-saydam
+   petrol-zümrüt taban (fotoğrafla ince bağ korunur). Cam ~4px'e indirildi.
+   Doku/grain BİLİNÇLİ olarak eklenmedi (1. tur: temiz + sakin). */
 .home-screen.home-screen--dark-space .mode-card {
-  background: rgba(5, 10, 24, 0.72);
-  border-color: rgba(88, 130, 200, 0.20);
+  background:
+    linear-gradient(122deg, transparent 26%, rgba(140, 240, 220, 0.05) 47%, rgba(140, 240, 220, 0.02) 55%, transparent 72%),
+    linear-gradient(180deg, rgba(11, 34, 29, 0.86), rgba(7, 24, 21, 0.86));
+  border-color: rgba(90, 200, 175, 0.22);
   box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+    0 16px 40px rgba(2, 20, 16, 0.45),
+    inset 0 1px 0 rgba(180, 255, 235, 0.05);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .home-screen.home-screen--dark-space .mode-card:not(.mode-card--soon):hover {
-  border-color: rgba(88, 130, 200, 0.38);
+  border-color: rgba(120, 232, 218, 0.40);
   transform: translateY(-2px);
   box-shadow:
-    0 20px 48px rgba(0, 0, 0, 0.50),
-    0 0 0 3px rgba(88, 130, 200, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 20px 48px rgba(2, 20, 16, 0.52),
+    0 0 0 3px rgba(79, 209, 197, 0.10),
+    inset 0 1px 0 rgba(180, 255, 235, 0.07);
 }
 .home-screen.home-screen--dark-space .mode-card-desc {
-  color: rgba(170, 195, 230, 0.70);
+  color: rgba(190, 218, 208, 0.72);
 }
 .home-screen.home-screen--dark-space .mode-card--soon {
   opacity: .50;
+}
+/* Zümrüt Vadi: "Oyna" CTA'ları temaya uyarlanır. Mavi temadaki .btn-accent
+   (Gökyüzü Mavisi) yerine zümrüt/jade dolgu + koyu okunaklı metin; böylece
+   yeşil vadi + zümrüt cüzdanla aynı dili konuşur ve mavi temadan bilinçli
+   ayrışır. Yalnız renk + hover/focus/active durumları; yerleşim, kart yapısı
+   ve disabled ("Yakında", .mode-card-btn.disabled opacity'si) DEĞİŞMEZ. */
+.home-screen--dark-space .mode-card-btn.btn-accent {
+  background: linear-gradient(180deg, #3ad2c1 0%, #1f9e8f 100%);
+  color: #04231f;
+  border-color: rgba(120, 232, 218, 0.5);
+}
+.home-screen--dark-space .mode-card-btn.btn-accent:hover {
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.32);
+}
+.home-screen--dark-space .mode-card-btn.btn-accent:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.5);
 }
 
 /* ─── Adventure theme ─── */
@@ -756,8 +734,8 @@ body {
   opacity: .55;
 }
 
-/* ─── Blue Earth: mode-card glass treatment (earth theme only) ─── */
-.home-screen.home-screen--earth .mode-card {
+/* ─── Türkiye: mode-card glass treatment (Türkiye theme only) ─── */
+.home-screen.home-screen--turkiye .mode-card {
   background: rgba(8, 31, 74, 0.68);
   border-color: rgba(147, 197, 253, 0.24);
   box-shadow:
@@ -766,7 +744,7 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-.home-screen.home-screen--earth .mode-card:not(.mode-card--soon):hover {
+.home-screen.home-screen--turkiye .mode-card:not(.mode-card--soon):hover {
   border-color: rgba(147, 197, 253, 0.42);
   transform: translateY(-2px);
   box-shadow:
@@ -774,10 +752,10 @@ body {
     0 0 0 3px rgba(88, 166, 255, 0.10),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
-.home-screen.home-screen--earth .mode-card-desc {
+.home-screen.home-screen--turkiye .mode-card-desc {
   color: rgba(186, 211, 255, 0.72);
 }
-.home-screen.home-screen--earth .mode-card--soon {
+.home-screen.home-screen--turkiye .mode-card--soon {
   opacity: .55;
 }
 
@@ -7817,29 +7795,58 @@ body {
   top: 14px;
   right: 18px;
   z-index: 5100;
+
+  /* ── "Gezgin Kimliği" — Koyu Zümrüt Saha Cüzdanı (ücretsiz varsayılan skin).
+     Bronz/pirinç YALNIZ materyal & dekoratif kimlik (çerçeve, dikiş, halka,
+     pusula, ayraç, Gold foil); etkileşim aksanı soğuk jade; değer = gilt;
+     başarı = nane; tehlike = kırmızı. Bu değişkenler yalnız bu panele scope'lu. */
+  --wallet-leather:      #123026;
+  --wallet-leather-2:    #15352c;
+  --wallet-leather-deep: #0e251f;
+  --wallet-inset:        #091c17;
+  --wallet-bronze:       #b0824a;
+  --wallet-bronze-hi:    #d8a566;
+  --wallet-bronze-dim:   rgba(176, 130, 74, 0.42);
+  --wallet-gilt:         #f2c879;
+  --wallet-ivory:        #efe7d9;
+  --wallet-sage:         #93a89c;
+  --wallet-jade:         #4fd1c5;
+  --wallet-jade-deep:    #2fa597;
+  --wallet-jade-glow:    rgba(79, 209, 197, 0.22);
+  --wallet-mint:         #5fd29a;
+  --wallet-danger:       #f06a62;
 }
 
-/* Pill trigger */
+/* Pill trigger — kapalıyken bile sezilen, ince bronz hairline'lı zümrüt cam.
+   Hemen altındaki Sıralama butonu parlak altın olduğu için bronz daha
+   koyu/desatüre tutulur → iki sıcak metal hiyerarşi okur, çakışmaz. */
 .upd-pill {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 7px 12px;
-  border: 1px solid rgba(140, 160, 190, 0.28);
+  border: 1px solid var(--wallet-bronze-dim);
   border-radius: 999px;
-  background: rgba(15, 20, 30, 0.76);
+  background: rgba(14, 32, 27, 0.74);
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
-  color: rgba(235, 242, 255, 0.92);
+  color: var(--wallet-ivory);
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   white-space: nowrap;
 }
 .upd-pill:hover,
 .upd-pill--open {
-  border-color: rgba(100, 160, 255, 0.55);
-  background: rgba(20, 30, 48, 0.88);
+  border-color: rgba(216, 165, 102, 0.7);
+  background: rgba(20, 44, 37, 0.85);
+  box-shadow: 0 0 0 3px rgba(176, 130, 74, 0.16);
+}
+.upd-pill:focus-visible {
+  outline: none;
+  border-color: var(--wallet-bronze-hi);
+  box-shadow: 0 0 0 3px rgba(176, 130, 74, 0.28);
 }
 .upd-pill--loading,
 .upd-pill--guest {
@@ -7854,48 +7861,80 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b7de8, #7c3aed);
   color: #fff;
   font-size: 12px;
   font-weight: 900;
   flex-shrink: 0;
+  box-shadow: 0 0 0 1.5px var(--wallet-bronze-dim);
 }
-.upd-uname { color: rgba(200, 220, 255, 0.9); }
-.upd-lv    { color: rgba(130, 190, 255, 0.85); font-size: 12px; }
+.upd-uname { color: var(--wallet-ivory); }
+.upd-lv    { color: rgba(216, 165, 102, 0.85); font-size: 12px; }
 .upd-chevron {
   font-size: 9px;
-  color: rgba(180, 200, 255, 0.6);
+  color: rgba(216, 165, 102, 0.6);
   margin-left: 2px;
 }
 
-/* Dropdown panel */
+/* Dropdown panel — yağlı zümrüt deri cüzdan. Arka plan üç fısıltı katmanı:
+   üstte hafif sheen, çapraz guilloché/meridyen hairline'ları, altta deri
+   gradyanı. Hepsi düşük opaklıkta — odak avatar/ad/seviye/XP/Gold'da kalır. */
 .upd-dropdown {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   width: 288px;
-  border: 1px solid rgba(140, 160, 190, 0.24);
+  border: 1px solid var(--wallet-bronze-dim);
   border-radius: 18px;
-  background: rgba(14, 19, 30, 0.96);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(120% 75% at 50% -8%, rgba(255, 238, 200, 0.05), transparent 60%),
+    repeating-linear-gradient(115deg, rgba(176, 130, 74, 0.032) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(28deg, rgba(0, 0, 0, 0.05) 0 1px, transparent 1px 6px),
+    linear-gradient(162deg, var(--wallet-leather-2) 0%, var(--wallet-leather) 44%, var(--wallet-leather-deep) 100%);
+  box-shadow:
+    0 18px 60px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 235, 200, 0.07),
+    inset 0 0 0 1px rgba(9, 28, 23, 0.6),
+    inset 0 -20px 42px rgba(7, 20, 16, 0.5);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  color: rgba(230, 240, 255, 0.92);
-  animation: upd-in 0.14s ease;
+  color: var(--wallet-ivory);
+  isolation: isolate;
+  overflow: hidden;
+  animation: upd-in 0.16s ease;
 }
 @keyframes upd-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-/* Header — profile summary: bigger avatar left, name + level stacked right */
+/* Header — kimlik bandı: solda portre (bronz halka), sağda kicker + ad + seviye.
+   Arkada çok silik bronz pusula gülü açılışta hafifçe yerine oturur. */
 .upd-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 13px;
+}
+.upd-head > * { position: relative; z-index: 1; }
+.upd-head::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  width: 96px;
+  height: 96px;
+  transform: translateY(-50%);
+  background: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20120%20120'%20fill='none'%20stroke='%23d8a566'%20stroke-width='1.4'%20stroke-linejoin='round'%3E%3Ccircle%20cx='60'%20cy='60'%20r='46'/%3E%3Ccircle%20cx='60'%20cy='60'%20r='33'/%3E%3Cpath%20d='M60%2011%20L67%2060%20L60%20109%20L53%2060%20Z'/%3E%3Cpath%20d='M11%2060%20L60%2053%20L109%2060%20L60%2067%20Z'/%3E%3Cpath%20d='M27%2027%20L60%2060%20L27%2093'%20stroke-opacity='.55'/%3E%3Cpath%20d='M93%2027%20L60%2060%20L93%2093'%20stroke-opacity='.55'/%3E%3Ccircle%20cx='60'%20cy='60'%20r='4.5'%20fill='%23d8a566'%20stroke='none'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: 0.09;
+  pointer-events: none;
+  z-index: 0;
+  animation: upd-compass 0.8s ease-out;
+}
+@keyframes upd-compass {
+  from { opacity: 0;    transform: translateY(-50%) rotate(-12deg) scale(0.92); }
+  to   { opacity: 0.09; transform: translateY(-50%) rotate(0)      scale(1); }
 }
 .upd-head-avatar {
   display: inline-flex;
@@ -7904,30 +7943,40 @@ body {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b7de8, #7c3aed);
   color: #fff;
   font-size: 23px;
   font-weight: 900;
   flex-shrink: 0;
+  box-shadow:
+    0 0 0 2px var(--wallet-leather-deep),
+    0 0 0 3.5px var(--wallet-bronze),
+    0 2px 8px rgba(0, 0, 0, 0.4);
 }
 .upd-head-info {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
 }
-.upd-head-uname {
-  font-size: 16px;
+.upd-head-kicker {
+  font-size: 9px;
   font-weight: 800;
-  color: rgba(225, 238, 255, 0.97);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(216, 165, 102, 0.62);
+}
+.upd-head-uname {
+  font-size: 16.5px;
+  font-weight: 800;
+  color: var(--wallet-ivory);
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.15;
 }
 .upd-head-level {
   font-size: 12.5px;
-  color: rgba(140, 178, 255, 0.85);
+  color: var(--wallet-sage);
   font-weight: 700;
 }
 
@@ -7942,22 +7991,28 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
-  border: 1px solid rgba(120, 170, 255, 0.30);
+  padding: 9px 10px;
+  border: 1px solid var(--wallet-bronze-dim);
   border-radius: 10px;
-  background: rgba(60, 110, 220, 0.16);
-  color: rgba(200, 222, 255, 0.96);
+  background: rgba(12, 30, 25, 0.5);
+  color: var(--wallet-ivory);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.2px;
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.06s;
+  transition: background 0.14s, border-color 0.14s, color 0.14s, box-shadow 0.14s, transform 0.06s;
 }
 .upd-edit-btn:hover {
-  background: rgba(80, 140, 240, 0.26);
-  border-color: rgba(140, 190, 255, 0.52);
-  color: rgba(225, 238, 255, 1);
+  background: rgba(20, 46, 40, 0.72);
+  border-color: var(--wallet-jade);
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--wallet-jade-glow);
+}
+.upd-edit-btn:focus-visible {
+  outline: none;
+  border-color: var(--wallet-jade);
+  box-shadow: 0 0 0 3px var(--wallet-jade-glow);
 }
 .upd-edit-btn:active { transform: translateY(1px); }
 
@@ -7968,18 +8023,20 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: rgba(160, 185, 255, 0.55);
+  color: rgba(216, 165, 102, 0.6);
 }
 .upd-xp-track {
-  height: 8px;
+  height: 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--wallet-inset);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(176, 130, 74, 0.14);
   overflow: hidden;
 }
 .upd-xp-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #3b7de8, #7c3aed);
+  background: linear-gradient(90deg, var(--wallet-jade-deep), var(--wallet-jade));
+  box-shadow: 0 0 8px var(--wallet-jade-glow);
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 4px;
 }
@@ -7988,27 +8045,44 @@ body {
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  color: rgba(160, 185, 255, 0.7);
+  color: var(--wallet-sage);
 }
 .upd-xp-remain {
-  color: rgba(190, 210, 255, 0.85);
+  color: rgba(127, 224, 210, 0.9);
   font-weight: 700;
   white-space: nowrap;
 }
 
-/* Gold row */
+/* Gold — gilt "madeni para plakası": bronz/altın ailesinin anlam taşıdığı tek yer. */
 .upd-row--gold {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 9px 11px;
-  border-radius: 12px;
-  background: rgba(255, 200, 0, 0.07);
-  border: 1px solid rgba(255, 200, 0, 0.14);
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 13px;
+  border-radius: 13px;
+  background:
+    radial-gradient(80% 130% at 12% 50%, rgba(242, 200, 121, 0.16), transparent 70%),
+    rgba(18, 40, 33, 0.55);
+  border: 1px solid rgba(242, 200, 121, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 240, 200, 0.08);
 }
-.upd-gold-icon { font-size: 16px; }
-.upd-gold-num  { font-size: 15px; font-weight: 900; color: rgba(255, 220, 60, 0.95); }
-.upd-gold-label { font-size: 12px; color: rgba(255, 200, 60, 0.6); margin-left: 1px; }
+.upd-gold-icon { font-size: 16px; align-self: center; }
+.upd-gold-num {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 23px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: var(--wallet-gilt);
+}
+.upd-gold-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(242, 200, 121, 0.6);
+  margin-left: 1px;
+}
 
 /* Sections */
 .upd-section { display: flex; flex-direction: column; gap: 8px; }
@@ -8017,32 +8091,57 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: rgba(160, 185, 255, 0.55);
+  color: rgba(216, 165, 102, 0.6);
   margin: 0;
 }
 
-/* Daily bonus */
+/* Daily bonus — alınabilirken net bir EYLEM butonu (gilt dolgu + koyu metin),
+   dekoratif metal etiket gibi kaybolmaz. Alınınca deboss "damga" kalır. */
 .upd-bonus-btn {
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid rgba(100, 200, 120, 0.35);
-  border-radius: 10px;
-  background: rgba(60, 180, 90, 0.14);
-  color: rgba(160, 235, 170, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid var(--wallet-gilt);
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgba(242, 200, 121, 0.28), rgba(242, 200, 121, 0.12));
+  color: #2a1d07;
   font-size: 13px;
   font-weight: 800;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  text-align: left;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 245, 215, 0.35), 0 4px 14px rgba(180, 130, 40, 0.18);
+  transition: background 0.14s, border-color 0.14s, box-shadow 0.14s, transform 0.06s;
 }
 .upd-bonus-btn:hover {
-  background: rgba(60, 180, 90, 0.24);
-  border-color: rgba(100, 200, 120, 0.6);
+  background: linear-gradient(180deg, rgba(247, 212, 142, 0.42), rgba(242, 200, 121, 0.22));
+  box-shadow: inset 0 1px 0 rgba(255, 245, 215, 0.5), 0 6px 18px rgba(200, 150, 50, 0.3);
+}
+.upd-bonus-btn:focus-visible {
+  outline: none;
+  border-color: #fff0cf;
+  box-shadow: 0 0 0 3px rgba(242, 200, 121, 0.4);
+}
+.upd-bonus-btn:active { transform: translateY(1px); }
+.upd-bonus-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
 }
 .upd-bonus-done {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px dashed var(--wallet-bronze-dim);
+  border-radius: 11px;
+  background: rgba(12, 30, 25, 0.4);
+  color: var(--wallet-sage);
   font-size: 12px;
-  color: rgba(160, 185, 255, 0.5);
-  padding: 4px 2px;
+  font-weight: 600;
 }
 
 /* Sound settings – segmented controls */
@@ -8054,56 +8153,77 @@ body {
 .upd-sound-block + .upd-sound-block { margin-top: 8px; }
 .upd-sound-sub {
   font-size: 11px;
-  color: rgba(180, 200, 255, 0.55);
+  color: var(--wallet-sage);
   font-weight: 600;
 }
 .upd-seg {
   display: flex;
-  border: 1px solid rgba(130, 160, 220, 0.2);
-  border-radius: 8px;
+  border: 1px solid var(--wallet-bronze-dim);
+  border-radius: 9px;
+  background: var(--wallet-inset);
   overflow: hidden;
 }
 .upd-seg-btn {
   flex: 1;
-  padding: 6px 4px;
+  padding: 7px 4px;
   border: none;
-  border-right: 1px solid rgba(130, 160, 220, 0.2);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(170, 195, 255, 0.45);
+  border-right: 1px solid rgba(176, 130, 74, 0.16);
+  background: transparent;
+  color: var(--wallet-sage);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
   white-space: nowrap;
 }
 .upd-seg-btn:last-child { border-right: none; }
 .upd-seg-btn--active {
-  background: rgba(60, 130, 230, 0.30);
-  color: rgba(200, 225, 255, 0.95);
+  background: linear-gradient(180deg, rgba(79, 209, 197, 0.26), rgba(47, 165, 151, 0.16));
+  color: #dffaf5;
+  box-shadow: inset 0 0 0 1px rgba(79, 209, 197, 0.3);
 }
 .upd-seg-btn:hover:not(.upd-seg-btn--active) {
-  background: rgba(255, 255, 255, 0.07);
-  color: rgba(200, 215, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--wallet-ivory);
+}
+.upd-seg-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--wallet-jade);
 }
 
-/* Logout */
+/* Logout — en altta sessiz kırmızı "koparma" pulu; üstünde dikiş ayracı. */
 .upd-logout {
+  position: relative;
   width: 100%;
+  margin-top: 6px;
   padding: 9px 12px;
-  border: 1px solid rgba(220, 70, 70, 0.3);
+  border: 1px solid rgba(240, 106, 98, 0.34);
   border-radius: 10px;
-  background: rgba(220, 50, 50, 0.1);
-  color: rgba(255, 160, 150, 0.9);
-  font-size: 13px;
-  font-weight: 800;
+  background: rgba(240, 106, 98, 0.08);
+  color: #f3a59d;
+  font-size: 12.5px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.14s, border-color 0.14s, box-shadow 0.14s, transform 0.06s;
   text-align: center;
 }
-.upd-logout:hover {
-  background: rgba(220, 50, 50, 0.2);
-  border-color: rgba(220, 70, 70, 0.55);
+.upd-logout::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: -10px;
+  border-top: 1px dashed var(--wallet-bronze-dim);
 }
+.upd-logout:hover {
+  background: rgba(240, 106, 98, 0.16);
+  border-color: rgba(240, 106, 98, 0.6);
+}
+.upd-logout:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(240, 106, 98, 0.28);
+}
+.upd-logout:active { transform: translateY(1px); }
 
 /* Mobile */
 @media (max-width: 520px) {
@@ -8114,6 +8234,82 @@ body {
   .upd-pill { font-size: 12px; padding: 6px 10px; gap: 6px; }
   .upd-avatar { width: 22px; height: 22px; font-size: 10px; }
   .upd-dropdown { width: min(284px, calc(100vw - 20px)); }
+  /* Daha rahat dokunma hedefleri (≈44px) — birincil eylem + çıkış. */
+  .upd-bonus-btn { min-height: 44px; }
+  .upd-logout { min-height: 44px; }
+  .upd-edit-btn { min-height: 40px; }
+  .upd-seg-btn { min-height: 36px; }
+}
+
+/* Hareket azaltma — pusula yerleşmesi ve panel açılış dönüşü sönümlenir. */
+@media (prefers-reduced-motion: reduce) {
+  .upd-dropdown { animation: none; }
+  .upd-head::after { animation: none; opacity: 0.09; }
+}
+
+/* ─── "Gece Atlası Cüzdanı" — mavi/lacivert profil skin'i ────────────────────
+   Varsayılan (Gece), Türkiye ve Adventure (yani dark-space DIŞINDAKİ) temalarda.
+   Yukarıdaki koyu-zümrüt "Saha Cüzdanı" rules'ı OLDUĞU GİBİ KALIR (Zümrüt Vadi
+   temasında geçerli); burada sadece data-theme≠dark-space iken üzerine yazılır.
+   Aynı deri-cüzdan materyali korunur: deri → gece laciverdi, donanım brass
+   (çerçeve/pusula/dikiş/halka KORUNUR), etkileşim aksanı jade → Gökyüzü Mavisi
+   (#58a6ff), değer = gilt (Gold), tehlike = kırmızı. Çoğu yüzey `--wallet-*`
+   değişkenlerini okuduğu için değişkenleri yeniden tanımlamak yeter; geri kalan
+   birkaç sabit (literal) yeşil yüzey aşağıda lacivere çevrilir. */
+.upd-wrap:not([data-theme="dark-space"]) {
+  --wallet-leather:      #16243f;
+  --wallet-leather-2:    #1f2f50;
+  --wallet-leather-deep: #0f1a30;
+  --wallet-inset:        #0a1322;
+  --wallet-ivory:        #e9eefb;
+  --wallet-sage:         #9fb2cf;
+  --wallet-jade:         #58a6ff;
+  --wallet-jade-deep:    #3b82f6;
+  --wallet-jade-glow:    rgba(88, 166, 255, 0.22);
+  --wallet-mint:         #6fb4ff;
+  /* bronze / gilt / danger korunur — donanım, Gold değeri ve tehlike anlamı. */
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-pill {
+  background: rgba(18, 32, 56, 0.74);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-pill:hover,
+.upd-wrap:not([data-theme="dark-space"]) .upd-pill--open {
+  background: rgba(26, 44, 74, 0.85);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-dropdown {
+  box-shadow:
+    0 18px 60px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(220, 234, 255, 0.07),
+    inset 0 0 0 1px rgba(7, 16, 32, 0.6),
+    inset 0 -20px 42px rgba(6, 12, 26, 0.5);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-edit-btn {
+  background: rgba(16, 28, 50, 0.5);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-edit-btn:hover {
+  background: rgba(26, 46, 80, 0.72);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-xp-remain {
+  color: rgba(130, 180, 255, 0.95);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-row--gold {
+  background:
+    radial-gradient(80% 130% at 12% 50%, rgba(242, 200, 121, 0.16), transparent 70%),
+    rgba(22, 38, 64, 0.55);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-bonus-done {
+  background: rgba(16, 28, 50, 0.4);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-seg-btn--active {
+  background: linear-gradient(180deg, rgba(88, 166, 255, 0.30), rgba(59, 130, 246, 0.18));
+  color: #eaf3ff;
+  box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.34);
+}
+.upd-wrap:not([data-theme="dark-space"]) .upd-head-avatar-edit {
+  background: rgba(18, 34, 60, 0.97);
+}
+.upd-wrap:not([data-theme="dark-space"]) .social-menu-row {
+  background: rgba(18, 34, 60, 0.6);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -9105,12 +9301,12 @@ body {
 
 /* ═══════════════════════════════════════════════════════════════════════════
    THEME-AWARE GLASS PANELS — pre-game/lobby/setup only.
-   Triggered by [data-theme="earth"|"adventure"|"dark-space"] on the screen
+   Triggered by [data-theme="turkiye"|"adventure"|"dark-space"] on the screen
    root. Default theme has no attribute → no overrides → existing look stays.
 ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Primary card: Online setup, waiting room, group lobby ── */
-[data-theme="earth"] .duel-lobby-card {
+[data-theme="turkiye"] .duel-lobby-card {
   background: rgba(8, 31, 74, 0.70);
   border-color: rgba(147, 197, 253, 0.22);
   box-shadow:
@@ -9139,7 +9335,7 @@ body {
 }
 
 /* ── Mode-selection modal (HomeScreen) — themed `.overlay` wraps `.modal` ── */
-.overlay[data-theme="earth"] .modal {
+.overlay[data-theme="turkiye"] .modal {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02)),
     rgba(8, 31, 74, 0.74);
@@ -9174,7 +9370,7 @@ body {
 }
 
 /* ── Nested panels inside primary card (settings, join, room code) ── */
-[data-theme="earth"] .duel-settings-block,
+[data-theme="turkiye"] .duel-settings-block,
 [data-theme="adventure"] .duel-settings-block {
   background: rgba(15, 38, 75, 0.46);
   border-color: rgba(147, 197, 253, 0.16);
@@ -9185,7 +9381,7 @@ body {
 }
 
 /* ── Player chips (waiting room) — non-mine only ── */
-[data-theme="earth"] .duel-player-chip:not(.mine),
+[data-theme="turkiye"] .duel-player-chip:not(.mine),
 [data-theme="adventure"] .duel-player-chip:not(.mine) {
   background: rgba(15, 38, 75, 0.42);
   border-color: rgba(147, 197, 253, 0.18);
@@ -9196,7 +9392,7 @@ body {
 }
 
 /* ── Chat panel (desktop) ── */
-[data-theme="earth"] .lc-panel,
+[data-theme="turkiye"] .lc-panel,
 [data-theme="adventure"] .lc-panel {
   background: rgba(8, 31, 74, 0.66);
   border-color: rgba(147, 197, 253, 0.20);
@@ -9217,12 +9413,12 @@ body {
 }
 
 /* Chat header: tone down the surface2→surface gradient on themed panels */
-[data-theme="earth"] .lc-header,
+[data-theme="turkiye"] .lc-header,
 [data-theme="adventure"] .lc-header {
   background: linear-gradient(180deg, rgba(15, 38, 75, 0.55), rgba(8, 31, 74, 0.40));
   border-bottom-color: rgba(147, 197, 253, 0.14);
 }
-[data-theme="earth"] .lc-header:hover,
+[data-theme="turkiye"] .lc-header:hover,
 [data-theme="adventure"] .lc-header:hover {
   background: linear-gradient(180deg, rgba(20, 48, 90, 0.62), rgba(12, 36, 80, 0.48));
 }
@@ -9235,7 +9431,7 @@ body {
 }
 
 /* Chat mobile bottom sheet */
-[data-theme="earth"] .lc-sheet,
+[data-theme="turkiye"] .lc-sheet,
 [data-theme="adventure"] .lc-sheet {
   background: rgba(8, 31, 74, 0.78);
   border-color: rgba(147, 197, 253, 0.22);
@@ -9250,7 +9446,7 @@ body {
 }
 
 /* ── Group game wait layout (DuelGroupGame) ── */
-[data-theme="earth"] .dgg-wait-main,
+[data-theme="turkiye"] .dgg-wait-main,
 [data-theme="adventure"] .dgg-wait-main {
   background:
     linear-gradient(180deg, rgba(20, 48, 92, 0.78), rgba(8, 28, 64, 0.86));
@@ -9272,8 +9468,8 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
-[data-theme="earth"] .dgg-wait-players,
-[data-theme="earth"] .dgg-wait-side,
+[data-theme="turkiye"] .dgg-wait-players,
+[data-theme="turkiye"] .dgg-wait-side,
 [data-theme="adventure"] .dgg-wait-players,
 [data-theme="adventure"] .dgg-wait-side {
   background: rgba(15, 38, 75, 0.46);
@@ -9286,7 +9482,7 @@ body {
 }
 
 /* Nested room-settings panel inside group wait side */
-[data-theme="earth"] .dgg-room-settings,
+[data-theme="turkiye"] .dgg-room-settings,
 [data-theme="adventure"] .dgg-room-settings {
   background: rgba(8, 28, 64, 0.55);
   border: 1px solid rgba(147, 197, 253, 0.16);
@@ -9297,7 +9493,7 @@ body {
 }
 
 /* ── Subtle hover lift on selectable cards in themed pre-game screens ── */
-[data-theme="earth"] .duel-lobby-card.duel-1v1-room-card:hover,
+[data-theme="turkiye"] .duel-lobby-card.duel-1v1-room-card:hover,
 [data-theme="adventure"] .duel-lobby-card.duel-1v1-room-card:hover {
   border-color: rgba(147, 197, 253, 0.36);
   box-shadow:
@@ -9319,7 +9515,7 @@ body {
    These rules continue that treatment inside the panel.
 ═══════════════════════════════════════════════════════════════════════════ */
 
-[data-theme="earth"] .lc-messages,
+[data-theme="turkiye"] .lc-messages,
 [data-theme="adventure"] .lc-messages {
   background:
     radial-gradient(1200px 400px at 50% -10%, rgba(147, 197, 253, 0.06), transparent 60%),
@@ -9331,7 +9527,7 @@ body {
     rgba(5, 8, 14, 0.52);
 }
 
-[data-theme="earth"] .lc-messages::-webkit-scrollbar-thumb,
+[data-theme="turkiye"] .lc-messages::-webkit-scrollbar-thumb,
 [data-theme="adventure"] .lc-messages::-webkit-scrollbar-thumb {
   background: rgba(147, 197, 253, 0.22);
 }
@@ -9339,7 +9535,7 @@ body {
   background: rgba(148, 163, 184, 0.20);
 }
 
-[data-theme="earth"] .lc-empty,
+[data-theme="turkiye"] .lc-empty,
 [data-theme="adventure"] .lc-empty {
   color: rgba(186, 211, 255, 0.78);
   opacity: 1;
@@ -9349,7 +9545,7 @@ body {
   opacity: 1;
 }
 
-[data-theme="earth"] .lc-sender,
+[data-theme="turkiye"] .lc-sender,
 [data-theme="adventure"] .lc-sender {
   color: rgba(186, 211, 255, 0.78);
 }
@@ -9358,7 +9554,7 @@ body {
 }
 
 /* Opponent bubble — themed glass; "me" bubble stays accent-blue (button-like) */
-[data-theme="earth"] .lc-msg-opp .lc-bubble,
+[data-theme="turkiye"] .lc-msg-opp .lc-bubble,
 [data-theme="adventure"] .lc-msg-opp .lc-bubble {
   background: rgba(15, 38, 75, 0.55);
   border-color: rgba(147, 197, 253, 0.18);
@@ -9371,7 +9567,7 @@ body {
 }
 
 /* Input row + input field */
-[data-theme="earth"] .lc-input-row,
+[data-theme="turkiye"] .lc-input-row,
 [data-theme="adventure"] .lc-input-row {
   background: rgba(8, 28, 64, 0.55);
   border-top-color: rgba(147, 197, 253, 0.16);
@@ -9381,13 +9577,13 @@ body {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
-[data-theme="earth"] .lc-input,
+[data-theme="turkiye"] .lc-input,
 [data-theme="adventure"] .lc-input {
   background: rgba(5, 18, 44, 0.62);
   border-color: rgba(147, 197, 253, 0.20);
   color: rgba(232, 240, 255, 0.98);
 }
-[data-theme="earth"] .lc-input::placeholder,
+[data-theme="turkiye"] .lc-input::placeholder,
 [data-theme="adventure"] .lc-input::placeholder {
   color: rgba(186, 211, 255, 0.55);
 }
@@ -9401,7 +9597,7 @@ body {
 }
 
 /* Mobile chat sheet — extend the same internals */
-[data-theme="earth"] .lc-sheet-header,
+[data-theme="turkiye"] .lc-sheet-header,
 [data-theme="adventure"] .lc-sheet-header {
   background: linear-gradient(180deg, rgba(15, 38, 75, 0.55), rgba(8, 28, 64, 0.40));
   border-bottom-color: rgba(147, 197, 253, 0.16);
@@ -9417,7 +9613,7 @@ body {
    Only applies in pre-game phases (data-theme is removed during play).
 ═══════════════════════════════════════════════════════════════════════════ */
 
-[data-theme="earth"] .duel-header,
+[data-theme="turkiye"] .duel-header,
 [data-theme="adventure"] .duel-header {
   background: rgba(10, 22, 46, 0.55);
   border-bottom: 1px solid rgba(147, 197, 253, 0.16);
@@ -9432,7 +9628,7 @@ body {
 }
 
 /* Mode label — slightly brighter on themed backgrounds for legibility */
-[data-theme="earth"] .duel-mode-label,
+[data-theme="turkiye"] .duel-mode-label,
 [data-theme="adventure"] .duel-mode-label {
   color: rgba(186, 211, 255, 0.86);
 }
@@ -9441,7 +9637,7 @@ body {
 }
 
 /* Room code chip — prominent (active state) */
-[data-theme="earth"] .duel-code-badge,
+[data-theme="turkiye"] .duel-code-badge,
 [data-theme="adventure"] .duel-code-badge {
   color: rgba(219, 234, 254, 0.98);
   background: rgba(30, 64, 175, 0.32);
@@ -9456,7 +9652,7 @@ body {
 }
 
 /* Region chip — secondary, quieter glass */
-[data-theme="earth"] .duel-region-badge,
+[data-theme="turkiye"] .duel-region-badge,
 [data-theme="adventure"] .duel-region-badge {
   color: rgba(186, 211, 255, 0.86);
   background: rgba(15, 38, 75, 0.46);
@@ -9469,13 +9665,13 @@ body {
 }
 
 /* Back button — sits in the themed header, must match the glass feel */
-[data-theme="earth"] .duel-header .back-btn,
+[data-theme="turkiye"] .duel-header .back-btn,
 [data-theme="adventure"] .duel-header .back-btn {
   background: rgba(15, 38, 75, 0.46);
   border-color: rgba(147, 197, 253, 0.22);
   color: rgba(219, 234, 254, 0.90);
 }
-[data-theme="earth"] .duel-header .back-btn:hover,
+[data-theme="turkiye"] .duel-header .back-btn:hover,
 [data-theme="adventure"] .duel-header .back-btn:hover {
   border-color: rgba(147, 197, 253, 0.42);
   color: rgba(232, 240, 255, 0.98);
@@ -9495,7 +9691,7 @@ body {
    `.invited` (post-copy green state) has higher specificity and wins on top.
 ═══════════════════════════════════════════════════════════════════════════ */
 
-[data-theme="earth"] .duel-invite-btn,
+[data-theme="turkiye"] .duel-invite-btn,
 [data-theme="adventure"] .duel-invite-btn {
   background: rgba(20, 48, 96, 0.62);
   border: 1px solid rgba(96, 165, 250, 0.45);
@@ -9506,7 +9702,7 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-[data-theme="earth"] .duel-invite-btn:hover:not(.invited),
+[data-theme="turkiye"] .duel-invite-btn:hover:not(.invited),
 [data-theme="adventure"] .duel-invite-btn:hover:not(.invited) {
   background: rgba(28, 62, 118, 0.70);
   border-color: rgba(147, 197, 253, 0.62);
@@ -9538,18 +9734,18 @@ body {
 }
 
 /* Read-only invite-link field beneath the button */
-[data-theme="earth"] .duel-link-input,
+[data-theme="turkiye"] .duel-link-input,
 [data-theme="adventure"] .duel-link-input {
   background: rgba(12, 32, 68, 0.52);
   border-color: rgba(96, 165, 250, 0.20);
   color: rgba(186, 211, 255, 0.78);
 }
-[data-theme="earth"] .duel-link-preview .duel-link-input,
+[data-theme="turkiye"] .duel-link-preview .duel-link-input,
 [data-theme="adventure"] .duel-link-preview .duel-link-input {
   color: rgba(186, 211, 255, 0.74);
   opacity: 1;
 }
-[data-theme="earth"] .duel-link-input:focus,
+[data-theme="turkiye"] .duel-link-input:focus,
 [data-theme="adventure"] .duel-link-input:focus {
   border-color: rgba(147, 197, 253, 0.55);
   color: rgba(232, 240, 255, 0.98);
@@ -9575,34 +9771,34 @@ body {
    controlled and intentionally not over-customized to avoid breakage.
 ═══════════════════════════════════════════════════════════════════════════ */
 
-[data-theme="earth"] .duel-select,
+[data-theme="turkiye"] .duel-select,
 [data-theme="adventure"] .duel-select {
   background: rgba(10, 24, 52, 0.76);
   border-color: rgba(96, 165, 250, 0.22);
   color: rgba(239, 246, 255, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
-[data-theme="earth"] .duel-select:hover:not(:focus),
+[data-theme="turkiye"] .duel-select:hover:not(:focus),
 [data-theme="adventure"] .duel-select:hover:not(:focus) {
   border-color: rgba(147, 197, 253, 0.36);
 }
-[data-theme="earth"] .duel-select:focus,
+[data-theme="turkiye"] .duel-select:focus,
 [data-theme="adventure"] .duel-select:focus {
   border-color: rgba(147, 197, 253, 0.55);
   box-shadow:
     0 0 0 3px rgba(59, 130, 246, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
-[data-theme="earth"] .duel-select-label,
+[data-theme="turkiye"] .duel-select-label,
 [data-theme="adventure"] .duel-select-label {
   color: rgba(186, 211, 255, 0.78);
 }
-[data-theme="earth"] .duel-select-caret,
+[data-theme="turkiye"] .duel-select-caret,
 [data-theme="adventure"] .duel-select-caret {
   color: rgba(186, 211, 255, 0.78);
 }
 /* Native option menu — readable defaults on platforms that honor them */
-[data-theme="earth"] .duel-select option,
+[data-theme="turkiye"] .duel-select option,
 [data-theme="adventure"] .duel-select option {
   background: #0b1d3e;
   color: #e8f0ff;
@@ -9641,8 +9837,8 @@ body {
 
 /* Oyuncu Adın + Oda Kodu — same glass treatment, code input keeps its own
    font/tracking/caps from the base rule. */
-[data-theme="earth"] .duel-name-input,
-[data-theme="earth"] .duel-code-input,
+[data-theme="turkiye"] .duel-name-input,
+[data-theme="turkiye"] .duel-code-input,
 [data-theme="adventure"] .duel-name-input,
 [data-theme="adventure"] .duel-code-input {
   background: rgba(10, 24, 52, 0.74);
@@ -9652,14 +9848,14 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-[data-theme="earth"] .duel-name-input::placeholder,
-[data-theme="earth"] .duel-code-input::placeholder,
+[data-theme="turkiye"] .duel-name-input::placeholder,
+[data-theme="turkiye"] .duel-code-input::placeholder,
 [data-theme="adventure"] .duel-name-input::placeholder,
 [data-theme="adventure"] .duel-code-input::placeholder {
   color: rgba(203, 213, 225, 0.50);
 }
-[data-theme="earth"] .duel-name-input:focus,
-[data-theme="earth"] .duel-code-input:focus,
+[data-theme="turkiye"] .duel-name-input:focus,
+[data-theme="turkiye"] .duel-code-input:focus,
 [data-theme="adventure"] .duel-name-input:focus,
 [data-theme="adventure"] .duel-code-input:focus {
   border-color: rgba(147, 197, 253, 0.55);
@@ -9691,7 +9887,7 @@ body {
 
 /* Hızlı Eşleş — amber-glass treatment. Keeps the orange identity but reads
    as a translucent glass surface that belongs to the themed panel. */
-[data-theme="earth"] .duel-quickmatch-btn,
+[data-theme="turkiye"] .duel-quickmatch-btn,
 [data-theme="adventure"] .duel-quickmatch-btn {
   background: rgba(120, 70, 15, 0.22);
   border: 1px solid rgba(251, 191, 36, 0.65);
@@ -9702,7 +9898,7 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
-[data-theme="earth"] .duel-quickmatch-btn:hover:not(:disabled),
+[data-theme="turkiye"] .duel-quickmatch-btn:hover:not(:disabled),
 [data-theme="adventure"] .duel-quickmatch-btn:hover:not(:disabled) {
   background: rgba(146, 85, 20, 0.30);
   border-color: rgba(251, 191, 36, 0.85);
@@ -14048,9 +14244,9 @@ body {
   }
 }
 
-/* ── Earth / adventure (lighter backgrounds) ─────────────────── */
+/* ── Türkiye / adventure (lighter backgrounds) ─────────────────── */
 /* neutral fills stand out better when bg image is visible */
-[data-theme="earth"] .cq-map-region[data-legal=""],
+[data-theme="turkiye"] .cq-map-region[data-legal=""],
 [data-theme="adventure"] .cq-map-region[data-legal=""] {
   filter: brightness(1.12);
 }
@@ -17806,7 +18002,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
      margins crop on tall phones; a soft top/bottom scrim keeps the hero
      text and bottom chrome legible without dimming the bright middle. */
   .home-screen,
-  .home-screen.home-screen--earth,
+  .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
   .home-screen.home-screen--dark-space {
     background:
@@ -17822,11 +18018,11 @@ button.cq-team-toggle:active { transform: scale(0.92); }
      bright art — switch them off on mobile; the scrim above carries
      contrast instead. */
   .home-screen::before,
-  .home-screen.home-screen--earth::before,
+  .home-screen.home-screen--turkiye::before,
   .home-screen.home-screen--adventure::before,
   .home-screen.home-screen--dark-space::before { opacity: 0; }
   .home-screen::after,
-  .home-screen.home-screen--earth::after,
+  .home-screen.home-screen--turkiye::after,
   .home-screen.home-screen--adventure::after,
   .home-screen.home-screen--dark-space::after { opacity: 0; }
 
@@ -17843,7 +18039,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
      padding from the shared mobile rules stay intact. The theme variants
      are listed so this wins over the default .home-screen--adventure class. */
   .home-screen,
-  .home-screen.home-screen--earth,
+  .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
   .home-screen.home-screen--dark-space {
     padding-top: clamp(46px, 12vh, 128px);
@@ -18425,7 +18621,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
      all three cards stay clear of the dock; mirrors the ≤600px override with
      a smaller vh share. Theme variants listed to win specificity, as above. */
   .home-screen,
-  .home-screen.home-screen--earth,
+  .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
   .home-screen.home-screen--dark-space {
     padding-top: clamp(34px, 9vh, 84px);
@@ -18931,9 +19127,9 @@ html.is-native-app .top-right-stack .upd-dropdown {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: rgba(20, 28, 45, 0.96);
-  border: 1px solid rgba(140, 180, 255, 0.5);
-  color: rgba(195, 218, 255, 0.95);
+  background: rgba(14, 37, 31, 0.97);
+  border: 1px solid var(--wallet-bronze);
+  color: var(--wallet-bronze-hi);
   font-size: 10px;
   display: inline-flex;
   align-items: center;
@@ -20876,9 +21072,9 @@ html:not(.is-native-app) .apk-photo-card {
   width: 100%;
   padding: 11px 13px;
   border-radius: 12px;
-  background: rgba(20, 28, 46, 0.7);
-  border: 1px solid rgba(120, 160, 230, 0.18);
-  color: #eaf1ff;
+  background: rgba(14, 37, 31, 0.6);
+  border: 1px solid var(--wallet-bronze-dim);
+  color: var(--wallet-ivory);
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;

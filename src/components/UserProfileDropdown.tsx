@@ -2,9 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getLevelProgress, fetchTotalXp } from "../lib/progression";
 import type { Profile } from "../lib/auth";
 import type { CountdownSoundMode } from "../lib/sound";
+import type { HomeTheme } from "../lib/themeBackgrounds";
 import { Avatar } from "./Avatar";
 
 interface Props {
+  /** Aktif ana ekran teması. `.upd-wrap`'a data-theme olarak yansıtılır:
+   *  dark-space (Zümrüt Vadi) → koyu zümrüt cüzdan skin'i; diğer mavi temalar
+   *  (default/turkiye/adventure) → mavi-lacivert "Gece Atlası" skin'i (CSS). */
+  homeTheme: HomeTheme;
   profile: Profile | null;
   authLoading: boolean;
   gold: number;
@@ -32,6 +37,7 @@ interface Props {
 }
 
 export function UserProfileDropdown({
+  homeTheme,
   profile,
   authLoading,
   gold,
@@ -95,7 +101,7 @@ export function UserProfileDropdown({
 
   if (authLoading) {
     return (
-      <div className="upd-wrap">
+      <div className="upd-wrap" data-theme={homeTheme}>
         <div className="upd-pill upd-pill--loading">Kontrol ediliyor…</div>
       </div>
     );
@@ -103,7 +109,7 @@ export function UserProfileDropdown({
 
   if (!profile) {
     return (
-      <div className="upd-wrap">
+      <div className="upd-wrap" data-theme={homeTheme}>
         <button type="button" className="upd-pill upd-pill--guest" onClick={onLogin}>
           Giriş Yap
         </button>
@@ -118,7 +124,7 @@ export function UserProfileDropdown({
   const xpSpan = lp.nextLevelXp - lp.currentLevelXp;
 
   return (
-    <div className="upd-wrap" ref={wrapRef}>
+    <div className="upd-wrap" data-theme={homeTheme} ref={wrapRef}>
       {/* Pill trigger */}
       <button
         type="button"
@@ -167,6 +173,7 @@ export function UserProfileDropdown({
               />
             )}
             <div className="upd-head-info">
+              <span className="upd-head-kicker">Gezgin Kimliği</span>
               <span className="upd-head-uname">@{profile.username}</span>
               <span className="upd-head-level">Seviye {lp.level}</span>
             </div>
@@ -221,10 +228,10 @@ export function UserProfileDropdown({
                 className="upd-bonus-btn"
                 onClick={onClaimBonus}
               >
-                🎁 +50 Gold — Bugünkü Bonusu Al
+                🎁 +50 Gold · Bugünkü Bonusu Al
               </button>
             ) : (
-              <div className="upd-bonus-done">✓ Bugünkü bonus alındı · Yarın tekrar gel</div>
+              <div className="upd-bonus-done">✓ Bugünün damgası alındı · Yarın tekrar gel</div>
             )}
           </div>
 
