@@ -21,9 +21,12 @@ import { Capacitor } from "@capacitor/core";
 import {
   type HomeTheme,
   HOME_THEME_KEY,
+  HOME_THEMES,
   readStoredHomeTheme,
   getThemeBackgroundStyle,
   getThemeDataAttr,
+  getThemeDef,
+  getMobileThemeBackground,
 } from "./lib/themeBackgrounds";
 import {
   NAME_TO_TOPOID,
@@ -773,12 +776,9 @@ function HomeSocialDock() {
   );
 }
 
-const HOME_THEMES: { id: HomeTheme; name: string; swatch: string }[] = [
-  { id: "default",    name: "Gece",         swatch: "linear-gradient(135deg, #0b1430 0%, #115e67 100%)" },
-  { id: "turkiye",    name: "Türkiye",      swatch: "linear-gradient(135deg, #16c0c8 0%, #1e6bd9 100%)" },
-  { id: "adventure",  name: "Adventure",    swatch: "linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%)" },
-  { id: "dark-space", name: "Zümrüt Vadi", swatch: "linear-gradient(135deg, #102a22 0%, #1f5a45 100%)" },
-];
+/* HOME_THEMES picker listesi artık tek kaynaktan (lib/themeBackgrounds
+   HOME_THEME_REGISTRY) gelir — masaüstü HomeThemePicker ile mobil
+   SocialCenterSheet aynı diziyi paylaşır, isim/renk dili kopmaz. */
 
 function HomeThemePicker({ active, onChange }: { active: HomeTheme; onChange: (t: HomeTheme) => void }) {
   const [open, setOpen] = useState(false);
@@ -2228,6 +2228,16 @@ export default function App() {
   const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
   useEffect(() => {
     try { localStorage.setItem(HOME_THEME_KEY, homeTheme); } catch { /* ignore */ }
+    // Mobil/native arka plan ve renk dilini DOM köküne (html) yaz: ≤600px
+    // .home-screen arka planı `--home-mobile-bg`'i okur (tema değişince app
+    // arka planı da değişir), portallı mobil tema sayfası da `--home-accent`'i
+    // okuyabilsin diye köke konur. Masaüstü CSS bu değişkenleri kullanmaz →
+    // masaüstü görünümü değişmez.
+    const def = getThemeDef(homeTheme);
+    const root = document.documentElement;
+    root.style.setProperty("--home-mobile-bg", getMobileThemeBackground(homeTheme));
+    root.style.setProperty("--home-accent", def.accent);
+    root.style.setProperty("--home-accent-rgb", def.accentRgb);
   }, [homeTheme]);
   const [continent, setContinent] = useState<ContinentFilter>("world");
   const [selectedDuration, setSelectedDuration] = useState(60);

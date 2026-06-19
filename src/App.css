@@ -8694,6 +8694,16 @@ body {
 .lb-modal[data-type="gold"] .lb-pod-xp .lb-val-coin { color: var(--lb-gold-deep); }
 .lb-pod--self .lb-pod-medallion { box-shadow: 0 0 0 2px var(--lb-selfblue), 0 5px 16px oklch(0.10 0.02 258 / 0.30); }
 
+/* Gold ilk 3: seviye kaldırıldığında gold değeri ana veri olur → biraz daha
+   öne çıkar, tek satırda kalır ve eşit-genişlikli sütunda merkezlenir;
+   böylece uzun değerler komşu kartları itmez. */
+.lb-modal[data-type="gold"] .lb-pod-meta { margin-top: 10px; flex-wrap: nowrap; }
+.lb-modal[data-type="gold"] .lb-pod-xp { gap: 5px; max-width: 100%; }
+.lb-modal[data-type="gold"] .lb-pod-num { font-size: 19px; letter-spacing: 0.3px; }
+.lb-modal[data-type="gold"] .lb-pod--r1 .lb-pod-num { font-size: 22px; }
+.lb-modal[data-type="gold"] .lb-pod-xp .lb-val-coin { width: 14px; height: 14px; }
+.lb-modal[data-type="gold"] .lb-pod--r1 .lb-pod-xp .lb-val-coin { width: 16px; height: 16px; }
+
 /* ── Liste (4+): tek bütünleşik atlas kaydı ── */
 .lb-board {
   border: 1px solid var(--lb-hair);
@@ -8900,6 +8910,9 @@ body {
   .lb-pod-meta { gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .lb-pod-num { font-size: 16px; }
   .lb-pod-level { font-size: 9.5px; padding: 2px 7px; }
+  /* gold ilk 3 değeri dar ekranda da tek satır kalsın */
+  .lb-modal[data-type="gold"] .lb-pod-num { font-size: 16px; }
+  .lb-modal[data-type="gold"] .lb-pod--r1 .lb-pod-num { font-size: 18px; }
 
   /* tek satır (Görsel 2): sıra · oyuncu · hex · değer — kompakt */
   .lb-board-head {
@@ -18332,13 +18345,18 @@ button.cq-team-toggle:active { transform: scale(0.92); }
 
 @media (max-width: 600px) {
   /* ── App-home background (mobile only) ──
-     The app gets its own bright illustrated backdrop, independent of the
-     saved desktop "home theme" (whose default is "adventure"), so all four
-     home-screen states are overridden here. Desktop (>600px) never reaches
-     this rule. center/cover keeps the full portrait art — foliage at the
-     top, the earth horizon at the bottom — visible while only the side
-     margins crop on tall phones; a soft top/bottom scrim keeps the hero
-     text and bottom chrome legible without dimming the bright middle. */
+     Each theme gets its OWN portrait backdrop on narrow/native viewports:
+     the active theme's mobile WebP arrives through `--home-mobile-bg`, a CSS
+     custom property App writes on <html> whenever the home theme changes
+     (lib/themeBackgrounds → getMobileThemeBackground). That is what makes
+     tapping a theme card actually swap the app background — the earlier
+     single static mobile-app-home-bg.png ignored the theme entirely. Desktop
+     (>600px) never reaches this rule and never reads the variable, so the
+     desktop per-theme backgrounds stay untouched. center/cover keeps the full
+     portrait art visible while only the side margins crop on tall phones; a
+     soft top/bottom scrim keeps the hero text and bottom chrome legible.
+     The fallback (night-atlas-mobile) covers the first paint before the
+     effect runs / the unlikely case the variable is unset. */
   .home-screen,
   .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
@@ -18349,7 +18367,8 @@ button.cq-team-toggle:active { transform: scale(0.92); }
         rgba(5, 12, 30, 0) 20%,
         rgba(5, 12, 30, 0) 68%,
         rgba(5, 12, 30, .30) 100%),
-      url('/assets/backgrounds/mobile-app-home-bg.png') center center / cover no-repeat;
+      var(--home-mobile-bg, url('/assets/backgrounds/night-atlas-mobile.webp'))
+        center center / cover no-repeat;
     background-color: #0a1530;
   }
   /* The dark starfield (::before) and vignette (::after) would mute the
@@ -18692,9 +18711,13 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     transition: transform .12s, border-color .15s, background-color .15s;
   }
   .mh-theme-row:active { transform: scale(.985); }
+  /* Seçili tema, kendi renk dilinde vurgulanır: --home-accent App tarafından
+     <html>'e yazılır (aktif tema accent'i). Böylece Zümrüt Vadi seçiliyken
+     vurgu jade, Türkiye'de turkuaz olur; fallback eski mavi accent. */
   .mh-theme-row--active {
-    border-color: rgba(88, 166, 255, .55);
-    background: rgba(28, 51, 88, .62);
+    border-color: rgba(var(--home-accent-rgb, 88, 166, 255), .6);
+    background: rgba(var(--home-accent-rgb, 88, 166, 255), .16);
+    box-shadow: inset 0 0 0 1px rgba(var(--home-accent-rgb, 88, 166, 255), .22);
   }
   .mh-theme-swatch {
     width: 30px;
@@ -18704,7 +18727,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14), 0 2px 8px rgba(2, 8, 23, .35);
   }
   .mh-theme-name { flex: 1; min-width: 0; }
-  .mh-theme-check { color: var(--accent); font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+  .mh-theme-check { color: var(--home-accent, var(--accent)); font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
 
   /* ── Social Center bottom-sheet (Arkadaşlar tab) — native-only sosyal merkez.
      Tek sheet içinde sekmeli: Arkadaşlar / İstekler / Bildirimler / Tema.

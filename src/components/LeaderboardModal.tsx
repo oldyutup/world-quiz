@@ -87,6 +87,31 @@ function CoinMark({ className }: { className?: string }) {
   );
 }
 
+/* ── Gold kısaltma: büyük değerleri K/M/B ile kısa, hizalı göster.
+   En fazla 1 ondalık, gereksiz ".0" düşer, ondalık ayıracı tr-TR (virgül):
+     1.250 → 1,2K · 12.400 → 12,4K · 145.000 → 145K · 2.300.000 → 2,3M
+     98.700.000 → 98,7M · ≥1 milyar → B. <1000 tam sayı (gruplu).
+   YALNIZ gold gösteriminde kullanılır; XP tam değerini korur. ── */
+function formatGold(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const tiers: ReadonlyArray<{ v: number; s: string }> = [
+    { v: 1_000_000_000, s: "B" },
+    { v: 1_000_000, s: "M" },
+    { v: 1_000, s: "K" },
+  ];
+  for (const t of tiers) {
+    if (abs >= t.v) {
+      // 1 ondalığa AŞAĞI yuvarla (1.250 → 1,2K, gösterimi şişirme yok);
+      // 1e-9 epsilon yalnız kayan-nokta hatasını telafi eder (2,3 → 22,99… → 23).
+      const scaled = Math.floor((abs / t.v) * 10 + 1e-9) / 10;
+      return sign + scaled.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) + t.s;
+    }
+  }
+  return sign + abs.toLocaleString("tr-TR");
+}
+
 interface Props {
   onClose: () => void;
 }
@@ -325,10 +350,17 @@ export function LeaderboardModal({ onClose }: Props) {
                         {mine && <span className="lb-self-chip">SEN</span>}
                       </span>
                       <span className="lb-pod-meta">
-                        <span className="lb-pod-level">SEVİYE {row.level}</span>
+                        {/* Gold ilk 3'te seviye gösterilmez; ana veri gold değeridir. */}
+                        {type !== "gold" && (
+                          <span className="lb-pod-level">SEVİYE {row.level}</span>
+                        )}
                         <span className="lb-pod-xp">
                           {type === "gold" && <CoinMark className="lb-val-coin" />}
-                          <span className="lb-pod-num">{valueOf(row).toLocaleString("tr-TR")}</span>
+                          <span className="lb-pod-num">
+                            {type === "gold"
+                              ? formatGold(valueOf(row))
+                              : valueOf(row).toLocaleString("tr-TR")}
+                          </span>
                           <span className="lb-pod-unit">{unit}</span>
                         </span>
                       </span>
@@ -373,7 +405,11 @@ export function LeaderboardModal({ onClose }: Props) {
                           </span>
                           <span className="lb-value">
                             {type === "gold" && <CoinMark className="lb-val-coin" />}
-                            <span className="lb-value-num">{valueOf(row).toLocaleString("tr-TR")}</span>
+                            <span className="lb-value-num">
+                              {type === "gold"
+                                ? formatGold(valueOf(row))
+                                : valueOf(row).toLocaleString("tr-TR")}
+                            </span>
                             <span className="lb-value-suffix">{unit}</span>
                           </span>
                         </li>
