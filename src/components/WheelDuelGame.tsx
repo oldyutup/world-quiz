@@ -323,17 +323,27 @@ function describeWheelDuelRpcError(
 interface Props {
   onHome: () => void;
   profile: Profile | null;
+  /** Hızlı Eşleş (native/mobil-web) auto-start: when present the game mounts
+   *  straight into the searching phase via the existing startQuickMatch flow,
+   *  seeded with these match params (Çark = Süre). Absent on desktop / manual
+   *  entry. region defaults to "world" (sheet hides it). */
+  autoQuickMatch?: { duration?: number; region?: string } | null;
+  /** Fired once the auto-start actually kicks off, so App can clear the intent. */
+  onQuickMatchConsumed?: () => void;
 }
 
-export default function WheelDuelGame({ onHome, profile }: Props) {
+export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, onQuickMatchConsumed }: Props) {
   /* ── Phase ───────────────────────────────────────────────── */
   const [phase, setPhase] = useState<Phase>("setup");
 
   /* ── Setup form state ────────────────────────────────────── */
   const initialName = profile?.username ?? "";
   const [playerName, setPlayerName] = useState<string>(initialName);
-  const [hostDuration, setHostDuration] = useState<number>(120);
-  const [hostRegion, setHostRegion] = useState<Region>("world");
+  // Lazy-init from the Hızlı Eşleş intent so startQuickMatch's first closure
+  // already carries the chosen Süre/bölge (no setState flush race). Desktop /
+  // manual entry passes no intent → original 120sn / world defaults stand.
+  const [hostDuration, setHostDuration] = useState<number>(() => autoQuickMatch?.duration ?? 120);
+  const [hostRegion, setHostRegion] = useState<Region>(() => (autoQuickMatch?.region as Region) ?? "world");
   const [joinCode, setJoinCode] = useState<string>("");
   /** Davet linkinden gelen oda kodu + isim override. joinRoomByCode setState
    *  flush'unu bekleyemediği için (useInviteJoin setJoinCode + triggerJoin'i
@@ -1537,6 +1547,20 @@ export default function WheelDuelGame({ onHome, profile }: Props) {
       quickMatchTick();
     }, QUICK_MATCH_TICK_MS);
   }, [profile?.id, profile?.username, quickMatchTick]);
+
+  /* Hızlı Eşleş auto-start (native / mobil-web): App routes here with an
+     autoQuickMatch intent → kick the EXISTING startQuickMatch once. Host Süre/
+     bölge already seeded via the lazy useState initializers. profile may land
+     a tick late after OAuth; effect retries until ready, ref guards a double
+     start. */
+  const autoQuickMatchStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoQuickMatchStartedRef.current || !autoQuickMatch) return;
+    if (!profile?.id || !profile.username) return;
+    autoQuickMatchStartedRef.current = true;
+    startQuickMatch();
+    onQuickMatchConsumed?.();
+  }, [autoQuickMatch, profile?.id, profile?.username, startQuickMatch, onQuickMatchConsumed]);
 
   /* Realtime: bekleyen oyuncu kendi queue satırının matched_room_id
      UPDATE'ini dinler. Caller RPC dönüşünde direkt join eder, listener

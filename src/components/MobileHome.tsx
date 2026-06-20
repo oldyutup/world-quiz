@@ -22,13 +22,24 @@
    stay desktop-web-only for now (invite links still work; only
    this mobile navigation omits them).
 ═══════════════════════════════════════════════════════════════ */
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sound";
 import { Avatar } from "./Avatar";
 import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
+import {
+  CONQUEST_QUICK_MATCH_ENABLED,
+  QUICK_MATCH_CONQUEST_ROUNDS,
+  QUICK_MATCH_COUNTRY_DURATIONS,
+  QUICK_MATCH_DEFAULT_REGION,
+  QUICK_MATCH_FLAG_ROUNDS,
+  QUICK_MATCH_REGIONS,
+  QUICK_MATCH_WHEEL_DURATIONS,
+  type QuickMatchIntent,
+  type QuickMatchMode,
+} from "../lib/quickMatch";
 
 /** Screens the mobile home can launch directly — a subset of App's AppScreen ids. */
 export type MobileHomeTarget =
@@ -54,6 +65,9 @@ interface ThemeOption {
 
 interface MobileHomeProps {
   onPlay: (target: MobileHomeTarget) => void;
+  /** Hızlı Eşleş: the sheet hands its intent up; App applies the existing auth
+   *  gate then routes into the matching game's quick-match flow. */
+  onStartQuickMatch: (intent: QuickMatchIntent) => void;
   /** Opens the existing ConquestModeSelectModal (create / join / browse + auth). */
   onOpenConquest: () => void;
   /** Bottom-nav (native app shell only). Each reuses an App-level handler:
@@ -201,29 +215,285 @@ function MobileSheet({
   );
 }
 
-/** Quick Match (Eşleş tab) — native-only placeholder entry panel for the
- *  future, level-based matchmaking system. NO real matchmaking yet: the mode
- *  cards and süre/tur controls are an inert preview and the primary CTA is
- *  disabled. The only live action reuses the existing Düello mode sheet so a
- *  player can still set up a duel today. Reuses the .mh-sheet shell and is
- *  opened solely from the native-app bottom-nav, so it never reaches desktop
- *  or mobile web. When real matchmaking lands, this panel becomes its home. */
+/** One option row the selector popover renders. Disabled rows (locked Kuşatma
+ *  maps) are non-interactive for pointer and keyboard alike. */
+interface QmSelectOption {
+  value:     string | number;
+  label:     string;
+  disabled?: boolean;
+}
+
+/** A live selector field for the active mode: its label, the option list, the
+ *  current value and how to set it. Each mode contributes exactly two. */
+interface QmActiveField {
+  id:       "duration" | "rounds" | "region" | "map";
+  label:    string;
+  options:  QmSelectOption[];
+  value:    string | number;
+  onSelect: (v: string | number) => void;
+}
+
+/** One mode in the rail. `enabled:false` (Kuşatma until its backend is deployed
+ *  + playtested) keeps the card selectable and its config visible, but the
+ *  primary CTA stays inert. */
+interface QmModeDef {
+  mode:    QuickMatchMode;
+  icon:    string;
+  label:   string;
+  desc:    string;
+  enabled: boolean;
+}
+
+/** Shared duel matchmaking blurb (Ülke Yaz / Çark / Bayrak). */
+const DUEL_DESC = "Seviyene yakın bir rakiple birebir eşleş. Bekledikçe seviye penceresi genişler.";
+
+/** Rail order is fixed: Kuşatma first, then the three live duels. The sheet
+ *  still OPENS with Ülke Yaz selected (a playable mode) — see the sheet's
+ *  initial `mode` state and the auto-center effect that scrolls it into view. */
+const QM_MODES: QmModeDef[] = [
+  { mode: "conquest", icon: "🛡️", label: "Kuşatma",      desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED },
+  { mode: "wheel",    icon: "🎯", label: "Çark 1v1",     desc: DUEL_DESC, enabled: true },
+  { mode: "country",  icon: "🌍", label: "Ülke Yaz 1v1", desc: DUEL_DESC, enabled: true },
+  { mode: "flag",     icon: "🚩", label: "Bayrak 1v1",   desc: DUEL_DESC, enabled: true },
+];
+
+/** Conquest maps: only Türkiye is live; the rest stay visible-but-locked
+ *  "Yakında" rows and never reach a queue parameter. */
+const QM_CONQUEST_MAP_OPTIONS: QmSelectOption[] = [
+  { value: "turkey",      label: "🇹🇷 Türkiye" },
+  { value: "europe",      label: "🇪🇺 Avrupa",    disabled: true },
+  { value: "middle-east", label: "🕌 Orta Doğu",  disabled: true },
+];
+
+/** One compact selector field (Süre / Tur / Kıta / Harita): a label, the
+ *  selected value and a caret. Tapping opens an anchored popover listbox right
+ *  under the field — single-open across the sheet, closing on select, outside
+ *  tap or Escape. The popover is absolutely positioned, so opening it never
+ *  shifts the sheet's layout (no animated layout properties). */
+function QmSelect({
+  field,
+  openField,
+  setOpenField,
+}: {
+  field:        QmActiveField;
+  openField:    string | null;
+  setOpenField: (id: string | null) => void;
+}) {
+  const open = openField === field.id;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const popRef  = useRef<HTMLDivElement>(null);
+
+  // While open: outside-tap and Escape close the popover. Capture phase so we
+  // win before the sheet's own Escape-to-close handler fires.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpenField(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); setOpenField(null); }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open, setOpenField]);
+
+  // On open, drop focus on the selected (or first enabled) option so keyboard
+  // users land inside the list.
+  useEffect(() => {
+    if (!open) return;
+    const pop = popRef.current;
+    const target = pop?.querySelector<HTMLElement>('[aria-selected="true"]:not([disabled])')
+      ?? pop?.querySelector<HTMLElement>(".mh-qm-opt:not([disabled])");
+    target?.focus();
+  }, [open]);
+
+  const selected = field.options.find(o => o.value === field.value);
+
+  const onListKey = (e: ReactKeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const opts = Array.from(
+      popRef.current?.querySelectorAll<HTMLElement>(".mh-qm-opt:not([disabled])") ?? []
+    );
+    if (!opts.length) return;
+    const cur  = opts.indexOf(document.activeElement as HTMLElement);
+    const next = e.key === "ArrowDown"
+      ? Math.min(opts.length - 1, cur + 1)
+      : Math.max(0, cur < 0 ? 0 : cur - 1);
+    opts[next]?.focus();
+  };
+
+  return (
+    <div className="mh-qm-select" ref={rootRef}>
+      <button
+        type="button"
+        className={"mh-qm-field" + (open ? " mh-qm-field--open" : "")}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => { playSound("click"); setOpenField(open ? null : field.id); }}
+      >
+        <span className="mh-qm-field-label">{field.label}</span>
+        <span className="mh-qm-field-val">{selected?.label ?? "—"}</span>
+        <span className="mh-qm-field-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div
+          ref={popRef}
+          className="mh-qm-pop"
+          role="listbox"
+          aria-label={field.label}
+          onKeyDown={onListKey}
+        >
+          {field.options.map(o => {
+            const isSel = o.value === field.value;
+            return (
+              <button
+                key={String(o.value)}
+                type="button"
+                role="option"
+                aria-selected={isSel}
+                disabled={o.disabled}
+                className={
+                  "mh-qm-opt"
+                  + (isSel ? " mh-qm-opt--sel" : "")
+                  + (o.disabled ? " mh-qm-opt--soon" : "")
+                }
+                onClick={() => {
+                  if (o.disabled) return;
+                  playSound("click");
+                  field.onSelect(o.value);
+                  setOpenField(null);
+                }}
+              >
+                <span className="mh-qm-opt-label">{o.label}</span>
+                {o.disabled
+                  ? <span className="mh-qm-soon mh-qm-soon--inline">Yakında</span>
+                  : isSel && <span className="mh-qm-opt-check" aria-hidden="true">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Quick Match (Eşleş) — real 1v1 matchmaking entry. A horizontal mode rail
+ *  (Kuşatma · Çark · Ülke Yaz · Bayrak) drives two mode-specific selector
+ *  fields — only the controls that actually reach that mode's queue (Ülke/Çark
+ *  = Süre + Kıta, Bayrak = Tur + Kıta, Kuşatma = Tur + Harita). The CTA hands
+ *  the intent to App, which applies the existing auth gate and routes into the
+ *  canonical quick-match flow. Reuses the .mh-sheet shell; opened from the
+ *  native bottom-nav ⚡ tab and the narrow/mobil-web ⚡ card. */
 function MobileQuickMatchSheet({
   onClose,
-  onCreateDuelRoom,
+  onStartQuickMatch,
 }: {
   onClose: () => void;
-  onCreateDuelRoom: () => void;
+  onStartQuickMatch: (intent: QuickMatchIntent) => void;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
   useSheetLock(sheetRef, onClose);
 
-  // Future duello modes, mirroring the Düello category. Preview-only here.
-  const modes = [
-    { icon: "🌍", label: "Ülke Yaz Düellosu" },
-    { icon: "🚩", label: "Bayrak Düellosu" },
-    { icon: "🎯", label: "Çark Düellosu" },
-  ];
+  // Opens on a playable mode (Ülke Yaz) even though Kuşatma leads the rail.
+  const [mode,            setMode]            = useState<QuickMatchMode>("country");
+  const [countryDuration, setCountryDuration] = useState(60);   // Ülke Yaz default 1 dk
+  const [wheelDuration,   setWheelDuration]   = useState(60);   // Çark default 1 dk
+  const [flagRounds,      setFlagRounds]      = useState(10);   // Bayrak default 10 Tur
+  const [siegeRounds,     setSiegeRounds]     = useState(6);    // Kuşatma default 6 Tur
+  const [region,          setRegion]          = useState<string>(QUICK_MATCH_DEFAULT_REGION);
+  const [openField,       setOpenField]       = useState<string | null>(null);
+
+  const railRef     = useRef<HTMLDivElement>(null);
+  const firstCenter = useRef(true);
+
+  const active = QM_MODES.find(m => m.mode === mode)!;
+
+  const selectMode = (m: QuickMatchMode) => {
+    playSound("click");
+    setMode(m);
+    setOpenField(null);   // mode swap changes the fields; close any open popover
+  };
+
+  // Keep the selected card centered in the rail. Instant on first paint (so the
+  // sheet opens already showing Ülke Yaz, with Kuşatma/Çark reachable by
+  // scrolling left); smooth afterwards, unless the user reduced motion.
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const card = rail.querySelector<HTMLElement>(`[data-mode="${mode}"]`);
+    if (!card) return;
+    const target = card.offsetLeft - (rail.clientWidth - card.clientWidth) / 2;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    rail.scrollTo({
+      left: Math.max(0, target),
+      behavior: firstCenter.current || reduce ? "auto" : "smooth",
+    });
+    firstCenter.current = false;
+  }, [mode]);
+
+  // ←/→ move selection along the rail (radiogroup roving focus).
+  const onRailKey = (e: ReactKeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const idx = QM_MODES.findIndex(m => m.mode === mode);
+    const nextIdx = e.key === "ArrowRight"
+      ? Math.min(QM_MODES.length - 1, idx + 1)
+      : Math.max(0, idx - 1);
+    const nm = QM_MODES[nextIdx].mode;
+    if (nm === mode) return;
+    selectMode(nm);
+    requestAnimationFrame(() =>
+      railRef.current?.querySelector<HTMLElement>(`[data-mode="${nm}"]`)?.focus()
+    );
+  };
+
+  // Exactly the two controls that reach the selected mode's queue. Region is
+  // shared across the three duel modes; conquest carries the Türkiye-only map.
+  const fields: QmActiveField[] = (() => {
+    switch (mode) {
+      case "country":
+        return [
+          { id: "duration", label: "Süre", options: QUICK_MATCH_COUNTRY_DURATIONS, value: countryDuration, onSelect: v => setCountryDuration(v as number) },
+          { id: "region",   label: "Kıta", options: QUICK_MATCH_REGIONS,           value: region,          onSelect: v => setRegion(v as string) },
+        ];
+      case "wheel":
+        return [
+          { id: "duration", label: "Süre", options: QUICK_MATCH_WHEEL_DURATIONS, value: wheelDuration, onSelect: v => setWheelDuration(v as number) },
+          { id: "region",   label: "Kıta", options: QUICK_MATCH_REGIONS,         value: region,        onSelect: v => setRegion(v as string) },
+        ];
+      case "flag":
+        return [
+          { id: "rounds", label: "Tur",  options: QUICK_MATCH_FLAG_ROUNDS, value: flagRounds, onSelect: v => setFlagRounds(v as number) },
+          { id: "region", label: "Kıta", options: QUICK_MATCH_REGIONS,     value: region,     onSelect: v => setRegion(v as string) },
+        ];
+      case "conquest":
+        return [
+          { id: "rounds", label: "Tur",    options: QUICK_MATCH_CONQUEST_ROUNDS, value: siegeRounds, onSelect: v => setSiegeRounds(v as number) },
+          { id: "map",    label: "Harita", options: QM_CONQUEST_MAP_OPTIONS,     value: "turkey",    onSelect: () => {} },
+        ];
+    }
+  })();
+
+  function buildIntent(): QuickMatchIntent {
+    switch (mode) {
+      case "country": return { mode, duration: countryDuration, region };
+      case "wheel":   return { mode, duration: wheelDuration,   region };
+      case "flag":    return { mode, rounds: flagRounds,        region };
+      case "conquest":return { mode, rounds: siegeRounds, map: "turkey" };
+    }
+  }
+
+  const handleStart = () => {
+    if (!active.enabled) return;
+    playSound("click");
+    onStartQuickMatch(buildIntent());
+    onClose();
+  };
 
   return createPortal(
     <>
@@ -244,7 +514,6 @@ function MobileQuickMatchSheet({
         <header className="mh-sheet-head">
           <span className="mh-sheet-icon" aria-hidden="true">⚡</span>
           <h3 id="mh-match-title" className="mh-sheet-title">Hızlı Eşleş</h3>
-          <span className="mh-qm-soon">Yakında</span>
           <button
             type="button"
             className="mh-sheet-close"
@@ -255,58 +524,52 @@ function MobileQuickMatchSheet({
           </button>
         </header>
 
-        <p className="mh-qm-intro">
-          Seviyene uygun rakiplerle hızlıca eşleşmen için hazırlanıyor.
-        </p>
-
-        <div className="mh-qm-group">
-          <span className="mh-qm-section">Mod</span>
-          <div className="mh-qm-modes">
-            {modes.map((m, i) => (
+        {/* Mode rail — horizontal scroll-snap carousel; one row, never wraps,
+            scales to any number of future modes. */}
+        <div className="mh-qm-railwrap">
+          <div className="mh-qm-rail" role="radiogroup" aria-label="Mod" ref={railRef}>
+            {QM_MODES.map(m => (
               <button
-                key={m.label}
+                key={m.mode}
                 type="button"
-                className={"mh-qm-mode" + (i === 0 ? " mh-qm-mode--active" : "")}
-                disabled
-                aria-disabled="true"
+                role="radio"
+                aria-checked={m.mode === mode}
+                data-mode={m.mode}
+                tabIndex={m.mode === mode ? 0 : -1}
+                className={"mh-qm-mode" + (m.mode === mode ? " mh-qm-mode--active" : "")}
+                onClick={() => selectMode(m.mode)}
+                onKeyDown={onRailKey}
               >
                 <span className="mh-qm-mode-icon" aria-hidden="true">{m.icon}</span>
                 <span className="mh-qm-mode-label">{m.label}</span>
+                {!m.enabled && <span className="mh-qm-soon">Yakında</span>}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Süre / Tur — inert preview readouts of the planned match settings. */}
-        <div className="mh-qm-prefs">
-          <div className="mh-qm-group">
-            <span className="mh-qm-section">Süre</span>
-            <div className="mh-qm-chips" aria-hidden="true">
-              <span className="mh-qm-chip">60 sn</span>
-              <span className="mh-qm-chip mh-qm-chip--active">120 sn</span>
-              <span className="mh-qm-chip">180 sn</span>
-            </div>
-          </div>
-          <div className="mh-qm-group">
-            <span className="mh-qm-section">Tur</span>
-            <div className="mh-qm-chips" aria-hidden="true">
-              <span className="mh-qm-chip">5</span>
-              <span className="mh-qm-chip mh-qm-chip--active">10</span>
-              <span className="mh-qm-chip">15</span>
-            </div>
-          </div>
+        <p className="mh-qm-desc">{active.desc}</p>
+
+        {/* Two side-by-side compact selectors; tapping one opens its popover. */}
+        <div className="mh-qm-fields">
+          {fields.map(f => (
+            <QmSelect
+              key={f.id}
+              field={f}
+              openField={openField}
+              setOpenField={setOpenField}
+            />
+          ))}
         </div>
 
         <div className="mh-qm-actions">
-          <button type="button" className="mh-qm-primary" disabled aria-disabled="true">
-            Yakında aktif olacak
-          </button>
           <button
             type="button"
-            className="mh-qm-secondary"
-            onClick={() => { playSound("click"); onCreateDuelRoom(); }}
+            className="mh-qm-primary"
+            aria-disabled={!active.enabled}
+            onClick={handleStart}
           >
-            Şimdilik düello odası kur
+            {active.enabled ? "Eşleşmeye Başla" : "Kuşatma yakında aktif"}
           </button>
         </div>
       </div>
@@ -317,6 +580,7 @@ function MobileQuickMatchSheet({
 
 export default function MobileHome({
   onPlay,
+  onStartQuickMatch,
   onOpenConquest,
   onOpenRanking,
   onOpenProfile,
@@ -382,6 +646,23 @@ export default function MobileHome({
 
   return (
     <div className="mobile-home">
+      {/* Hızlı Eşleş girişi — yalnız narrow/mobil WEB'de görünür. Native app'te
+          bunun yerine alt-nav'daki ⚡ Eşleş sekmesi kullanılır (CSS:
+          html.is-native-app .mh-qm-entry { display:none }), böylece çift giriş
+          olmaz. Aynı MobileQuickMatchSheet'i açar. */}
+      <button
+        type="button"
+        className="mh-qm-entry"
+        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(true); }}
+      >
+        <span className="mh-qm-entry-icon" aria-hidden="true">⚡</span>
+        <span className="mh-qm-entry-text">
+          <span className="mh-qm-entry-title">Hızlı Eşleş</span>
+          <span className="mh-qm-entry-desc">Seviyene yakın rakiple birebir yarış.</span>
+        </span>
+        <span className="mh-cat-chevron" aria-hidden="true">›</span>
+      </button>
+
       {categories.map(c => (
         <button
           key={c.id}
@@ -421,8 +702,7 @@ export default function MobileHome({
       {matchOpen && (
         <MobileQuickMatchSheet
           onClose={() => setMatchOpen(false)}
-          // Reuse the existing Düello mode sheet — the duel flow today.
-          onCreateDuelRoom={() => { setMatchOpen(false); setOpenId("duel"); }}
+          onStartQuickMatch={(intent) => { setMatchOpen(false); onStartQuickMatch(intent); }}
         />
       )}
 

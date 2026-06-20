@@ -17,6 +17,7 @@ import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
 import MobileHome from "./components/MobileHome";
+import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
 import { Capacitor } from "@capacitor/core";
 import {
   type HomeTheme,
@@ -159,6 +160,38 @@ const PENDING_ONLINE_TARGET_KEY = "pending_online_target";
 function clearPendingOnlineTarget() {
   try { sessionStorage.removeItem(PENDING_ONLINE_TARGET_KEY); }
   catch { /* sessionStorage disabled — best effort */ }
+}
+
+/** Hızlı Eşleş intent → the AppScreen that hosts that mode's quick-match flow.
+ *  Reuses the SAME screens the manual menu uses (no parallel surfaces): the
+ *  duel games + ConquestMode just receive an autoQuickMatch prop. */
+const QUICK_MATCH_SCREEN: Record<QuickMatchMode, AppScreen> = {
+  country:  "duel-game",
+  wheel:    "wheel-duel-game",
+  flag:     "flag-duel-game",
+  conquest: "conquest-game",
+};
+
+/** sessionStorage mirror of the in-flight quick-match intent, so a logged-out
+ *  player's Google OAuth round-trip (which reloads + wipes React state) still
+ *  resumes the exact same search after the session is restored. Mirrors the
+ *  PENDING_ONLINE_TARGET_KEY pattern. */
+const PENDING_QUICK_MATCH_KEY = "pending_quick_match_intent";
+
+function clearPendingQuickMatch() {
+  try { sessionStorage.removeItem(PENDING_QUICK_MATCH_KEY); }
+  catch { /* sessionStorage disabled — best effort */ }
+}
+
+/** Read + parse a persisted quick-match intent (boot restore). Tolerates a
+ *  malformed/absent value by returning null. */
+function readPendingQuickMatch(): QuickMatchIntent | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_QUICK_MATCH_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as QuickMatchIntent;
+    return parsed && typeof parsed.mode === "string" ? parsed : null;
+  } catch { return null; }
 }
 type GameMode        = "idle" | "timed" | "free" | "finished";
 type ContinentFilter = Continent | "world";
@@ -392,6 +425,9 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 interface HomeProps {
   onSelect: (screen: AppScreen) => void;
   profile: Profile | null;
+  /** Hızlı Eşleş (native + narrow/mobil-web): MobileHome sheet'i intent'i App'e
+   *  taşır; App auth gate + queue/oyun yönlendirmesini yapar. */
+  onStartQuickMatch: (intent: QuickMatchIntent) => void;
   /** Kör Nokta login-only: guest bir aksiyon seçince App auth modal'ı açar
    *  ve login sonrası ilgili ekrana yönlendirir. */
   onKorNoktaAuthRequired: (action: "create" | "join") => void;
@@ -407,7 +443,7 @@ interface HomeProps {
   homeTheme: HomeTheme;
   onThemeChange: (t: HomeTheme) => void;
 }
-function HomeScreen({ onSelect, profile, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
+function HomeScreen({ onSelect, profile, onStartQuickMatch, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
@@ -474,6 +510,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
           intentionally absent from this mobile navigation. */}
       <MobileHome
         onPlay={onSelect}
+        onStartQuickMatch={onStartQuickMatch}
         onOpenConquest={() => setShowConquestMenu(true)}
         onOpenRanking={onOpenRanking}
         onOpenProfile={onOpenProfile}
@@ -2270,6 +2307,21 @@ export default function App() {
   /* Screen a logged-out user tried to open through an online gate. After a
    * successful login navigateOnline()/the auth modal routes here. */
   const [pendingOnlineTarget, setPendingOnlineTarget] = useState<AppScreen | null>(null);
+  /* Hızlı Eşleş intent (native + narrow/mobil-web sheet). Carried alongside
+   * pendingOnlineTarget through the auth gate, persisted to sessionStorage for
+   * the OAuth round-trip, and consumed once by the target game's auto-start
+   * (which calls onQuickMatchConsumed → we clear it so a later manual entry to
+   * the same screen doesn't re-trigger a search). Initial value restores any
+   * intent stashed before a Google OAuth reload. */
+  const [quickMatchIntent, setQuickMatchIntent] = useState<QuickMatchIntent | null>(
+    () => readPendingQuickMatch()
+  );
+
+  /** Clear the quick-match intent everywhere (state + sessionStorage). */
+  const clearQuickMatchIntent = useCallback(() => {
+    setQuickMatchIntent(null);
+    clearPendingQuickMatch();
+  }, []);
   /* Auth Phase 3 (native only): a freshly signed-in social user (Apple/Google)
    * who has no valid Torble username yet. When set, the NicknameModal blocks
    * routing until the player picks a handle. Never set on web (gated on
@@ -2308,6 +2360,18 @@ export default function App() {
       return;
     }
     setScreen(target);
+  };
+
+  /* Hızlı Eşleş entry (native bottom-nav ⚡ tab + narrow/mobil-web card). Sets
+   * the intent (mirrored to sessionStorage for the OAuth round-trip) and routes
+   * through the EXISTING navigateOnline gate — so the duel-gate / kusatma-gate
+   * auth policy is preserved verbatim. Logged-out players hit the auth modal;
+   * after login/OAuth the intent survives and the target game auto-starts. */
+  const startQuickMatch = (intent: QuickMatchIntent) => {
+    setQuickMatchIntent(intent);
+    try { sessionStorage.setItem(PENDING_QUICK_MATCH_KEY, JSON.stringify(intent)); }
+    catch { /* sessionStorage disabled — best effort */ }
+    navigateOnline(QUICK_MATCH_SCREEN[intent.mode]);
   };
 
   /* Shared post-auth routing for both the AuthModal success handler and the
@@ -2755,6 +2819,7 @@ useEffect(() => {
 
       <HomeScreen
         onSelect={navigateOnline}
+        onStartQuickMatch={startQuickMatch}
         profile={profile}
         onKorNoktaAuthRequired={(action) => {
           setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
@@ -2901,6 +2966,9 @@ useEffect(() => {
       ) {
         clearPendingOnlineInvites();
         clearPendingOnlineTarget();
+        // Dismissing the gate also drops any Hızlı Eşleş intent, so a later
+        // manual entry to the same mode doesn't suddenly auto-search.
+        clearQuickMatchIntent();
       }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);
@@ -2923,6 +2991,7 @@ useEffect(() => {
       ) {
         clearPendingOnlineInvites();
         clearPendingOnlineTarget();
+        clearQuickMatchIntent();
       }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);
@@ -2968,6 +3037,10 @@ useEffect(() => {
    <DuelGame
   onHome={() => setScreen("home")}
   profile={profile}
+  autoQuickMatch={quickMatchIntent?.mode === "country"
+    ? { duration: quickMatchIntent.duration, region: quickMatchIntent.region }
+    : null}
+  onQuickMatchConsumed={clearQuickMatchIntent}
 />
   );
 }
@@ -2987,6 +3060,10 @@ useEffect(() => {
   onClaimBonus={handleAppClaimBonus}
   onSpendGold={handleSpendGold}
   profile={profile}
+  autoQuickMatch={quickMatchIntent?.mode === "flag"
+    ? { rounds: quickMatchIntent.rounds, region: quickMatchIntent.region }
+    : null}
+  onQuickMatchConsumed={clearQuickMatchIntent}
 />
 );
   if (screen === "kornokta-create") return (
@@ -3017,6 +3094,10 @@ useEffect(() => {
     <WheelDuelGame
       onHome={() => setScreen("home")}
       profile={profile}
+      autoQuickMatch={quickMatchIntent?.mode === "wheel"
+        ? { duration: quickMatchIntent.duration, region: quickMatchIntent.region }
+        : null}
+      onQuickMatchConsumed={clearQuickMatchIntent}
     />
   );
   if (screen === "wheel-group-game") return (
@@ -3030,6 +3111,10 @@ useEffect(() => {
       initialPhase="create"
       onHome={() => setScreen("home")}
       profile={profile}
+      autoQuickMatch={quickMatchIntent?.mode === "conquest"
+        ? { rounds: quickMatchIntent.rounds ?? 8, map: "turkey" }
+        : null}
+      onQuickMatchConsumed={clearQuickMatchIntent}
     />
   );
   if (screen === "conquest-rooms") return (

@@ -420,6 +420,13 @@ interface FlagDuelGameProps {
   onClaimBonus: () => void;
   onSpendGold: (amount: number) => boolean;
   profile?: Profile | null;
+  /** Hızlı Eşleş (native/mobil-web) auto-start: when present the game mounts
+   *  straight into the searching phase via the existing startQuickMatch flow,
+   *  seeded with these match params (Bayrak = Tur). Absent on desktop / manual
+   *  entry. region defaults to "world" (sheet hides it). */
+  autoQuickMatch?: { rounds?: number; region?: string } | null;
+  /** Fired once the auto-start actually kicks off, so App can clear the intent. */
+  onQuickMatchConsumed?: () => void;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -432,6 +439,8 @@ export default function FlagDuelGame({
   onClaimBonus,
   onSpendGold,
   profile,
+  autoQuickMatch = null,
+  onQuickMatchConsumed,
 }: FlagDuelGameProps) {
   /* identity */
   const myIdRef = useRef<string>("");
@@ -457,8 +466,11 @@ export default function FlagDuelGame({
   const loggedInUsername = profile?.username ?? "";
   const effectivePlayerName = loggedInUsername || playerName;
   const isLoggedInPlayer = !!loggedInUsername;
-  const [hostRounds, setHostRounds] = useState(10);
-  const [hostRegion, setHostRegion] = useState("world");
+  // Lazy-init from the Hızlı Eşleş intent so startQuickMatch's first closure
+  // already carries the chosen Tur/bölge (no setState flush race). Desktop /
+  // manual entry passes no intent → original 10 Tur / world defaults stand.
+  const [hostRounds, setHostRounds] = useState(() => autoQuickMatch?.rounds ?? 10);
+  const [hostRegion, setHostRegion] = useState(() => autoQuickMatch?.region ?? "world");
 
   /* faz */
   const [phase,    setPhase]    = useState<DuelPhase>("lobby");
@@ -1468,6 +1480,20 @@ const declineRematch = useCallback(() => {
       quickMatchTick();
     }, QUICK_MATCH_TICK_MS);
   }, [profile?.id, profile?.username, quickMatchTick]);
+
+  /* Hızlı Eşleş auto-start (native / mobil-web): App routes here with an
+     autoQuickMatch intent → kick the EXISTING startQuickMatch once. Host Tur/
+     bölge already seeded via the lazy useState initializers. profile may land
+     a tick late after OAuth; effect retries until ready, ref guards a double
+     start. */
+  const autoQuickMatchStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoQuickMatchStartedRef.current || !autoQuickMatch) return;
+    if (!profile?.id || !profile.username) return;
+    autoQuickMatchStartedRef.current = true;
+    startQuickMatch();
+    onQuickMatchConsumed?.();
+  }, [autoQuickMatch, profile?.id, profile?.username, startQuickMatch, onQuickMatchConsumed]);
 
   /* ════════════════════════════════════════════════════════════════
      REALTIME

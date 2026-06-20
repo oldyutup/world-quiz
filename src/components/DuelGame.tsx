@@ -273,12 +273,22 @@ interface DuelGameProps {
   onHome: () => void;
   profile?: Profile | null;
   countdownSoundMode?: CountdownSoundMode;
+  /** Hızlı Eşleş (native/mobil-web) auto-start: when present the game mounts
+   *  straight into the searching phase using the existing startQuickMatch flow,
+   *  seeded with these match params. Absent on desktop / manual entry, where
+   *  the lobby stays untouched. region defaults to "world" (sheet hides it). */
+  autoQuickMatch?: { duration?: number; region?: string } | null;
+  /** Fired once the auto-start actually kicks off, so App can clear the intent
+   *  (re-entering this screen via the normal menu then won't auto-search). */
+  onQuickMatchConsumed?: () => void;
 }
 
 export default function DuelGame({
   onHome,
   profile,
   countdownSoundMode = "last20",
+  autoQuickMatch = null,
+  onQuickMatchConsumed,
 }: DuelGameProps) {
   /* identity — set fresh for each new room, loaded from session on resume */
   const myIdRef = useRef<string>("");
@@ -309,8 +319,11 @@ export default function DuelGame({
    *  setJoinCode + triggerJoin'i aynı tick'te tetikler) ref üzerinden
    *  geçiyoruz. joinRoom okur okumaz tüketir ve null'a çeker. */
   const inviteOverrideCodeRef = useRef<string | null>(null);
-  const [hostDuration, setHostDuration] = useState(60);
-  const [hostRegion,   setHostRegion]   = useState("world");
+  // Lazy-init from the Hızlı Eşleş intent so startQuickMatch's first closure
+  // already carries the chosen params (no setState flush race). Desktop / manual
+  // entry passes no intent → the original 60sn / world defaults stand.
+  const [hostDuration, setHostDuration] = useState(() => autoQuickMatch?.duration ?? 60);
+  const [hostRegion,   setHostRegion]   = useState(() => autoQuickMatch?.region ?? "world");
 
   /* phase / messages */
   const [phase,     setPhase]     = useState<DuelPhase>("lobby");
@@ -1810,6 +1823,21 @@ ${shareLink}`
       }, QUICK_MATCH_TICK_MS);
     }
   }, [profile?.id, profile?.username, quickMatchTick]);
+
+  /* Hızlı Eşleş auto-start (native / mobil-web): the App routes here with an
+     autoQuickMatch intent and we kick the EXISTING startQuickMatch once. Host
+     params are already seeded via the lazy useState initializers above, so the
+     first quickMatchTick closure carries the chosen süre/bölge. profile may
+     arrive a tick late after an OAuth round-trip, so the effect retries until
+     it's ready; the ref guards against a double start. */
+  const autoQuickMatchStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoQuickMatchStartedRef.current || !autoQuickMatch) return;
+    if (!profile?.id || !profile.username) return;
+    autoQuickMatchStartedRef.current = true;
+    startQuickMatch();
+    onQuickMatchConsumed?.();
+  }, [autoQuickMatch, profile?.id, profile?.username, startQuickMatch, onQuickMatchConsumed]);
 
   /* Realtime: bekleyen oyuncu kendi queue satırının matched_room_id UPDATE'ini
      dinler. Caller RPC dönüşünde direkt join eder; listener güvenlik ağı. */

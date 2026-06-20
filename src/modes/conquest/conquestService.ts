@@ -734,3 +734,94 @@ export async function shuffleConquestTeams(
   }
   return { ok: true, players: (data ?? []) as ConquestPlayerRow[] };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hızlı Eşleş (Quick Match) — 1v1, server-authoritative
+// ─────────────────────────────────────────────────────────────────────────────
+// Backend: conquest_quick_match / cancel / reset RPCs + conquest_quick_match_queue
+// (supabase/migrations/20260719120000_conquest_quick_match.sql). Mirrors the
+// duel quick-match desen: client tick'ler, RPC iki bekleyeni atomik eşleştirip
+// status='waiting' oda + 2 conquest_players kurar. İlk gameplay_state'i host
+// istemci (host_player_id === myPlayerId) mevcut start akışıyla yazar.
+
+/** RPC dönüş şekli. matched=false iken yalnız search_age_seconds dolu. */
+export interface ConquestQuickMatchResult {
+  matched:             boolean;
+  room_id?:            string;
+  my_player_id?:       string;
+  host_player_id?:     string | null;
+  opponent_name?:      string | null;
+  search_age_seconds?: number;
+}
+
+/**
+ * Bir quick-match tick'i. Eşleşene kadar her ~3 sn'de bir çağrılır; bracket
+ * (max_level_diff) bekleme süresine göre genişler. Auth/param hatalarında
+ * `{ error }` döndürür (rpc in-band error). map yalnız 'turkey'.
+ */
+export async function conquestQuickMatchTick(args: {
+  profileId:     string;
+  playerId:      string;
+  playerName:    string;
+  roundCount:    number;
+  mapId:         string;
+  maxLevelDiff:  number;
+}): Promise<{ result: ConquestQuickMatchResult | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("conquest_quick_match", {
+    p_profile_id:     args.profileId,
+    p_player_id:      args.playerId,
+    p_player_name:    args.playerName,
+    p_round_count:    args.roundCount,
+    p_map_id:         args.mapId,
+    p_max_level_diff: args.maxLevelDiff,
+  });
+  if (error) return { result: null, error: error.message ?? "Hızlı eşleş hatası" };
+  return { result: (data ?? null) as ConquestQuickMatchResult | null, error: null };
+}
+
+/** Aramayı iptal et — yalnız eşleşmemiş queue satırını siler. */
+export async function cancelConquestQuickMatch(profileId: string): Promise<void> {
+  try {
+    await supabase.rpc("conquest_cancel_quick_match", { p_profile_id: profileId });
+  } catch (e) {
+    console.warn("[Conquest] cancel_quick_match RPC failed", e);
+  }
+}
+
+/** Yeni aramadan önce stale satırı koşulsuz temizle (cancel matched satırı bırakır). */
+export async function resetConquestQuickMatch(profileId: string): Promise<void> {
+  try {
+    await supabase.rpc("conquest_reset_quick_match", { p_profile_id: profileId });
+  } catch (e) {
+    console.warn("[Conquest] reset_quick_match RPC failed", e);
+  }
+}
+
+/**
+ * Eşleşme bulunduktan sonra odayı + oyuncularını tek seferde yükle. Lobby
+ * state'ini (roomRow/playerRows/myPlayerId) doldurmak için kullanılır; mevcut
+ * join akışıyla aynı şekil. matched satırın player_id'si zaten conquest_players
+ * içinde (RPC server-side ekledi).
+ */
+export async function fetchConquestRoomWithPlayers(
+  roomId: string,
+): Promise<{ room: ConquestRoomRow; players: ConquestPlayerRow[] } | null> {
+  const { data: room, error: rErr } = await supabase
+    .from("conquest_rooms")
+    .select("*")
+    .eq("id", roomId)
+    .maybeSingle();
+  if (rErr || !room) return null;
+
+  const { data: players, error: pErr } = await supabase
+    .from("conquest_players")
+    .select("*")
+    .eq("room_id", roomId)
+    .order("joined_at", { ascending: true });
+  if (pErr) return null;
+
+  return {
+    room:    room as ConquestRoomRow,
+    players: (players ?? []) as ConquestPlayerRow[],
+  };
+}

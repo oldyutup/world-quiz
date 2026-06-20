@@ -59,10 +59,14 @@ import {
 } from "./conquestLobbyBroadcast";
 import { resolveActiveBonusTypesFromVotes, voteBonusCountForPlayers } from "./bonusPool";
 import {
+  cancelConquestQuickMatch,
+  conquestQuickMatchTick,
   createConquestRoom,
+  fetchConquestRoomWithPlayers,
   heartbeatConquestPlayer,
   joinConquestRoomByCode,
   leaveConquestRoom,
+  resetConquestQuickMatch,
   selectConquestTeam,
   setConquestTeamMode,
   shuffleConquestTeams,
@@ -70,6 +74,8 @@ import {
   updateConquestRoomSettings,
   type ConquestJoinResult,
 } from "./conquestService";
+import { freshConquestPlayerId } from "./utils";
+import { quickMatchBracket, quickMatchBracketLabel } from "../../lib/quickMatch";
 import { subscribeToConquestRoom } from "./conquestRealtime";
 import { getConquestMapConfig } from "./maps";
 import { createInitialConquestGameState } from "./conquestGameplay";
@@ -85,12 +91,18 @@ import {
 } from "./conquestGameSync";
 import type { ConquestGameState } from "./types";
 
-type Phase = "setup" | "rooms" | "join-code" | "joining" | "lobby" | "game";
+type Phase = "setup" | "rooms" | "join-code" | "joining" | "lobby" | "game" | "qm-searching";
 
 interface Props {
   initialPhase: "setup" | "rooms" | "join-code" | "create";
   profile:      Profile | null;
   onHome:       () => void;
+  /** Hızlı Eşleş (native/mobil-web) 1v1: when present the screen mounts into
+   *  the quick-match search instead of the setup/create flow. Türkiye-only map
+   *  is enforced both here and server-side (conquest_quick_match RPC). */
+  autoQuickMatch?: { rounds: number; map: "turkey" } | null;
+  /** Fired once the search actually kicks off, so App can clear the intent. */
+  onQuickMatchConsumed?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,9 +134,16 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
+export default function ConquestMode({ initialPhase, profile, onHome, autoQuickMatch = null, onQuickMatchConsumed }: Props) {
+  // Mount snapshot: qmTick reads rounds/map repeatedly, so capture once. App
+  // clears the live prop after onQuickMatchConsumed; the ref keeps the search
+  // alive while the cleared prop prevents a stale auto-search on re-entry.
+  const autoQuickMatchRef = useRef(autoQuickMatch);
+
   const [phase, setPhase] = useState<Phase>(
-    initialPhase === "create" ? "joining" : initialPhase,
+    autoQuickMatch
+      ? "qm-searching"
+      : initialPhase === "create" ? "joining" : initialPhase,
   );
 
   // Active room state — populated when phase ∈ { lobby, game }.
@@ -276,6 +295,7 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
   // straight in the lobby without a redundant settings form.
   const didAutoCreate = useRef(false);
   useEffect(() => {
+    if (autoQuickMatch) return;  // Hızlı Eşleş kendi arama akışını sürer.
     if (initialPhase !== "create" || didAutoCreate.current) return;
     didAutoCreate.current = true;
     if (!profile?.username) {
@@ -776,6 +796,132 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
     }
   }, [roomRow, isHost, settings.map, settings.rounds, uiPlayers, lobbyExtra, teamAssignments]);
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Hızlı Eşleş (Quick Match) — 1v1 arama akışı (native / mobil-web)
+  // ----------------------------------------------------------------------------
+  // Düello deseninin Kuşatma karşılığı: client tick'ler, conquest_quick_match
+  // RPC iki bekleyeni atomik eşleştirip status='waiting' oda + 2 oyuncu kurar.
+  // Eşleşince host istemci (host_player_id === myPlayerId) mevcut handleStartGame
+  // ile ilk gameplay_state'i yazar; karşı taraf realtime status='playing' ile
+  // oyuna geçer. Yeni oda/queue sistemi YOK — canonical conquest_rooms akışı.
+  // ════════════════════════════════════════════════════════════════════════
+  const QM_TICK_MS = 3000;
+  const [qmSearchSeconds, setQmSearchSeconds] = useState(0);
+  const [qmError,         setQmError]         = useState<string | null>(null);
+  // true: eşleşme bulundu, host başlatması bekleniyor → lobby UI yerine
+  // "başlıyor" paneli göster. phase 'game' olunca temizlenir (maç sonrası
+  // lobiye dönüşte normal lobby/rövanş görünsün).
+  const [qmActive,        setQmActive]        = useState(false);
+  const qmTickRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qmSecondsRef     = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qmStartMsRef     = useRef(0);
+  const qmAbortRef       = useRef(false);
+  const qmMatchedRef     = useRef(false);
+  const qmPlayerIdRef    = useRef<string>("");
+  const qmAutoStartedRef = useRef(false);
+
+  const stopQmTimers = useCallback(() => {
+    if (qmTickRef.current)    { clearInterval(qmTickRef.current);    qmTickRef.current = null; }
+    if (qmSecondsRef.current) { clearInterval(qmSecondsRef.current); qmSecondsRef.current = null; }
+  }, []);
+
+  const qmTick = useCallback(async () => {
+    if (qmAbortRef.current || qmMatchedRef.current) return;
+    const intent = autoQuickMatchRef.current;
+    if (!profile?.id || !profile.username || !intent) return;
+
+    const elapsed = Math.floor((Date.now() - qmStartMsRef.current) / 1000);
+    const { result, error } = await conquestQuickMatchTick({
+      profileId:    profile.id,
+      playerId:     qmPlayerIdRef.current,
+      playerName:   (profile.username ?? "").trim(),
+      roundCount:   intent.rounds,
+      mapId:        intent.map,
+      maxLevelDiff: quickMatchBracket(elapsed),
+    });
+    if (qmAbortRef.current || qmMatchedRef.current) return;
+
+    if (error) {
+      setQmError("Hızlı eşleş hatası: " + error);
+      stopQmTimers();
+      return;
+    }
+    if (result?.matched && result.room_id && result.my_player_id) {
+      qmMatchedRef.current = true;
+      stopQmTimers();
+      const loaded = await fetchConquestRoomWithPlayers(result.room_id);
+      if (qmAbortRef.current) return;
+      if (!loaded) { setQmError("Oda yüklenemedi."); return; }
+      setRoomRow(loaded.room);
+      setPlayerRows(loaded.players);
+      setMyPlayerId(result.my_player_id);
+      setQmActive(true);
+      setPhase("lobby");  // realtime aboneliğini açar; host otomatik başlatır
+    }
+  }, [profile?.id, profile?.username, stopQmTimers]);
+
+  const cancelQuickMatch = useCallback(async () => {
+    qmAbortRef.current = true;
+    stopQmTimers();
+    setQmSearchSeconds(0);
+    setQmError(null);
+    if (profile?.id) await cancelConquestQuickMatch(profile.id);
+    onHome();
+  }, [profile?.id, stopQmTimers, onHome]);
+
+  // Arama başlat: autoQuickMatch + giriş hazır olunca (bir kez). Profil OAuth
+  // dönüşünde geç gelebilir → effect profile'a bağlı, ref ile tek-sefer guard'lı
+  // (login gelene kadar qm-searching ekranında bekler, home'a bouncE etmez).
+  const qmStartedRef = useRef(false);
+  useEffect(() => {
+    if (qmStartedRef.current || !autoQuickMatchRef.current) return;
+    if (!profile?.id || !profile.username) return;
+    qmStartedRef.current = true;
+
+    qmAbortRef.current    = false;
+    qmMatchedRef.current  = false;
+    qmPlayerIdRef.current = freshConquestPlayerId();
+    qmStartMsRef.current  = Date.now();
+    setQmSearchSeconds(0);
+    setQmError(null);
+
+    const profileId = profile.id;
+    void (async () => {
+      // Önceki bitmiş/iptal maçtan kalan stale satırı temizle (cancel matched
+      // satırı bırakır; reset koşulsuz siler).
+      await resetConquestQuickMatch(profileId);
+      if (qmAbortRef.current) return;
+      qmSecondsRef.current = setInterval(() => {
+        setQmSearchSeconds(Math.floor((Date.now() - qmStartMsRef.current) / 1000));
+      }, 1000);
+      await qmTick();
+      if (qmAbortRef.current || qmMatchedRef.current) return;
+      qmTickRef.current = setInterval(() => { void qmTick(); }, QM_TICK_MS);
+    })();
+
+    onQuickMatchConsumed?.();
+  }, [profile?.id, profile?.username, qmTick, onQuickMatchConsumed]);
+
+  // Unmount: arama timer'larını temizle (ekrandan ayrılırken sızıntı olmasın).
+  useEffect(() => () => { qmAbortRef.current = true; stopQmTimers(); }, [stopQmTimers]);
+
+  // Host auto-start: eşleşince host istemci ilk gameplay_state'i yazar — el
+  // değmeden. handleStartGame içeride setPhase('game') yapar; karşı taraf
+  // realtime ile geçer. Ref tek-sefer guard'ı, çift yazımı engeller.
+  useEffect(() => {
+    if (!qmActive || qmAutoStartedRef.current) return;
+    if (phase !== "lobby" || !roomRow || !isHost) return;
+    if (roomRow.status !== "waiting") return;
+    if (playerRows.length < CONQUEST_MIN_PLAYERS) return;
+    qmAutoStartedRef.current = true;
+    void handleStartGame();
+  }, [qmActive, phase, roomRow, isHost, playerRows.length, handleStartGame]);
+
+  // phase 'game' olunca quick-match overlay'ini bırak (maç sonrası normal lobby).
+  useEffect(() => {
+    if (phase === "game" && qmActive) setQmActive(false);
+  }, [phase, qmActive]);
+
   /**
    * Push a new gameplay snapshot to Supabase.  Centralised here so
    * ConquestGame can stay pure (controlled component); all DB writes flow
@@ -994,7 +1140,8 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
 
   // ── Initial phase prop change (e.g. Home → Browse) ──────────────────────
   useEffect(() => {
-    if (phase === "lobby" || phase === "game" || phase === "joining") return;
+    if (autoQuickMatch) return;  // quick-match phase'i kendi yönetir
+    if (phase === "lobby" || phase === "game" || phase === "joining" || phase === "qm-searching") return;
     if (initialPhase === "create") return;
     setPhase(initialPhase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1047,8 +1194,11 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
           className="back-btn"
           onClick={() => {
             playSound("click");
-            // From lobby → leave first; otherwise straight home.
-            if (phase === "lobby") {
+            // qm-searching → aramayı güvenle iptal et (queue'dan çık) + home.
+            // lobby → leave first; otherwise straight home.
+            if (phase === "qm-searching") {
+              void cancelQuickMatch();
+            } else if (phase === "lobby") {
               void handleLeaveLobby();
               setTimeout(onHome, 0);
             } else {
@@ -1165,7 +1315,79 @@ export default function ConquestMode({ initialPhase, profile, onHome }: Props) {
         </div>
       )}
 
-      {phase === "lobby" && roomRow && (
+      {/* Hızlı Eşleş arama ekranı — düello search ekranıyla aynı davranış:
+          bekleme arttıkça seviye penceresi genişler, iptal queue'dan çıkarır. */}
+      {phase === "qm-searching" && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
+            <h2 className="duel-lobby-title">⚡ Hızlı Eşleş</h2>
+            <p className="duel-lobby-desc">
+              Seviyene yakın bir rakip aranıyor…
+            </p>
+
+            <div style={{
+              display: "flex", flexDirection: "column",
+              gap: 6, margin: "16px 0", fontSize: 14,
+            }}>
+              <div>
+                <strong>Mod:</strong> Kuşatma{" "}
+                <span style={{ opacity: 0.5 }}>·</span>{" "}
+                <strong>Tur:</strong> {autoQuickMatchRef.current?.rounds ?? "—"}{" "}
+                <span style={{ opacity: 0.5 }}>·</span>{" "}
+                <strong>Harita:</strong> {mapLabel("turkey")}
+              </div>
+              <div style={{ opacity: 0.85 }}>
+                Bekleme: {Math.floor(qmSearchSeconds / 60)}:
+                {String(qmSearchSeconds % 60).padStart(2, "0")}
+                <span style={{ opacity: 0.5 }}> · </span>
+                Aralık: {quickMatchBracketLabel(qmSearchSeconds)}
+              </div>
+            </div>
+
+            <div style={{
+              fontSize: 36, margin: "8px 0 16px",
+              animation: "wd-spin 1.4s linear infinite",
+              display: "inline-block",
+            }}>
+              🛡️
+            </div>
+
+            <div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => { playSound("click"); void cancelQuickMatch(); }}
+              >
+                ✕ Aramayı İptal Et
+              </button>
+            </div>
+
+            {qmError && (
+              <p className="duel-error" style={{ marginTop: 12 }}>{qmError}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Eşleşme bulundu → host ilk state'i yazana kadar kısa "başlıyor"
+          paneli (ConquestLobby chrome'unu flash etmemek için). */}
+      {phase === "lobby" && qmActive && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
+            <h2 className="duel-lobby-title">⚡ Rakip Bulundu!</h2>
+            <p className="duel-lobby-desc">Oyun başlıyor…</p>
+            <div style={{
+              fontSize: 36, margin: "12px 0",
+              animation: "wd-spin 1.4s linear infinite",
+              display: "inline-block",
+            }}>
+              🛡️
+            </div>
+          </div>
+        </div>
+      )}
+
+      {phase === "lobby" && !qmActive && roomRow && (
         <ConquestLobby
           roomCode={roomRow.room_code}
           hostName={roomRow.host_name}
