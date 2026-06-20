@@ -33,6 +33,13 @@ export type KorNoktaScene = {
   };
   yearLabel: string;
   regionLabel: string;
+  /**
+   * Kısa ülke anahtarı (ISO-2 gibi: "tr", "fr", "jp"…). Sahne planında ardışık
+   * aynı-ülke tekrarını engellemek için kullanılır (knSceneCountry). Gerçek
+   * sahnelerde codegen verir; tarihi sahnelerde elle. Boşsa knSceneCountry
+   * id öneki / regionLabel'dan türetir (güvenli fallback).
+   */
+  countryKey?: string;
   difficulty: "easy" | "normal" | "hard";
   categories: Array<"geography" | "architecture" | "people" | "period">;
   bannedWords: string[];
@@ -55,6 +62,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "Roma İmparatorluğu Dönemi",
     regionLabel: "Roma, İtalya",
+    countryKey: "it",
     difficulty: "easy",
     categories: ["architecture", "people", "period"],
     bannedWords: [
@@ -91,6 +99,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "1402",
     regionLabel: "Çubuk Ovası, Ankara",
+    countryKey: "tr",
     difficulty: "hard",
     categories: ["geography", "people", "period"],
     bannedWords: [
@@ -131,6 +140,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "Eski Krallık (MÖ ~2500)",
     regionLabel: "Giza Platosu, Mısır",
+    countryKey: "eg",
     difficulty: "easy",
     categories: ["architecture", "geography", "period"],
     bannedWords: [
@@ -169,6 +179,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "MS 1. yüzyıl (Roma Dönemi)",
     regionLabel: "Pompeii, Campania, İtalya",
+    countryKey: "it",
     difficulty: "normal",
     categories: ["people", "architecture", "period"],
     bannedWords: [
@@ -204,6 +215,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "Viking Çağı (800-1000)",
     regionLabel: "Kaupang, Norveç",
+    countryKey: "no",
     difficulty: "hard",
     categories: ["geography", "people", "period"],
     bannedWords: [
@@ -241,6 +253,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "MÖ 399",
     regionLabel: "Antik Agora, Atina",
+    countryKey: "gr",
     difficulty: "normal",
     categories: ["people", "architecture", "period"],
     bannedWords: [
@@ -276,6 +289,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "1880'ler",
     regionLabel: "Paris, Fransa",
+    countryKey: "fr",
     difficulty: "normal",
     categories: ["people", "architecture", "period"],
     bannedWords: [
@@ -314,6 +328,7 @@ export const korNoktaScenes: KorNoktaScene[] = [
     },
     yearLabel: "793",
     regionLabel: "Lindisfarne (Holy Island), İngiltere",
+    countryKey: "gb",
     difficulty: "hard",
     categories: ["geography", "people", "period"],
     bannedWords: [

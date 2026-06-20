@@ -50,6 +50,7 @@ import {
   type KnAnswerValue,
 } from "./korNoktaQuestions";
 import { resolveKnBackground } from "./korNoktaBackgrounds";
+import { prefetchAssetUrl } from "../../lib/assetUrl";
 import Panorama360 from "./Panorama360";
 import KorNoktaGuessMap, { type KnLatLng, type KnRevealGuess } from "./KorNoktaGuessMap";
 import LobbyChat from "../../components/LobbyChat";
@@ -245,6 +246,16 @@ export default function KorNoktaGame({
     }, 500);
     return () => window.clearInterval(id);
   }, [isHost, phase, roundIndex, phaseEndsAt, advancePhase]);
+
+  /* ── Sonraki turun 360 sahnesini düşük öncelikle ön-yükle: native'de remote
+   *    URL'in HTTP cache'ini ısıtır; web'de same-origin → pratikte zararsız.
+   *    Best-effort (hata yutulur); yalnız aktif sahne lazy yüklenir. ── */
+  const nextSceneId = state?.scenes?.[roundIndex + 1]?.id ?? null;
+  useEffect(() => {
+    if (!nextSceneId) return;
+    const next = findKnScene(nextSceneId);
+    if (next?.imagePath) prefetchAssetUrl(next.imagePath);
+  }, [nextSceneId]);
 
   /* ── Watchdog: realtime event kaçarsa stale kalmayalım ── */
   useEffect(() => {

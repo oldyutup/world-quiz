@@ -19,7 +19,8 @@
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
 import { korNoktaRealScenes } from "./korNoktaRealScenes";
-import type { KnAnswerValue, KnQuestionCategory } from "./korNoktaQuestions";
+import { buildKnQuestionPoolFor } from "./korNoktaQuestions";
+import type { KnAnswerValue, KnQuestionCategory, KnSceneSourceType } from "./korNoktaQuestions";
 
 /**
  * Gerçek dünya (Panoramax, CC-BY-SA) test sahnelerini CANLI eşleşme havuzuna
@@ -215,40 +216,125 @@ export function knReportLetter(index: number): string {
   return String.fromCharCode(65 + index);
 }
 
+/** Bir sahnenin kaynak türü (undefined = tarihi/AI). */
+export function knSceneSourceType(scene: KorNoktaScene): KnSceneSourceType {
+  return scene.sourceType ?? "historical_ai";
+}
+
 /**
- * Maç için sahne planı kurar: havuz karıştırılır, tur sayısı havuzdan
- * büyükse havuz yeniden karıştırılarak devam edilir (ardışık tekrar
- * engellenir). Dönen dizi start_game RPC'sinin p_scenes payload'ıdır.
+ * Sahnenin ülke anahtarı (sahne planında ardışık aynı-ülke tekrarını engellemek
+ * için). Öncelik: scene.countryKey → gerçek-sahne id öneki (kn_real_NN_<cc>_) →
+ * regionLabel'ın son segmenti. Hepsi normalize (lowercase + trim).
  */
-export function buildKnScenePlan(roundCount: number): Array<{
+export function knSceneCountry(scene: KorNoktaScene): string {
+  const key = scene.countryKey?.trim().toLowerCase();
+  if (key) return key;
+  const m = /^kn_real_\d+_([a-z]{2})_/.exec(scene.id);
+  if (m) return m[1];
+  const parts = scene.regionLabel.split(",");
+  const last = parts[parts.length - 1] ?? scene.id;
+  return last.trim().toLowerCase() || scene.id;
+}
+
+/* Aynı odada yakın geçmişte oynanan sahneleri (yumuşak) tekrar seçmeme için
+ * client-side hafıza. Host plan kurarken okunur; plan kurulduktan sonra yazılır.
+ * localStorage yoksa/erişilemezse sessizce devre dışı kalır. */
+const KN_RECENT_KEY = "kn_recent_scene_ids";
+const KN_RECENT_MAX = 12;
+
+export function readKnRecentScenes(): string[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(KN_RECENT_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushKnRecentScenes(ids: string[]): void {
+  if (!ids.length) return;
+  try {
+    const prev = readKnRecentScenes();
+    const merged = [...ids, ...prev]
+      .filter((id, i, a) => a.indexOf(id) === i) // en yeni başta, tekilleştir
+      .slice(0, KN_RECENT_MAX);
+    globalThis.localStorage?.setItem(KN_RECENT_KEY, JSON.stringify(merged));
+  } catch {
+    /* ignore */
+  }
+}
+
+export interface KnScenePlanEntry {
   id: string;
   lat: number;
   lng: number;
   banned: string[];
   cats: KnCategory[];
-}> {
-  const plan: KorNoktaScene[] = [];
-  let deck: KorNoktaScene[] = [];
-  while (plan.length < roundCount) {
-    if (deck.length === 0) {
-      deck = [...korNoktaActivePool];
-      for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-      }
-      // Yeni deste önceki planın son sahnesiyle başlamasın.
-      const last = plan[plan.length - 1];
-      if (last && deck.length > 1 && deck[0].id === last.id) {
-        [deck[0], deck[1]] = [deck[1], deck[0]];
-      }
+  /** Sahne türüne göre filtrelenmiş soru havuzu — server build_round per-scene. */
+  questionPool: Record<KnQuestionCategory, string[]>;
+}
+
+/**
+ * Maç için sahne planı kurar. Katmanlı seçim (her katman boşalırsa bir üst
+ * kümeye güvenli düşüş → ASLA kilitlenmez):
+ *   • Sert kural: maç içinde aynı sceneId tekrar etmez (havuz tükenirse sıfırlanır
+ *     ama hemen önceki sahne yine hariç).
+ *   • Ülke aralığı: önceki turla aynı ülke seçilmez (alternatif varsa).
+ *   • Yakın geçmiş (yumuşak): opts.recentSceneIds elenir (alternatif varsa).
+ *   • sourceType çeşitliliği (yumuşak): önceki turdan farklı tür tercih edilir.
+ * Dönen dizi start_game RPC'sinin p_scenes payload'ıdır (her sahne kendi soru
+ * havuzunu taşır). Plan yine server'da sanitize edilir (tek yazıcı korunur).
+ */
+export function buildKnScenePlan(
+  roundCount: number,
+  opts?: { recentSceneIds?: string[] },
+): KnScenePlanEntry[] {
+  const pool = korNoktaActivePool;
+  const recent = new Set(opts?.recentSceneIds ?? []);
+  const used = new Set<string>();
+  const chosen: KorNoktaScene[] = [];
+
+  for (let r = 0; r < roundCount; r++) {
+    const prev = chosen[chosen.length - 1];
+
+    // Sert kural: maç içinde tekrar yok. Havuz tükendiyse sıfırla (kilitlenmez),
+    // hemen önceki sahneyi yine de hariç tut.
+    let base = pool.filter(s => !used.has(s.id));
+    if (base.length === 0) {
+      used.clear();
+      base = prev ? pool.filter(s => s.id !== prev.id) : [...pool];
+      if (base.length === 0) base = [...pool];
     }
-    plan.push(deck.shift() as KorNoktaScene);
+
+    let cand = base;
+    if (prev) {
+      const prevCountry = knSceneCountry(prev);
+      const diffCountry = cand.filter(s => knSceneCountry(s) !== prevCountry);
+      if (diffCountry.length) cand = diffCountry;
+    }
+    if (recent.size) {
+      const notRecent = cand.filter(s => !recent.has(s.id));
+      if (notRecent.length) cand = notRecent;
+    }
+    if (prev) {
+      const prevSource = knSceneSourceType(prev);
+      const diffSource = cand.filter(s => knSceneSourceType(s) !== prevSource);
+      if (diffSource.length) cand = diffSource;
+    }
+
+    const pick = cand[Math.floor(Math.random() * cand.length)];
+    used.add(pick.id);
+    chosen.push(pick);
   }
-  return plan.map(s => ({
+
+  return chosen.map(s => ({
     id: s.id,
     lat: s.location.lat,
     lng: s.location.lng,
     banned: s.bannedWords,
     cats: s.categories,
+    questionPool: buildKnQuestionPoolFor(knSceneSourceType(s)),
   }));
 }

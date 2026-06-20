@@ -45,7 +45,12 @@ import { useRosterProfiles } from "../../lib/useRosterProfiles";
 import { useSocialOptional } from "../../components/SocialContext";
 import { playSound } from "../../lib/sound";
 import KorNoktaGame from "./KorNoktaGame";
-import { buildKnScenePlan, parseKnGameState } from "./korNoktaGameTypes";
+import {
+  buildKnScenePlan,
+  parseKnGameState,
+  readKnRecentScenes,
+  pushKnRecentScenes,
+} from "./korNoktaGameTypes";
 import { buildKnQuestionPool } from "./korNoktaQuestions";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -437,11 +442,17 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setStarting(true);
     setErrorMsg(null);
 
+    // Yakın geçmişte (bu cihazda) oynanan sahneleri yumuşak ele; plan kurulduktan
+    // sonra bu turun sahnelerini hafızaya yaz (tekrar azaltma, kilitlemez).
+    const scenePlan = buildKnScenePlan(room.round_count, {
+      recentSceneIds: readKnRecentScenes(),
+    });
+
     const { data, error } = await supabase.rpc("tevatur_kn_start_game", {
       p_room_id:        room.id,
       p_host_player_id: myIdRef.current,
       p_claim_token:    myClaimTokenRef.current,
-      p_scenes:         buildKnScenePlan(room.round_count),
+      p_scenes:         scenePlan,
       p_question_pool:  buildKnQuestionPool(),
     });
 
@@ -453,6 +464,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       return;
     }
     if (data?.id) {
+      pushKnRecentScenes(scenePlan.map(s => s.id));
       applyRoomUpdate(data as TevaturRoom);
     }
     setStarting(false);

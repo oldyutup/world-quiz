@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { KorNoktaAttribution } from "./korNoktaScenes";
+import { resolveAssetUrl, isCrossOriginUrl } from "../../lib/assetUrl";
 
 interface Panorama360Props {
   src: string;
@@ -131,9 +132,15 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
     updateCamera();
     renderLoop();
 
+    // Web'de relative path (same-origin) AYNEN; native'de Torble web origin'inden
+    // mutlak HTTPS URL. Cross-origin ise CORS'lu iste (doku "tainted" olmasın).
+    const resolvedSrc = resolveAssetUrl(src);
     const loader = new THREE.TextureLoader();
+    if (isCrossOriginUrl(resolvedSrc)) {
+      loader.setCrossOrigin("anonymous");
+    }
     loader.load(
-      src,
+      resolvedSrc,
       (loaded) => {
         if (disposed) {
           loaded.dispose();
@@ -166,8 +173,14 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
       undefined,
       (err) => {
         if (disposed) return;
-        const message = err instanceof Error ? err.message : "Bilinmeyen hata";
-        setLoadError(message);
+        // Uzak (native) asset ise büyük olasılıkla bağlantı sorunu; yerelse ham
+        // hata. Her durumda app çökmez — kullanıcı anlaşılır mesaj görür.
+        const detail = err instanceof Error && err.message ? err.message : null;
+        setLoadError(
+          isCrossOriginUrl(resolvedSrc)
+            ? "İnternet bağlantını kontrol edip tekrar dene."
+            : detail || "Görsel yüklenemedi.",
+        );
       },
     );
 
