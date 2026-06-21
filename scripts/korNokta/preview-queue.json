@@ -1,0 +1,1048 @@
+{
+  "note": "Kor Nokta Faz B — preview shortlist (76 Mapillary aday, GORSEL INCELEME ONCESI). Runtime/build BUNU OKUMAZ; yalniz tek seferlik kuratorluk. Tags: NEW=mevcut havuzda yok(oncelikli), DUP=Panoramax-ortusuk(yuksek cesitlilik bari), SUB=residential-banliyo(preview gormeden kesin kabul YOK), CAP2=ayni-sehir-3/ayni-gun(kabul <=2).",
+  "generatedFrom": "discovery-mapillary.json",
+  "generatedAt": "2026-06-21T12:51:41.305Z",
+  "count": 76,
+  "regions": {
+    "Avrupa – Orta/Bati": [
+      {
+        "imageId": "3804604239831424",
+        "country": "Germany",
+        "city": "Berlin",
+        "captureDate": "2025-07-28",
+        "width": 5760,
+        "lat": 52.5558507,
+        "lng": 13.3363042,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-M4__GVnr83Vp0wevPwJxQslO0R8DQwEDi9XIMuFtD0weE7Fs6369h4nmygcyZjeJYO_FsUee_XMvimM04xSrs11t2IkTYd9KAOUm7oFHamecKS39RKD6H6b8gB-7nWZ8JgrV7V6tNMQQ8PvspoBQ?edm=ALXxkZ8EAAAA&_nc_gid=3e0PyeQDB0DEf7K0b61MMQ&_nc_oc=AdoTYCjr-C81TRiL5Vtiqqp-17z8VrQYrcHS2Kj2Shs4Ws3Mgt4iHftn3yNdx5xFaUjQ1riX_LPpbcFpZNRa4Xjs&ccb=10-5&oh=00_Af9wCsTVUXjlboV8NLhmgshavjItZqkkGOMm04R0VzlkBw&oe=6A5F41D1&_nc_sid=201bca"
+      },
+      {
+        "imageId": "520189080186738",
+        "country": "Germany",
+        "city": "Berlin",
+        "captureDate": "2022-05-12",
+        "width": 5760,
+        "lat": 52.5626899,
+        "lng": 13.3309362,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An8ghUx1ckQQ5NbK7OjOaS9zwdmdmrjXWL9chTF6PwvkNHCKvUzd9ZctP3d-PZj3rVnDJ3eYKT_IXlG0LVC2jfJbroKjkt92kv-iPFya65spkTToD3CMJQLSzUaGFiNOvpFT4ihSRaFNWcCVHe3TVRE?edm=ALXxkZ8EAAAA&_nc_gid=24sYyV5qrcQr5fC-kFKvAQ&_nc_oc=Adr0Mcg3Dq-4ZXKypK4j6eDCskfELZFDwxr7O2DM2yDxfTC7rGs9ihEip-6-pvhxR3CNGmZpbCVTEW7liVJwhZQU&ccb=10-5&oh=00_Af972JCED9qlBFP0TDvnTfa9hKOKCp1Pypy3jLyVVaifoQ&oe=6A5F5F34&_nc_sid=201bca"
+      },
+      {
+        "imageId": "614671171658123",
+        "country": "Germany",
+        "city": "Berlin",
+        "captureDate": "2025-07-05",
+        "width": 5760,
+        "lat": 52.5502132,
+        "lng": 13.3160579,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An9qHfTImlVeae84I3grIg5sFmEqFM80ljjmy2_zgofUybrsuWyH66x63SxPzWFNvmTvvnUE3yKc8f9nxKnO6c3n69Hrg_c_sha26XTijLeExNSRsnxrOZIO715MR7mcep4UY1kl3v4hOyy854M41Q?edm=ALXxkZ8EAAAA&_nc_gid=Iz2CFatoyWnxcx7FypmxIA&_nc_oc=AdrwxD7upZiE4TX_qXpSk8JJezYJmHGoY1dDV05pCFBzzqHCAMvgMBz85gQ0nZG4vV80mvl7-47aHRfyN9gHIwpt&ccb=10-5&oh=00_Af_XjUYWV0JL-d6RO6jSEpOxxO26VFl3wRiMeIFF5j20mg&oe=6A5F3049&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1407212743718406",
+        "country": "Germany",
+        "city": "Hamburg",
+        "captureDate": "2025-08-23",
+        "width": 5376,
+        "lat": 53.6041622,
+        "lng": 9.9202962,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-_HgJglLQlH3ANd_Bf7UdTRSFHb5tXOKqs04K_AkbJE8VVnhVfD8bFfOlhVZTzlkQdIXIS5cf8s3HUCFVG6b27fgiFHNpZYLMWZllB_Wv6FyHs7e-8w8VKWknW6ytnljA1yVEMEkBupeKS-WYuow?edm=ALXxkZ8EAAAA&_nc_gid=Zj5W9Sswp6M2myrvgiDU4Q&_nc_oc=AdoflzmcgwtRHER3cJnTYkKdMcUVIEo1Co7v8q0uje25h5TA8c2RJN_fbJ7IJOe6jlIulVG3naKlDHqSptmW6u8h&ccb=10-5&oh=00_Af_GOo9hTd_LsU1XYN_GVsFR5rtOgZy6NxYocby4D4UU-g&oe=6A5F5ACA&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1081924476723727",
+        "country": "Germany",
+        "city": "Munich",
+        "captureDate": "2025-07-23",
+        "width": 5760,
+        "lat": 48.168994895833,
+        "lng": 11.449864254167,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An97BAsgk17SlIjjxXjOjZRIvI1-nZI0bRLnSSEamFyBxOpZqfrIhqPsELBdXWtvUCLr_V24zyO5g7WQ5BZXphuwsGQG8jpIfOfC8y5ilK9M_p1tE6HnSiaNUsS-fryfqo0D86H5rKIjkVr2u-fENgg?edm=ALXxkZ8EAAAA&_nc_gid=YUrWXBfMgn6Fcq1ycnF4sQ&_nc_oc=AdqL6oIV3mzAxW6FcEudv0AmCBGRyEX1CsPz4yAgsOhGWRfgiG-QbhvG_-EyB6XzgANvWPOdnaWpNoD3yokAnoI8&ccb=10-5&oh=00_Af-cSCiGtK5U56tBqaM_YLw3dypxbROF6P24R8B-kqveAw&oe=6A5F47D3&_nc_sid=201bca"
+      },
+      {
+        "imageId": "2217523248606002",
+        "country": "Austria",
+        "city": "Vienna",
+        "captureDate": "2024-08-21",
+        "width": 4096,
+        "lat": 48.250877472222,
+        "lng": 16.341548203333,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8cUmbPkUdKOs5K1mt-Nx4LzuSptjGKPzcv6ABzPYDzc9lzQ_v3aq0I10wgmev9wmkvjoXVLUILscy-3Fgarv4r4G7z7RwqiYA3SpmxOnEzuapFDa1j9z-_c_htnkVpLTAZCT8SKb5KHqobHZvWmA?edm=ALXxkZ8EAAAA&_nc_gid=krI977FjmmV4YrCYayIgtg&_nc_oc=AdqXfDpPmWkmw4Ry2VjerqEChIX8y9Wl1IwRxNZW3wtEzcYS7bYBBQsiaYJVt7zIL8zJD7vK_wSTJOjBBzbc4B-b&ccb=10-5&oh=00_Af8ZvhfEdSDotgNtR1kW8MOzXudAQSi36Jy9rTCuIBimSQ&oe=6A5F3F85&_nc_sid=201bca"
+      },
+      {
+        "imageId": "8296301800409072",
+        "country": "Austria",
+        "city": "Vienna",
+        "captureDate": "2024-08-21",
+        "width": 4096,
+        "lat": 48.240503390588,
+        "lng": 16.341052284706,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9N4aejIzElMZeywjzlpxSk3N6h4eiKLfKolLo_yLoDVlwwN55TUm4In3oa8hysGq_jmkxNDfmSnGQOzHT08Ab-FqxUTjNY5QO8zzOpx5P3r76NXQ-R0LMWPBb-uiKVNuai73buty0yamt316h85Q?edm=ALXxkZ8EAAAA&_nc_gid=OUxWl-EbHZHAQimT7n8Dww&_nc_oc=AdoD_kj6n9RCy2B6IgeZYTmKg7rP8oE-PyY41Gp0tA-n7jU8m3e-QJrd5Qmq0M95x3aYy9hhROvm-5Y1OowNasyo&ccb=10-5&oh=00_Af-Sb8XAHzQ9keYoBJ4nS2Cj0b3rpBxe5NtbU8LDdl4P5g&oe=6A5F3557&_nc_sid=201bca"
+      },
+      {
+        "imageId": "8815447638500352",
+        "country": "Austria",
+        "city": "Vienna",
+        "captureDate": "2024-08-21",
+        "width": 4096,
+        "lat": 48.247493175825,
+        "lng": 16.336006616902,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8aD8bOKZWdd5GG7Y3d14gD6qtJAe3mfcyGLOLoBYCS_XWS3vm8zw-zkTBrujn5jPfAcYhtkhgKNOmd_2Sh1egBytrj6jE1E6sy8O3NeviRPqJjQJIi8HwCAYSEiKAiR-_3Ikw5sX_V63YVC7ODvZA?edm=ALXxkZ8EAAAA&_nc_gid=QOSDX_bQ8xy14nhIfLrUyg&_nc_oc=AdqhHPjI9P81A6HzEDTtHLNq22JqDiDNMIi-rO6I1MUN1eyd_X_ecRmhfvIRZezgneFEPpN6WwGXobmRxhJ30keK&ccb=10-5&oh=00_Af8drhrJA_oX7ENxDK_Kb-WxhWwKbDwUz8fIR4sFgrHoxw&oe=6A5F51EC&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1831567804040106",
+        "country": "Czechia",
+        "city": "Prague",
+        "captureDate": "2024-04-27",
+        "width": 7680,
+        "lat": 50.11651861201,
+        "lng": 14.38025060543,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An82ZHRkbyW2FWSSsimzC5arSskQAtYR5FpHuYoFMAWZFXsR95JCBRohY4EXbx8tpD9pEc_TCUQxDXCEWgK58HJ665ropirfyR33YW2eHe31URde9FUu68JoeDHxl7wRCbxuGbD07ZECYyoJthXbLXA?edm=ALXxkZ8EAAAA&_nc_gid=GcZMrm1bdmVFanvyLcqmGg&_nc_oc=Adp2l0JR6Fm7yzeMYdbwWFHXdu0qw6sPkKUenmEfXr6Ombw8X_q86gXZGzE7wsp_cxxsih2vKwrOUcUg_DKnuReW&ccb=10-5&oh=00_Af-yzw9FLgwrCJInlSyVa39_hsQ1oF3uS-B6mOtEOMjNBQ&oe=6A5F29B8&_nc_sid=201bca"
+      },
+      {
+        "imageId": "190317362971422",
+        "country": "Czechia",
+        "city": "Prague",
+        "captureDate": "2020-06-03",
+        "width": 12288,
+        "lat": 50.116846955556,
+        "lng": 14.391902641667,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8JMSCuvIuzr974yhRdqcb8npVubnevkUmkBp9FBoz5henNiJQdkPZMtWkTdyBThhkw9VmVXpB45-71bs3dtGdcLnf4JHIWLS9LZ-3Ubj7JeAdmkOQjCz9qOvditDm78pmwOODel3h1mkXFcgGuHw?edm=ALXxkZ8EAAAA&_nc_gid=8EPB6Ob4maOdklL2uLi7ZA&_nc_oc=AdrjPn-3Qg2rgYkipMfklQvf75uI5JdduCb96wJCqyG9MHqrhKUWgyi6ezRw0rHKGQmSfgAUV_GFTcI8alsVH6KQ&ccb=10-5&oh=00_Af_ZGUo8AEa_tkEVxxnAvwmj5ZPUuJEHkUOxKao23M6BKA&oe=6A5F42D1&_nc_sid=201bca"
+      },
+      {
+        "imageId": "2303377616669383",
+        "country": "Czechia",
+        "city": "Prague",
+        "captureDate": "2024-04-27",
+        "width": 7680,
+        "lat": 50.113926901137,
+        "lng": 14.38840208866,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_Sil4EmwTLMp6dotRWhMb13UA32awIdDED9JjxGbVuGSW2q5me_7UIKP25kcqPyNxMpI5v1YrC1wLFm4f6zjSViTHRc07nCgJvX-cekb0zTpMEUbmFKJzqIINJBOjXpm2MKW3YB87rwlF9Sr0j9x8?edm=ALXxkZ8EAAAA&_nc_gid=eckxViIknbjGzppvvwSRDQ&_nc_oc=AdpfgylcO47qgWmnH2rIblO5TFbrexfBmkdf7dXR3Q2M0Igo7uowrqXGRW0Rk4J6CaPuJYcq9jSHYqnUNPqmkL3-&ccb=10-5&oh=00_Af88CF1s8eoLcQPKHugiSPjIaNZpWHkLRXCd0Hn76A6U4Q&oe=6A5F4CFF&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1200458684197934",
+        "country": "Switzerland",
+        "city": "Zurich",
+        "captureDate": "2022-12-20",
+        "width": 5376,
+        "lat": 47.403913888889,
+        "lng": 8.4965666666667,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-_z65RzVU2nVut-kWnuCnY9odveJtmGvAQ8r9TWk86zairfxQUhtnb6WTMvnM2RoApgxeo6EF45EBAljsF3XZJwtd4TbIa05uqB2GVqAwzz02I_dXedtvP9_O46HClL8Z5Yk37F-kqFMk4GPdjDw?edm=ALXxkZ8EAAAA&_nc_gid=hqd9iJcHQwM1G-wGxNOZ_A&_nc_oc=AdptJZDx34uwE45AJb3npRyrQugYiH6NV9OWQ4nS7HBuiQtPXEN1LtB1n78FHAknZkQfB9_NzTtx3mnwHe5et_KI&ccb=10-5&oh=00_Af-nVxfjpdDSi1YonG-N9S3PVJNozIIdvOHo2sAk_ZEwKQ&oe=6A5F3A80&_nc_sid=201bca"
+      },
+      {
+        "imageId": "4773084989471948",
+        "country": "Switzerland",
+        "city": "Zurich",
+        "captureDate": "2022-01-27",
+        "width": 5376,
+        "lat": 47.40945,
+        "lng": 8.4877527777778,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9JR2rPESozFGNeBuQDu6lHhgCzqzzoyXTFyhzEZyrIFUupvbCJJZs5zi9rMSv_pFS2kaaYySvc7yVD0WrQXGSobleBX_25oGIrhkZEGose49TKOoxnEz-J1_U10QsOd94LzkqQic35XQNmG2-D9g?edm=ALXxkZ8EAAAA&_nc_gid=HTAyw_oEqsCQp4Jiii1dRw&_nc_oc=Adp0soYz2j5U2_3Hb4HBzMGv_2CRoLdMpZRiE6cB-5XeG9eWXz0UK9pFPi9yCUIKkLx86YrhZjt8lqX6Ynw4Yz2a&ccb=10-5&oh=00_Af8szJhh3AOfWZF6WMf55albT5kIAjV3Nq3I9B7TTbhF3w&oe=6A5F45F9&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1555259265501261",
+        "country": "Poland",
+        "city": "Warsaw",
+        "captureDate": "2025-11-21",
+        "width": 7776,
+        "lat": 52.2708064,
+        "lng": 20.9623902,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8zMhcX_TOhLXc7X5L_cSDnmJRHfSyi021AmRrluzMWSf4buLxAK18L98TFEYE9I3PCX8a48zuovrKTw60MIARBXfUf7cZ7G-vXhz0wrKzsnJYVMb26-ULGfxUt4UAoa2gKP-5NzuYiNVMmUK7pcGE?edm=ALXxkZ8EAAAA&_nc_gid=eBhm_MMjHYNIaA2Vc3kVFw&_nc_oc=Adr7kP-YjxdvjN_-Uz1I5ER4-PMBpAOB8Z6GB2htVbk9MCmMt6Y7jOITbXNnuvUs0OfTTlmh7miz7uJyxb_l2ci-&ccb=10-5&oh=00_Af8ovnvYctLWpuD22uSfG61cMwxo9R2sW3Xo5G2xScXVvw&oe=6A5F5EBA&_nc_sid=201bca"
+      },
+      {
+        "imageId": "822372903796123",
+        "country": "Croatia",
+        "city": "City of Zagreb",
+        "captureDate": "2026-04-27",
+        "width": 7680,
+        "lat": 45.814867043417,
+        "lng": 15.942246474167,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9exYKE-oA-I7dyo9NK5F44CnrTPBPFXeGfNaJOw0TxKeWaz-N5a6_mNRlJPqhWonE7WK26vBsczkelU_Q-lX0QsFs_Q7Ghs2SWNXo9nSEe1b65MjfI-44Pndyeg89swqPHEUFKPIpnjbhOFvTx8BI?edm=ALXxkZ8EAAAA&_nc_gid=UR_vOVKcdhiWKdzsFdIIjQ&_nc_oc=AdrTsCDNtYcjM-APhExBWLjC_nRO9BfsUWcY9EZz6fFYCA42FCm03gyNkkasmyaucsMueOm2SXUTs5gWjCQtoyqD&ccb=10-5&oh=00_Af_ldFzaHc1dfgiht-YsTdPjs-brJcSr_-ipwoL2eZEvVw&oe=6A5F3347&_nc_sid=201bca"
+      },
+      {
+        "imageId": "855852489395019",
+        "country": "Croatia",
+        "city": "City of Zagreb",
+        "captureDate": "2024-08-13",
+        "width": 4096,
+        "lat": 45.815812058036,
+        "lng": 15.936500193452,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-po6d8ZCA6DHQXNMlUfzmetVOoLt8lbpxlDuMvvj9BD8Fn_Fgc2QM728xU-eZ7itDN7RduZBkXK4SrS0hz3TiYrfBcJzjUmaimMPX34COS1Aefp0zlIxnBZTvWBjkZd8Li4e-HNHHK_zLwuV4PoQ?edm=ALXxkZ8EAAAA&_nc_gid=9B26nG3tzK8Gt236OMjgnQ&_nc_oc=AdpScs8FIWbl264XH4kuLIGOG2yU3LQmj7vE3J3YcjyKNrvwMP0r1OJDOl1FDI-FDmlO-6wCl_nkOXfmdxLRD7fu&ccb=10-5&oh=00_Af-xSvLkeUi7e8L_j9OD1bBzo-cMYhHVGHq7qam5zw-4Nw&oe=6A5F5733&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1561517167720668",
+        "country": "Serbia",
+        "city": "Belgrade",
+        "captureDate": "2023-12-29",
+        "width": 6144,
+        "lat": 44.828056866667,
+        "lng": 20.419710625,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9TLSmHV0xKzuJfLq255p1FTMd0-eQPhfCQ9j77th2JJ739pVC_fayNBZK1-nz_-ZwVzbJfGuMa8pfMT4tKapl34oSO5T9m68mC4bQIr8TEdVngZ83OO7CEj4nylqj1_cQxheOYYx1YIZOp_Qj5E4Q?edm=ALXxkZ8EAAAA&_nc_gid=6q_hWWLJxjvjMT3PAWsUTw&_nc_oc=AdrXFbJwMe16Xn1w4CKUz07DejOYkkJwwoZLU3UgaekcoArMFNFrnV_pLXzkrTl3siz39LUple67wVEI323UnGCH&ccb=10-6&oh=00_Af_9PiS1AdOJCWXScZi1FitRzAkIfbPqxJStIHwPnaHDPg&oe=6A5F59D0&_nc_sid=201bca"
+      },
+      {
+        "imageId": "794679398876013",
+        "country": "Serbia",
+        "city": "Zemun Urban Municipality",
+        "captureDate": "2023-07-09",
+        "width": 5760,
+        "lat": 44.8366679,
+        "lng": 20.4191353,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_skypmRNdz_dD5VzmRJ-Qq_A8Lsrgeqo9C2MGbNg3OgfXriDpMROHDJCeE63b2Cp28fs-zz62MZld7iP6l462uOq_cajEw6RBsCHGtFmiOd2pkUFy3qXJSTlnX9TpE5FztB2ds6ZSxJ_E1gLNsIu8?edm=ALXxkZ8EAAAA&_nc_gid=gfOFhZOZp_8pS52Blrw7Jw&_nc_oc=AdpoBMdeGiIKOn5NoJKfdJEUbg-Oznft3yCnI5VdycKSLia5PwCXmh1a6kMXCUM-x0l3LkfUu6x6uoVYsJO-UJnm&ccb=10-5&oh=00_Af96o0p8WSNKcYD5kOkaVw11ilqNr3u1_SNfUkFCbRub5w&oe=6A5F5EE8&_nc_sid=201bca"
+      },
+      {
+        "imageId": "407905164824978",
+        "country": "Greece",
+        "city": "Municipality of Ilion",
+        "captureDate": "2022-08-27",
+        "width": 11000,
+        "lat": 38.028697585626,
+        "lng": 23.699392714205,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-JZ7MSMd9-wP2zEU6sMwHzInEtFU3yyy_kotIhoslJzOEs8n0TBI5DvF18ofH7ho9Gkc4vyTtvFylC4tyyBQXoUr1LUU62mzQA0SzG57EldiVHQrbwKXaaXzzcblJYVIg5MyFgwPh8eSUN2JaErg?edm=ALXxkZ8EAAAA&_nc_gid=T2wvbC3_mSLe-bvB9DPBng&_nc_oc=AdqTFUdtzeTS4g4DPiMxsmCY6P8WR4sRiFsSam_7ZpxlLoKhm-aVFx0KIlrgYKmr8jeITXrxAHSbvunDDJ6eD8aU&ccb=10-5&oh=00_Af8K2Gg4HrWUiZD88vyuSD8rCji_RsPjdyYSlLCgeQdvww&oe=6A5F600C&_nc_sid=201bca"
+      }
+    ],
+    "Avrupa – Guney/Britanya": [
+      {
+        "imageId": "1101176408129656",
+        "country": "Portugal",
+        "city": "Lisbon",
+        "captureDate": "2025-08-15",
+        "width": 4096,
+        "lat": 38.746179212991,
+        "lng": -9.165244206553,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8SuZPc8WC7d0U3AAkft0YZbg-bSHDoK27SexrfgfHvBLXVlhiFxCOuYhBi9jQyvDJPHUSAjy6n-5nukJNGVxJa2ED36LB2AnCci09OBuuDduTNyaQpeQTV_H7wEtfkJwLGTQEN-Jqg9w80tGlJhcM?edm=ALXxkZ8EAAAA&_nc_gid=PGDmSbuAXBtcs8IYNcZmJQ&_nc_oc=Adr8tKwo1k9ePrlYnKZV4uMrJEg_KBVoYCZOpFjKMzu6Tfy6x6HiB1JENwt_El08y2yWH6bau1zyhmBRyKjesVWu&ccb=10-5&oh=00_Af-oELH1CIz9TVB2eoZw8NyYYakvQmFwrzVhwziFiJnmRg&oe=6A5F2B96&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1930706674122689",
+        "country": "Portugal",
+        "city": "Lisbon",
+        "captureDate": "2024-12-19",
+        "width": 4096,
+        "lat": 38.738261100588,
+        "lng": -9.1726067200392,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_nNI4rRb-csajrAv46sWyDh1GcKud6-JMO6ChheDTK3s4Ljf4e_GX0ROOnap3fYJNDrXcxREQlh8OEKyZbaVC2aUdQ-j9f2e0ZrumeZia9t9_i2mzMIEwKNKjH3BWy6JRS-fHTjA3rmRbHEehT7mI?edm=ALXxkZ8EAAAA&_nc_gid=9lweSEFU9r6CEvMjBiPTcw&_nc_oc=AdrVFJg3Fwrv5ympD7EybHBp2un7MHHClaw07GVIpLeB762eaK-J5Knq0Ypia2ib5EYoOECHFmiq2vX-sE5J8aVJ&ccb=10-5&oh=00_Af9WvP586vAgWmg2YMMha_B-fuIwQZ2f3BhQTvwBtkp6fA&oe=6A5F40F0&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1162581709072824",
+        "country": "Portugal",
+        "city": "Porto",
+        "captureDate": "2025-10-06",
+        "width": 4096,
+        "lat": 41.175355634321,
+        "lng": -8.6523888880247,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An92bUFI2dLdeIcJcCVNv4ogrk4g2v4-N3o75OXEtXJNIq8z_pFU_uYrzuD8u-U0ghmSuYjSVQDK0zKMv8mvCkPenkXNWgU9ae33h09XmCxXB6Mr2CeyClEWQ9NQJu7f3LwIViP-LisnismKFIbPiQ?edm=ALXxkZ8EAAAA&_nc_gid=Bvne2uZrMic3IDI5BEs1cg&_nc_oc=Adq92KBm3wkeOPvGeWHb0zQ_SAtL70gtfv4gTQEuFrpKol9-iquLDwAF_e_OrxeYQwY6d--qAIh5rPbiRzk73X9L&ccb=10-5&oh=00_Af_tKqmb3J4lEvJup0x9e3-ege24fi2ZxNIarZhyHb5l3Q&oe=6A5F2D77&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1327063482469227",
+        "country": "Portugal",
+        "city": "Porto",
+        "captureDate": "2025-08-01",
+        "width": 4096,
+        "lat": 41.163051706667,
+        "lng": -8.6354345733333,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8tlOgGRl7HdrjD5kllyLoRPKvGE0BRNiipQ3FFef9yJcXn1MOJaCIRr7iWPUWm_KkDprspAlby2Y0mcbuuzVwMQCveQb5MGy4-cd5JhJy4eE_TG9tSCWQjXQlPraqNkaCVh6kSBJnB88nWYWlkny0?edm=ALXxkZ8EAAAA&_nc_gid=pgPNsPuFMJR1EVALomnQMA&_nc_oc=AdpfNhuKgJRRzZlOMTkLrKbhsacoWRZed8luPPNCSfl3wRuPYpgUqP0qhOQf7MIfWdhA-N22AAiKz8gdsbmjEbFT&ccb=10-5&oh=00_Af_CeQ7OxSsPdNnuLCk2pBncIAxfMdkseTIHxWQZM0sg9A&oe=6A5F38E6&_nc_sid=201bca"
+      },
+      {
+        "imageId": "3252252691619093",
+        "country": "Italy",
+        "city": "Milan",
+        "captureDate": "2025-11-09",
+        "width": 4096,
+        "lat": 45.505882097857,
+        "lng": 9.1402933142885,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8KGcFuRuvXLJAYcJM4ZMJfV-sh5C87IWVNiDb5zmLF-ZnaJVX9V7D2630iociFwjOWLo3YWkYAFWZWIOC8x5Karj-eB69xqwqlPqKUIS0eFzDHLyJHrgBHjH2pZa95NDCicFlYs8FwGDnxRhQdMCs?edm=ALXxkZ8EAAAA&_nc_gid=MM0bq9IK43g4WrC6BVPeIg&_nc_oc=AdqfjQ0-6x9pIWu8kYQEkEe-RamKfevmxmX45KThCHZus2q92UNi5rrKOAfWYnTfm3VeUymQs6syEOgNhV6c4WWC&ccb=10-5&oh=00_Af8nieFxa8sukDD8wtX1629AKxenVGJLQTMrbwO24PrWAw&oe=6A5F5A48&_nc_sid=201bca"
+      },
+      {
+        "imageId": "774641471662112",
+        "country": "Italy",
+        "city": "Milan",
+        "captureDate": "2025-07-11",
+        "width": 7680,
+        "lat": 45.501964304887,
+        "lng": 9.1252387316865,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_m0pmYQHLdR0qbKchNssDoYqCOCpklZUX8-GEhDKKVWS5OtvV2J-UYrPfdcTRR9ziTSnsqRBTmA-Jvx9VRggjtp2QtvnvT3SAh-EAzU2aU1VfCqIjShlpfle3VKNssDrU9Krhngw7PMBpI-iD46Rc?edm=ALXxkZ8EAAAA&_nc_gid=o5eKNW229lPGC_mp46ongg&_nc_oc=AdpbpQ3FN6nWdlfYg4T3Fv0EQ58n3pzNy56hXfwiq0WkGMkaF7HRHwj6yoItcKErHYBSsU77c1k_9TSKk3HBy4mK&ccb=10-5&oh=00_Af_392f_jpKwaGkEQXieCA7kgnM7P0kWVbiAWdxTubFeHQ&oe=6A5F38AB&_nc_sid=201bca"
+      },
+      {
+        "imageId": "4042742962711440",
+        "country": "Italy",
+        "city": "Rome",
+        "captureDate": "2025-04-21",
+        "width": 7680,
+        "lat": 41.905835342516,
+        "lng": 12.457791666667,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_wVFT-H_3zCEHA4s96MPSK0iLOLQJOljdVJ8qcjXzc-LOZNOmP8WMGGq2ue2xWxQI72EOOH-N2Q0vJbNJM7TjxwaZWvmnGkhWSFnQBA-lheJFHfg-FyueHOSLesiTZBp9M8vg5t5Ny5kfj4IGZfAI?edm=ALXxkZ8EAAAA&_nc_gid=DwGqroDlERjtQdSih-heSA&_nc_oc=Adq3MtJKQ9hAoiwXa8Ee7U7Wgij1dSvp9jVJRLdGiyVfAGe4VFt7Nty4YdmEnfzI90crOeCx1nO9byoWcu6yncV-&ccb=10-5&oh=00_Af9yiPytzWejd3BZKmY6uSzX8a0wntOa4j7c19RhnO1FQQ&oe=6A5F4669&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1873663893449035",
+        "country": "Vatican City",
+        "city": "",
+        "captureDate": "2025-04-21",
+        "width": 7680,
+        "lat": 41.902939951342,
+        "lng": 12.453922576373,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9rXoYscNrKzU7kpODp5HqBWOJSAQ6a_5ME4jxIGP0fWnyEGRpfry5Sb8iOqfYQuBwaNRybOVAQ8Hip8DwX4Ke7z7gerHMcPBXX5g5HlZJadtUF7Jo6m-rnnTWhf_gQWHMi7hTgA5Q1913Lz_p2hUM?edm=ALXxkZ8EAAAA&_nc_gid=FEDRhNxIa36sodyuUzKEaA&_nc_oc=AdoT2zkp91X5eL0dLklG_DHI2rlZ6_RanUoiYPqQJnvWeR-SRP-6jTLyozMMHC8glnh5Ty_PI3RSXQ6q6846DXiW&ccb=10-5&oh=00_Af_1XnLCqhlpZUzRckj3K-u_0qb3dxes6cmt91MqbZNuaQ&oe=6A5F384E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1030284292559109",
+        "country": "United Kingdom",
+        "city": "Greater London",
+        "captureDate": "2025-06-16",
+        "width": 5760,
+        "lat": 51.545852,
+        "lng": -0.1756574,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An9Zy9aAOf7mTFIQIHiM0rrcQStCiwBo-meTCrP_sAwhvjFVf75WwfXfcORT-cr128VNxg2GjrLR-c7-MAg_GVJy4MfHcGXPhEewhXlM3oJKuYhHzRNa2CAP_NBSqJ2NOTMa7LoORhHfJ2Wvf0Qj0Q?edm=ALXxkZ8EAAAA&_nc_gid=tChgin3ZaMv8NBWeyK3P2w&_nc_oc=AdppsYQkiq_1ssiQeCyw3j1_0g-0ycR401BtkB2V8w2ajh9FZ2U1rQFn8JvzUN1xBqzmH0Ycd3slcLBzZGTRhCr-&ccb=10-5&oh=00_Af-XQYYWUDSAwSlf8lNPWA7P3krBnxeKfYg1IVVGtYK-iw&oe=6A5F4E96&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1402024083973161",
+        "country": "United Kingdom",
+        "city": "City of Westminster",
+        "captureDate": "2023-07-11",
+        "width": 5952,
+        "lat": 51.5365556,
+        "lng": -0.1564444,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An9Sb9WqcbgkuZ7UUvpyu5MCrDUmRlpp48KP1wKssYP78m9d4TFL-Ast4KSUIRo7iCHJWB5YhcXB-p5Bn6plRdGcH2dFaCS_pfLiyERCKG1nCr1DprGmcOlzuJETrqQ7P9jNafaOg5K3n85UnbuTo5Q?edm=ALXxkZ8EAAAA&_nc_gid=L2Il_hdEY-qyo4CdCMxLtw&_nc_oc=AdryoDDL50CIqXLj4ohCbAiHoRhbgBiKjniqEwLs0Y1D5CHhKwidapvSIPEnmiMy4zH_NWU7XpCfdbwTyUUhZ48n&ccb=10-5&oh=00_Af-zYzmTxVRudSSn3BQaIjagqQpxN7NA66HMPtEODpwZeA&oe=6A5F4A5A&_nc_sid=201bca"
+      },
+      {
+        "imageId": "290099823743521",
+        "country": "United Kingdom",
+        "city": "City of Edinburgh",
+        "captureDate": "2023-07-26",
+        "width": 7680,
+        "lat": 55.971706475,
+        "lng": -3.221734225,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-V5Dqljw3tQxTgQ-47S64RsRKy8Tn60jcOaf01_RbxhE_vgoMB3xl1FeOaBf023Smj57TZYMwhMb8IgxDcZFMqv01aczcg07RSBQPmDuV8M9j7NlHdD3HnXUNVr65ajsCi5zgW6dzvDN-7su16NA?edm=ALXxkZ8EAAAA&_nc_gid=yESetmeNBAJg_NUK3GLiKA&_nc_oc=AdpOJ6EJ00pYdRrGPcriEq8xlxmhqIsZICcmNrXgE6hh7gYsx2rBXZKkNXEIOUsf_0TPGPtVBGdEATGN7rlyyap5&ccb=10-5&oh=00_Af8yGwdvnDqpmKaxgcScZMGViQuRW7BfUqM1_kc99mwS-g&oe=6A5F526D&_nc_sid=201bca"
+      }
+    ],
+    "Avrupa – Nordik": [
+      {
+        "imageId": "1244138699374921",
+        "country": "Finland",
+        "city": "Helsinki",
+        "captureDate": "2021-05-28",
+        "width": 5760,
+        "lat": 60.196839599972,
+        "lng": 24.9154194,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-tMBp8qJAwZw0ZVasQam5O_JrXamtjGrKamhgn_nz5Dj0g9RrowUkcZarG6JMhsE-5AWznSK-or5uJl-MpiKGEXdT86GvHJRNG5A5UjNTnYD6enTxmjLcCHCpZNbQJ3YD-RZxV75z6bEwaw6ZFIw?edm=ALXxkZ8EAAAA&_nc_gid=4WB2wdUPGl2C3n3-B0zuUg&_nc_oc=AdpH6lhsN-SVncYdfSFCq0kKKw4jTVeqFjmSofEMQhIEbrjri7LB6yovlU9G9z3flZ7sl0Iqm8luyFEeWbYG-QZ8&ccb=10-5&oh=00_Af9nUTwoz4X_42W9PSc8eA8sRlZWI7zb8y-oaERBVj8Deg&oe=6A5F5C52&_nc_sid=201bca"
+      },
+      {
+        "imageId": "306481891157521",
+        "country": "Finland",
+        "city": "Helsinki",
+        "captureDate": "2021-05-11",
+        "width": 5760,
+        "lat": 60.1966703,
+        "lng": 24.901110899972,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-cEYXaiRwndeJLSkKid_acv4CfPTpZef1zH8m1M1yRWD2Vf5zt3CVL3NxrPrBtJ9DzgLxPCv1XEH68pgFovFMN0mJXkyOQtU3CTPjjRPUeDkPyStbZlVgixDohdSu8RjQX0HQudzHVNMz-uNCh7A?edm=ALXxkZ8EAAAA&_nc_gid=rjwM1lWGK-2gHF4V4u0XBA&_nc_oc=AdqWMiiIqjG6cSRF7dS19LZoyfb6yUK2jI0yxaCQMFn9beyYuB1-oN_3f8DU1UJ5KSZgFBsl-pIshE0suVtURQtb&ccb=10-5&oh=00_Af_Z0CJfqoCEdzojDYVOxCZL8vQlU0fWw6JbyD8-N79Idw&oe=6A5F317E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "534814177649795",
+        "country": "Finland",
+        "city": "Helsinki",
+        "captureDate": "2021-06-16",
+        "width": 5760,
+        "lat": 60.2052648,
+        "lng": 24.9135409,
+        "tags": [
+          "NEW",
+          "SUB",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8NJPssz5zH7sWZ8z5EaYTQXPL1q7bIJUyhykLWVYnfqsgxjsM-HDNRGdZx8RLMv7180Z7sek9Kf1r4DbJjcDfc6IlD5g1Zyc5ztziHJaco8GweBMYBEGVRxRDUItNH6kDaCLq15dpu8JzH7t2_ZtM?edm=ALXxkZ8EAAAA&_nc_gid=51sIK2qW__VVigsqGpbmIw&_nc_oc=AdpLizEMAA-uP3_zeOgRataRyOylSuFHfKgGW3sdmwVNUhw7PC6G68KVN4YhbF7sIwl4MU8_62I4zMqaSy2ZzFg3&ccb=10-5&oh=00_Af_fZL04gTUCfJuxdX-KF5CsriH23mVoAnoi9MXrc1JkZg&oe=6A5F2F8A&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1031285131021212",
+        "country": "Norway",
+        "city": "Oslo",
+        "captureDate": "2021-06-30",
+        "width": 5376,
+        "lat": 59.943244444444,
+        "lng": 10.699711111111,
+        "tags": [
+          "NEW",
+          "SUB"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_77xz33LXXIFsVsvjNXSn8Nq7ep89ZMcbzQP9tfqICUTL0yfTsPF5MogCe8w2EwnFptbkE_NWSaT8NJtAypx6UwmDUHCQpONO37bLY6LRIvBJqC9IIUXv8arzF2iVnglnhLH_M1eXGrL5NuXlnpQ?edm=ALXxkZ8EAAAA&_nc_gid=L8ZU4WKL82JHxuNdDX0DiA&_nc_oc=AdoMsZ0DCzZS7K_nFHmAqZn_-aphb5uMHzuBUHRviQ4PLdRl1bH36oAWALC3u6VFI51gKl_8aElvcuSCkjs73ZkL&ccb=10-5&oh=00_Af8Ey8pWdlCraW_KJy6DTUmOabTQbNoUxo0Aql1m4_POjg&oe=6A5F2CBF&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1035925080527782",
+        "country": "Norway",
+        "city": "Oslo",
+        "captureDate": "2021-07-13",
+        "width": 5376,
+        "lat": 59.934805555556,
+        "lng": 10.679961111111,
+        "tags": [
+          "NEW",
+          "SUB"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8W8DaSgbgcmwJhDPIUU19sjFAp08F0JkVrglB1dMb9f7AIIoKyFu0mvkkygua7cc2vRBJr266gSIyrp2eHfdk705EIef7QQqVz5-bCvedEbnH3bHv1haKvFZSFxzqAFh99pm_-XQnecoI0Tw-hig?edm=ALXxkZ8EAAAA&_nc_gid=F41PHGOlQoXfgMKKikLoMA&_nc_oc=AdrGECHK5xWVC8zH-6-Qxo91Ypf8f1rDgCHi1TKXnfl9poth7RlKHDGWBm6R_3zLj6uKlcNdTaOneWiX012II5FW&ccb=10-5&oh=00_Af_aZ95dQ-V-rfitUsHwAi0qq0Q_qp7zq2GNYoN248AhGw&oe=6A5F5A05&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1447512079328290",
+        "country": "Sweden",
+        "city": "Solna kommun",
+        "captureDate": "2023-05-11",
+        "width": 7680,
+        "lat": 59.36482,
+        "lng": 18.0225555,
+        "tags": [
+          "NEW",
+          "SUB"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_-iP2rjFlh_gf_5WwAiiEJQw4PgzcVZthcjpSXn3Jj_s-MQtwWnEoYZBOKfnuxoMWSDGYuzPZAARYCjWkjMH2WAK1jHrUH4tWZGqFEqQdX3xvLBGmrG8__BAegqebSnoipe-gFJ2-__Hx56bXJ3Q?edm=ALXxkZ8EAAAA&_nc_gid=CzosE6LpRueTK8pGJCObkA&_nc_oc=AdpfkksEG1GNz_Ex-MQjQglSfW7QjVNXEBwfSgr6eZLTe-2q_KX7mK0XEZvA-kvVJ_8934Z6DStWAT0osg_caGAq&ccb=10-5&oh=00_Af9Klc70ZU8eg94MrCqCYNb0Hn39Lq_I5dmuoWgDNg6msw&oe=6A5F53AF&_nc_sid=201bca"
+      },
+      {
+        "imageId": "815432999989918",
+        "country": "Sweden",
+        "city": "Solna kommun",
+        "captureDate": "2023-06-14",
+        "width": 7680,
+        "lat": 59.3565355,
+        "lng": 18.038476,
+        "tags": [
+          "NEW",
+          "SUB"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9JwaXSFmW47yPdjsOo3ag_VNAKU64HE2_OvbR6bZG-dLYDhAMkLGjU7rBw_TcWynHfYsSuPCC2IcqAxE0PxQURItXKjsh6KeSmmv70tV2OsX8xF-x-0h7-HPR28hcs-og8q5hKj7fdJKqSLgUXfjw?edm=ALXxkZ8EAAAA&_nc_gid=ZP_KUTyZj1zxHMcKv7mdTg&_nc_oc=AdrsFPLB_qtMXhjv1uiMLaqBaiVabBeVlKCAd4huqF8aUuSc2V2myZ90W2yH5P4x-77qjuhZBuUIhYjt6eQ40zeo&ccb=10-5&oh=00_Af-YSel8iS0PsTR8l1dcqn1YVyGAAJE7qjb98C_zfu1eng&oe=6A5F5767&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1729125030843831",
+        "country": "Denmark",
+        "city": "Copenhagen",
+        "captureDate": "2023-08-14",
+        "width": 5760,
+        "lat": 55.7023588,
+        "lng": 12.5447625,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An99wfSfLyCO1BM_yPJMOg9UbcsCTK4wwo1SH1Lx2xv0fZSXsrAKfP6Xld92bU8o1S7oMcDP3ICDu2rxqRIrQJ-LODePprVoVTKLPMQcNasqFCKt3EkrifSwklTRC7zkCvfYJG4t0E2ydZ7eLNbkmjs?edm=ALXxkZ8EAAAA&_nc_gid=yeFY-lIYUUnnokoBsEWukA&_nc_oc=Adp9CLScxoocesD2QncSaaholyeIXOf8VlPpfbZFbWVLfkUiBdOx9RmednurRHZczpBcPJgcEK1IoyUmSrz1lmeD&ccb=10-5&oh=00_Af9aY0i417kBOsJrXCyTvdVhVMoGZevPoz9auxTrEjGFbQ&oe=6A5F3C17&_nc_sid=201bca"
+      }
+    ],
+    "Asya – Dogu": [
+      {
+        "imageId": "4038000893090150",
+        "country": "Japan",
+        "city": "Osaka",
+        "captureDate": "2025-02-25",
+        "width": 7680,
+        "lat": 34.707782178343,
+        "lng": 135.48290929092,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-0CbuTg_Bcqio5DR42EvBBTDT5UD9SwD3h_bZkeUWiSYu9me09lHYVD9My2LamNqeYzPpQ_jB1r2ulFb_zUJqwERUj6R6XD1u8lLMbcdmr2GC1ffJBl_U9aUTy3BYC4KJu_LpSoMjNsDN46gVh5mQ?edm=ALXxkZ8EAAAA&_nc_gid=qBmISAiVlhRHhwqJk4eFeA&_nc_oc=AdrjRxvYUeySuBiCa32pio2hDySXN8ZfLxP4w-AlULSerdyV_Qod0AkIbCCZdPaj0VQnL2rPe2QOJNhtdqE3zz1O&ccb=10-5&oh=00_Af-TlJRuaZVupeaYmlXVMEM7iExI6Pf4x-mWS0z66T1y1Q&oe=6A5F5A1A&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1753267568391748",
+        "country": "Japan",
+        "city": "Nakano",
+        "captureDate": "2022-12-17",
+        "width": 5660,
+        "lat": 35.718533666667,
+        "lng": 139.66892166667,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_za9qoMYgiJxBe0YfA-t9aaEvx6R2Al37TYJtm1mJJpdaynNQ6Bae2YkrPIcVo-tVSheUwmIDEmR025kENIpnUHERtBLMNLUfjbo8IodF8EExwKV7582aGQXKLNY15Mx7f2J9K-oMOVdFnB5bh5A?edm=ALXxkZ8EAAAA&_nc_gid=ymImfb8MmAeArP6Y0Besww&_nc_oc=AdrvqQebk8wAu6fHUFoZLL8oivCQa-FqDtRe6uhq-0vzz7ziL7Hoehg8sFwP4QrZHAJELJ8ZaLZkOPkSh5m2L9qo&ccb=10-5&oh=00_Af_S5IhEQkXdm9t-bokjjt7xEVF5eeeYtCpIuj9dDkWVeg&oe=6A5F470A&_nc_sid=201bca"
+      },
+      {
+        "imageId": "293936609414897",
+        "country": "Japan",
+        "city": "Shinjuku",
+        "captureDate": "2019-07-20",
+        "width": 5660,
+        "lat": 35.721102,
+        "lng": 139.674891,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An9wOpC74-MLf22ycNQ6xfvJOodfpJRS0SjVPQP9xqub0gpDarVme9xQsdYUKGXDPhymTqtNH-9qaOOGdA4F7YVnGbw31p5DCoc9Kll2Fa50Y2csGYlmSeL5S_Y-t6LaQmHQezIo9L_ufAEIkOqvFH0?edm=ALXxkZ8EAAAA&_nc_gid=x5rq2KUNPcynJIaixuOYQQ&_nc_oc=AdqX1ZYQgBCgZ15Qp3YE0AnzbJagjLbyKhm4I8cpgDEaW6IXVqvXa0kYPKhiec7oumyrwnyOlglfd6bDTojz-V4_&ccb=10-5&oh=00_Af-8g20S2G9zxpDXtDejJ-xpGmR0ZSkirplamKcFqWnOvA&oe=6A5F33D6&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1183548599387727",
+        "country": "Taiwan",
+        "city": "New Taipei",
+        "captureDate": "2024-08-22",
+        "width": 6080,
+        "lat": 25.0750027,
+        "lng": 121.4924193,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9Lsy1-XpGcxt44RsjabdDOwT3oAHVxCh6uUd5M6ph1DrWCOL4d5jm8c97nuBX8SEFg6jW8IGQ4LwZW-LNb6khF1E8XC_yatsYwTo24tn6xHtSb0LnjXeXkm3SaWrIKGbxjO-jznoZenyGi67ybDg?edm=ALXxkZ8EAAAA&_nc_gid=a3PpQiVHfaWmfOHSpNqgcg&_nc_oc=AdpLDJBFrppTAWzu6CNckwGbn4iCsoaEnRJ2rQ0qyKGFnewR-BGdaEtQbfE4H_IZUlVoQzh5j23QiRsjfUMtN3OP&ccb=10-5&oh=00_Af8KDOM2L009WjFwR3KTVWUYvWhQYeOleUb-FnAWehs-Rw&oe=6A5F4A0F&_nc_sid=201bca"
+      },
+      {
+        "imageId": "648316853196591",
+        "country": "Taiwan",
+        "city": "New Taipei",
+        "captureDate": "2022-09-09",
+        "width": 5376,
+        "lat": 25.078267689931,
+        "lng": 121.50152173,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8ptE799sIpr21u6aGg58Vs7CbYr2TPUQrG4if65jAPkA5o4XVATr4j_bY-l_a3XoMwealX3s9kO7bO6iho4aHVW2cI8Kec2iuEdV_C2WHqFjosr1xKxkj4n7SGwrSrhgG2AvgtqjOAoDCjh4Y2QA?edm=ALXxkZ8EAAAA&_nc_gid=_Ug0uNa7XGxPwXJ19bIJkA&_nc_oc=Adr8INC4h9NdfWjkfeN7VAWpjSxvbV5GWIn8LN_QnnX-LLaTdy-Sz_CgQUbuWMRkEoiU7MRfVL3FcqgjRYNBdts0&ccb=10-5&oh=00_Af-p8rdMmuNO8LkRuM6LgyIxIF6WZtaRuf_4hasdi7GyLw&oe=6A5F3E9E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1835699110545451",
+        "country": "Taiwan",
+        "city": "Taipei",
+        "captureDate": "2025-04-11",
+        "width": 6080,
+        "lat": 25.0780075,
+        "lng": 121.5077579,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_sVLXwNhMxp9rpP-xKaczJNoVXrTtPXeekJXReV-rCuBtxfJcJ8nNfD0_AMGiDjFax1ImuzExFseJHKF-AbCR_ln5DOy8bgwDX0lqwfZjvOlFND5Ue5x9SgrIpPs9CDYkyyoWSLVJ5glYLLkoBdxA?edm=ALXxkZ8EAAAA&_nc_gid=00lOWPMFAix89_h9rH5v-A&_nc_oc=AdrJ_Fi81kxBXzRqUosUyZJk8R5KZb1W3h37vibIFMM1cPXhzdCgg_WbscfDGeVxH-ljMVgYxxIjxcUT2HwU_sx_&ccb=10-5&oh=00_Af-7xcOvaiZvv0fjcaDuPW3ne7DdieptMf55-AIfANLaog&oe=6A5F4D97&_nc_sid=201bca"
+      },
+      {
+        "imageId": "478519745161296",
+        "country": "South Korea",
+        "city": "Seoul",
+        "captureDate": "2023-12-03",
+        "width": 7680,
+        "lat": 37.579992165263,
+        "lng": 126.97853322226,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8Dx_HiavJ58YOPtFC0OkQ_bETEVMarMdL3ZlKKNmUjXV35r2L52YGi250SMh8oHsDU0shmbDIznF_r4Ooc2pUDy6S734I1sypmQtoemNIXmQP0BbP2NF2jQ-JsM1P6rZqMyhCXCRb3hqznRSaP_Zg?edm=ALXxkZ8EAAAA&_nc_gid=wdj46zOeg0QqABaXp1JBzg&_nc_oc=AdolFpBKHtZ4V4NWGPzgcu3wcCZj3dGrbqFoCJBi-Kg_nNXoU1YLbK4upnsW_eEZz3XI4vyDm_y-p2b8eSB9ckXP&ccb=10-5&oh=00_Af81fMjVcMnQ1jEEinEfI3jJBVWF3ZBFAzrLh-ZjNDkAlA&oe=6A5F3CA6&_nc_sid=201bca"
+      },
+      {
+        "imageId": "386514280633812",
+        "country": "India",
+        "city": "Delhi",
+        "captureDate": "2021-09-29",
+        "width": 6080,
+        "lat": 28.6464083,
+        "lng": 77.1952528,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An93oa99L-qKGjUEgT9HBYfFGYOZNJiOUjHTja4xiBO1b1HNiJYneQ0xTpLZSCeMSIhYTPhnxiwMTCDVgWvV0N36Mxn3o2kfsV2xd_Z8a6kBGOX7GIgtA58Mo3CqGcdRzlWG4UXV7v2jSuGrpVoW-A?edm=ALXxkZ8EAAAA&_nc_gid=20v7BFyf9ykTXdHZiW5DOQ&_nc_oc=AdqQk1XvWiNe5jepGKaotTsCv_zTHxXhQ_CnGG24GMl15087gF7mbCbmeO6wiHoQRVljb77JD4RloiR_eruy8I_5&ccb=10-5&oh=00_Af8iXl7K7cI4LVbvuVtd2csItZcFaRY4_twV29oBLL9qJg&oe=6A5F4AC0&_nc_sid=201bca"
+      }
+    ],
+    "Asya – GD + Korfez": [
+      {
+        "imageId": "1408406236224752",
+        "country": "Vietnam",
+        "city": "Hà Nội",
+        "captureDate": "2020-03-27",
+        "width": 5760,
+        "lat": 21.044761111111,
+        "lng": 105.81728333333,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8aDVw7Us3niuTpt3aPRU8xc4LV20RuXcG7pUMewz0HKRoqt-mL5g6Z2s3eqrekkHm9HPm5fG_wXg2-l9mFOOoVTT9fihWiridQzi0aehi5T9ge_S8cH1tfcUV98fuso1Bb5F1QD_wPhVdI2AU2QA?edm=ALXxkZ8EAAAA&_nc_gid=N2oVq4-SdB4Q62pItjMZ8w&_nc_oc=Adpn9H1FXnDvUnB1e183T03Dn_9ka92DTLZetumzbdXsFOLto1aJn9lVvcoIIcKzTL4hLn18fs9GjmCOvT4TmBI1&ccb=10-5&oh=00_Af-SfuLBpi3GDbE58sp56kOYdZBblLhCU_9t_rAacPb5uQ&oe=6A5F546C&_nc_sid=201bca"
+      },
+      {
+        "imageId": "905002378337759",
+        "country": "Vietnam",
+        "city": "Hà Nội",
+        "captureDate": "2024-07-14",
+        "width": 5760,
+        "lat": 21.060098158853,
+        "lng": 105.80430761053,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An89CJfzSC9jBDJ97lgBmTcndqBVOGSuxGD_z4lWotnPyyrFQiv5O1N8DMfhauU8nkfj7bKapq6cE3Zm0r6qUY7bDECUpWvh03cjY03Dbl2FiOe_ZrFZrBAf74CXx9Omi1kQr3HvZa395v6BmKqvFA?edm=ALXxkZ8EAAAA&_nc_gid=mAawLDI_D14nbq5zowH2Eg&_nc_oc=AdoSUkFPBtMkUYA-hlIjJh33CBdsvWvjyTgDiR0SsmiOH6sRrGez7u7jSI3sg1xyyxmxvReeBpFyoyDwNozPvpYN&ccb=10-5&oh=00_Af9tjkpihdcmb9Gi1kLGICkgg-IaUc4S248RK4cq8vSLgg&oe=6A5F4830&_nc_sid=201bca"
+      },
+      {
+        "imageId": "961777841586644",
+        "country": "Vietnam",
+        "city": "Hà Nội",
+        "captureDate": "2023-09-18",
+        "width": 4096,
+        "lat": 21.048022164583,
+        "lng": 105.80461136458,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-jtseCmPNVO2pO_Yma7yalUKKIc1AkmIfC4TyjTLrqGe7eDgJh0AEzHBkllYf1Z7aExDOp62RJN92IBbyT1YxoWLk5it06Tcgc8aKyOLN-sQkONgxbqH33UZRzbjIppPcncbheqlsCA9Dunm1xrCU?edm=ALXxkZ8EAAAA&_nc_gid=F613iWPiP9XeYTYUdJdTQw&_nc_oc=AdqJoqI4FjoqHOR9GWORKXIinHpcP_fW9O4gi2rLSS9sPGq2JpEnEQrK_fqQrP1sxyK-Oxg9tn0NSPo9eIxGrYS0&ccb=10-5&oh=00_Af86VV-Ckc1My9hWfvzTvqpuAMQkFcIKt8bXRUeyg1DcJA&oe=6A5F396E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1963020930880204",
+        "country": "Indonesia",
+        "city": "West Jakarta",
+        "captureDate": "2024-07-16",
+        "width": 5760,
+        "lat": -6.1616729,
+        "lng": 106.784446,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_DBXVbTNr81ZrovI1FQ-gzbLQMTN_tSm4_Psfh9uNscLhbUcOLzXdFgakV6FNtB2ztrM3R_yqVaRMmK3GOpOtHUQvToM8q4EnleIbuuclQNZeohHsbgVQj3uCnqwCF-FDKKalq3RIE4GTbVYtYIQ?edm=ALXxkZ8EAAAA&_nc_gid=0ZQ9nn8SVARV4-_Xk8wumA&_nc_oc=Adrl7eNDSnWZw-W2ssoHHnwonnar8zdQ35RUp-PywSdnp6Xi8u81oA_UmEKBX-o4J_nexVyB42MAPURNO17JyRKG&ccb=10-5&oh=00_Af8056VO89pWGgzZzbcEnoM1KtabJdg9SeoKr1A3Nm5pSA&oe=6A5F4216&_nc_sid=201bca"
+      },
+      {
+        "imageId": "840447114593922",
+        "country": "Indonesia",
+        "city": "West Jakarta",
+        "captureDate": "2024-07-16",
+        "width": 5760,
+        "lat": -6.1580202999722,
+        "lng": 106.76775609997,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9FBlJA3we-_iEyHYBYpVs2plN1GwpKcPptoE3zCj141dUvpjSyfYghhK-fbbupxYgtVdI_31g4PyCiffvYhWUnJyLT8kpsDPe4fAtOdlxs-6rGKbOUWWcXLT7qQKwMjvExQD3R1hfp38-5Vj7SiFM?edm=ALXxkZ8EAAAA&_nc_gid=uFc8yLXBaE8TliOY5zxDKg&_nc_oc=AdrecaAd1ngDUMSUUKKC97b_NDBJQ1tZdrnlnLQzXXs35X-w04GeKzU_ZXO_3vErku3RCz8_K8GvcclbsiHfIp-x&ccb=10-5&oh=00_Af-OQIA_UbUPJrhr4ZDTz0sUjMyfOadmBjEGmxHkS_Vbfw&oe=6A5F3A3E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "870168924825181",
+        "country": "Indonesia",
+        "city": "West Jakarta",
+        "captureDate": "2024-07-14",
+        "width": 5760,
+        "lat": -6.1456290999722,
+        "lng": 106.7813569,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8HwXDmhlnKZGXdk1_-LHCdvEo8ltHTGILo4jKwQiZxjjnl04LLtWdB0TbiRtTuI7gZ7WY0VznQkcozmNmXohbVSWloc1T1U1J024Ojjz-iNin2FtphTdlX99ekkgT56CogiBHil-g102LHQ57OuQ?edm=ALXxkZ8EAAAA&_nc_gid=iP7d-sAGI8vQP_9FlEpOyA&_nc_oc=AdogA8Lnbk3f1Sp7Z-ram_DvdH04lYL_gGIEUMjm9Js8pE6IuqL-k1obTTYAvf0z0J3-f9sFaJMXuLhLwK1xRdJ0&ccb=10-5&oh=00_Af9GoZOqo_5OkngnDtK4gTn22urnV1LumgSVWJHE49Plag&oe=6A5F308E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "415704903927424",
+        "country": "Thailand",
+        "city": "Bangkok",
+        "captureDate": "2022-07-20",
+        "width": 11000,
+        "lat": 13.789573863359,
+        "lng": 100.47997757054,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9DSbXe-3nLCWXJ8TOhZvp3ENRUPLfVFARldrY5EXVIdr6vxWzZqJm8En8msX39re_-Tyz-rma7PdlPmuIVhcTSnhDmsCbp-3BzSfIBGb1VZ68_X-_GwnM4ELGYJNE6JCQQkpoGDx1wvIKgUn2yu2U?edm=ALXxkZ8EAAAA&_nc_gid=Wi2WZFGZ3OgNIkgy3UHt5A&_nc_oc=AdpUjVy7JNCUjfGFJyOvkHiQH4P-gdq0IrFCYHTbuK5Q-fqiAI5xd7fjt17-zVzmVR1na9IU-I77dAHpi_ud3eFm&ccb=10-5&oh=00_Af9m3FOVzQxpi5aj0DBFKiH78plvfbZC54cbH4ibck260Q&oe=6A5F3D90&_nc_sid=201bca"
+      },
+      {
+        "imageId": "541510894387664",
+        "country": "Thailand",
+        "city": "Bangkok",
+        "captureDate": "2022-07-20",
+        "width": 11000,
+        "lat": 13.776003094796,
+        "lng": 100.4792437361,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8g-daEHfV1GTjU4O4Lxp9w3uH9dV5So7qxjFpcuDLdoU-s6CrFPA7urRi5sAx3xhKMjv5hnzKJN2SlMCZBtDnr9F7iftOag6TeuRrkWRde-AF6hR89e3Ix7Ll2wExrqp2852woyVU-1jRSfgzlOA?edm=ALXxkZ8EAAAA&_nc_gid=89FTnRmOtuFjAb0ukllQlg&_nc_oc=Adpfj5xHARlTN-BX1xcYJDkG_tDXF2yq5YjmUNjbQKDgGWhU2PVpQY28grXDdznuKbT80KHqe1cXfTzTmF2LN7i4&ccb=10-5&oh=00_Af_a7u1aQfwG_5rUnboqrJ5gwyIQ6lTMd0q_pYZYavDG5Q&oe=6A5F38F9&_nc_sid=201bca"
+      },
+      {
+        "imageId": "557166496097114",
+        "country": "Thailand",
+        "city": "Bang Kruai Town Municipality",
+        "captureDate": "2022-07-20",
+        "width": 11000,
+        "lat": 13.791230391253,
+        "lng": 100.47407290827,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8yUXYop32ik5PUzrYF3dDXWjZkpk1yR9Y_bU9yEroSvWswY4ty3kVs3JNjg20J-2yZ3D9A2yH1WTV_m_72zfsbkgiAfqrCH5c67zBUr0xKs8pFrCcX4PGZVTMwaRvXhXF_uWzqaRCAPTxehuIuww?edm=ALXxkZ8EAAAA&_nc_gid=4-QGMwYZjWCr2Hu--NHcaA&_nc_oc=Ado5OV2WdmyZ9VghctcgcCyehmUDUAdXMXHqISn3c4zrvPWCnrkADHIEzBjCZtXPy0j07rCFMUhIB58J5lEizvLz&ccb=10-5&oh=00_Af-zJ4kADaSb6FmWV9KKBHewP9OAoHkFXXm8n7CMwFbRUQ&oe=6A5F5349&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1129183764157453",
+        "country": "Malaysia",
+        "city": "Kuala Lumpur",
+        "captureDate": "2021-07-15",
+        "width": 5760,
+        "lat": 3.1742860000239,
+        "lng": 101.675351,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An--vFTXZpPee9VEkV8e2yepIDbSe64y0JAe-CmxMXmis31lwDpNkPRjs2_8J9Epm6fkhD8hBF9hJDivuBJBinFFUt3IjyaM11iYVHtDwp3Mu8jrzvaa4MUvsgZ_OqJuQJiZ9Z2XEHPMu8svrO4ncw?edm=ALXxkZ8EAAAA&_nc_gid=OK9kDPYXy_6jNOurUVAQ3A&_nc_oc=AdqHmPQ9rRlYbKoktcuunzGm1X4mIR_OEq7Xf0pF476wBTk-9gA45Zhy4EXC7gd0LIW_FDyw2hcu1P_9y96xuqP0&ccb=10-5&oh=00_Af_XmIprNOg_VqXE1xLS1UeUQlzQ7ryzknVXMfVEoKKEwg&oe=6A5F4006&_nc_sid=201bca"
+      },
+      {
+        "imageId": "475704453473336",
+        "country": "Malaysia",
+        "city": "Kuala Lumpur",
+        "captureDate": "2021-07-15",
+        "width": 5760,
+        "lat": 3.1651518890512,
+        "lng": 101.6683559,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-KtTYDnP0r6FSIkNGl6Tmled3sUZ6sW2xguGxVROPBPaSXdrbyrIf2E864R7YTK8ySyJ8f7Pwt19VTvXd84EkNVimNfHnrZFBQhEYg0DrqG2b5ENgtv4xETsY2-Kymiu9iPPByViMHXYxIs63eTg?edm=ALXxkZ8EAAAA&_nc_gid=meKk6qzh4Q1aWUQB0_k8oA&_nc_oc=AdoJpK8ZEt7Y155NYlERb9-UWhNtYC1JA3o89ycrkUXg3TRnaggGYcFC767AnB2woF07fDY8JhtLQvYkYl3VprVV&ccb=10-5&oh=00_Af-egTB_6Qta2zl68KBUCNt0ifpApynYfObQAwycaLpXeg&oe=6A5F2A83&_nc_sid=201bca"
+      },
+      {
+        "imageId": "175957181117046",
+        "country": "United Arab Emirates",
+        "city": "Dubai",
+        "captureDate": "2018-08-30",
+        "width": 5640,
+        "lat": 25.207389509167,
+        "lng": 55.254137618333,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An9CnkWtvqfXmZPQ2REHRgnjhnpQBTcByEjhH6cG8BeLsX4tyEE2he6GitPXAZdByLwt2BEoxHP-HWD3vK9_qj_H17sDf8JBymEA0P2LibUTooz2tCnwdbf70Q6K6QHom75FdrvQH-M7quhzaa3OUwg?edm=ALXxkZ8EAAAA&_nc_gid=pW_T2UPiCeufMLeYdSphIg&_nc_oc=AdoMI39SgaIFzvF2oVF-MQGW2lMMbJjzNMxUNtFIKjl2MhrpPKALf4cqf3_SAhrtQUmCpySAJZZ9jjcp5z9JPyZa&ccb=10-5&oh=00_Af_rwJvYfOOnJF7qHBMbMnTZGSwn6tB8PI2jkgyDHmckWA&oe=6A5F2971&_nc_sid=201bca"
+      },
+      {
+        "imageId": "227065468851735",
+        "country": "United Arab Emirates",
+        "city": "Dubai",
+        "captureDate": "2018-08-30",
+        "width": 5640,
+        "lat": 25.211314503056,
+        "lng": 55.258524203611,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An95ZsHFkXC1ReBz_1xU_7RVDwzJt-43GuaFgj3TgTn3jjVws8QmdCJ5dvTSR7y1G9cZf9CEhVJiaKJTDMctIs6DVZCB5FTzpsDrAy_ccvilZCPgZVFH8OgUumSYlcLhHEYti9dosIqZYPg89eSPJYI?edm=ALXxkZ8EAAAA&_nc_gid=1t0Gt9d72O_qDQHsPOO7iA&_nc_oc=AdqlFwMlICNYXOJkKYm72Hffk4ZZfSwmz-hRMBL3nOfAl0RSwa34GxhyBF9ZuYnqiBBTnGxaicAXnwaxUw0D3Q04&ccb=10-5&oh=00_Af-lkTlFGM2ABpzGCp9lA73BncdaUtFOIk0g4i8rN1quxA&oe=6A5F54CD&_nc_sid=201bca"
+      }
+    ],
+    "Amerika + Afrika + Okyanusya": [
+      {
+        "imageId": "762162259389321",
+        "country": "United States",
+        "city": "Chicago",
+        "captureDate": "2024-05-08",
+        "width": 4096,
+        "lat": 41.933233106786,
+        "lng": -87.675771450377,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-_K-p-RNxyZrLbvFIW1NAsr5Xw-qyn3rXgK1M-6LRBbfz7Cv1fk2_CSSGl0o9oYaMozYQptVmGPSWxVkFb1BD5JHkx0ajigdPPG96swXKjiPcHvc9ayu9a4P75k9Tr9l6mCCztpPoUldufeP6la50?edm=ALXxkZ8EAAAA&_nc_gid=bqgBFZ2LEj_50WK8srFLNw&_nc_oc=Adqkg-yQXWMxA21i5an8I8aC3ZTFr0g1hzB6pCM6AZySi0ngi3lr5m6-7IHSll2S8SzOuKU3Z6ZWv--HjtIARjuH&ccb=10-5&oh=00_Af_SYq7dfv1gfrOrUZfMcMRCsfKZU4kNIrHxqEwj-_gqWA&oe=6A5F2F54&_nc_sid=201bca"
+      },
+      {
+        "imageId": "646732515108188",
+        "country": "United States",
+        "city": "Los Angeles",
+        "captureDate": "2025-07-13",
+        "width": 4096,
+        "lat": 34.095676799131,
+        "lng": -118.3223223369,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-eqw2j257EKNqJq2daR2ciapvzQWFfcaS7pmcXbImuV-Dye0hdAlBSTV5oNt9sqK-O7AMEkXrJlatslRKEQZkn1jGmEmyWIIDxV_DBhoRhTqAkQ3oksObJer3WKZnJd6dL3bEjmiloyuFfWZPFAro?edm=ALXxkZ8EAAAA&_nc_gid=IfXwCVqGVQVC2-sDRFx9SQ&_nc_oc=Adr_RaciBkEo_pgKZdjknpt5hDTMx_IpQzz1c3YvJ7N-zGMPWXleGeZGwmxPWCjw7X-aFGGyQNKEKmfhemNrkXGS&ccb=10-5&oh=00_Af-En6JhlHfLDcJaYk4G-j6O1AdnuIbeWlX0PsljLahtgA&oe=6A5F5364&_nc_sid=201bca"
+      },
+      {
+        "imageId": "770097414894823",
+        "country": "United States",
+        "city": "San Francisco",
+        "captureDate": "2023-06-27",
+        "width": 5760,
+        "lat": 37.807336,
+        "lng": -122.4719133,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An9Lx9xuUC6kCf6az8-5xRJpfLuocFVG5_mw_KqT9qtFbN1Hfk0sfOloG6WIQDW8PsjWo9LCk1-s03oQCpTUw6WVnSDdTv9kbOSNMxbPZ9vxhuyrIxbnMjCx6mNeoOT1sjyhrTRFpenrAVHHt7WEksw?edm=ALXxkZ8EAAAA&_nc_gid=IWO4iwFn0trDC-pYvVjy-A&_nc_oc=AdpLrc9wTXCj11iWGimigLYm2pp59ZJPv2W4LiVFGgCOOXcXPgcCdUo02pID2rnqTrpJjcOPPZCY6UHpjcO2-aP7&ccb=10-5&oh=00_Af_z9OPxL2kR37arh7VTLNlSl8_NiksT4zY38he0zc0bcQ&oe=6A5F5C48&_nc_sid=201bca"
+      },
+      {
+        "imageId": "161253235937889",
+        "country": "United States",
+        "city": "Miami",
+        "captureDate": "2015-01-31",
+        "width": 4096,
+        "lat": 25.802471,
+        "lng": -80.213311,
+        "tags": [
+          "DUP"
+        ],
+        "sourceUrl": "https://scontent.fsaw2-1.fna.fbcdn.net/m1/v/t6/An-2big7pP-KnfjVhUO-CAHAA9DnP8cQ3Vo3UmRmn-bRXfynlgcavrQVcE-zx_MWf1pUetu6O9PXjlGm-m4R2fmRKKFHHwAI9Ryp9STCt_7uOYi12R1wqkIuZSa7zUNDxBMZ6V09kpXA0eN8XMlnCLk?edm=ALXxkZ8EAAAA&_nc_gid=Auj1zvatHuZAc1K_OUXLbQ&_nc_oc=AdquhrRa1hA89mYj96EZr4fUZSyWb_8NgMilzNitIC-hZpkOUBFtu9C3SpdIPLKt2kw8CzzwO8XVv1HVDl3NzZi-&ccb=10-5&oh=00_Af8qxW7ApQIoj6xaVSfKVz2KhbiJSGZKh91WGfeIiK8mIw&oe=6A5F31CA&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1022827433088876",
+        "country": "Brazil",
+        "city": "São Paulo",
+        "captureDate": "2025-04-14",
+        "width": 5760,
+        "lat": -23.5288972,
+        "lng": -46.6508468,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_77Qmd3TOawJCKOu6lBDT9o6SnDkFWs0dLbLFUQ2zYlONWlWZIRC1TjQikVkHeOvZH8vREkb1LX73D1vHvu1tBTpAQgE5yUsyEu11OK3KuTMN4ttu4S0TuS2wVm6XwvqtEO8oGg2Dkq29Wxf5mnlQ?edm=ALXxkZ8EAAAA&_nc_gid=iToSMRmI1_1dd-z_dWgUQg&_nc_oc=Adp5eQexRVJnSPkL3rtk8eM0n0hGTt_GbEejIS49ltKq4xoyZCIuSjQTU8b8Ya_UFVykT1Tre7aX-pWNtbd3DOYE&ccb=10-5&oh=00_Af-lj8MjOta-3fnTj6pFoehDfS6gpJDKQoWZytYbZef5yA&oe=6A5F553D&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1222197565962996",
+        "country": "Brazil",
+        "city": "São Paulo",
+        "captureDate": "2025-04-14",
+        "width": 5760,
+        "lat": -23.5373399,
+        "lng": -46.6635801,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8dF0CdA6_jiKFpXtxwoPnqZ25k5ILHVSdQmJrsdNMzTgnAouX8eZdEfmOAth6L5UAF2QnilLl1RfWpjmsy5ifkqXdU_e0h2t-TpI7gC9TqEdzTDCLCLpT91V6OAlTvQUmlAnWUVe9qzmdQzjZBjQ?edm=ALXxkZ8EAAAA&_nc_gid=sBbRfGWaIHaQllS-UJZITg&_nc_oc=Adogd0y0Qp_5lRVOt8d3x1iFl99SjpBv2iB-ROnxldnL7L77WRXlTy-XxVIHq7HCsd2LUNb_R65jqlNKPh22kxr8&ccb=10-5&oh=00_Af9u-i_60JSOcaDLefFHzbtzXlJ47R4ok2ryEW04uu8JvQ&oe=6A5F5CA4&_nc_sid=201bca"
+      },
+      {
+        "imageId": "2156915878062500",
+        "country": "Brazil",
+        "city": "São Paulo",
+        "captureDate": "2025-04-14",
+        "width": 5760,
+        "lat": -23.5272129,
+        "lng": -46.6610333,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_7s8PWt4QLP87aeUVr2wg-Awc1dQE-sWO4V4F3-fcF5Il4Cm8qSvxe8cjxrA2ACQ2cwo1SxVWjMK63r-pqNPRqKu8SQOs09aIW6MHHuo8CN8-7UML9XwbdHuW79bVmNtiwgMv80Vo86BTzo8DGsVE?edm=ALXxkZ8EAAAA&_nc_gid=Qf4ntD8RulC7lxJdGivWTw&_nc_oc=AdrUnNEi48UhTRYrnTBWFs8cnbVkctRCfbwGkCTWiBcmzIFlRea7FVXxVGGJDMqv0vOdLFYYYiIePFG7tRW54hMB&ccb=10-5&oh=00_Af-7XRD8_rNQlx6XrtQRF8dbTOhjXGpy8s7am2_4i5X6Zg&oe=6A5F293F&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1825128574560507",
+        "country": "Argentina",
+        "city": "Buenos Aires",
+        "captureDate": "2024-08-22",
+        "width": 5760,
+        "lat": -34.5926627,
+        "lng": -58.4059094,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_pd-hI_wOniCSa2usHhlHlYuDdx1MXcgPU9l0QBKEEV8epeE-nmppoS2ntKKMOHM2Vh0KQq4RChu6yTOgaVLwhwo4-b8TCZuJbuVVk48lkSBl29flbaBpIjwV18FL6y7B2H6kfPInaSRGZNs73_t0?edm=ALXxkZ8EAAAA&_nc_gid=eRulbbuZUMQI8cOAaPygow&_nc_oc=AdqJhYr-M-9HitnOLHwb2qg5A5flncujF7X5XigWC27CEvxI6y348gG9lo8eaRCjfY5FaPzDe2DJj0a3gObX5oNV&ccb=10-5&oh=00_Af8nBf9DeafZWvoytGa5oURNGfuJtoCxFsmA0lesjLGllg&oe=6A5F52A6&_nc_sid=201bca"
+      },
+      {
+        "imageId": "407238899102454",
+        "country": "Argentina",
+        "city": "Buenos Aires",
+        "captureDate": "2024-08-23",
+        "width": 5760,
+        "lat": -34.5843477,
+        "lng": -58.4170722,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-Hd9tFQgcaSyh7bK1ZzJxPjw6GDq6BLeH13fRWuuPDo2jy43cfuuro2VEyZ7mSLzq1GqyEghEZnu8Se6eZO5FQ0P_n1hxU-Mih-0Ldozm51f-fBHWCZaLHuI3c_jVpwaKjoFWOhN9Dd8hdSytRtA?edm=ALXxkZ8EAAAA&_nc_gid=voVRDHtG88uwqObBr9H0_Q&_nc_oc=AdpWJCcvujsS-2v6-CrkQ66FEZeuHjBwdkk4ljr0O2XVDsgml_hcJx2pizPwd4rtrkkSp3FggD4480uV8bWiWXki&ccb=10-5&oh=00_Af-Y4SAEVk4_UN4AcWQnhbPG9VGIhfftWPf6XjX2T0ZbkA&oe=6A5F2C17&_nc_sid=201bca"
+      },
+      {
+        "imageId": "430903829738889",
+        "country": "Argentina",
+        "city": "Buenos Aires",
+        "captureDate": "2024-08-22",
+        "width": 5760,
+        "lat": -34.5835293,
+        "lng": -58.4046956,
+        "tags": [
+          "NEW",
+          "CAP2"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_N-0pcvv1Mu4DfHegPaJQTcKSNk7oYTyW6CihRJovZiDEF0a38oeVsDNFMSLhxvAY0WGNNtTqC8odLkjkzjQeNoO_E7fd7bWdhT0AalgS4F4z2qStZTPtaYueoQBbG0s_pzQvYd6GU1MUW1LxFdrM?edm=ALXxkZ8EAAAA&_nc_gid=IGaF-pZQT_S8HYCYhah-Xw&_nc_oc=AdrB_QIinphOf56nCpbUTPe46McTocXAQHtpmAuMEqnn2LRdC0z3UB9AFQW9dfdj4wk5ZabfDF1B1Wlr5W_6ZguH&ccb=10-5&oh=00_Af8M_JJHrlSd5fzmChsBm6TH2EIdoGRC16ubH6BzHPjCig&oe=6A5F2B61&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1032195661683064",
+        "country": "Mexico",
+        "city": "Mexico City",
+        "captureDate": "2025-04-18",
+        "width": 4096,
+        "lat": 19.455482349879,
+        "lng": -99.163999576485,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An--TdCbCt01K0Rvz_zEoTs8GSyF3E9FeZWb3yQUnTdIQOmDVH-yTrii5WlQpDzqaLQN7UtQ4fu_1c-ss4yKY7vd92X1W04_gDOf7lknu6jsU7acVntJU5w8Y4PO9nOlbM3P6EimTwVB9x5zciTO2_c?edm=ALXxkZ8EAAAA&_nc_gid=Pl6Tr53R4vVeREEtceRlvw&_nc_oc=AdrXf2j_gVbSekntfvO0wfXg3v9j84KKyBG8okG29iyI8MOp6bgKli_PRUFZiDm9ZqufcnazbWwHbyFePaep68rU&ccb=10-5&oh=00_Af-QscQYhzsU4QsWQUAVYN0BlrLszoCamLEm7I02CjSfvw&oe=6A5F2CB3&_nc_sid=201bca"
+      },
+      {
+        "imageId": "2930385993952075",
+        "country": "Mexico",
+        "city": "Mexico City",
+        "captureDate": "2017-10-19",
+        "width": 5660,
+        "lat": 19.455936944444,
+        "lng": -99.177252777778,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An-ECBThxelXpALuPObG2g8uH-7ZJk5Fp9cyR1rBTscTbaCRfNmBzpZslmb_t0qZE00L6mNznte_pICaI2G0fJ01O1Ij7cDKvZyDhE-575xaetTn8qXSgZI1dAzjky4pevQvPMo04P7ijZBDdXXzZg?edm=ALXxkZ8EAAAA&_nc_gid=mxMgoik6cItT75PmQbS5wA&_nc_oc=Adqtay9IWbpGb8FyjGu6o79bumL0hW78lh-jgAg7vHBM_WeOU98V7vgR1xIfrLA26tHDmRdM-8tU9bz0zRCpMxtI&ccb=10-5&oh=00_Af_45wty2mEj8ZmQ_ynXSjeUjMxsGYtp5KxIO_ahLxDCUg&oe=6A5F4253&_nc_sid=201bca"
+      },
+      {
+        "imageId": "1183533725441467",
+        "country": "Morocco",
+        "city": "Casablanca",
+        "captureDate": "2019-06-02",
+        "width": 7680,
+        "lat": 33.606214666667,
+        "lng": -7.6493868333056,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An80EEsMyiXC46Wq2q7CgK0zUUm8jJi3cwhD_G29nZiq9zIeV6jjLWoeHonWJt4PfLRo5n5hT6Ii0EDULn0dKoOms766FklnZFHilFOkT_D5yFSaWUVmK8hmzGJvcLrvM3hEbKTqWPflAg4OhgJphDs?edm=ALXxkZ8EAAAA&_nc_gid=DVhS49x2HedCmb-uLQzJNA&_nc_oc=AdptgFLDmBzLDwkdq8MqPaD_yaK_0D4LegzxfLv_nBRd1MdUbbHnvRvcOLsnCDRKu7nsKRHnzH3tGMTuTY4Jl_bM&ccb=10-5&oh=00_Af9xFK1RWI5rlaJH4WLiIiGh1oYizlt5kPAuX-9E6fmuKA&oe=6A5F2CC7&_nc_sid=201bca"
+      },
+      {
+        "imageId": "215823780096902",
+        "country": "Morocco",
+        "city": "Casablanca",
+        "captureDate": "2019-06-02",
+        "width": 7680,
+        "lat": 33.596360166667,
+        "lng": -7.6664133333056,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_gDxnIeQX-14sHVrWDFdgLh5c8wRsPIS-613_N_9yLa4CDLYlwncxhvBCnivGTBKSnlDUIwTyBVeqjjrs2T50ddBCbe03QDVpyFXtCv6fZlK8U1hssQUKP7AW0DqToqsYx9L3gZfMtkEzwERFRxg?edm=ALXxkZ8EAAAA&_nc_gid=lHB9cr9jKGXSuPK3leJDVw&_nc_oc=AdpLpJhA6Hk9ef4oXIu9nleIikw-gUpLIiHHzLlR7D7Nz_iZsOtuZTM2KWGCrdorxbtystNkIB-bBBvOkZ1OtlXc&ccb=10-5&oh=00_Af-9tJ5vCUvMCWg0qtE6zqJ2NLvLchaDKwbMJT6GRU8x4A&oe=6A5F3963&_nc_sid=201bca"
+      },
+      {
+        "imageId": "2167851367286199",
+        "country": "Kenya",
+        "city": "Nairobi",
+        "captureDate": "2026-02-22",
+        "width": 7680,
+        "lat": -1.2328366330777,
+        "lng": 36.800325251884,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An89fUExCUanKDgwqHPcmTvsGKEMtkrdPFoW1s8E5jpLqMUXxK87lyUsIFLaPK6jvB2geOVbyIlCj7F8rMrO4aOA5lbLkeb372B-WG6LuRY4OyWTB8EUMZJLl4dEibcnu7OmWJko3kiVx3bT52ft0ls?edm=ALXxkZ8EAAAA&_nc_gid=Rarpj7NxbnfyLXiunH8Ohg&_nc_oc=AdrhcaJ_qpNbbyaD3JZxKxQ6VeWJc--Jel-AILTfbj392XUH6_t2tgDBPKCT8382CxTMgG8U0FYOhWYbTxdhiGLw&ccb=10-5&oh=00_Af8LlFm-7xr2mIkFNeYRsTTwLM-rz8qA6-FihWBcBouXgQ&oe=6A5F3BC2&_nc_sid=201bca"
+      },
+      {
+        "imageId": "634815347778669",
+        "country": "Australia",
+        "city": "Sydney",
+        "captureDate": "2022-07-25",
+        "width": 5760,
+        "lat": -33.866127099972,
+        "lng": 151.173347,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An_qAlnw4Aa9WeNeKltkR-lBSUKIM_kOLZsDzr-1un9F7xSwsl9dK2w61J22k-Q_wsCcqM1k22nVZw6Vh6VCzJMj2s2YOoJEk-tameU48IOHu0moU40zzAbcbHnnMgYsAs-QLWpyVDUMOQOsnqEI3w?edm=ALXxkZ8EAAAA&_nc_gid=aDHcNVuuUMjCUCS6ZX-ifA&_nc_oc=Adr_mFBN7nf21Xaj6xzylz2SaGd75SaAQXEnsFeFowIlROeC-pzLWZ2cXR9IXFcuWtN1TTgwCq0MOBK7O1mwK3Dh&ccb=10-5&oh=00_Af9lvp0IRlp5uFWM81-rIXLmmHkY_Hlp18fkvIhgHSBQPQ&oe=6A5F516E&_nc_sid=201bca"
+      },
+      {
+        "imageId": "670820868283810",
+        "country": "Australia",
+        "city": "Sydney",
+        "captureDate": "2023-07-15",
+        "width": 5760,
+        "lat": -33.8691356,
+        "lng": 151.1854327,
+        "tags": [
+          "NEW"
+        ],
+        "sourceUrl": "https://scontent.fist20-1.fna.fbcdn.net/m1/v/t6/An8Hd08g-PGgmQWo_tvrZTCWgm5YLYRgYgKNJ-sSvyFyP-M4g8nEd79PgHDOig8MWwlKqzZos5jsSNEohXoedadqh7dYLB8Ps5Q23_C5kSZBKmgNeJ6riFWacpjEI8zeizNigAHG2J8JFXe5mGnRYQ?edm=ALXxkZ8EAAAA&_nc_gid=UexdmGIvqX_Hk3u3uRydug&_nc_oc=AdrpiehXNXpxRGho-cUG2rynuWbyfqxSUcM1UEJq74EXCc4r-du1PflWT3njwLZM5gFKbqSi5xnQOUePZES8wVKs&ccb=10-5&oh=00_Af9GEdF6FYHyg7_u6M_ZBwr2-qoBrXwEXmsQy6yOpYxFJQ&oe=6A5F60EE&_nc_sid=201bca"
+      }
+    ]
+  }
+}

@@ -3,3 +3,9 @@
 raw/
 preview/
 candidates.json
+# Mapillary --discover metadata-only çıktısı (tek seferlik aday keşfi; runtime'da
+# kullanılmaz, build okumaz). candidates.json'dan AYRI tutulur.
+discovery-*.json
+# Faz B --preview · düşük-boy önizleme indirmesi (preview-queue.json'daki id'ler).
+# Yalnız görsel küratörlük için; raw/webp/manifest DEĞİL. Kontak-sayfaları da burada.
+preview-mapillary/

@@ -7,6 +7,8 @@
 // + boşluk/tire temizliği ("t r", "t-r" -> "tr"). Bu sayede "tr" gibi kısa
 // yasaklılar da kaçaklarıyla birlikte yakalanır.
 
+import type { KnQuestionProfile } from "./korNoktaQuestions";
+
 /** Sahne kaynağı: AI üretimi tarihi sahne mi, açık-lisanslı gerçek dünya 360 mı. */
 export type KorNoktaSceneSource = "panoramax" | "mapillary";
 
@@ -46,6 +48,12 @@ export type KorNoktaScene = {
   notes?: string;
   /** undefined => "historical_ai" (mevcut AI sahneleri). */
   sourceType?: "historical_ai" | "real_world";
+  /**
+   * Sahne-özel soru profili (yalnız real_world; codegen verir). buildKnScenePlan
+   * bu profile göre içerikle uyuşmayan soruları eler — her gizli kategoride ≥3
+   * soru kalır. undefined = standart real_world havuzu. Tarihi sahnelerde kullanılmaz.
+   */
+  questionProfile?: KnQuestionProfile;
   /** Yalnız real_world sahnelerde dolu; viewer köşesinde atıf badge'i render eder. */
   attribution?: KorNoktaAttribution;
 };

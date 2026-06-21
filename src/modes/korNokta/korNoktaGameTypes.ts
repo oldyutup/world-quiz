@@ -335,6 +335,8 @@ export function buildKnScenePlan(
     lng: s.location.lng,
     banned: s.bannedWords,
     cats: s.categories,
-    questionPool: buildKnQuestionPoolFor(knSceneSourceType(s)),
+    // Sahne-özel profil (varsa) uygunsuz soruları eler; profilsiz sahnede standart
+    // real_world/historical havuzu döner (her kategoride ≥3 soru garantili).
+    questionPool: buildKnQuestionPoolFor(knSceneSourceType(s), s.questionProfile),
   }));
 }

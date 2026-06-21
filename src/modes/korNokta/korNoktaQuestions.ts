@@ -71,6 +71,52 @@ export function isKnQuestionApplicable(
 }
 
 /**
+ * Sahne-özel soru profili: belirli gerçek-dünya sahne türlerinde içerikle
+ * uyuşmayan soruları eler (örn. iç mekâna trafik, orman patikasına yoğun şehir,
+ * otoyola mimari-detay sorusu DÜŞMESİN). null/undefined = standart (sourceType)
+ * havuzu. KRİTİK: her profil HER gizli kategoride ≥3 soru BIRAKIR — server
+ * build_round'un 3/kategori şartı bozulmaz (KN_QUESTION_PROFILE_EXCLUDES setleri
+ * bu garantiyle seçildi; korNoktaProfileInvariantOk() doğrular).
+ */
+export type KnQuestionProfile = "interior_monument" | "forest_path" | "highway" | "open_nature";
+
+export const KN_QUESTION_PROFILES: readonly KnQuestionProfile[] = [
+  "interior_monument",
+  "forest_path",
+  "highway",
+  "open_nature",
+];
+
+/** Profil → elenecek soru id'leri (yalnız real_world sahnelerde uygulanır). */
+export const KN_QUESTION_PROFILE_EXCLUDES: Record<KnQuestionProfile, readonly string[]> = {
+  // İç mekân anıt: yol/araç/şerit/plaka/trafik-yönü uygunsuz → traffic'te yalnız
+  // yaya-alanı/zemin/düzen kalır (3). Alphabet/architecture/nature dokunulmaz.
+  interior_monument: [
+    "q_road_europe", "q_road_narrow_local", "q_steep_street",
+    "q_traffic_right", "q_traffic_left", "q_highway", "q_road_markings",
+    "q_vehicles_clue", "q_road_wide_multilane", "q_traffic_signs_modern",
+    "q_parked_cars", "q_bike_infra", "q_overhead_wires",
+  ],
+  // Orman/park/patika: yoğun şehir/metro/gökdelen/çarşı + büyük-şehir + otoyol uygunsuz.
+  forest_path: [
+    "q_modern_city", "q_dense_buildings", "q_highrise", "q_glass_facade", "q_market_district",
+    "q_big_city", "q_highway", "q_road_wide_multilane",
+  ],
+  // Otoyol/üst geçit: yerleşim/mimari-detay odaklı uygunsuz → modern-kent/gökdelen/
+  // cam-cephe/banliyö/Avrupa-mimari kalır.
+  highway: [
+    "q_village", "q_historic_buildings", "q_dense_buildings", "q_market_district",
+    "q_touristic", "q_stone_masonry", "q_religious_structure", "q_low_rise",
+    "q_monumental", "q_detached_houses", "q_balconies_shutters",
+  ],
+  // Açık doğa/saha: yoğun şehir/gökdelen/çarşı/anıt + büyük-şehir + otoyol uygunsuz.
+  open_nature: [
+    "q_modern_city", "q_dense_buildings", "q_highrise", "q_glass_facade",
+    "q_market_district", "q_monumental", "q_big_city", "q_highway", "q_road_wide_multilane",
+  ],
+};
+
+/**
  * Aktif soru havuzu. Her kategoride en az 16 soru (toplam 64). Sıra burada
  * sabittir ama dedektife gösterilmez — server tur başına HER kategoriden 3 soru
  * seçip 12'yi karıştırarak round.questionCandidates üretir.
@@ -195,19 +241,37 @@ export function buildKnQuestionPool(): Record<KnQuestionCategory, string[]> {
 }
 
 /**
- * Belirli bir sahne türüne UYGUN kategori → id[] havuzu. start_game her sahne
- * payload'ına bunu ekler; server build_round o sahnenin türüne uygun havuzdan
- * 3/kategori aday çeker → tarihi/AI sahneye modern-trafik sorusu DÜŞMEZ. Tasarım
- * gereği her kategoride her sahne türü için ≥3 uygun soru kalır (server şartı).
+ * Belirli bir sahne türüne (+ opsiyonel sahne profiline) UYGUN kategori → id[]
+ * havuzu. start_game her sahne payload'ına bunu ekler; server build_round o
+ * sahnenin havuzundan 3/kategori aday çeker → tarihi/AI sahneye modern-trafik,
+ * iç mekâna yol, ormana yoğun-şehir sorusu DÜŞMEZ. Tasarım gereği her kategoride
+ * (profil elemesi sonrası dahi) ≥3 uygun soru kalır (server şartı).
  */
 export function buildKnQuestionPoolFor(
   sourceType: KnSceneSourceType,
+  profile?: KnQuestionProfile | null,
 ): Record<KnQuestionCategory, string[]> {
+  const excluded = profile ? new Set(KN_QUESTION_PROFILE_EXCLUDES[profile]) : null;
   const pool = emptyPool();
   for (const q of korNoktaQuestions) {
-    if (isKnQuestionApplicable(q, sourceType)) pool[q.category].push(q.id);
+    if (!isKnQuestionApplicable(q, sourceType)) continue;
+    if (excluded && excluded.has(q.id)) continue;
+    pool[q.category].push(q.id);
   }
   return pool;
+}
+
+/**
+ * Güvenlik ağı: real_world için (profilli/profilsiz) her kategoride ≥3 soru
+ * kaldığını doğrular. false dönerse bir profil ELEMESİ aşırı agresiftir ve server
+ * build_round'u (3/kategori) bozardı. Testte/DEV'de çağrılır; üretim yolunu yavaşlatmaz.
+ */
+export function korNoktaProfileInvariantOk(): boolean {
+  const check = (pool: Record<KnQuestionCategory, string[]>) =>
+    KN_QUESTION_CATEGORIES.every((c) => pool[c].length >= KN_QUESTION_PER_CATEGORY);
+  if (!check(buildKnQuestionPoolFor("historical_ai"))) return false;
+  if (!check(buildKnQuestionPoolFor("real_world"))) return false;
+  return KN_QUESTION_PROFILES.every((p) => check(buildKnQuestionPoolFor("real_world", p)));
 }
 
 /** Dedektifin tur başına seçebileceği soru sayısı. */

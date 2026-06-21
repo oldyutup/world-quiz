@@ -39,6 +39,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.4.0",
+    "@mapbox/vector-tile": "^2.0.3",
     "@resvg/resvg-js": "^2.6.2",
     "@types/d3-geo": "^3.1.0",
     "@types/leaflet": "^1.9.21",
@@ -50,6 +51,7 @@
     "clipper-lib": "^6.4.2",
     "jpeg-js": "^0.4.4",
     "patch-package": "^8.0.1",
+    "pbf": "^4.0.1",
     "polygon-clipping": "^0.15.7",
     "sharp": "^0.35.0",
     "simplify-js": "^1.2.4",

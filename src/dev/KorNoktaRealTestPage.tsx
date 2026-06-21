@@ -41,13 +41,35 @@ function sceneBtn(active: boolean): CSSProperties {
   };
 }
 
+// Ayna toggle (YALNIZ bu test sayfası — runtime KorNoktaGame'e dokunmaz).
+const mirrorCtrl: CSSProperties = {
+  position: "absolute", top: 10, left: 10, zIndex: 5,
+  display: "flex", alignItems: "center", gap: 8,
+  padding: "6px 10px", borderRadius: 8,
+  background: "rgba(13,17,23,0.82)", border: "1px solid rgba(255,255,255,0.14)",
+  font: "12px/1.4 system-ui, sans-serif", color: "#e6edf3",
+};
+function mirrorBtn(on: boolean): CSSProperties {
+  return {
+    padding: "3px 12px", borderRadius: 6, cursor: "pointer",
+    border: "1px solid " + (on ? "#3fb950" : "#f0883e"),
+    background: on ? "rgba(63,185,80,0.18)" : "rgba(240,136,62,0.18)",
+    color: on ? "#3fb950" : "#f0883e", font: "inherit", fontWeight: 700,
+  };
+}
+
 type ImgInfo = { w: number; h: number; kb: number | null };
 
 export default function KorNoktaRealTestPage() {
   const [idx, setIdx] = useState(0);
   const [imgInfo, setImgInfo] = useState<ImgInfo | null>(null);
+  // Ayna durumu YALNIZ bu sayfada geçerli; sahne değişince varsayılana döner.
+  const [mirror, setMirror] = useState(false);
   const scenes = korNoktaRealScenes;
   const activePath = scenes[idx]?.imagePath;
+  const sceneId = scenes[idx]?.id;
+  // Runtime'daki (KorNoktaGame) mevcut kural ile birebir aynı varsayılan:
+  const defaultMirror = scenes[idx]?.sourceType === "real_world";
 
   // QC: gerçek piksel boyutu + dosya boyutu (kalite kontrolü için).
   useEffect(() => {
@@ -66,6 +88,12 @@ export default function KorNoktaRealTestPage() {
     }).catch(() => {});
     return () => { alive = false; };
   }, [activePath]);
+
+  // Sahne değişince ayna'yı o sahnenin VARSAYILAN durumuna sıfırla. Toggle
+  // ile QC sırasında geçici override yapılır; sahne değişimi override'ı temizler.
+  useEffect(() => {
+    setMirror(defaultMirror);
+  }, [sceneId, defaultMirror]);
 
   if (scenes.length === 0) {
     return (
@@ -89,7 +117,7 @@ node scripts/korNokta/build-real-scenes.mjs
       <aside style={sidebar}>
         <h1 style={{ fontSize: 17, margin: "0 0 4px" }}>Kör Nokta · Gerçek 360</h1>
         <p style={{ fontSize: 12, color: "#9aa7b4", margin: "0 0 14px" }}>
-          DEV testi · {scenes.length} sahne · Panoramax CC-BY-SA · viewer + atıf badge doğrulaması
+          DEV testi · {scenes.length} sahne · Panoramax + Mapillary (CC-BY-SA / Etalab) · viewer + atıf badge doğrulaması
         </p>
         {scenes.map((s, i) => (
           <button key={s.id} style={sceneBtn(i === idx)} onClick={() => setIdx(i)}>
@@ -102,12 +130,23 @@ node scripts/korNokta/build-real-scenes.mjs
 
       <main style={stage}>
         <div style={viewerWrap}>
-          {/* Oyunun gerçek viewer'ı: src değişince remount için key */}
+          <div style={mirrorCtrl}>
+            <span>Ayna (yalnız test)</span>
+            <button onClick={() => setMirror((m) => !m)} style={mirrorBtn(mirror)}>
+              {mirror ? "AÇIK" : "KAPALI"}
+            </button>
+            <span style={{ color: "#9aa7b4" }}>
+              varsayılan: {defaultMirror ? "AÇIK" : "KAPALI"}
+              {mirror !== defaultMirror ? " · ⚠ değiştirildi" : ""}
+            </span>
+          </div>
+          {/* Oyunun gerçek viewer'ı: src değişince remount için key. mirrorX
+              Panorama360'ta dep olduğundan toggle anında yeniden uygulanır. */}
           <Panorama360
             key={scene.id}
             src={scene.imagePath}
             attribution={scene.attribution}
-            mirrorX={scene.sourceType === "real_world"}
+            mirrorX={mirror}
           />
         </div>
 
@@ -136,7 +175,12 @@ node scripts/korNokta/build-real-scenes.mjs
               {scene.attribution?.modified ? " · (4096×2048'e resize)" : ""}
             </div>
             <div style={{ marginTop: 4 }}>
+              <b>Ayna (test override):</b> varsayılan {defaultMirror ? "AÇIK" : "KAPALI"} (sourceType={scene.sourceType}) · aktif {mirror ? "AÇIK" : "KAPALI"}
+              {mirror !== defaultMirror ? " · ⚠ varsayılandan farklı" : ""}
+            </div>
+            <div style={{ marginTop: 4 }}>
               <b>Kategoriler:</b> {scene.categories.join(", ")}
+              {scene.questionProfile ? <> · <b>Soru profili:</b> {scene.questionProfile}</> : null}
             </div>
             <div style={{ marginTop: 4 }}>
               <b>Yasaklı kelimeler ({scene.bannedWords.length}):</b> {scene.bannedWords.join(", ")}

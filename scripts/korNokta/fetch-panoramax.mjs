@@ -97,6 +97,45 @@ const REGIONS = [
   { key: "tw-taipei",   tier: 3, bbox: [121.50, 25.02, 121.58, 25.07], hint: "Tayvan / Taipei" },
   { key: "sg",          tier: 3, bbox: [103.81, 1.27, 103.89, 1.33],   hint: "Singapur" },
 
+  // ── TIER 4 · Birleşik Krallık + Güney/Güneydoğu Asya + Orta Doğu ────────
+  // Panoramax bu bölgelerde değişken/zayıf kapsamlı olabilir → çoğu 0 dönebilir.
+  // Birleşik Krallık (mevcut script'te hiç yoktu)
+  { key: "gb-london-c",  tier: 4, bbox: [-0.16, 51.49, -0.05, 51.54],  hint: "Birleşik Krallık / Londra (merkez)" },
+  { key: "gb-london-e",  tier: 4, bbox: [-0.08, 51.50, 0.02, 51.55],   hint: "Birleşik Krallık / Londra (doğu)" },
+  { key: "gb-manchester",tier: 4, bbox: [-2.27, 53.46, -2.20, 53.50],  hint: "Birleşik Krallık / Manchester" },
+  { key: "gb-edinburgh", tier: 4, bbox: [-3.22, 55.93, -3.16, 55.97],  hint: "Birleşik Krallık / Edinburgh" },
+  { key: "gb-glasgow",   tier: 4, bbox: [-4.30, 55.85, -4.23, 55.88],  hint: "Birleşik Krallık / Glasgow" },
+  // Güney Kore (Seul tier 3'te; Busan ekle)
+  { key: "kr-busan",     tier: 4, bbox: [129.02, 35.14, 129.10, 35.20], hint: "Güney Kore / Busan" },
+  // Güneydoğu Asya
+  { key: "th-bangkok",   tier: 4, bbox: [100.48, 13.72, 100.56, 13.78], hint: "Tayland / Bangkok" },
+  { key: "vn-hanoi",     tier: 4, bbox: [105.82, 21.01, 105.87, 21.05], hint: "Vietnam / Hanoi" },
+  { key: "vn-hcmc",      tier: 4, bbox: [106.67, 10.76, 106.72, 10.80], hint: "Vietnam / Ho Chi Minh" },
+  { key: "id-jakarta",   tier: 4, bbox: [106.78, -6.23, 106.86, -6.15], hint: "Endonezya / Jakarta" },
+  { key: "my-kl",        tier: 4, bbox: [101.67, 3.12, 101.73, 3.17],   hint: "Malezya / Kuala Lumpur" },
+  { key: "ph-manila",    tier: 4, bbox: [120.96, 14.56, 121.02, 14.62], hint: "Filipinler / Manila" },
+  // Güney Asya (Hindistan'ı genişlet)
+  { key: "in-delhi",     tier: 4, bbox: [77.19, 28.58, 77.26, 28.65],   hint: "Hindistan / Yeni Delhi" },
+  { key: "in-bangalore", tier: 4, bbox: [77.55, 12.94, 77.63, 13.01],   hint: "Hindistan / Bengaluru" },
+  { key: "in-mumbai",    tier: 4, bbox: [72.81, 18.91, 72.89, 18.99],   hint: "Hindistan / Mumbai" },
+  // Orta Doğu (Türkiye dışı)
+  { key: "il-telaviv",   tier: 4, bbox: [34.75, 32.05, 34.82, 32.11],   hint: "İsrail / Tel Aviv" },
+  { key: "ae-dubai",     tier: 4, bbox: [55.25, 25.17, 55.33, 25.23],   hint: "BAE / Dubai" },
+  { key: "jo-amman",     tier: 4, bbox: [35.89, 31.93, 35.97, 31.99],   hint: "Ürdün / Amman" },
+  { key: "qa-doha",      tier: 4, bbox: [51.49, 25.26, 51.56, 25.32],   hint: "Katar / Doha" },
+
+  // ── TIER 5 · Afrika + Okyanusya (seçkin; kapsam çok zayıf, çoğu 0) ──────
+  { key: "za-capetown",  tier: 5, bbox: [18.39, -33.95, 18.47, -33.89], hint: "Güney Afrika / Cape Town" },
+  { key: "za-joburg",    tier: 5, bbox: [28.01, -26.23, 28.08, -26.17], hint: "Güney Afrika / Johannesburg" },
+  { key: "ke-nairobi",   tier: 5, bbox: [36.79, -1.31, 36.86, -1.25],   hint: "Kenya / Nairobi" },
+  { key: "sn-dakar",     tier: 5, bbox: [-17.49, 14.65, -17.41, 14.72], hint: "Senegal / Dakar" },
+  { key: "ma-casablanca",tier: 5, bbox: [-7.65, 33.56, -7.57, 33.62],   hint: "Fas / Casablanca" },
+  { key: "tn-tunis",     tier: 5, bbox: [10.14, 36.78, 10.21, 36.83],   hint: "Tunus / Tunis" },
+  { key: "eg-cairo",     tier: 5, bbox: [31.21, 30.02, 31.28, 30.08],   hint: "Mısır / Kahire" },
+  { key: "au-sydney",    tier: 5, bbox: [151.18, -33.89, 151.24, -33.84], hint: "Avustralya / Sydney" },
+  { key: "au-melbourne", tier: 5, bbox: [144.94, -37.83, 145.00, -37.78], hint: "Avustralya / Melbourne" },
+  { key: "nz-auckland",  tier: 5, bbox: [174.74, -36.87, 174.80, -36.83], hint: "Yeni Zelanda / Auckland" },
+
   // ── Kanıtlanmış kapsam (fallback; çoğu zaten indirildi, dedup atlar) ─────
   { key: "fr-alps",      tier: 9, bbox: [5.4, 44.8, 7.3, 46.4],   hint: "Fransa / Alpler" },
   { key: "fr-med",       tier: 9, bbox: [2.6, 43.0, 6.2, 44.1],   hint: "Fransa / Akdeniz" },
