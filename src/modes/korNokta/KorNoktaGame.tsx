@@ -436,7 +436,7 @@ export default function KorNoktaGame({
       : Math.max(0, Math.ceil((state.phaseEndsAt - nowMs) / 1000));
 
   /* ── Soru-cevap türetilmiş değerler ── */
-  // Bu turun 12 aday sorusu (server üretti; iki takım da aynı listeyi görür).
+  // Bu turun 20 aday sorusu (server üretti; iki takım da aynı listeyi görür).
   const candidateQuestions = getKnQuestionCandidates(round);
 
   // Dedektif: bu turda kendi takımının seçtiği sorular (local-or-server).

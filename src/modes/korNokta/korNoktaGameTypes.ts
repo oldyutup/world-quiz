@@ -13,8 +13,9 @@
  * cevap verir (answer_questions), dedektif anonim cevaplara göre haritada tahmin
  * yapar (detective_guess). Eski serbest-metin rapor akışı kaldırıldı.
  *
- * Faz süreleri server'da sabittir (role 4 / observe 20 / answer 20 / guess 20 /
- * reveal 15); client geri sayımı phaseEndsAt − getSyncedNowMs() üzerinden render eder.
+ * Faz süreleri server'da sabittir (role 4 / observe 35 / answer 20 / guess 20 /
+ * reveal 15); observe_report TEK ortak inceleme+soru-seçim fazıdır (ayrı timer yok).
+ * client geri sayımı phaseEndsAt − getSyncedNowMs() üzerinden render eder.
  */
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
@@ -85,9 +86,10 @@ export interface KnTeamRound {
   /** Her dedektifin GÖRECEĞİ anonim cevaplayıcı sırası (casus routing dahil). */
   reportOrder: Record<KnTeam, string[]>;
   /**
-   * Bu turun 12 aday soru id'si — server build_round'da bir kez üretip KALICI
-   * yazar (3/kategori, karışık sıra). İki takım dedektifi de AYNI listeyi görür;
-   * seçim/fallback/cevap-eşleşmesi yalnız bu sete dayanır (tek doğru kaynak).
+   * Bu turun 20 aday soru id'si — server build_round'da bir kez üretip KALICI
+   * yazar (kategori başına ≤5 + eksik diğer kategorilerden benzersiz doldurma,
+   * karışık sıra). İki takım dedektifi de AYNI listeyi görür; seçim/fallback/
+   * cevap-eşleşmesi yalnız bu sete dayanır (tek doğru kaynak).
    */
   questionCandidates: string[];
   /** Her takım dedektifinin bu tur seçtiği soru id'leri (questionCandidates altkümesi, ≤5). */
@@ -173,7 +175,7 @@ export function getKnAnswerTargetTeam(round: KnTeamRound, playerId: string): KnT
   return null;
 }
 
-/** Bu turun 12 aday soru id'si (server üretti; eksik/eski tur → boş). */
+/** Bu turun 20 aday soru id'si (server üretti; eksik/eski tur → boş). */
 export function getKnQuestionCandidates(round: KnTeamRound): string[] {
   return round.questionCandidates ?? [];
 }

@@ -681,7 +681,9 @@
 
 .kn-qgrid {
   display: grid;
-  /* 12 aday = 3 sütun × 4 satır (desktop); dar ekranda aşağıda 2/1 sütuna iner. */
+  /* 20 aday = 3 sütun (desktop); dar ekranda aşağıda 2/1 sütuna iner. Yükseklik
+     .kn-qselect içinde dikey kaydırılır (overflow-y: auto) — kart sayısı artsa da
+     taşma olmaz. */
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
@@ -720,7 +722,8 @@
   transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
-.kn-qcard__text { flex: 1; min-width: 0; }
+/* Tam metin görünür (kırpılmaz): uzun sözcük/karakter dizileri sarılır. */
+.kn-qcard__text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .kn-qcard.is-on {
   border-color: var(--accent);
