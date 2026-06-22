@@ -333,6 +333,11 @@ body {
   overflow:hidden; text-overflow:ellipsis; letter-spacing:.02em;
 }
 
+/* Row-A region context for the mobile playing HUD. Hidden by default (and on
+   desktop, where the dropdowns occupy this slot); shown only ≤600px while a
+   map game is in play. Plain muted text — not a chip/pill/control. */
+.bar-region { display:none; }
+
 /* Gear button + mobile settings panel. Hidden by default everywhere; opt-in
    per breakpoint + game type in the mobile media query below. The panel
    re-uses Dropdown / DDItem from the desktop bar, so settings stay
@@ -384,6 +389,18 @@ body {
 /* Make the in-panel Dropdown trigger size up so it's tap-friendly. */
 .bar-settings-panel .dd-trigger { height:36px; font-size:.84rem; max-width:160px; }
 .bar-settings-panel .dd-item    { padding:10px 12px; font-size:.88rem; }
+
+/* In-menu reset action (mobile, during play). Full-width, quiet by default;
+   re-skinned to A2 in the playing block below. Confirm gating lives in JS. */
+.bar-settings-reset {
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; min-height:42px; padding:0 12px;
+  background:var(--surface3); border:1.5px solid var(--border); border-radius:var(--radius);
+  color:var(--text); font-family:var(--font-body); font-size:.86rem; font-weight:600;
+  cursor:pointer; transition:border-color .15s, background .15s, color .15s;
+}
+.bar-settings-reset:hover  { border-color:var(--accent); color:var(--accent); }
+.bar-settings-reset:active { transform:scale(.98); }
 
 /* ═══════════════════════════════════════════
    BUTTONS
@@ -912,6 +929,267 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   ÜLKE YAZ — IDLE HERO  (mobile, map-game only)
+   Mobile-scoped idle redesign: task line + mode segment + single CTA.
+   Palette = A2 "Mavi Atlas" (scoped via --uy-* so web :root is untouched),
+   type = T2 (DM Sans only; idle has no numerics). Hidden by default;
+   shown only ≤600px for .control-bar.gt-map-game.is-idle. Desktop and the
+   playing state keep the legacy bar.
+═══════════════════════════════════════════ */
+.uy-idle { display:none; }
+
+@media (max-width:600px) {
+  .control-bar.gt-map-game.is-idle {
+    background:#122038; border-bottom-color:#1f3357; padding:0;
+  }
+  .control-bar.gt-map-game.is-idle .bar-mobile-info,
+  .control-bar.gt-map-game.is-idle .bar-top,
+  .control-bar.gt-map-game.is-idle .bar-input,
+  .control-bar.gt-map-game.is-idle .bar-bottom { display:none !important; }
+
+  .control-bar.gt-map-game.is-idle .uy-idle {
+    /* A2 "Mavi Atlas" tokens, scoped to this surface only */
+    --uy-surface2:#273b60; --uy-border:#47608f;
+    --uy-text:#eaf0fa; --uy-muted:#9aa4c1;
+    --uy-accent:#2fbef3; --uy-accent-text:#05203a;
+    --uy-accent-tint:rgba(47,190,243,.18); --uy-accent-glow:rgba(47,190,243,.30);
+
+    display:flex; flex-direction:column; gap:9px;
+    padding:7px 14px 12px;
+    font-family:var(--font-body);
+  }
+
+  /* top row: back · centered title (spacer balances the back button) */
+  .uy-top   { display:flex; align-items:center; gap:8px; }
+  .uy-back  {
+    flex-shrink:0; width:40px; height:40px;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; border:none; border-radius:10px;
+    color:var(--uy-muted); cursor:pointer; transition:color .15s, background .15s;
+  }
+  .uy-back:hover  { color:var(--uy-text); background:rgba(255,255,255,.05); }
+  .uy-back:active { transform:scale(.94); }
+  .uy-title {
+    flex:1; min-width:0; text-align:center;
+    font-weight:700; font-size:1.125rem; color:var(--uy-text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .uy-top-spacer { flex-shrink:0; width:40px; height:40px; }
+
+  /* task sentence (Body tier) */
+  .uy-task {
+    margin:0; text-align:center;
+    font-weight:400; font-size:.95rem; line-height:1.3; color:var(--uy-text);
+  }
+
+  /* mode segment (Serbest | Süreli) — also the entry point to the tuner:
+     the selected button carries a caret and toggles the inline panel below.
+     Selection: tint + ring + bold + aria-pressed. */
+  .uy-seg {
+    display:flex; gap:4px; padding:4px;
+    background:rgba(255,255,255,.035); border:1.5px solid var(--uy-border); border-radius:12px;
+  }
+  .uy-seg-btn {
+    flex:1; height:42px; border:none; background:transparent; border-radius:8px;
+    display:flex; align-items:center; justify-content:center; gap:5px;
+    color:var(--uy-muted); font-family:var(--font-body); font-weight:600; font-size:.875rem;
+    cursor:pointer; transition:color .15s, background .15s, box-shadow .15s;
+  }
+  .uy-seg-btn:hover  { color:var(--uy-text); }
+  .uy-seg-btn:active { transform:scale(.98); }
+  .uy-seg-btn.is-sel {
+    background:var(--uy-accent-tint); color:var(--uy-text); font-weight:700;
+    box-shadow:inset 0 0 0 1.5px var(--uy-accent);
+  }
+  .uy-seg-caret { flex-shrink:0; color:var(--uy-accent); transition:transform .2s ease; }
+  .uy-seg-caret.open { transform:rotate(180deg); }
+
+  /* inline tuner — compact accordion in normal flow (no popover / overflow
+     box). Default: two summary heads showing only the selected Bölge / Süre.
+     Tapping a head reveals just that row's chips; selecting collapses it. */
+  .uy-tune {
+    display:flex; flex-direction:column; gap:8px;
+    padding:8px;
+    background:rgba(255,255,255,.035);
+    border:1.5px solid var(--uy-border); border-radius:12px;
+    animation:uyTuneIn .16s ease;
+  }
+  .uy-tune-heads { display:flex; gap:8px; }
+  .uy-tune-head {
+    flex:1; min-width:0;
+    display:flex; align-items:center; gap:6px;
+    height:38px; padding:0 12px;
+    background:var(--uy-surface2); border:1.5px solid var(--uy-border); border-radius:10px;
+    color:var(--uy-text); font-family:var(--font-body); cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .uy-tune-head:hover  { border-color:var(--uy-accent); }
+  .uy-tune-head:active { transform:scale(.99); }
+  .uy-tune-head.is-open { border-color:var(--uy-accent); background:var(--uy-accent-tint); }
+  .uy-tune-lbl { flex-shrink:0; font-size:.75rem; font-weight:600; letter-spacing:.2px; color:var(--uy-muted); }
+  .uy-tune-val {
+    font-size:.8125rem; font-weight:700; color:var(--uy-text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .uy-tune-caret { flex-shrink:0; margin-left:auto; color:var(--uy-muted); transition:transform .2s ease; }
+  .uy-tune-caret.open { transform:rotate(180deg); color:var(--uy-accent); }
+  .uy-tune-opts { display:flex; flex-wrap:wrap; gap:6px; padding:1px; }
+  .uy-opt {
+    height:34px; padding:0 12px;
+    background:var(--uy-surface2); border:1.5px solid var(--uy-border); border-radius:999px;
+    color:var(--uy-text); font-family:var(--font-body); font-weight:600; font-size:.8125rem;
+    cursor:pointer; transition:border-color .15s, background .15s, color .15s;
+  }
+  .uy-opt:hover  { border-color:var(--uy-accent); }
+  .uy-opt:active { transform:scale(.96); }
+  .uy-opt.is-on  { background:var(--uy-accent-tint); border-color:var(--uy-accent); color:var(--uy-text); }
+
+  /* primary CTA — solid accent, full width (primacy via fill + width + color) */
+  .uy-cta {
+    margin-top:1px;
+    height:50px; border:none; border-radius:12px;
+    background:var(--uy-accent); color:var(--uy-accent-text);
+    font-family:var(--font-body); font-weight:700; font-size:1.0625rem;
+    cursor:pointer; transition:box-shadow .15s, transform .1s, filter .15s;
+  }
+  .uy-cta:hover         { filter:brightness(1.05); }
+  .uy-cta:focus-visible { outline:none; box-shadow:0 0 0 3px var(--uy-accent-glow); }
+  .uy-cta:active        { transform:scale(.985); }
+}
+
+@keyframes uyTuneIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+
+/* very narrow phones (≤340px): tighten without clipping; map stays dominant */
+@media (max-width:340px) {
+  .control-bar.gt-map-game.is-idle .uy-idle { gap:8px; padding:6px 12px 10px; }
+  .control-bar.gt-map-game.is-idle .uy-title { font-size:1.05rem; }
+  .control-bar.gt-map-game.is-idle .uy-opt { padding:0 10px; }
+}
+
+@media (max-width:600px) and (prefers-reduced-motion: reduce) {
+  .uy-back, .uy-seg-btn, .uy-opt, .uy-cta, .uy-tune-head { transition:none; }
+  .uy-back:active, .uy-seg-btn:active, .uy-opt:active, .uy-cta:active, .uy-tune-head:active { transform:none; }
+  .uy-seg-caret, .uy-tune-caret { transition:none; }
+  .uy-tune { animation:none; }
+}
+
+/* ═══════════════════════════════════════════
+   ÜLKE YAZ — PLAYING HUD  (mobile, map-game only)
+   Two-row compact HUD reflow + A2 "Mavi Atlas" re-skin so idle ↔ playing
+   share one surface. This is a CSS re-skin of the existing rows (the single
+   inputRef is preserved — no duplicated input). Desktop and the legacy bar
+   are untouched: everything is scoped to ≤600px + .gt-map-game.is-playing.
+   Feedback colours, the map recolor and the "İsimler" relocation are
+   intentionally OUT of scope for this pass.
+═══════════════════════════════════════════ */
+@media (max-width:600px) {
+  .control-bar.gt-map-game.is-playing {
+    background:#122038; border-bottom-color:#1f3357;
+    padding:6px 12px 8px; gap:6px;
+  }
+
+  /* Drop the standalone context chip row during play — region moves inline
+     into Row A and the freed row gives the map more vertical space. */
+  .control-bar.gt-map-game.is-playing .bar-mobile-info { display:none; }
+
+  /* ── Row A: status ───────────────────────────────────────────── */
+  .control-bar.gt-map-game.is-playing .bar-top { gap:8px; }
+
+  /* back → quiet ghost (matches idle .uy-back) */
+  .control-bar.gt-map-game.is-playing .back-btn {
+    height:40px; padding:0 8px; font-size:1rem;
+    background:transparent; border-color:transparent; color:#9aa4c1;
+  }
+  .control-bar.gt-map-game.is-playing .back-btn:hover {
+    color:#eaf0fa; background:rgba(255,255,255,.05); border-color:transparent;
+  }
+
+  /* region context — plain muted text; shrinks first, ellipsis when narrow */
+  .control-bar.gt-map-game.is-playing .bar-region {
+    display:block; flex:1; min-width:0; text-align:center;
+    color:#9aa4c1; font-family:var(--font-body); font-size:.8rem; font-weight:600;
+    letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  /* right cluster fixed-width → never squeezed by the region label */
+  .control-bar.gt-map-game.is-playing .bar-right { gap:8px; flex-shrink:0; }
+  .control-bar.gt-map-game.is-playing .score-pill {
+    background:#273b60; border-color:#47608f; padding:2px 10px;
+  }
+  .control-bar.gt-map-game.is-playing .score-n     { color:#2fbef3; font-size:1.2rem; }
+  .control-bar.gt-map-game.is-playing .score-sep   { color:#7682a0; }
+  .control-bar.gt-map-game.is-playing .score-total { color:#9aa4c1; font-size:.92rem; }
+
+  /* timer: A2 atlas-blue normally, controlled amber when critical (never red).
+     Overrides the inline JS colour on this surface only; the ring progress
+     (strokeDashoffset) and the seconds number still come from JS. The crit
+     pulse + the shrinking ring + the aria-label carry urgency beyond colour. */
+  .control-bar.gt-map-game.is-playing .timer-ring-wrap { width:36px; height:36px; }
+  .control-bar.gt-map-game.is-playing .timer-track { stroke:#2c4068; }
+  .control-bar.gt-map-game.is-playing .timer-prog { stroke:#2fbef3 !important; }
+  .control-bar.gt-map-game.is-playing .timer-num  { color:#2fbef3 !important; font-size:.8rem; }
+  .control-bar.gt-map-game.is-playing .timer-ring-wrap.is-crit .timer-prog { stroke:#f0ab33 !important; }
+  .control-bar.gt-map-game.is-playing .timer-ring-wrap.is-crit .timer-num  { color:#f0ab33 !important; }
+  .control-bar.gt-map-game.is-playing .timer-ring-wrap.is-crit { animation:uyTimerPulse 1s ease-in-out infinite; }
+
+  /* gear → A2 utility */
+  .control-bar.gt-map-game.is-playing .bar-settings-btn {
+    width:40px; height:40px; background:#273b60; border-color:#47608f; color:#eaf0fa;
+  }
+  .control-bar.gt-map-game.is-playing .bar-settings-btn:hover,
+  .control-bar.gt-map-game.is-playing .bar-settings-btn.open {
+    border-color:#2fbef3; background:rgba(47,190,243,.12);
+  }
+
+  /* ── Row B: action (input + Gir) ─────────────────────────────── */
+  .control-bar.gt-map-game.is-playing .bar-input { gap:8px; }
+  .control-bar.gt-map-game.is-playing .guess-input {
+    height:44px; font-size:max(16px,1rem);
+    background:#1c2c4c; border-color:#47608f; color:#eaf0fa;
+  }
+  .control-bar.gt-map-game.is-playing .guess-input::placeholder { color:#7682a0; }
+  .control-bar.gt-map-game.is-playing .guess-input:focus:not(:disabled) {
+    border-color:#2fbef3; box-shadow:0 0 0 3px rgba(47,190,243,.30);
+  }
+  /* Gir → primary accent, generous tap target (bottom-right thumb zone) */
+  .control-bar.gt-map-game.is-playing .bar-input .btn-accent {
+    height:44px; min-width:72px; padding:0 18px;
+    background:#2fbef3; color:#05203a; font-weight:700; font-size:.95rem;
+  }
+  .control-bar.gt-map-game.is-playing .bar-input .btn-accent:hover {
+    box-shadow:0 0 0 3px rgba(47,190,243,.30);
+  }
+  /* reset ✕ removed from the input row on mobile (lives in the gear menu) */
+  .control-bar.gt-map-game.is-playing .bar-input .btn-ghost { display:none; }
+
+  /* gear panel + in-menu reset → A2; reset hover hints destructive (red) */
+  .control-bar.gt-map-game.is-playing .bar-settings-panel {
+    background:#1c2c4c; border-color:#47608f;
+  }
+  .control-bar.gt-map-game.is-playing .bar-settings-reset {
+    background:#273b60; border-color:#47608f; color:#eaf0fa;
+  }
+  .control-bar.gt-map-game.is-playing .bar-settings-reset:hover {
+    border-color:#f4615a; color:#f4615a;
+  }
+}
+
+@keyframes uyTimerPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.08); } }
+
+/* very narrow phones: keep score/timer/Gir intact, let the region ellipsis */
+@media (max-width:340px) {
+  .control-bar.gt-map-game.is-playing { padding:6px 10px 8px; }
+  .control-bar.gt-map-game.is-playing .bar-top { gap:6px; }
+  .control-bar.gt-map-game.is-playing .bar-region { font-size:.74rem; }
+  .control-bar.gt-map-game.is-playing .bar-input .btn-accent { min-width:64px; padding:0 14px; }
+}
+
+@media (max-width:600px) and (prefers-reduced-motion: reduce) {
+  .control-bar.gt-map-game.is-playing .timer-ring-wrap.is-crit { animation:none; }
+  .control-bar.gt-map-game.is-playing .bar-settings-reset:active { transform:none; }
+}
+
+/* ═══════════════════════════════════════════
    DIFFICULTY FILTER STYLES
 ═══════════════════════════════════════════ */
 
@@ -937,11 +1215,14 @@ body {
 }
 
 .flag-diff-pill {
-  display: inline-flex; align-items: center;
-  height: 22px; padding: 0 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  /* min-height + dikey padding: sabit yükseklik yerine içeriğe göre büyür →
+     emoji glyph'i (🔸) 1.5px pill kenarına binmez/kesilmez. line-height:1 +
+     align-items:center metni ve emojiyi dikeyde ortalar; nowrap tek satır. */
+  min-height: 22px; padding: 2px 9px;
   border: 1.5px solid; border-radius: 999px;
-  font-size: .68rem; font-weight: 700;
-  letter-spacing: .04em;
+  font-size: .68rem; font-weight: 700; line-height: 1;
+  letter-spacing: .04em; white-space: nowrap;
 }
 
 /* Skip button */
@@ -1355,10 +1636,15 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
+  /* Constrain to the title block so long start/target names ellipsize instead
+     of overflowing into the gold pill on narrow screens. Inert on desktop:
+     wide enough that the labels never reach their ellipsis. */
+  min-width: 0;
+  max-width: 100%;
 }
 
-.route-start-label  { font-family: var(--font-head); font-size: 1.4rem; color: var(--accent);  line-height: 1; white-space: nowrap; }
-.route-target-label { font-family: var(--font-head); font-size: 1.4rem; color: var(--amber);   line-height: 1; white-space: nowrap; }
+.route-start-label  { font-family: var(--font-head); font-size: 1.4rem; color: var(--accent);  line-height: 1; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.route-target-label { font-family: var(--font-head); font-size: 1.4rem; color: var(--amber);   line-height: 1; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .route-arrow-big    { font-size: 1.1rem; color: var(--muted); flex-shrink: 0; }
 
 .route-gold {
@@ -1760,6 +2046,10 @@ body {
   .setup-start, .setup-target { font-size: 1rem; }
   .route-win-actions { flex-wrap: wrap; }
   .route-win-actions .btn { flex: 1; min-width: 90px; }
+}
+@media (max-width: 420px) {
+  .route-diff-row { gap: 4px; }
+  .route-diff-btn { font-size: .58rem; padding: 0 4px; }
 }
 
 /* ── Home screen mobile (phones ≤ 480px) ── */
@@ -7417,22 +7707,27 @@ body {
       "left  right"
       "center center";
     grid-template-columns: 1fr auto;
-    gap: 8px 10px;
+    /* Tighten the row gap so the controlled 2nd row (target + skip) costs less
+       vertical space — paired with the native top inset, this gives the map
+       back the height it lost under the Dynamic Island. */
+    gap: 5px 10px;
     padding: 6px 10px;
     min-height: 0;
   }
   .wheel-topbar-left  { gap: 6px; }
   .wheel-topbar-right { gap: 10px; }
-  .wheel-topbar-target      { font-size: 0.85rem; padding: 5px 10px; }
+  .wheel-topbar-target      { font-size: 0.85rem; padding: 4px 10px; }
   .wheel-topbar-target-name { font-size: 1rem; }
 
+  /* HUD chunks: 38px keeps the timer ring readable (>=36px floor) while
+     trimming ~2px per chunk off the top row. */
   .wheel-hud-score,
   .wheel-hud-lives,
-  .wheel-hud-timer { height: 40px; }
+  .wheel-hud-timer { height: 38px; }
   .wheel-hud-value     { font-size: 1.2rem; }
   .wheel-hud-lives     { min-width: 92px; font-size: 0.92rem; }
-  .wheel-hud-timer     { width: 40px; }
-  .wheel-timer-svg     { width: 40px; height: 40px; }
+  .wheel-hud-timer     { width: 38px; }
+  .wheel-timer-svg     { width: 38px; height: 38px; }
   .wheel-life-infinite { font-size: 1.4rem; }
 
   .wheel-dd-trigger   { padding: 0 8px; font-size: 0.8rem; height: 32px; min-width: 96px; }
@@ -8921,11 +9216,30 @@ body {
   .lb-row { transition: none; }
 }
 
-/* ── Mobil / dar (≤520px): kompakt üçlü, aynı aile ── */
+/* ── Mobil / dar (≤520px): kompakt üçlü + SABİT podyum, İÇ-KAYAN liste ──
+   Modal dinamik viewport (100dvh) + safe-area inset'leri ile sınırlanır →
+   hiçbir iPhone yüksekliğinde status bar / home indicator / safe-area dışına
+   taşmaz. Başlık + XP/Gold toggle + mod sekmeleri + ilk-3 podyum sabit kalır
+   (flex:0 0 auto); yalnız 4+ sıralama listesi (.lb-board) kendi içinde kayar.
+   Tek scroll yüzeyi liste olur (gövde kaymaz). Desktop'a (>520px) dokunulmaz. */
 @media (max-width: 520px) {
-  .lb-overlay { padding: 10px; }
-  .lb-modal { width: 100%; max-height: 94vh; border-radius: 18px; }
+  .lb-overlay {
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+  }
+  .lb-modal {
+    width: 100%;
+    /* 100% = safe-area padding'li overlay yüksekliği; dvh terimi mobil web'in
+       dinamik (URL bar) viewport'una karşı ikinci bir tavandır. min() ile
+       hangisi küçükse o uygulanır → asla taşmaz. */
+    max-height: min(100%, calc(100dvh - 16px));
+    border-radius: 18px;
+  }
   .lb-head {
+    flex: 0 0 auto;
     grid-template-columns: 1fr auto;
     grid-template-areas: "brand close" "toggle toggle";
     gap: 13px 10px;
@@ -8936,10 +9250,41 @@ body {
   .lb-type-toggle { grid-area: toggle; }
   .lb-type-btn { flex: 1; justify-content: center; }
   .lb-title { font-size: 26px; }
-  .lb-scope-tabs { padding: 11px 16px 2px; }
-  .lb-body { padding: 14px 12px 18px; }
+  /* Mod sekmeleri (Genel / Ülke Yaz / Bayrak / Çark / Kuşatma): dar ekranda
+     kontrollü yatay rail. Sıkı metrikle 390px'te 5 sekme genelde kayıtsız sığar;
+     sığmazsa scroll-snap'li rail devreye girer. Kenar fade'i (mask) "devamı var"
+     ipucu verir → son sekme (Kuşatma) modal radius'una binmiş gibi görünmez.
+     scroll-padding ile aktif sekme scrollIntoView'da kenara yapışmaz. */
+  .lb-scope-tabs {
+    flex: 0 0 auto;
+    gap: 5px;
+    padding: 11px 14px 2px;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 14px;
+    -webkit-overflow-scrolling: touch;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  }
+  .lb-scope-btn { padding: 6px 10px; scroll-snap-align: start; }
 
-  .lb-podium { gap: 8px; padding: 30px 8px 16px; }
+  /* Gövde artık kaymaz: dik flex kolon, taşmayı kırpar; tek scroll yüzeyi
+     içteki liste (.lb-board) olur → iki katmanlı scroll oluşmaz. */
+  .lb-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: 12px 12px 0;
+  }
+  /* hata / boş durum gövdeyi doldurup dikeyde ortalanır */
+  .lb-body > .lb-state { margin: auto 0; }
+
+  .lb-podium {
+    flex: 0 0 auto;
+    gap: 8px;
+    padding: 30px 8px 16px;
+    margin-bottom: 12px;
+  }
   .lb-pod { max-width: 33.5%; padding: 0 2px; }
   .lb-pod-name { font-size: 12.5px; margin-top: 11px; }
   .lb-pod-meta { gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -8949,12 +9294,37 @@ body {
   .lb-modal[data-type="gold"] .lb-pod-num { font-size: 16px; }
   .lb-modal[data-type="gold"] .lb-pod--r1 .lb-pod-num { font-size: 18px; }
 
-  /* tek satır (Görsel 2): sıra · oyuncu · hex · değer — kompakt */
+  /* Liste (4+): tek scroll yüzeyi. Kalan yüksekliği doldurur, içeride kayar;
+     4–10 verisi kesilmez, hepsi scroll ile erişilir. */
+  .lb-board {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    margin-bottom: 8px;
+  }
+  .lb-board::-webkit-scrollbar { width: 6px; }
+  .lb-board::-webkit-scrollbar-thumb { background: var(--lb-hair); border-radius: 6px; }
+
+  /* Kolon başlığı liste kayarken üstte sabit (sticky); satırlar altından
+     görünmesin diye opak yüzey. */
   .lb-board-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    background: oklch(0.155 0.018 258);
     grid-template-columns: 28px minmax(0, 1fr) auto minmax(62px, auto);
     gap: 8px;
     padding: 9px 12px;
   }
+  .lb-list { padding-bottom: 6px; }
+
+  /* tek satır (Görsel 2): sıra · oyuncu · hex · değer — kompakt */
   .lb-row {
     grid-template-columns: 28px minmax(0, 1fr) auto minmax(62px, auto);
     gap: 8px;
@@ -8965,6 +9335,21 @@ body {
   .lb-level-hex { width: 28px; height: 31px; font-size: 13px; }
   .lb-value-num { font-size: 17px; }
   .lb-row--sk { grid-template-columns: 28px 32px minmax(0, 1fr) auto; }
+}
+
+/* ── Kısa cihazlar (iPhone SE / mini vb.): podyumu hafifçe kompaktlaştır →
+   listeye daha çok satır kalır; ilk üç oyuncunun kimliği + değerleri okunur
+   kalır. Yalnız dar + kısa viewport'ta uygular; normal iPhone'da dokunmaz. ── */
+@media (max-width: 520px) and (max-height: 740px) {
+  .lb-podium { padding: 22px 8px 12px; margin-bottom: 10px; }
+  .lb-pod-name { margin-top: 8px; }
+  .lb-pod-meta { margin-top: 4px; }
+  .lb-podium .lb-pod-medallion { padding: 2px; }
+  /* avatar wrapper + iç .avatar inline px değerini yalnız burada ezeriz */
+  .lb-pod-avatar,
+  .lb-pod-avatar .avatar { width: 54px !important; height: 54px !important; }
+  .lb-pod--r1 .lb-pod-avatar,
+  .lb-pod--r1 .lb-pod-avatar .avatar { width: 66px !important; height: 66px !important; }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -14637,65 +15022,65 @@ body {
   filter: brightness(1.12);
 }
 
-/* Turkey Conquest background - clean final */
-.app.duel-screen.cq-screen.conquest-war-bg {
-  position: relative;
-  min-height: 100vh;
-  background:
-    linear-gradient(rgba(8, 12, 24, 0.24), rgba(8, 12, 24, 0.42)),
-    url("/assets/backgrounds/conquest-war-map.png") center / cover no-repeat !important;
-}
+/* ════════════════════════════════════════════════════════════════
+   KUŞATMA SAHNE ARKA PLANI + DESKTOP BOARD STAGE — tek kanonik otorite
+   ──────────────────────────────────────────────────────────────────
+   War-map (conquest-war-map.png) artık YALNIZ atmosferik backdrop'tur:
+   ekrana `cover` ile basılır, asla `100% 100%` ile deforme edilmez ve
+   Türkiye SVG'siyle coğrafi hizalanması beklenmez (bu bir backdrop).
+   Bölgelerin altındaki MAT doku TurkeyConquestMap SVG <pattern>'ine
+   (turkey-terrain-texture.png) taşındı; board/map katmanları kendi arka
+   planlarını BASMAZ.  Aynı koordinat sistemini yalnız terrain texture +
+   region path'leri + region marker'ları (hepsi viewBox 1005×490 içinde)
+   paylaşır.
+   Kapsam: yalnız .cq-screen (Kuşatma).  Mobil (≤600px) ekran zemini
+   #07101c kalır; MobileConquestLayout kendi yüzeyini çizdiği için war-map
+   yalnız desktop'ta atmosfer olarak görünür (mevcut mobil davranış korunur). */
 
-/* Board/map area must stay transparent. Do not render a second background inside the map. */
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-svg {
-  background: transparent !important;
-  background-image: none !important;
-  background-color: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: 0 !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-}
-
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap::before,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-wrap::after,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner::before,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-game-board-inner::after,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap::before,
-.app.duel-screen.cq-screen.conquest-war-bg .cq-turkey-map-wrap::after {
-  display: none !important;
-  content: none !important;
-  background: transparent !important;
-}
-
-/* Turkey Conquest background - force active on cq-screen */
 .app.duel-screen.cq-screen {
   position: relative;
   min-height: 100vh;
-  background:
-    linear-gradient(rgba(8, 12, 24, 0.18), rgba(8, 12, 24, 0.36)),
-    url("/assets/backgrounds/conquest-war-map.png") center / cover no-repeat !important;
+  min-height: 100dvh;
+  background: #07101c !important;
 }
 
-/* Do not render a second background inside the map/card area */
+/* Setup / lobi (conquest-war-bg): atmosferik war-map cover — mobil + desktop,
+   mevcut görünüm korunur (biraz daha koyu gradyan vurgusu). */
+.app.duel-screen.cq-screen.conquest-war-bg {
+  background-color: #07101c !important;
+  background-image:
+    linear-gradient(rgba(8, 12, 24, 0.24), rgba(8, 12, 24, 0.42)),
+    url("/assets/backgrounds/conquest-war-map.png") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: cover !important;
+}
+
+/* Desktop: aktif oyun + mod ekranlarına atmosferik war-map cover.
+   Mobil DOKUNULMAZ (bu blok yalnız ≥601px'te çalışır). */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen {
+    background-color: #07101c !important;
+    background-image:
+      linear-gradient(rgba(8, 12, 24, 0.18), rgba(8, 12, 24, 0.36)),
+      url("/assets/backgrounds/conquest-war-map.png") !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: cover !important;
+  }
+}
+
+/* Board / map katmanları şeffaf: terrain artık SVG içinde, ikinci bir
+   arka plan basılmaz; dekoratif ::before/::after katmanları kapalı. */
 .app.duel-screen.cq-screen .cq-game-board-wrap,
 .app.duel-screen.cq-screen .cq-game-board-inner,
 .app.duel-screen.cq-screen .cq-turkey-map-wrap,
 .app.duel-screen.cq-screen .cq-turkey-map-svg {
   background: transparent !important;
   background-image: none !important;
-  background-color: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
-  outline: 0 !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
 }
-
 .app.duel-screen.cq-screen .cq-game-board-wrap::before,
 .app.duel-screen.cq-screen .cq-game-board-wrap::after,
 .app.duel-screen.cq-screen .cq-game-board-inner::before,
@@ -14707,75 +15092,40 @@ body {
   background: transparent !important;
 }
 
-
-
-/* Kuşatma: Türkiye haritasını biraz aşağı al */
-.app.duel-screen.cq-screen .cq-game-board-inner {
-  padding-top: 44px !important;
-}
-
-.app.duel-screen.cq-screen .cq-turkey-map-wrap {
-  transform: translateY(28px);
-}
-
-
-/* Kuşatma: Türkiye mapini büyüt ve konumlandır */
-.app.duel-screen.cq-screen .cq-game-board-inner {
-  max-width: 1050px !important;
-  transform: translateX(0px) !important;
-}
-
-.app.duel-screen.cq-screen .cq-turkey-map-svg {
-  width: 100% !important;
-  height: auto !important;
-}
-
-
-/* Kuşatma: Türkiye mapini yukarı hizala */
-.app.duel-screen.cq-screen .cq-turkey-map-wrap {
-  transform: translateY(-25px) !important;
-}
-
-
-/* FINAL: Kuşatma background exact-fit, zoom/crop yok */
-.app.duel-screen.cq-screen {
-  background: #07101c !important;
-}
-
-/* Arkaplan sadece board alanına birebir otursun */
-.app.duel-screen.cq-screen .cq-game-board-wrap {
-  background-image:
-    linear-gradient(rgba(5, 10, 18, 0.08), rgba(5, 10, 18, 0.16)),
-    url("/assets/backgrounds/conquest-war-map.png") !important;
-  background-size: 100% 100% !important;
-  background-position: top left !important;
-  background-repeat: no-repeat !important;
-  background-color: transparent !important;
-}
-
-/* İç katmanlar ikinci kez background basmasın */
-.app.duel-screen.cq-screen .cq-game-board-inner,
-.app.duel-screen.cq-screen .cq-turkey-map-wrap,
-.app.duel-screen.cq-screen .cq-turkey-map-svg {
-  background: transparent !important;
-  background-image: none !important;
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border: 0 !important;
-}
-
-
-/* Kuşatma: Türkiye map sınırlarını arka plandan ayır */
-.app.duel-screen.cq-screen .cq-turkey-map-svg path {
-  filter:
-    drop-shadow(0 0 2px rgba(190, 235, 255, 0.45))
-    drop-shadow(0 0 5px rgba(80, 190, 255, 0.22)) !important;
-}
-
+/* Metin okunabilirliği: harita etiket/sayaç glyph'lerine koyu gölge
+   (KORUNDU).  Bölge SINIR stroke'u COLOR_MAP içinde .cq-map-region'da
+   tanımlı ve dokunulmadı.  Eski "her path'e mavi çift drop-shadow"
+   glow kuralı (chrome/parlama kaynağı) KALDIRILDI; yeni glow eklenmedi. */
 .app.duel-screen.cq-screen .cq-turkey-map-svg text {
   filter:
     drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75))
     drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)) !important;
+}
+
+/* ── Desktop board stage (tek kanonik, oran = SVG viewBox 1005/490) ──
+   Stage genişliği hem viewport genişliği (board-inner max 1050px) hem de
+   header sonrası kalan dikey alanla sınırlanır; harita hiçbir desktop
+   boyutunda taşmaz veya oranı bozulmaz.  SVG (width:100% + intrinsic
+   viewBox oranı) bu kutuyu letterbox'sız doldurur.  Header / oyuncu paneli
+   / soru kartı / bonus paneli DOM overlay olarak kalır, stage ölçüsünü
+   değiştirmez.  Kapsam: yalnız desktop (≥601px) + .cq-game-screen;
+   MobileConquestLayout .cq-game-board-inner render etmez. */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen.cq-game-screen {
+    --cq-vert-reserve: 150px; /* header + harita başlığı + nefes payı (gerekirse ayarlanır) */
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
+    max-width: 1050px;
+    margin: 0 auto;
+    padding: 16px 16px 12px;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
+    width: min(100%, calc((100dvh - var(--cq-vert-reserve)) * 1005 / 490));
+    margin: 0 auto;
+    padding: 0;
+    aspect-ratio: 1005 / 490;
+    transform: none;
+  }
 }
 
 
@@ -19023,10 +19373,14 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
 
-  /* Anchored popover listbox — floats under the field, never shifts layout. */
+  /* Anchored popover listbox — floats ABOVE the field (its bottom edge meets
+     the field's top edge with the usual small gap) so it is never clipped by
+     the bottom sheet's lower edge. `max-height` here is only a fallback cap;
+     QmSelect sets a tighter inline cap from the room above the field inside the
+     sheet, and the list scrolls internally past that. Never shifts layout. */
   .mh-qm-pop {
     position: absolute;
-    top: calc(100% + 6px);
+    bottom: calc(100% + 6px);
     left: 0;
     right: 0;
     z-index: 30;
@@ -19040,11 +19394,11 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     border-radius: 12px;
     border: 1px solid rgba(120, 160, 230, .26);
     background: #161d2e;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .5);
     animation: mhPop .16s cubic-bezier(.2, .7, .2, 1);
   }
   @keyframes mhPop {
-    from { opacity: 0; transform: translateY(-6px); }
+    from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
   .mh-qm-opt {
@@ -19195,8 +19549,21 @@ button.cq-team-toggle:active { transform: scale(0.92); }
    first in-flow child of .app, so reserving the inset on the shell pushes the
    whole header below the Dynamic Island. box-sizing:border-box keeps .app at
    100dvh, so the playfield just gains the offset at the top; nothing scrolls.
-   No .app rule sets padding, so padding-top here is conflict-free. */
-html.is-native-app .app {
+   No .app rule sets padding, so padding-top here is conflict-free.
+
+   Three game shells use their OWN root class instead of `.app`, so the rule
+   never reached them and their top HUD drew under the Dynamic Island:
+     • .wheel-app    → Çark (solo)        — HUD .wheel-topbar
+     • .route-screen → Rota               — HUD .route-header
+     • .duel-app     → Ülke Yaz (grup)    — HUD .duel-header
+   They are all 100dvh + border-box flex columns (global *{box-sizing}), so the
+   identical inset just offsets the header down and the map row absorbs it.
+   None of them is also `.app`, so there is no double padding. Web stays
+   byte-for-byte identical: env() resolves to 0 outside the native shell. */
+html.is-native-app .app,
+html.is-native-app .wheel-app,
+html.is-native-app .route-screen,
+html.is-native-app .duel-app {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
