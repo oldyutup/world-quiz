@@ -23332,3 +23332,60 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 /* Recovery ekranı nick-modal kabuğunu paylaşır; yalnızca her şeyin üstünde
    olması için z-index'i yükseltir (nick-overlay 6200 → 6300). */
 .pwr-overlay { z-index: 6300; }
+
+/* Kuşatma — yalnız desktop map kompozisyon ince ayarı */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen .cq-game-screen .cq-turkey-map-wrap {
+    --cq-map-scale: 1.055;
+    --cq-map-shift-y: -18px;
+    transform: translateY(var(--cq-map-shift-y)) scale(var(--cq-map-scale));
+    transform-origin: center center;
+  }
+}
+
+/* Kuşatma — yalnız desktop map kompozisyon ince ayarı */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen .cq-game-screen .cq-turkey-map-wrap {
+    --cq-map-scale: 1.055;
+    --cq-map-shift-y: -18px;
+    transform: translateY(var(--cq-map-shift-y)) scale(var(--cq-map-scale));
+    transform-origin: center center;
+  }
+}
+
+/* Kuşatma desktop — map'i biraz büyüt ve yukarı al */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
+    transform: translateY(-6px) scale(1.055) !important;
+    transform-origin: center center !important;
+  }
+}
+
+/* Kuşatma desktop — map kompozisyon ayarı */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
+    --cq-map-y: 8px;
+    --cq-map-scale: 1.055;
+    transform: translateY(var(--cq-map-y)) scale(var(--cq-map-scale)) !important;
+    transform-origin: center center !important;
+  }
+}
+
+/* Kuşatma: oda kur / lobi / kodla katıl / oda listesi için ayrı arka plan.
+   Aktif oyun (.cq-game-screen) mevcut conquest-war-map görünümünü korur. */
+.app.duel-screen.cq-screen:not(.cq-game-screen) {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(5, 11, 23, 0.22) 0%,
+      rgba(5, 11, 23, 0.42) 100%
+    ),
+    url("/assets/backgrounds/conquest-lobby-bg.webp") center center / cover no-repeat !important;
+}
+
+/* Profil paneli — günlük bonus metni */
+.upd-bonus-btn,
+.upd-bonus-btn:hover,
+.upd-bonus-btn:focus-visible {
+  color: #fff !important;
+}

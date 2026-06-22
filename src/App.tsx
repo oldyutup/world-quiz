@@ -59,6 +59,7 @@ import {
 import AuthModal from "./components/AuthModal";
 import NicknameModal from "./components/NicknameModal";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
@@ -1083,6 +1084,7 @@ function TopBar(p: TopBarProps) {
     "control-bar",
     `gt-${p.gameType}`,
     p.isPlaying ? "is-playing" : "",
+    (p.gameType === "map-game" && !p.isPlaying && p.mode !== "finished") ? "is-idle" : "",
   ].filter(Boolean).join(" ");
   const modeShort = p.mode === "timed" ? "Süreli" : "Serbest";
 
@@ -1120,8 +1122,185 @@ function TopBar(p: TopBarProps) {
     mq.addEventListener?.("change", onChange);
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
+
+  // ── Idle hero (mobile, map-game only) ───────────────────────────────
+  // New idle presentation: task line + mode segment + single CTA. Shown
+  // only ≤600px for the map game via CSS (.uy-idle); desktop and the
+  // playing state keep the legacy bar untouched. Self-contained: own mode
+  // selection + own contextual (region / duration) accordion tuner.
+  const showIdleHero = p.gameType === "map-game" && !p.isPlaying && p.mode !== "finished";
+  const [idleMode, setIdleMode] = useState<"timed" | "free">("free");
+  const [idleTuneOpen, setIdleTuneOpen] = useState(false);
+  // Which sub-row of the tuner has its options expanded (only one at a time).
+  const [idleTuneRow, setIdleTuneRow] = useState<"region" | "duration" | null>(null);
+  // First-run guarantee: the segment defaults to Serbest until the player has
+  // actually started a map game this session; only then do we honour their
+  // last choice (lastMode). lastMode resets to "free" on every fresh entry to
+  // Ülke Yaz, so a brand-new visit always opens on Serbest regardless.
+  const idleHasPlayedRef = useRef(false);
+  useEffect(() => { if (p.isPlaying) idleHasPlayedRef.current = true; }, [p.isPlaying]);
+  // Re-sync whenever we (re)enter idle: collapse the tuner to its calm,
+  // zero-decision default (first/last mode, settings closed, rows collapsed).
+  useEffect(() => {
+    if (showIdleHero) {
+      setIdleMode(idleHasPlayedRef.current ? p.lastMode : "free");
+      setIdleTuneOpen(false);
+      setIdleTuneRow(null);
+    }
+  }, [showIdleHero, p.lastMode]);
+  // The segment doubles as a disclosure. Tapping the *other* mode switches it
+  // (collapsing any open sub-row); tapping the *selected* mode toggles the
+  // inline tuner. Either way the tuner reopens with both rows collapsed.
+  const pickMode = (m: "timed" | "free") => {
+    playSound("click");
+    if (m === idleMode) { setIdleTuneOpen(o => !o); setIdleTuneRow(null); }
+    else { setIdleMode(m); setIdleTuneRow(null); }
+  };
+  // Compact summaries shown on the collapsed tuner rows.
+  const idleRegionShort = CONTINENT_OPTIONS.find(o => o.value === p.continent)?.short ?? CONTINENT_OPTIONS[0].short;
+  const idleDurLabel    = DURATION_OPTIONS.find(o => o.value === p.selectedDuration)?.label ?? "1 dk";
+
+  // ── Playing HUD safety + status (mobile, map-game only) ──────────────
+  // Reset ("Turu Sıfırla") now lives in the gear menu, and leaving via the
+  // back button mid-round both need a short confirm so an accidental tap
+  // can't wipe an active round. Both are mobile-scoped: the gear/reset path
+  // only exists on mobile, and the back path is gated on a narrow viewport so
+  // the desktop bar keeps its current direct behaviour untouched.
+  const [confirmKind, setConfirmKind] = useState<null | "reset" | "home">(null);
+  const isNarrow = () =>
+    typeof window !== "undefined" && window.matchMedia("(max-width:600px)").matches;
+  const requestHome = () => {
+    playSound("click");
+    if (isNarrow() && p.gameType === "map-game" && p.isPlaying && p.score > 0) {
+      setMobileSettingsOpen(false);
+      setConfirmKind("home");
+    } else {
+      p.onHome();
+    }
+  };
+  const requestReset = () => {
+    playSound("click");
+    setMobileSettingsOpen(false);
+    if (p.score > 0) setConfirmKind("reset");
+    else p.onReset();
+  };
+  // Timer urgency: A2 atlas-blue normally, controlled amber when time runs
+  // low (never red — red is reserved for errors). The shrinking ring + the
+  // number + an accessible label carry the urgency beyond colour alone.
+  const timerCrit = p.mode === "timed" && p.timerPct <= 25;
+
   return (
+    <>
     <div className={barClass}>
+      {showIdleHero && (
+        <div className="uy-idle">
+          <div className="uy-top">
+            <button type="button" className="uy-back"
+              onClick={() => { playSound("click"); p.onHome(); }}
+              aria-label="Ana Menü" title="Ana Menü">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <span className="uy-title">Ülke Yaz</span>
+            <span className="uy-top-spacer" aria-hidden="true" />
+          </div>
+          <p className="uy-task">Ülke adlarını yaz, haritada yerlerini keşfet.</p>
+          <div className="uy-seg" role="group" aria-label="Oyun modu">
+            <button type="button"
+              className={"uy-seg-btn" + (idleMode === "free" ? " is-sel" : "")}
+              aria-pressed={idleMode === "free"}
+              aria-expanded={idleMode === "free" ? idleTuneOpen : undefined}
+              aria-controls={idleMode === "free" ? "uy-tune" : undefined}
+              onClick={() => pickMode("free")}>
+              <span className="uy-seg-lbl">Serbest</span>
+              {idleMode === "free" && (
+                <svg className={"uy-seg-caret" + (idleTuneOpen ? " open" : "")}
+                  width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              )}
+            </button>
+            <button type="button"
+              className={"uy-seg-btn" + (idleMode === "timed" ? " is-sel" : "")}
+              aria-pressed={idleMode === "timed"}
+              aria-expanded={idleMode === "timed" ? idleTuneOpen : undefined}
+              aria-controls={idleMode === "timed" ? "uy-tune" : undefined}
+              onClick={() => pickMode("timed")}>
+              <span className="uy-seg-lbl">Süreli</span>
+              {idleMode === "timed" && (
+                <svg className={"uy-seg-caret" + (idleTuneOpen ? " open" : "")}
+                  width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              )}
+            </button>
+          </div>
+          {idleTuneOpen && (
+            <div className="uy-tune" id="uy-tune">
+              {/* Collapsed summary heads: tap one to reveal only that row's
+                  options (single-open accordion → never both chip sets at once). */}
+              <div className="uy-tune-heads">
+                <button type="button"
+                  className={"uy-tune-head" + (idleTuneRow === "region" ? " is-open" : "")}
+                  aria-expanded={idleTuneRow === "region"} aria-controls="uy-tune-opts"
+                  onClick={() => { playSound("click"); setIdleTuneRow(r => r === "region" ? null : "region"); }}>
+                  <span className="uy-tune-lbl">Bölge</span>
+                  <span className="uy-tune-val">{idleRegionShort}</span>
+                  <svg className={"uy-tune-caret" + (idleTuneRow === "region" ? " open" : "")}
+                    width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+                {idleMode === "timed" && (
+                  <button type="button"
+                    className={"uy-tune-head" + (idleTuneRow === "duration" ? " is-open" : "")}
+                    aria-expanded={idleTuneRow === "duration"} aria-controls="uy-tune-opts"
+                    onClick={() => { playSound("click"); setIdleTuneRow(r => r === "duration" ? null : "duration"); }}>
+                    <span className="uy-tune-lbl">Süre</span>
+                    <span className="uy-tune-val">{idleDurLabel}</span>
+                    <svg className={"uy-tune-caret" + (idleTuneRow === "duration" ? " open" : "")}
+                      width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {idleTuneRow === "region" && (
+                <div className="uy-tune-opts" id="uy-tune-opts" role="group" aria-label="Bölge">
+                  {CONTINENT_OPTIONS.map(opt => (
+                    <button key={opt.value} type="button"
+                      className={"uy-opt" + (p.continent === opt.value ? " is-on" : "")}
+                      aria-pressed={p.continent === opt.value}
+                      onClick={() => { playSound("click"); p.onContinentChange(opt.value); setIdleTuneRow(null); }}>
+                      {opt.short}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {idleMode === "timed" && idleTuneRow === "duration" && (
+                <div className="uy-tune-opts" id="uy-tune-opts" role="group" aria-label="Süre">
+                  {DURATION_OPTIONS.map(opt => (
+                    <button key={opt.value} type="button"
+                      className={"uy-opt" + (p.selectedDuration === opt.value ? " is-on" : "")}
+                      aria-pressed={p.selectedDuration === opt.value}
+                      onClick={() => { playSound("click"); p.onDurationChange(opt.value); setIdleTuneRow(null); }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button type="button" className="uy-cta"
+            onClick={() => { playSound("click"); p.onStartGame(idleMode); }}>Oyuna Başla</button>
+        </div>
+      )}
       <GoldBar gold={p.gold} canBonus={p.canBonus} onClaimBonus={p.onClaimBonus} />
       {/* Mobile-only compact info chip — non-interactive, shown during active map play */}
       <div className="bar-mobile-info" aria-hidden="true">
@@ -1136,14 +1315,14 @@ function TopBar(p: TopBarProps) {
       <div className="bar-row bar-top">
         <button
   className="back-btn"
-  onClick={() => {
-    playSound("click");
-    p.onHome();
-  }}
+  onClick={requestHome}
   title="Ana Menü"
 >
           <span>←</span><span className="back-label">Menü</span>
         </button>
+        {/* Mobile playing HUD: small, muted, non-interactive region context in
+            Row A's middle (hidden on desktop, where the dropdowns live here). */}
+        <span className="bar-region" title={p.continentLabel}>{idleRegionShort}</span>
         <div className="bar-dropdowns">
           <Dropdown label={p.continentLabel} disabled={p.isPlaying}>
             {CONTINENT_OPTIONS.map(opt => (
@@ -1180,10 +1359,11 @@ function TopBar(p: TopBarProps) {
             <span className="score-lbl">ülke</span>
           </div>
           {p.mode === "timed" && (
-            <div className="timer-ring-wrap">
-              <svg viewBox="0 0 42 42" className="timer-svg">
-                <circle cx="21" cy="21" r="17" fill="none" stroke="var(--border)" strokeWidth="3" />
-                <circle cx="21" cy="21" r="17" fill="none"
+            <div className={"timer-ring-wrap" + (timerCrit ? " is-crit" : "")}
+              role="timer" aria-label={`Kalan süre: ${p.timeLeft} saniye`}>
+              <svg viewBox="0 0 42 42" className="timer-svg" aria-hidden="true">
+                <circle className="timer-track" cx="21" cy="21" r="17" fill="none" stroke="var(--border)" strokeWidth="3" />
+                <circle className="timer-prog" cx="21" cy="21" r="17" fill="none"
                   stroke={p.timerColor} strokeWidth="3"
                   strokeDasharray="106.8"
                   strokeDashoffset={106.8 - (p.timerPct / 100) * 106.8}
@@ -1218,44 +1398,51 @@ function TopBar(p: TopBarProps) {
                     aria-label="Kapat"
                   >✕</button>
                 </div>
-                <div className="bar-settings-row">
-                  <span className="bar-settings-lbl">🌍 Bölge</span>
-                  <Dropdown label={p.continentLabel} disabled={p.isPlaying}>
-                    {CONTINENT_OPTIONS.map(opt => (
-                      <DDItem key={opt.value} active={p.continent === opt.value}
-                        onClick={() => p.onContinentChange(opt.value)}>{opt.label}</DDItem>
-                    ))}
-                  </Dropdown>
-                </div>
-                {(p.gameType === "flag-game" || p.gameType === "silhouette-game") && p.onDifficultyChange && (
-                  <div className="bar-settings-row">
-                    <span className="bar-settings-lbl">🔶 Zorluk</span>
-                    <Dropdown label={diffOpt?.label ?? "🟡 Normal"} disabled={p.isPlaying} align="right">
-                      {DIFFICULTY_OPTIONS.map(opt => (
-                        <DDItem key={opt.value} active={p.difficulty === opt.value}
-                          onClick={() => p.onDifficultyChange!(opt.value)}>{opt.label}</DDItem>
-                      ))}
-                    </Dropdown>
-                  </div>
+                {/* Setup controls (region / difficulty / duration / mode) are
+                    locked during play, so we only surface them between rounds —
+                    keeping the in-play menu focused on what's still actionable. */}
+                {!p.isPlaying && (
+                  <>
+                    <div className="bar-settings-row">
+                      <span className="bar-settings-lbl">🌍 Bölge</span>
+                      <Dropdown label={p.continentLabel} disabled={p.isPlaying}>
+                        {CONTINENT_OPTIONS.map(opt => (
+                          <DDItem key={opt.value} active={p.continent === opt.value}
+                            onClick={() => p.onContinentChange(opt.value)}>{opt.label}</DDItem>
+                        ))}
+                      </Dropdown>
+                    </div>
+                    {(p.gameType === "flag-game" || p.gameType === "silhouette-game") && p.onDifficultyChange && (
+                      <div className="bar-settings-row">
+                        <span className="bar-settings-lbl">🔶 Zorluk</span>
+                        <Dropdown label={diffOpt?.label ?? "🟡 Normal"} disabled={p.isPlaying} align="right">
+                          {DIFFICULTY_OPTIONS.map(opt => (
+                            <DDItem key={opt.value} active={p.difficulty === opt.value}
+                              onClick={() => p.onDifficultyChange!(opt.value)}>{opt.label}</DDItem>
+                          ))}
+                        </Dropdown>
+                      </div>
+                    )}
+                    <div className="bar-settings-row">
+                      <span className="bar-settings-lbl">⏱ Süre</span>
+                      <Dropdown label={p.durationLabel} disabled={p.isPlaying} align="right">
+                        {DURATION_OPTIONS.map(opt => (
+                          <DDItem key={opt.value} active={p.selectedDuration === opt.value}
+                            onClick={() => p.onDurationChange(opt.value)}>{opt.label}</DDItem>
+                        ))}
+                      </Dropdown>
+                    </div>
+                    <div className="bar-settings-row">
+                      <span className="bar-settings-lbl">🎮 Mod</span>
+                      <Dropdown label={p.mode === "timed" ? "⏱ Süreli" : "∞ Serbest"} disabled={p.isPlaying} align="right">
+                        <DDItem active={!p.isPlaying && p.lastMode === "free"}
+                          onClick={() => { if (!p.isPlaying) p.onStartGame("free"); }}>∞ Serbest</DDItem>
+                        <DDItem active={!p.isPlaying && p.lastMode === "timed"}
+                          onClick={() => { if (!p.isPlaying) p.onStartGame("timed"); }}>⏱ Süreli</DDItem>
+                      </Dropdown>
+                    </div>
+                  </>
                 )}
-                <div className="bar-settings-row">
-                  <span className="bar-settings-lbl">⏱ Süre</span>
-                  <Dropdown label={p.durationLabel} disabled={p.isPlaying} align="right">
-                    {DURATION_OPTIONS.map(opt => (
-                      <DDItem key={opt.value} active={p.selectedDuration === opt.value}
-                        onClick={() => p.onDurationChange(opt.value)}>{opt.label}</DDItem>
-                    ))}
-                  </Dropdown>
-                </div>
-                <div className="bar-settings-row">
-                  <span className="bar-settings-lbl">🎮 Mod</span>
-                  <Dropdown label={p.mode === "timed" ? "⏱ Süreli" : "∞ Serbest"} disabled={p.isPlaying} align="right">
-                    <DDItem active={!p.isPlaying && p.lastMode === "free"}
-                      onClick={() => { if (!p.isPlaying) p.onStartGame("free"); }}>∞ Serbest</DDItem>
-                    <DDItem active={!p.isPlaying && p.lastMode === "timed"}
-                      onClick={() => { if (!p.isPlaying) p.onStartGame("timed"); }}>⏱ Süreli</DDItem>
-                  </Dropdown>
-                </div>
                 {p.gameType === "map-game" && p.onToggleLabels && (
                   <div className="bar-settings-row">
                     <span className="bar-settings-lbl">🏷️ İsimler</span>
@@ -1266,6 +1453,14 @@ function TopBar(p: TopBarProps) {
                       <span className="toggle-track"><span className="toggle-thumb" /></span>
                     </label>
                   </div>
+                )}
+                {/* Reset lives here (moved out of the input row) so it can't be
+                    hit by accident while reaching for "Gir". requestReset adds a
+                    confirm when the score is > 0. */}
+                {p.isPlaying && (
+                  <button type="button" className="bar-settings-reset" onClick={requestReset}>
+                    <span aria-hidden="true">↻</span> Turu Sıfırla
+                  </button>
                 )}
               </div>
             )}
@@ -1333,6 +1528,28 @@ function TopBar(p: TopBarProps) {
         )}
       </div>
     </div>
+    {confirmKind === "reset" && (
+      <ConfirmDialog
+        title="Turu sıfırla?"
+        description="Bu turdaki ilerlemen silinecek ve başlangıç ekranına döneceksin."
+        confirmLabel="Turu Sıfırla"
+        cancelLabel="Vazgeç"
+        destructive
+        onConfirm={() => { setConfirmKind(null); p.onReset(); }}
+        onCancel={() => setConfirmKind(null)}
+      />
+    )}
+    {confirmKind === "home" && (
+      <ConfirmDialog
+        title="Ana menüye dön?"
+        description="Aktif turun kaydedilmeden kapanacak."
+        confirmLabel="Çık"
+        cancelLabel="Devam Et"
+        onConfirm={() => { setConfirmKind(null); p.onHome(); }}
+        onCancel={() => setConfirmKind(null)}
+      />
+    )}
+    </>
   );
 }
 

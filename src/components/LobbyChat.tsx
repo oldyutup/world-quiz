@@ -87,11 +87,16 @@ const SEND_RPC: Record<
 interface MsgListProps {
   messages: DuelMessage[];
   myName:   string;
-  scrollRef: React.RefObject<HTMLDivElement>;
+  listRef: React.RefObject<HTMLDivElement>;
+  onMessagesScroll: (el: HTMLDivElement) => void;
 }
-const MsgList = memo(({ messages, myName, scrollRef }: MsgListProps) => {
+const MsgList = memo(({ messages, myName, listRef, onMessagesScroll }: MsgListProps) => {
   return (
-    <div className="lc-messages">
+    <div
+      className="lc-messages"
+      ref={listRef}
+      onScroll={e => onMessagesScroll(e.currentTarget)}
+    >
       {messages.length === 0 && (
         <p className="lc-empty">Henüz mesaj yok. İlk sen yaz! 👋</p>
       )}
@@ -104,7 +109,7 @@ const MsgList = memo(({ messages, myName, scrollRef }: MsgListProps) => {
           </div>
         );
       })}
-      <div ref={scrollRef} />
+      {/* Scroll alanı doğrudan .lc-messages ref'iyle yönetilir. */}
     </div>
   );
 });
@@ -202,7 +207,9 @@ export default function LobbyChat({
   const openSheet  = () => { if (isControlled) onMobileSheetOpenChange!(true);  else setSheetOpen(true);  };
   const closeSheet = () => { if (isControlled) onMobileSheetOpenChange!(false); else setSheetOpen(false); };
 
-  const scrollRef     = useRef<HTMLDivElement>(null);
+  const desktopMessagesRef = useRef<HTMLDivElement>(null);
+  const sheetMessagesRef   = useRef<HTMLDivElement>(null);
+  const atBottomRef        = useRef(true);
   const desktopRef    = useRef<HTMLInputElement>(null);
   const sheetRef      = useRef<HTMLInputElement>(null);
   const channelRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -298,28 +305,35 @@ export default function LobbyChat({
   }, [roomCode, addMessage]);
 
   /* ── 3) Scroll yönetimi ── */
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollIntoView({ behavior, block: "end" });
-    });
+  const handleMessagesScroll = useCallback((el: HTMLDivElement) => {
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
-  const prevMsgCountRef = useRef(0);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    requestAnimationFrame(() => {
+      const el = effectiveSheetOpen
+        ? sheetMessagesRef.current
+        : desktopMessagesRef.current;
 
-  // Yeni mesaj → sadece kullanıcı zaten altaysa otomatik kaydır.
-  // Toplu yükleme (initial load, delta > 1) → her zaman en alta.
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior });
+      atBottomRef.current = true;
+    });
+  }, [effectiveSheetOpen]);
+
+  const prevVisibleMsgCountRef = useRef(0);
+
+  // Yeni mesaj → kullanıcı zaten alttaysa otomatik kaydır.
+  // Toplu geçmiş yüklemesi → her zaman en alta.
   useEffect(() => {
-    const delta = messages.length - prevMsgCountRef.current;
-    prevMsgCountRef.current = messages.length;
+    const delta = visibleMessages.length - prevVisibleMsgCountRef.current;
+    prevVisibleMsgCountRef.current = visibleMessages.length;
     if (delta <= 0) return;
-    if (delta > 1) {
-      scrollToBottom("auto");
-    } else {
-      const el = scrollRef.current?.parentElement as HTMLElement | null;
-      const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-      if (atBottom) scrollToBottom("smooth");
+
+    if (delta > 1 || atBottomRef.current) {
+      scrollToBottom(delta > 1 ? "auto" : "smooth");
     }
-  }, [messages, scrollToBottom]);
+  }, [visibleMessages.length, scrollToBottom]);
 
   // Desktop panel açıldığında en alta in (MsgList remount olur, messages değişmez).
   useEffect(() => {
@@ -487,7 +501,12 @@ export default function LobbyChat({
 
         {open && (
           <>
-            <MsgList messages={visibleMessages} myName={myName} scrollRef={scrollRef} />
+            <MsgList
+              messages={visibleMessages}
+              myName={myName}
+              listRef={desktopMessagesRef}
+              onMessagesScroll={handleMessagesScroll}
+            />
             {notice && (
               <div
                 role="status"
@@ -552,7 +571,12 @@ fontWeight: 700,
                 ✕
               </button>
             </header>
-            <MsgList messages={visibleMessages} myName={myName} scrollRef={scrollRef} />
+            <MsgList
+              messages={visibleMessages}
+              myName={myName}
+              listRef={sheetMessagesRef}
+              onMessagesScroll={handleMessagesScroll}
+            />
             {notice && (
               <div
                 role="status"

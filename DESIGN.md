@@ -1,6 +1,6 @@
 ---
 name: Torble
-description: Dünya haritası temelli, çok modlu coğrafya quiz oyunu — gece gökyüzü estetiğinde, parıltıyla canlanan koyu bir arayüz.
+description: Dünya haritası temelli, çok modlu coğrafya quiz oyunu — gece gökyüzü estetiğinde, parıltıyla canlanan koyu bir arayüz. Masaüstü/web frozen; mobil/native yüzeyler sıcak "gece atlası / keşif defteri" yönüne evriliyor (bkz. §1.1–§1.2).
 colors:
   bg: "#0d1117"
   surface: "#161b22"
@@ -96,7 +96,37 @@ Sistem koyu bir tonal katmanlama üzerine kuruludur: `bg → surface → surface
 
 Bu sistem `PRODUCT.md`'deki anti-referansları görsel olarak reddeder: ucuz/spam mobil oyunların parlak gradyan ve agresif pop-up gürültüsü yok; aşırı ciddi sınav yazılımının kuru griliği yok; kalabalık, her yeri bağıran bir UI yok; ve birbirinin aynı kart ızgaralı, ruhsuz kurumsal/SaaS dashboard hissi yok.
 
-> **Sıcaklık yön notu (gelecek):** Mevcut görsel dil bilinçli olarak koyu/teknik (GitHub-dark soyundan). `PRODUCT.md`'nin "eğlenceli & sıcak, davetkâr" kişiliği ile arada bir boşluk var. Bu doküman **bugünkü sistemi kanonik** olarak kaydeder. Sıcaklaştırma (daha yumuşak yüzeyler, sıcak vurgular, daha oyuncu detaylar) yalnızca **gelecekte hedeflenecek profil yüzeylerinde** uygulanacaktır; ana menü, oyun kartları, oyun ekranları ve global koyu-lacivert/mavi dil bu aşamada DEĞİŞMEZ.
+> **Önceki kısıt — ARTIK GEÇERSİZ:** Eskiden sıcaklaştırma yalnızca profil yüzeyleriyle sınırlıydı; ana menü, oyun kartları ve ekranlar bilinçli olarak "donuk" tutuluyordu. **Bu kısıt kaldırıldı.** Yeni kapsam ve yön §1.1–§1.2'dedir. Aşağıdaki §2–§6 kanonik sistemi **masaüstü/web için** referans olmaya devam eder.
+
+### 1.1 Kapsam — Neyin Değiştiği
+
+**Donuk / dokunulmaz — Masaüstü & geniş web.** Mevcut desktop/web deneyimi bütünüyle **frozen**. Bu dokümandaki kanonik tokenlar (§2–§6) web yüzeyleri için aynen geçerlidir; web bu çalışmada DEĞİŞMEZ.
+
+**Açık çalışma alanı — Mobil / dar viewport (≤600px) & native-app oyun yüzeyleri.** Yeniden ele alınabilir: ana menü (MobileHome), mod kartları, mod seçimleri, modal'lar ve oyun-içi HUD'lar.
+
+**Korunan çekirdek (değişmez).** Oyun kuralları, mod mantıkları, harita altyapısı, mevcut bilgi mimarisi ve temel navigasyon. Görsel sistem değişir, akış/IA değişmez.
+
+**Değişebilen yüzey.** Renk tokenları, yüzey derinliği/katmanlama, tipografi, başlık dili, buton hiyerarşisi, HUD düzeni ve mikro etkileşimler.
+
+> §1.2'deki yön, koda dökülmeden önce ayrı bir tasarım turunda (critique → shape) somut tokenlara çevrilecektir. §2–§6'daki sayılar bu aşamada **web kanonu**dur, mobil için yeniden kalibre edilebilecek başlangıç noktasıdır.
+
+### 1.2 Mobil/Native Hedef Yön — "Gece Atlası / Keşif Defteri"
+
+North Star sıcaklaşarak evrilir: gökyüzü atlası kalır ama bir **keşif defteri** sıcaklığı kazanır. Koyu tema korunur; ancak yüzeyler daha **sıcak, daha katmanlı ve daha canlı** olur. Harita arka plan değil, **oyun alanı** gibi okunmalı.
+
+**Bugünkü sorun.** Koyu lacivert-mavi sistem teknik olarak temiz ama fazla **soğuk** ve **düşük enerjili**; yer yer kurumsal dashboard / harita aracı hissi veriyor. Harita güçlü olsa da arka plan gibi algılanabiliyor.
+
+**Sıcaklık yönü (yön, kesin token DEĞİL).**
+- **Yüzeyler:** Tek-ton soğuk laciverdden, hafifçe sıcağa kaçan **katmanlı koyu yüzeylere**; tonal derinlik korunur ama daha okunur ve daha az "araç" hisli olur.
+- **Vurgu adayları:** Kontrollü **atlas-parşömen**, **turkuaz**, **mercan**, **güneş tonu**. Bunlar keşfedilecek yön adaylarıdır; final palet critique/shape turunda kararlaşır. **Tek Ses Kuralı korunur:** bir kimlik sesi + anlam renkleri; "her şey renkli" değil.
+- **Yasaklar (sürer + güçlenir):** çocukça/ucuz mobil-oyun estetiği YOK; generic neon-gradient dili YOK; sahte premium / dekoratif cam YOK. Premium his **özen + katmandan** gelir.
+
+**HUD & düzen prensipleri (referans: Ülke Yaz mobil ekranı).**
+- **Tek net birincil eylem.** Geri / dünya bilgisi / sayaç / ayar / mod seçimi / Serbest–Süreli kontrolleri **aynı anda eşit ağırlık taşımamalı**. Ana aksiyon görsel olarak öne çıkmalı; ikincil kontroller gruplanmalı/gizlenmeli. Üst HUD sadeleşmeli.
+- **Ölü state'i öldür.** "Önce bir mod seç" gibi pasif/ölü ifadeler yerine **davetkâr, yönlendiren bir başlangıç hali** (boş durum bir keşif daveti gibi okunmalı, eksik bir form gibi değil).
+- **Serbest/Süreli entegrasyonu.** Bu ayrım genel görsel dilden kopuk durmamalı; dile oturmuş, net bir **segment kontrolü** olmalı (anlam yalnız renge değil, etiket/ikona da dayanmalı — bkz. erişilebilirlik).
+
+**Tipografi tutarlılığı.** Modal başlıklarındaki condensed/display (Bebas Neue) ile genel gövde (DM Sans) arasındaki **kopukluk hissi** giderilmeli. "Sayılar Bebas, Cümleler DM" kuralı korunur; display **"büyük an"** (skor, sayaç, kahraman başlık) anlarına ayrılır; başlık/etiket hiyerarşisi DM Sans ile ölçek-ağırlık üzerinden tutarlı kurulur. Amaç: iki font tek bir sese hizmet etsin, iki ayrı sistem gibi çarpışmasın.
 
 **Key Characteristics:**
 - Gece gökyüzü / uzay atmosferi: koyu lacivert zemin, yıldız alanı, süzülen dünya logosu.
