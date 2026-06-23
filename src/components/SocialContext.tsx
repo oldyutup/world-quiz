@@ -76,6 +76,10 @@ interface SocialContextValue {
   onChangeAvatar?: () => void;
   /** Rozet slotuna tıklayınca sergileme editörünü açar (App bağlar). */
   onShowcaseBadges?: () => void;
+  /** Kendi profilimi düzenleme modallarından biri açık mı (App bağlar). Profil
+   *  kartı, üstte açık editör varken ESC ile kapanmaz; editör kapanınca kart
+   *  kendini tazeler. */
+  profileEditorOpen?: boolean;
   /** reward_ready bildirimi → ödül toplama ekranı (App bağlar). */
   onOpenRewards?: () => void;
   /** room_invite "Katıl" → oda linkine yönlendirme (App bağlar). */
@@ -106,6 +110,7 @@ interface SocialProviderProps {
   onShowcaseBadges?: () => void;
   onOpenRewards?: () => void;
   onJoinRoom?: (roomUrl: string) => void;
+  profileEditorOpen?: boolean;
   children: ReactNode;
 }
 
@@ -121,6 +126,7 @@ export function SocialProvider({
   onShowcaseBadges,
   onOpenRewards,
   onJoinRoom,
+  profileEditorOpen,
   children,
 }: SocialProviderProps) {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
@@ -269,6 +275,7 @@ export function SocialProvider({
       onShowcaseBadges,
       onOpenRewards,
       onJoinRoom,
+      profileEditorOpen,
       toast,
     }),
     [
@@ -289,6 +296,7 @@ export function SocialProvider({
       onShowcaseBadges,
       onOpenRewards,
       onJoinRoom,
+      profileEditorOpen,
       toast,
     ]
   );

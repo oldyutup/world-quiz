@@ -3064,78 +3064,10 @@ useEffect(() => {
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
       )}
 
-      {accountModalOpen && profile && (
-        <AccountSettingsModal
-          profile={profile}
-          gold={gold}
-          onClose={() => setAccountModalOpen(false)}
-          onUsernameSuccess={({ username, gold: newGold }) => {
-            setProfile((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    username,
-                    gold: newGold,
-                    username_changed_at: new Date().toISOString(),
-                    username_change_count:
-                      (prev.username_change_count ?? 0) + 1,
-                  }
-                : prev
-            );
-            setAccountModalOpen(false);
-          }}
-        />
-      )}
-
-      {avatarModalOpen && profile && (
-        <AvatarPickerModal
-          profile={profile}
-          onClose={() => setAvatarModalOpen(false)}
-          onSuccess={(avatarId) => {
-            setProfile((prev) =>
-              prev ? { ...prev, avatar_id: avatarId } : prev
-            );
-            setAvatarModalOpen(false);
-          }}
-        />
-      )}
-
-      {/* Merkezi profil düzenleme hub'ı — yalnız yönlendirir, mevcut akışları
-          tetikler (username / avatar / rozet). */}
-      {profileEditOpen && profile && (
-        <ProfileEditModal
-          profile={profile}
-          onClose={() => setProfileEditOpen(false)}
-          onChooseAccount={() => {
-            setProfileEditOpen(false);
-            setAccountModalOpen(true);
-          }}
-          onChooseAvatar={() => {
-            setProfileEditOpen(false);
-            setAvatarModalOpen(true);
-          }}
-          onChooseBadges={() => {
-            setProfileEditOpen(false);
-            setBadgeShowcaseOpen(true);
-          }}
-          onChooseBlocked={() => {
-            setProfileEditOpen(false);
-            setBlockedUsersOpen(true);
-          }}
-        />
-      )}
-
-      {badgeShowcaseOpen && profile && (
-        <BadgeShowcaseEditor
-          profile={profile}
-          onClose={() => setBadgeShowcaseOpen(false)}
-          onSaved={() => setBadgeShowcaseOpen(false)}
-        />
-      )}
-
-      {blockedUsersOpen && profile && (
-        <BlockedUsersModal onClose={() => setBlockedUsersOpen(false)} />
-      )}
+      {/* Profil düzenleme modalları (hub + alt akışlar) artık SocialProvider
+          altında GLOBAL mount ediliyor (bkz. renderProfileEditModals), böylece
+          home'un yanı sıra lobiler/oyun ekranlarındaki profil kartından da
+          açılabiliyor. Burada tekrar mount EDİLMEZ. */}
 
       {authOpen && (
   <AuthModal
@@ -3386,6 +3318,98 @@ useEffect(() => {
   );
   };
 
+  // Kendi profilimi düzenleme modalları (hub + alt akışlar). SocialProvider
+  // altında GLOBAL mount edilir; tetikleyici ister home dropdown'ı ister
+  // herhangi bir lobi/oyun ekranındaki PlayerProfileTrigger olsun, hepsi aynı
+  // açılış state'lerini (setProfileEditOpen vb.) paylaşır → tek modal yüzeyi.
+  const renderProfileEditModals = () =>
+    profile ? (
+      <>
+        {accountModalOpen && (
+          <AccountSettingsModal
+            profile={profile}
+            gold={gold}
+            onClose={() => setAccountModalOpen(false)}
+            onUsernameSuccess={({ username, gold: newGold }) => {
+              setProfile((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      username,
+                      gold: newGold,
+                      username_changed_at: new Date().toISOString(),
+                      username_change_count:
+                        (prev.username_change_count ?? 0) + 1,
+                    }
+                  : prev
+              );
+              setAccountModalOpen(false);
+            }}
+          />
+        )}
+
+        {avatarModalOpen && (
+          <AvatarPickerModal
+            profile={profile}
+            onClose={() => setAvatarModalOpen(false)}
+            onSuccess={(avatarId) => {
+              setProfile((prev) =>
+                prev ? { ...prev, avatar_id: avatarId } : prev
+              );
+              setAvatarModalOpen(false);
+            }}
+          />
+        )}
+
+        {/* Merkezi profil düzenleme hub'ı — yalnız yönlendirir, mevcut akışları
+            tetikler (username / avatar / rozet). */}
+        {profileEditOpen && (
+          <ProfileEditModal
+            profile={profile}
+            onClose={() => setProfileEditOpen(false)}
+            onChooseAccount={() => {
+              setProfileEditOpen(false);
+              setAccountModalOpen(true);
+            }}
+            onChooseAvatar={() => {
+              setProfileEditOpen(false);
+              setAvatarModalOpen(true);
+            }}
+            onChooseBadges={() => {
+              setProfileEditOpen(false);
+              setBadgeShowcaseOpen(true);
+            }}
+            onChooseBlocked={() => {
+              setProfileEditOpen(false);
+              setBlockedUsersOpen(true);
+            }}
+          />
+        )}
+
+        {badgeShowcaseOpen && (
+          <BadgeShowcaseEditor
+            profile={profile}
+            onClose={() => setBadgeShowcaseOpen(false)}
+            onSaved={() => setBadgeShowcaseOpen(false)}
+          />
+        )}
+
+        {blockedUsersOpen && (
+          <BlockedUsersModal onClose={() => setBlockedUsersOpen(false)} />
+        )}
+      </>
+    ) : null;
+
+  // Bir self-profil editör modalı açık mı? PlayerProfileTrigger, profil kartı
+  // ESC'sini bu açıkken bastırır (üstteki editör ESC'yi yönetsin) ve editör
+  // kapanınca açık kartı tazeler (kaydedilen avatar/ad/rozet anında görünsün).
+  const selfProfileEditorOpen =
+    profileEditOpen ||
+    accountModalOpen ||
+    avatarModalOpen ||
+    badgeShowcaseOpen ||
+    blockedUsersOpen;
+
   // Sosyal sistem (bildirim + profil kartı + davet) tüm ekranları sarar; böylece
   // leaderboard, lobiler ve oyun ekranlarında PlayerProfileTrigger/NotificationCenter
   // ortak bağlamı paylaşır. Web/mobil/native aynı provider.
@@ -3397,10 +3421,12 @@ useEffect(() => {
       onShowcaseBadges={profile ? () => setBadgeShowcaseOpen(true) : undefined}
       onOpenRewards={profile ? () => setAvatarModalOpen(true) : undefined}
       onJoinRoom={(roomUrl) => { window.location.href = roomUrl; }}
+      profileEditorOpen={selfProfileEditorOpen}
     >
       <PresenceProvider profile={profile}>
         <DmProvider profile={profile}>
           {renderScreen()}
+          {renderProfileEditModals()}
         </DmProvider>
       </PresenceProvider>
     </SocialProvider>

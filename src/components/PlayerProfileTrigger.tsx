@@ -11,7 +11,7 @@
  * Aksiyonlar SocialContext üzerinden yürür (arkadaş ekle / davet / self düzenle).
  * Guest oyuncularda (profileId yok) tıklama no-op'tur — kart açılmaz.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import {
   blockUser,
@@ -68,15 +68,37 @@ export function PlayerProfileTrigger({
     setLoading(false);
   }, [profileId]);
 
-  // ESC kapatma
+  // Kendi profilimi düzenleme modalı bu kartın ÜSTÜNDE açılır (z6100 > kart
+  // z1200). Açıkken kartın ESC'sini bastırırız ki ESC önce üstteki editörü
+  // kapatsın, kartı değil. Ref ile canlı okuruz (dinleyiciyi yeniden kurmadan).
+  const editorOpenRef = useRef(false);
+  editorOpenRef.current = !!social?.profileEditorOpen;
+
+  // ESC kapatma (üstte editör açıkken devre dışı)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !editorOpenRef.current) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, close]);
+
+  // Editör kapanınca (true→false) açık kendi kartımı tazele: kaydedilen avatar /
+  // kullanıcı adı / seviye / rozetler kartta anında görünsün. Kart açık değilse
+  // veya başkasının kartıysa no-op.
+  const prevEditorOpenRef = useRef(false);
+  useEffect(() => {
+    const editorOpen = !!social?.profileEditorOpen;
+    const justClosed = prevEditorOpenRef.current && !editorOpen;
+    prevEditorOpenRef.current = editorOpen;
+    if (!justClosed || !open || !profileId) return;
+    if (profile?.relationshipStatus !== "self") return;
+    void (async () => {
+      const p = await getPublicProfile(profileId);
+      if (p) setProfile(p);
+    })();
+  }, [social?.profileEditorOpen, open, profileId, profile?.relationshipStatus]);
 
   const handleAddFriend = useCallback(async () => {
     if (!profileId) return;
@@ -223,11 +245,11 @@ export function PlayerProfileTrigger({
                 onBlock={() => setConfirmKind("block")}
                 onUnblock={handleUnblock}
                 onEditProfile={() => {
-                  close();
+                  // Kartı KAPATMA: editör üstte açılır (z6100 > z1200), kapanınca
+                  // kullanıcı aynı karta döner. Kart, editör kapanınca tazelenir.
                   social?.onEditProfile?.();
                 }}
                 onEditBadges={() => {
-                  close();
                   social?.onShowcaseBadges?.();
                 }}
               />
