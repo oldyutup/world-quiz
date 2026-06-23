@@ -45,6 +45,7 @@ import {
   NAME_TO_ENTRY,
   normalizeInput,
   getFlagPool,
+  buildProgressionQueue,
   type Continent,
   type CountryEntry,
 } from "../data/countries";
@@ -360,15 +361,6 @@ function describeFlagDuelRpcError(err: FlagDuelRpcError | null | undefined): str
   if (m.includes("unauthorized"))             return "Bu işlem için yetkin yok.";
   if (err.code === "42501")                   return "Veritabanı izin hatası.";
   return err.message || "İşlem başarısız.";
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
 }
 
 /* online'da hep "all" — zorluk seçimi yok */
@@ -882,9 +874,15 @@ useEffect(() => {
   setHints(prev => ({ ...prev, [type]: true }));
 }, [onSpendGold]);
 
-  /* havuzu hazırla */
+  /* havuzu hazırla — zorluk eğrisi total_rounds boyunca yayılır (blok tier
+   * YOK). Host bu sıralı havuzu .find(ilk kullanılmamış) ile yürüttüğü için
+   * tur sırası ortak/adil kalır ve tüm oda için kolaydan zora ilerler.
+   * Bayrak'ta ülke dışlanmaz; mikro devletler/adalar geç tier'larda çıkar.
+   * span = total_rounds (yoksa varsayılan 10); golden round eğrinin p=1
+   * kuyruğundan (en zor) devam eder. */
   const buildPool = useCallback((region: string) => {
-    const pool = shuffle(buildFlagPoolForRegion(region));
+    const span = roomRef.current?.total_rounds ?? 10;
+    const pool = buildProgressionQueue(buildFlagPoolForRegion(region), span);
     setFlagPool(pool);
     flagPoolRef.current = pool;
     return pool;

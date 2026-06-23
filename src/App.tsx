@@ -36,6 +36,7 @@ import {
   normalizeInput,
   getContinentIds,
   getFlagPool,
+  buildProgressionQueue,
   getSilhouettePool,
   getSilhouetteRegion,
   isLandlocked,
@@ -1991,14 +1992,19 @@ function FlagGame({
   }, [g.guessedISOs, flagPool]);
 
   const buildQueue = useCallback(() => {
-    const q = shuffle([...flagPool]);
+    // Progression: ramp easy→hard across the game's length (no tier blocks).
+    // Time-based mode → estimate question count as ~1 flag / 4s so the curve
+    // completes within the chosen duration. No country is excluded from
+    // Bayrak; micro-states/islands surface in the later (harder) stages.
+    const span = Math.max(8, Math.min(Math.round(selectedDuration / 4), flagPool.length));
+    const q = buildProgressionQueue([...flagPool], span);
     setFlagQueue(q);
     setCurrentFlag(q[0] ?? null);
     setFlagIndex(0);
     setImgError(false);
     setSkipAnswer(null);
     resetHints();
-  }, [flagPool, resetHints]);
+  }, [flagPool, selectedDuration, resetHints]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (g.isPlaying) buildQueue(); }, [g.mode]);

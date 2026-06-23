@@ -68,7 +68,10 @@ import { LobbyInviteBar } from "./LobbyInviteBar";
 import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useSocialOptional } from "./SocialContext";
 import {
-  getFlagPool,
+  getWheelPool,
+  pickProgressionTopoId,
+  expectedWheelTargets,
+  targetIndexProgress,
   getContinentIds,
   TOPOID_TO_DISPLAY,
   type Continent,
@@ -119,13 +122,9 @@ const REGION_OPTIONS: { label: string; value: Region }[] = [
 
 /** Çark Çok Oyunculu hedef havuzundan ÇIKARILAN ülkeler.
  *  Wheel Duel ile aynı liste — mikro/ada ülkeleri online rekabette adil değil. */
-const WHEEL_GROUP_EXCLUDED_TOPOIDS = new Set<string>([
-  "020", "438", "470", "492", "674", "336",
-  "048", "462", "702",
-  "132", "174", "480", "678", "690",
-  "028", "052", "212", "308", "659", "662", "670",
-  "242", "296", "520", "583", "584", "585", "776", "798", "882",
-]);
+// Mikro / haritada tıklanamaz ülkeler artık merkezî WHEEL_INELIGIBLE_CODES
+// üzerinden getWheelPool() ile dışlanıyor (countries.ts). Eski yerel
+// WHEEL_GROUP_EXCLUDED_TOPOIDS seti kaldırıldı — tek kaynak orada.
 
 const PLAYER_ID_KEY = "geoquiz_wheel_group_player_id";
 const ROOM_KEY      = "geoquiz_wheel_group_room";
@@ -702,10 +701,10 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
   const buildTargetPool = useCallback((regionDb: string): string[] => {
     const denorm = denormalizeRegion(regionDb);
-    return getFlagPool(denorm as Continent | "world", "all")
+    // getWheelPool already drops micro / unclickable countries centrally.
+    return getWheelPool(denorm as Continent | "world", "all")
       .map(c => c.topoId)
-      .filter((id): id is string => !!id)
-      .filter(id => !WHEEL_GROUP_EXCLUDED_TOPOIDS.has(id));
+      .filter((id): id is string => !!id);
   }, []);
 
   /** Mevcut hedef için pas oyumu DB'ye yaz. Idempotent (sunucu unique
@@ -763,7 +762,20 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       return;
     }
 
-    const next = remaining[Math.floor(Math.random() * remaining.length)];
+    // Progression: zorluk geçen SÜREYE göre DEĞİL, tamamlanan ortak hedef
+    // sırasına göre artar (brief A). `used.size` host-otoriter + tüm grup için
+    // aynı → hızlı/yavaş oynamak zorluğu değiştirmez, sıra ortak/adil kalır.
+    // `duration_seconds` yalnız rampa uzunluğunu belirler; saat difficulty
+    // hesabına GİRMEZ.
+    const progress = targetIndexProgress(
+      used.size,
+      expectedWheelTargets(Number(r.duration_seconds) || 0),
+    );
+    const next = pickProgressionTopoId(remaining, progress);
+    if (!next) {
+      await finishGameRef.current?.("pool");
+      return;
+    }
 
     const { error } = await supabase.rpc("wheel_group_pick_target", {
       p_room_id:        r.id,
