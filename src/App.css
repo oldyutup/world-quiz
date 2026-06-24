@@ -15556,38 +15556,105 @@ body {
     drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)) !important;
 }
 
-/* ── Desktop board stage — KANONİK GAMEPLAY VIEWPORT (oran = viewBox 1005/490) ──
-   KÖK NEDEN (düzeltildi): harita eskiden `min(100%, calc((100dvh - reserve) *
-   1005/490))` ile ölçekleniyordu.  `100dvh` terimi haritanın piksel boyutunu
-   viewport YÜKSEKLİĞİNE (yani monitör çözünürlüğü + tarayıcı chrome yüksekliği)
-   bağlıyordu: kısa viewport / yüksek chrome'da yükseklik-terimi sınırlayıcı
-   olup haritayı küçültüyor, etrafında daha çok atmosferik zemin bırakıyordu.
-   Sonuç: AYNI maçta iki oyuncu farklı harita ölçeği/kadrajı görüyordu.
+/* ── Desktop board stage — SAFE-STAGE GEOMETRY (oran = viewBox 1005/490) ──
+   KÖK NEDEN (2 nesil hata):
+   1) İlk hata: harita `min(100%, calc((100dvh - reserve) * 1005/490))` ile
+      ölçekleniyordu → `100dvh` terimi haritayı SADECE viewport yüksekliğine
+      bağlıyordu; her chrome farkı haritayı farklı küçültüyor, aynı maçtaki iki
+      oyuncu farklı ölçek görüyordu.
+   2) Düzeltme denemesi: harita SABİT bir kanonik genişliğe (`--cq-canonical-
+      map-width`) kilitlendi + yükseklik bantları (max-height 820/702/638/589) +
+      `scale(1.055)` kompozisyon transform'u eklendi. Yan etkiler: (a) board-inner
+      içinde harita ÜSTTEN hizalıydı (justify yok) → yeterince uzun ama "yanlış
+      oranlı" viewport'ta harita yukarı asılıp ALTTA büyük ölü backdrop bırakıyordu;
+      (b) ayrık yükseklik bantları kısa viewport'ta haritayı gereğinden çok
+      küçültüyordu; (c) `scale(1.055)` görünür rect'i layout rect'ten ayırıyordu
+      (geniş desktopta ~%5 fazla büyük).
 
-   ÇÖZÜM: gameplay stage'i artık SABİT bir kanonik genişlikten ölçeklenir
-   (`--cq-canonical-map-width`), viewport yüksekliğinden TAMAMEN bağımsız.
-   Harita doğal oranını (1005/490) + SVG `meet` (contain) korur; tüm bölge
-   path'leri, marker'lar, etiketler ve hit-area'lar aynı viewBox koordinat
-   sisteminde olduğundan birlikte ölçeklenir, asla kaymaz.  Artan dikey/yatay
-   alanı zaten `cover` basılan atmosferik war-map backdrop'u doldurur.  Board
-   alanı (`overflow-y:auto`) yalnızca aşırı kısa viewport'ta nazik bir fallback
-   sağlar — ama haritanın ÖLÇEĞİ/MERKEZİ chrome yüksekliğiyle hiç değişmez.
-   Header / oyuncu paneli / soru kartı / bonus paneli `position:fixed` overlay
-   kalır; açılıp kapanmaları stage ölçüsünü etkilemez.  Kapsam: yalnız desktop
-   (≥601px) + .cq-game-screen; MobileConquestLayout bu kabuğu render etmez. */
+   ÇÖZÜM — ÖLÇÜLEN SAFE-STAGE (cihaz/çözünürlük bağımsız, breakpoint listesi YOK):
+     mapWidth = min(
+       preferredMapWidth,                       // yeterli alan varsa kullanılan max ölçek
+       100%,                                     // safe-stage GENİŞLİĞİ (board-inner içerik kutusu)
+       safeStageHeight × (1005/490)              // safe-stage YÜKSEKLİĞİ → orana çevrilmiş
+     )
+   • `preferredMapWidth` SABİT değil, TAVAN'dır: safe-stage onu sığdırabildiği
+     SÜRECE harita tam o pikselde kalır → yeterli alanı olan tüm desktop'lar (ve
+     dolayısıyla aynı maçtaki oyuncuların ezici çoğunluğu) AYNI ölçeği görür
+     (adalet korunur). Yalnız gerçekten kısa safe-stage haritayı SIĞACAK kadar
+     küçültür — eski 100dvh'nin "her chrome farkında küçült" davranışı DEĞİL.
+   • `--cq-stage-h` = haritaya kalan GERÇEK dikey alan; JS ölçüm hook'u (header +
+     footer + aktif sabit hamle/soru panelinin GERÇEK yüksekliğinden) hesaplar ve
+     bu değişkene yazar. CSS'te ham `100dvh` formülü YOK — yükseklik terimi
+     ölçülen geometriden gelir (eski yaklaşıma dönüş değil).
+   • İlk boyamada (hook çalışmadan) fallback `--cq-stage-h: 525px` → preferred
+     genişliği verir; hook useLayoutEffect'te boyamadan ÖNCE gerçek değeri yazar.
+   • Harita board-wrap içinde DİKEY + YATAY ORTALANIR; alt dock paneli için
+     ölçülen `--cq-stage-dock-reserve` kadar alt boşluk bırakılır → harita ne
+     üste yapışır ne altta ölü alan bırakır; normalize merkez tüm viewport'larda
+     tutarlı kalır.
+   • Hiç `transform: scale()/translateY` YOK → görünür rect == layout rect; SVG
+     viewBox + `meet` + tüm path/marker/hit-area koordinat sistemi DOKUNULMADAN
+     uniform ölçeklenir → bölge tıklama doğruluğu birebir korunur.
+   Kapsam: yalnız desktop (≥601px) + .cq-game-screen; MobileConquestLayout bu
+   kabuğu render etmez → mobil etkilenmez. */
 @media (min-width: 601px) {
   .app.duel-screen.cq-screen.cq-game-screen {
-    /* Kanonik tasarım genişliği — board-inner max-width ile eşleşir, böylece
-       yeterince geniş her desktop viewport'unda harita aynı pikselde kalır. */
-    --cq-canonical-map-width: 1050px;
+    /* Yeterli safe-stage olan geniş/uzun desktop'ta haritanın ulaşacağı TAVAN
+       GÖRÜNÜR genişliği = eski iyi MacBook referansının görünür boyutu.
+       Referans, eski layout genişliği (1018px) × eski `scale(1.055)` = ~1074px
+       idi; transform kaldırıldığı için aynı GÖRÜNÜR boyutu artık doğrudan
+       layout genişliği veriyor (görünür rect == layout rect). Map yüksekliği
+       buna bağlı: 1074 × 490/1005 ≈ 524 → referans ~1074×524 korunur. */
+    --cq-preferred-map-width: 1074px;
+    /* Haritaya kalan dikey alan (JS hook ölçer). Fallback = preferred genişliği
+       veren değer (1074 / (1005/490) ≈ 524); ham 100dvh formülü YOK. */
+    --cq-stage-h: 525px;
+    /* Alt dock (hamle/soru paneli) için board-wrap'in altında tutulan boşluk
+       (JS hook ölçer). Fallback 0 → hook çalışana kadar tam alanda ortalanır. */
+    --cq-stage-dock-reserve: 0px;
   }
+
+  /* Dekoratif harita başlığı header'daki harita rozetiyle zaten tekrarlı;
+     desktop'ta gizlenir → harita tüm safe-stage'i sahiplenir ve temiz ortalanır. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-map-title { display: none; }
+
+  /* Board alanı: haritayı dikey + yatay ortalayan flex kabuk. Alt dock için
+     ölçülen rezerv kadar padding-bottom; üstte küçük nefes payı.
+     `justify-content: safe center` → safe-stage sığdığında (gerçekçi tüm desktop
+     yükseklikleri) harita ORTALANIR ve scrollbar oluşmaz; yalnızca aşırı kısa
+     viewport + en uzun soru paneli gibi patolojik durumda hizalama `start`'a
+     düşer → harita üstten hizalanıp `overflow-y:auto` ile NAZİKÇE kaydırılabilir
+     (içerik kırpılmaz, üst kenar erişilebilir kalır). */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: safe center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 0 var(--cq-stage-dock-reserve);
+  }
+
+  /* board-inner içerik kutusu, geniş desktop'ta haritanın preferred GÖRÜNÜR
+     genişliğine ulaşabilmesi için preferred + yan padding kadar olmalı; yoksa
+     16px'lik yan padding `100%` terimini kısıp haritayı preferred'ın altında
+     tutardı. Dar viewport'ta (≤ ~1106px) board-inner viewport'a daralır ve yan
+     padding haritayı kenardan korur. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
-    max-width: var(--cq-canonical-map-width);
-    margin: 0 auto;
-    padding: 16px 16px 12px;
+    width: 100%;
+    max-width: calc(var(--cq-preferred-map-width) + 32px);
+    margin: 0;
+    padding: 0 16px;
+    display: flex;
+    justify-content: center;
   }
+
   .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
-    width: min(100%, var(--cq-canonical-map-width));
+    width: min(
+      var(--cq-preferred-map-width),
+      100%,
+      calc(var(--cq-stage-h) * 1005 / 490)
+    );
     margin: 0 auto;
     padding: 0;
     aspect-ratio: 1005 / 490;
@@ -24104,108 +24171,20 @@ html.is-native-app .social-bar .notif-bell { display: none; }
    olması için z-index'i yükseltir (nick-overlay 6200 → 6300). */
 .pwr-overlay { z-index: 6300; }
 
-/* Kuşatma — yalnız desktop map kompozisyon ince ayarı */
-@media (min-width: 601px) {
-  .app.duel-screen.cq-screen .cq-game-screen .cq-turkey-map-wrap {
-    --cq-map-scale: 1.055;
-    --cq-map-shift-y: -18px;
-    transform: translateY(var(--cq-map-shift-y)) scale(var(--cq-map-scale));
-    transform-origin: center center;
-  }
-}
-
-/* Kuşatma — yalnız desktop map kompozisyon ince ayarı */
-@media (min-width: 601px) {
-  .app.duel-screen.cq-screen .cq-game-screen .cq-turkey-map-wrap {
-    --cq-map-scale: 1.055;
-    --cq-map-shift-y: -18px;
-    transform: translateY(var(--cq-map-shift-y)) scale(var(--cq-map-scale));
-    transform-origin: center center;
-  }
-}
-
-/* Kuşatma desktop — map'i biraz büyüt ve yukarı al */
-@media (min-width: 601px) {
-  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
-    transform: translateY(-6px) scale(1.055) !important;
-    transform-origin: center center !important;
-  }
-}
-
-/* Kuşatma desktop — map kompozisyon ayarı */
-@media (min-width: 601px) {
-  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
-    --cq-map-y: 8px;
-    --cq-map-scale: 1.055;
-    transform: translateY(var(--cq-map-y)) scale(var(--cq-map-scale)) !important;
-    transform-origin: center center !important;
-  }
-}
-
 /* ═══════════════════════════════════════════════════════════════════════
-   KUŞATMA — KOMPAKT MASAÜSTÜ PROFİLİ (düşük yükseklikli desktop viewport)
-   ───────────────────────────────────────────────────────────────────────
-   KÖK NEDEN: Kanonik harita kutusu YÜKSEKLİKTEN BAĞIMSIZ (sabit ~1074×524,
-   `--cq-canonical-map-width` ile). Bu, "iki oyuncu farklı chrome yüksekliğinde
-   farklı ölçek görmesin" için bilinçliydi ve KORUNUYOR. Ama yan etki: kısa
-   masaüstü viewport'unda (örn. Windows Chrome 1366×768 → efektif ~640px) sabit
-   harita, alta sabitlenmiş (`position:fixed; bottom:60px`) `.cq-game-phase-panel`
-   (hamle paneli) ile çakışıyordu → panel haritanın güney bölgelerini
-   (Adana/Antep/Konya/Hatay) örtüp tıklanamaz yapıyor, board (`overflow-y:auto`)
-   dikey scroll'a düşüyordu. MacBook gibi uzun viewport'ta (≥~810px) alt boşluk
-   yeterli olduğundan sorun görünmüyordu.
-
-   ÇÖZÜM (eski 100dvh sürekli ölçeklemeye DÖNMEDEN): viewport YÜKSEKLİĞİNE göre
-   AYRIK (discrete) bantlar. Her bant içinde harita yine yükseklikten bağımsız
-   (aynı banttaki iki oyuncu birebir aynı ölçeği görür); küçük chrome farkları
-   bant sınırını nadiren geçtiğinden rekabet adaleti korunur. SVG viewBox,
-   preserveAspectRatio="xMidYMid meet" ve tüm bölge path/marker/hit-area
-   koordinat sistemi DEĞİŞMEZ — yalnız kanonik GENİŞLİK ve dekoratif chrome
-   (başlık/scale/panel konumu) banda göre ayarlanır, harita oranı (1005/490)
-   uniform ölçeklenir → bölge tıklama doğruluğu birebir korunur.
-   Kapsam: yalnız ≥601px + .cq-game-screen. Mobil (≤600px) MobileConquestLayout
-   kullanır, bu kabuğu hiç render etmez → etkilenmez. */
-@media (min-width: 601px) and (max-height: 820px) {
-  /* Dekoratif harita başlığı gizlenir → harita ~30px yukarı, altta panel için
-     boşluk açılır (başlık aria-hidden, salt dekoratif). */
-  .app.duel-screen.cq-screen.cq-game-screen .cq-game-map-title { display: none; }
-
-  /* Board iç boşluğu daraltılır. */
-  .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
-    padding: 8px 16px 6px;
-  }
-
-  /* Kompozisyon scale/translate kaldırılır → harita doğal kutusunda (öngörülebilir
-     yükseklik); 5.5% upscale'in görsel taşması da ortadan kalkar. */
-  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
-    transform: none !important;
-  }
-
-  /* Alt-dock hamle/soru paneli aşağı çekilir + daha sıkı padding → güney
-     bölgelerin üstünden kalkar. Yalnız alta sabitlenen fazlar; ortalanan
-     modal fazlar (finished / defense_duel / round_result) HARİÇ. */
-  .app.duel-screen.cq-screen.cq-game-screen
-    .cq-game-phase-panel:not([data-phase="finished"]):not([data-phase="defense_duel"]):not([data-phase="round_result"]) {
-    bottom: 14px;
-  }
-  .app.duel-screen.cq-screen.cq-game-screen .cq-game-phase-panel .cq-action-panel,
-  .app.duel-screen.cq-screen.cq-game-screen .cq-game-phase-panel .cq-challenge-panel {
-    padding: 11px 14px;
-  }
-}
-
-/* Daha kısa bantlar: kanonik GENİŞLİĞİ ayrık adımlarla küçült (harita oranı +
-   hit-area koordinat sistemi korunur; yalnız kutu küçülür). Sonraki (daha dar)
-   media bloğu önceki kanonik genişliği ezerek üst üste biner. */
-@media (min-width: 601px) and (max-height: 702px) {
-  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 920px; }
-}
-@media (min-width: 601px) and (max-height: 638px) {
-  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 820px; }
-}
-@media (min-width: 601px) and (max-height: 589px) {
-  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 720px; }
-}
+   KUŞATMA DESKTOP HARİTA — eski kompozisyon transform'ları + ayrık yükseklik
+   bantları KALDIRILDI. Hepsinin yerini ölçülen SAFE-STAGE sistemi aldı
+   (yukarıdaki "Desktop board stage — SAFE-STAGE GEOMETRY" bloğu + ConquestGame
+   içindeki useLayoutEffect ölçüm hook'u). Artık:
+     • `scale(1.055)` / `translateY` YOK → görünür rect == layout rect;
+     • max-height 820/702/638/589 ayrık bant YOK → harita genişliği ölçülen
+       safe-stage'ten süreklidir (cihaz/çözünürlük/breakpoint listesi bağımsız);
+     • başlık desktop'ta tek yerde (SAFE-STAGE bloğunda) gizlenir;
+     • alt dock paneli (`.cq-game-phase-panel`, `position:fixed; bottom:60px`)
+       konumu DEĞİŞMEZ; hook panelin GERÇEK yüksekliğini ölçüp board-wrap'e
+       `--cq-stage-dock-reserve` olarak yazar → harita panelin üstünde ortalanır,
+       güney bölgeleri panel altında kalmaz (tıklanabilirlik korunur).
+   Mobil (≤600px) MobileConquestLayout kullanır → etkilenmez. */
 
 /* ═══════════════════════════════════════════════════════════════════════
    KUŞATMA LOBİSİ — KOMPAKT MASAÜSTÜ PROFİLİ (düşük yükseklikli desktop)

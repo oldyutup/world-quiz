@@ -28,7 +28,7 @@
  * synced copy and push the returned next-state to Supabase.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   addGold,
   useGold,
@@ -505,6 +505,13 @@ export default function ConquestGame({
    *  without depending on the callback's identity in a closure. */
   const flashIllegalRef = useRef<((id: ConquestRegionId) => void) | null>(null);
 
+  // Desktop safe-stage geometry — root of the `.cq-game-screen` shell.  The
+  // measurement hook (useLayoutEffect below) reads header/footer/dock-panel
+  // sizes off this subtree and writes `--cq-stage-h` / `--cq-stage-dock-reserve`
+  // so the map fits + centres without scroll or panel overlap.  Null on mobile
+  // (that branch renders MobileConquestLayout, not this root).
+  const stageRootRef = useRef<HTMLDivElement | null>(null);
+
   // Stable refs so timeout callbacks always see the latest values without
   // needing to be in the dependency arrays (avoids restarting timers on every
   // gameState reference change).
@@ -893,6 +900,100 @@ export default function ConquestGame({
     );
     return () => timers.forEach(t => window.clearTimeout(t));
   }, [playerPoints]);
+
+  // ── Desktop safe-stage geometry (measured) ─────────────────────────
+  // Computes how much vertical room the map actually has and writes it to CSS
+  // custom properties consumed by the `min(preferred, 100%, stageH * aspect)`
+  // rule in App.css.  Device/resolution agnostic: it measures the real chrome
+  // (header + footer + the active fixed dock panel) rather than guessing from
+  // raw viewport height — so two players on different browser chrome converge
+  // on the preferred width whenever their safe stage can fit it, and the map
+  // only shrinks (to fit, still centred) on genuinely short stages.  Mobile
+  // (≤600px / MobileConquestLayout) leaves the ref null → the effect bails.
+  useLayoutEffect(() => {
+    const root = stageRootRef.current;
+    if (!root) return;
+
+    // Breathing room between the map and its neighbours (header above, dock
+    // panel / footer below).  Folded into both the reserve and the stage height
+    // so the centred map never butts against chrome.
+    const GAP_TOP = 10;
+    const GAP_BOTTOM = 14;
+
+    const compute = () => {
+      // Desktop-only guard: below 601px the mobile shell owns layout and this
+      // root isn't even rendered, but keep the width check defensive.
+      if (window.innerWidth <= 600) {
+        root.style.removeProperty("--cq-stage-h");
+        root.style.removeProperty("--cq-stage-dock-reserve");
+        return;
+      }
+
+      const header = root.querySelector<HTMLElement>(".cq-game-header");
+      const footer = root.querySelector<HTMLElement>(".cq-game-footer");
+      // Only the bottom-docked phase panels reserve space; the centred modal
+      // phases (finished / defense_duel / round_result) intentionally overlay
+      // the map and don't gate gameplay clicks, so they reserve nothing.
+      const dock = root.querySelector<HTMLElement>(
+        '.cq-game-phase-panel:not([data-phase="finished"])'
+          + ':not([data-phase="defense_duel"]):not([data-phase="round_result"])',
+      );
+
+      // Top of the content area = bottom edge of the sticky header.
+      const topBound = header ? header.getBoundingClientRect().bottom : 0;
+      // Bottom of the board-wrap content box (flex:1 row above the footer).
+      const footerTop = footer
+        ? footer.getBoundingClientRect().top
+        : window.innerHeight;
+      // The map must clear whichever sits higher: the footer or the dock panel.
+      let bottomBound = footerTop;
+      if (dock) {
+        const r = dock.getBoundingClientRect();
+        // Skip a panel that hasn't been laid out yet (0-height first frame).
+        if (r.height > 0) bottomBound = Math.min(bottomBound, r.top);
+      }
+
+      // Vertical room available to the map between header and the lower chrome.
+      // Floor keeps the map legible on extreme-short stages; if even that floor
+      // can't fit (tiny viewport + tallest panel) board-wrap's `safe center` +
+      // `overflow-y:auto` degrade to a reachable gentle scroll rather than clip.
+      const stageH = Math.max(
+        140,
+        Math.round(bottomBound - topBound - GAP_TOP - GAP_BOTTOM),
+      );
+      // Extra padding-bottom on board-wrap so flex-centring happens in the band
+      // ABOVE the dock panel (not the full header→footer box).  When nothing
+      // intrudes above the footer this collapses to just the bottom gap.
+      const dockReserve = Math.max(
+        GAP_BOTTOM,
+        Math.round(footerTop - bottomBound + GAP_BOTTOM),
+      );
+
+      root.style.setProperty("--cq-stage-h", `${stageH}px`);
+      root.style.setProperty("--cq-stage-dock-reserve", `${dockReserve}px`);
+    };
+
+    compute();
+
+    // Re-measure when chrome resizes (header wrap, panel content/phase swaps,
+    // footer wrap) or the viewport changes.  Observing the specific chrome
+    // elements (not the map) avoids any measure→resize feedback loop: writing
+    // the stage vars changes the map, never the header/footer/panel.
+    const ro = new ResizeObserver(compute);
+    ro.observe(root);
+    root.querySelectorAll<HTMLElement>(
+      ".cq-game-header, .cq-game-footer, .cq-game-phase-panel",
+    ).forEach(el => ro.observe(el));
+
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, [gameState?.phase, isMobile]);
 
   // ── Hidden bonuses — Suikast inventory + target picker ─────────────
   // Only renders the consume UI for the LOCAL viewer; opponents never see
@@ -5783,6 +5884,7 @@ export default function ConquestGame({
 
   return (
     <div
+      ref={stageRootRef}
       className="app duel-screen cq-screen cq-game-screen"
       style={themeStyle}
       data-theme={themeAttr}
