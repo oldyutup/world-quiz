@@ -11234,6 +11234,266 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   KUŞATMA — mobil / dar lobi bilgi mimarisi (yalnız ≤600px)
+   ───────────────────────────────────────────────────────────────
+   Masaüstü 3 panel düzeni FROZEN.  Mobilde orta kart, açık uzun bir
+   ayar formu yerine kompakt bir "Oda Ayarları" ÖZETİ gösterir; host
+   "Düzenle" ile alttan açılan gerçek bir sheet'te tüm ayarları
+   düzenler.  onChange/room-update mantığı değişmez — aynı kontroller
+   renderSettingsControls() ile iki yerde paylaşılır.
+
+   Kapsam: yalnız `.cq-*` lobi sınıfları + ≤600px.  ConquestSetup'ın
+   kendi `.cq-settings-selects` formu etkilenmez (o `.cq-settings-desktop`
+   sarmalayıcısının dışındadır).
+═══════════════════════════════════════════════════════════════ */
+
+/* Masaüstü tam form: display:contents → wrapper layout'a görünmez,
+   çocuklar (.cq-settings-selects + uyarı) orta kartın doğrudan flex
+   çocukları gibi davranır; masaüstü düzeni birebir korunur. */
+.cq-settings-desktop { display: contents; }
+
+/* Mobil özet kartı varsayılan gizli (masaüstünde hiç görünmez). */
+.cq-msettings { display: none; }
+
+@media (max-width: 600px) {
+  /* Masaüstü düzenlenebilir form mobilde gizli; yerini özet + sheet alır. */
+  .cq-settings-desktop { display: none; }
+
+  /* Mobil özet kartını göster. */
+  .cq-msettings { display: flex; }
+
+  /* Dock (Oyuncular/Sohbet FAB'ları) ana aksiyonları kapatmasın:
+     ana scroll container'a dock yüksekliği + iOS safe-area kadar alt
+     boşluk. (.cq-screen .cq-lobby-grid → paylaşılan .wgg-grid'i ezer.) */
+  .cq-screen .cq-lobby-grid {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Orta kart: oyun-uygulaması hissi için biraz daha sıkı. */
+  .cq-middle-card {
+    padding: 16px 15px 18px !important;
+    gap: 12px !important;
+  }
+
+  /* Kompakt oda başlığı. */
+  .cq-middle-card .cq-status-chip   { margin-bottom: 6px; }
+  .cq-middle-card .cq-room-code-big { font-size: 28px; letter-spacing: 0.16em; }
+  .cq-middle-card .cq-room-code-hint { font-size: 11px; margin-top: 3px; }
+
+  /* Davet kompakt kalsın: salt-okunur link alanı gizli (Kopyala yeterli);
+     Linki Kopyala + Arkadaş Davet Et butonları yan yana / dengeli iki satır. */
+  .cq-middle-card .cq-link-input { display: none; }
+
+  /* ── Oda Ayarları özeti — tek sıcak kart, altı özet satırı ── */
+  .cq-msettings {
+    flex-direction: column;
+    border: 1px solid var(--cq-hairline, rgba(255,255,255,0.12));
+    border-radius: 14px;
+    background: var(--cq-inset-bg, rgba(7,10,18,0.5));
+    overflow: hidden;
+  }
+  .cq-msettings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--cq-hairline, rgba(255,255,255,0.10));
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0));
+  }
+  .cq-msettings-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .cq-msettings-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 800;
+    cursor: pointer;
+    color: var(--cq-bronze, #cda05e);
+    background: oklch(0.300 0.022 70 / 0.45);
+    border: 1px solid var(--cq-bronze, #cda05e);
+    transition: filter 150ms ease, transform 100ms ease;
+  }
+  .cq-msettings-edit:hover  { filter: brightness(1.08); }
+  .cq-msettings-edit:active { transform: scale(0.97); }
+  .cq-msettings-ro {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  /* Yalnızca satır listesi bağımsız kayar; baş (başlık + Düzenle / salt-okunur
+     ipucu) sabit kalır çünkü .cq-msettings-head bu scroll kabının dışında,
+     kardeş öğedir. İlk açılışta ~3 satır (Harita / Oyuncu / Tur) tam görünür;
+     4. satırın ince bir dilimi altta sönerek "aşağıda devamı var" ipucunu verir.
+     Kart asla 6 satırı açık gösterecek kadar uzamaz, mobilde derli toplu kalır.
+     Scrollbar gizli ama kaydırma gerçek: iOS momentum + dikey pan; liste dibine
+     gelince sayfanın scroll'u doğal biçimde devralır (zincirleme açık). */
+  .cq-msettings-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 142px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: auto;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent 100%);
+  }
+  .cq-msettings-list::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  .cq-msettings-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 13px;
+    border-top: 1px solid var(--cq-hairline, rgba(255,255,255,0.07));
+  }
+  .cq-msettings-row:first-child { border-top: none; }
+  .cq-msettings-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+  .cq-msettings-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .cq-msettings-value {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+    text-align: right;
+  }
+}
+
+/* ── Mobil ayar düzenleme bottom sheet'i (yalnız host) ──
+   Render'ı koşullu (editOpen && isHost); ≥601px'te ekstra güvenlik
+   olarak display:none.  Sıcak Kuşatma panel token'larını miras alır. */
+.cq-esheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(8, 5, 3, 0.66);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: cq-esheet-fade 0.2s ease;
+}
+.cq-esheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cq-panel-bg, var(--surface));
+  border: 1px solid var(--cq-panel-bd, var(--border));
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--cq-panel-sh, 0 -10px 40px rgba(0, 0, 0, 0.5));
+  padding-bottom: env(safe-area-inset-bottom, 10px);
+  animation: cq-esheet-slide 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cq-esheet-handle {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--cq-hairline, rgba(255, 255, 255, 0.18));
+  margin: 9px auto 2px;
+  flex-shrink: 0;
+}
+.cq-esheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid var(--cq-hairline, rgba(255, 255, 255, 0.10));
+  flex-shrink: 0;
+}
+.cq-esheet-title {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.cq-esheet-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 9px;
+  transition: background 0.15s, color 0.15s;
+}
+.cq-esheet-close:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.cq-esheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Sheet içinde ayarlar tek kolon — büyük dokunma hedefi + okunurluk. */
+.cq-esheet-body .cq-settings-selects {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.cq-esheet-foot {
+  flex-shrink: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--cq-hairline, rgba(255, 255, 255, 0.10));
+}
+.cq-esheet-done {
+  width: 100%;
+  min-height: 46px;
+  font-size: 15px;
+  font-weight: 800;
+  border-radius: 12px;
+}
+@keyframes cq-esheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cq-esheet-slide {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cq-esheet-backdrop, .cq-esheet { animation: none; }
+}
+/* Sheet asla masaüstünde görünmesin (açıkken resize edge-case'i). */
+@media (min-width: 601px) {
+  .cq-esheet-backdrop { display: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    KUŞATMA — "savaş masası" sıcak tema (yalnız lobi / setup yüzeyleri)
    ───────────────────────────────────────────────────────────────
    Soğuk lacivert-mavi yüzeyleri sıcak kömür + dumanlı slate + mat
@@ -23668,6 +23928,24 @@ html.is-native-app .social-bar .notif-bell { display: none; }
       rgba(5, 11, 23, 0.42) 100%
     ),
     url("/assets/backgrounds/conquest-lobby-bg.webp") center center / cover no-repeat !important;
+}
+
+/* Mobil / dar viewport: dikey kompozisyonlu özel lobi arka planı.
+   Masaüstü wide background (yukarıdaki kural) DEĞİŞMEZ.  Sıcak kömür/bronz
+   temaya uyumlu; düşük yoğunluklu koyu gradient yalnız okunabilirlik için
+   (görseli tamamen karartmaz). */
+@media (max-width: 600px) {
+  .app.duel-screen.cq-screen:not(.cq-game-screen) {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(18, 11, 5, 0.30) 0%,
+        rgba(14, 9, 5, 0.40) 44%,
+        rgba(10, 7, 4, 0.66) 100%
+      ),
+      url("/assets/backgrounds/conquest-lobby-mobile.png") center top / cover no-repeat !important;
+    background-attachment: scroll !important;
+  }
 }
 
 /* Profil paneli — günlük bonus metni */

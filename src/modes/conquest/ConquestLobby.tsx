@@ -46,6 +46,7 @@ import {
   CONQUEST_MAP_SELECTION_ASSET,
   CONQUEST_SETTING_ASSETS,
   getConquestBonusDistributionOptionAsset,
+  getConquestMapAsset,
   getConquestTeamModeOptionAsset,
   getConquestVisibilityOptionAsset,
 } from "./conquestIcons";
@@ -159,6 +160,12 @@ export default function ConquestLobby({
   const [chatOpen,    setChatOpen]    = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  /* Mobile-only: host taps "Düzenle" on the room-settings summary to open a
+   * bottom sheet holding the full (editable) settings controls. Desktop never
+   * opens it (the summary + edit button live in a mobile-only surface, and a
+   * CSS guard keeps the sheet hidden ≥601px). Non-host players have no edit
+   * button, so they only ever see the read-only summary. */
+  const [editOpen, setEditOpen] = useState(false);
   /* Surfaces the "Oyuncu sayısı mevcut oyuncu sayısından düşük olamaz"
    * warning ONLY after the host actively tries to pick a capacity below
    * the current player count. Auto-clears so it never becomes ambient
@@ -349,6 +356,20 @@ export default function ConquestLobby({
   useEffect(() => {
     if (!playersOpen) setMobileBonusDetail(null);
   }, [playersOpen]);
+
+  /* Settings edit sheet (mobile): close on Esc, and never leave it open for a
+   * player who is not (or is no longer) the host. */
+  useEffect(() => {
+    if (!editOpen) return;
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setEditOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [editOpen]);
+  useEffect(() => {
+    if (!isHost && editOpen) setEditOpen(false);
+  }, [isHost, editOpen]);
 
   /* Auto-clear the capacity warning so it doesn't linger if the host
    * walks away or picks a valid value afterwards. */
@@ -810,6 +831,251 @@ export default function ConquestLobby({
     );
   }
 
+  /* The full, editable room-settings controls. Rendered inline on desktop
+   * (inside `.cq-settings-desktop`, frozen layout) AND inside the mobile edit
+   * sheet. Both share the exact same handlers — the change/onChange wiring is
+   * untouched, so settings still apply instantly the moment a value changes. */
+  function renderSettingsControls() {
+    return (
+      <>
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_MAP_SELECTION_ASSET} alt="Harita" className="cq-setting-icon" size={22} fallbackName="map" /> Harita
+          </label>
+          <ConquestMapSelect
+            value={settings.map}
+            disabled={!isHost}
+            onChange={map => onUpdateSettings({ map })}
+          />
+        </div>
+
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.players} alt="Oyuncu" className="cq-setting-icon" size={22} fallbackName="people" /> Oyuncu
+          </label>
+          <div className="duel-select-box">
+            <select
+              className="duel-select"
+              value={settings.maxPlayers}
+              disabled={!isHost}
+              style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+              onChange={e => {
+                const next = Number(e.target.value) as ConquestMaxPlayers;
+                if (next < players.length) {
+                  setCapacityWarn(next);
+                  return;
+                }
+                setCapacityWarn(null);
+                onUpdateSettings({ maxPlayers: next });
+              }}
+            >
+              {CONQUEST_PLAYER_COUNTS.map(n => (
+                <option key={n} value={n}>
+                  {n} Kişi
+                </option>
+              ))}
+            </select>
+            <span className="duel-select-caret">▾</span>
+          </div>
+        </div>
+
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.rounds} alt="Tur" className="cq-setting-icon" size={22} fallbackName="refresh" /> Tur
+          </label>
+          <div className="duel-select-box">
+            <select
+              className="duel-select"
+              value={settings.rounds}
+              disabled={!isHost}
+              style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
+              onChange={e => onUpdateSettings({ rounds: Number(e.target.value) as ConquestRoundCount })}
+            >
+              {CONQUEST_ROUND_COUNTS.map(r => (
+                <option key={r} value={r}>{r} Tur</option>
+              ))}
+            </select>
+            <span className="duel-select-caret">▾</span>
+          </div>
+        </div>
+
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.visibility} alt="Görünürlük" className="cq-setting-icon" size={22} fallbackName="unlock" /> Görünürlük
+          </label>
+          <ConquestIconSelect<ConquestVisibility>
+            value={settings.visibility}
+            disabled={!isHost}
+            ariaLabel="Oda görünürlüğü seç"
+            onChange={v => onUpdateSettings({ visibility: v })}
+            options={[
+              { value: "public",  label: "Açık Oda",  iconSrc: getConquestVisibilityOptionAsset("public"),  fallbackChar: "🌐" },
+              { value: "private", label: "Gizli Oda", iconSrc: getConquestVisibilityOptionAsset("private"), fallbackChar: "🔒" },
+            ]}
+          />
+        </div>
+
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.bonusDistribution} alt="Bonus Dağıtımı" className="cq-setting-icon" size={22} fallbackChar="🎁" /> Bonus Dağıtımı
+          </label>
+          <ConquestIconSelect<ConquestBonusDistribution>
+            value={bonusMode}
+            disabled={!isHost}
+            ariaLabel="Bonus dağıtımı seç"
+            onChange={onChangeBonusDistribution}
+            options={[
+              { value: "random", label: "Rastgele",   iconSrc: getConquestBonusDistributionOptionAsset("random"), fallbackChar: "🎲" },
+              { value: "vote",   label: "Oy ile Seç", iconSrc: getConquestBonusDistributionOptionAsset("vote"),   fallbackChar: "🗳️" },
+            ]}
+          />
+        </div>
+
+        <div className="duel-select-wrap">
+          <label className="duel-select-label">
+            <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.gameMode} alt="Oyun Tipi" className="cq-setting-icon" size={22} fallbackName="swords" /> Oyun Tipi
+          </label>
+          <ConquestIconSelect<ConquestTeamMode>
+            value={teamMode}
+            disabled={!isHost}
+            ariaLabel="Oyun tipi seç"
+            title={
+              isHost && !teamModeSelectable
+                ? "2v2 Takımlı mod için oda kapasitesi 4 olmalı."
+                : undefined
+            }
+            onChange={next => {
+              // 2v2 yalnız kapasite 4 iken seçilebilir — seçenek devre dışıyken
+              // zaten pick edilemez; çift güvence olarak burada da geç.
+              if (next === "teams_2v2" && !teamModeSelectable) return;
+              onChangeTeamMode(next);
+            }}
+            options={[
+              { value: "individual", label: "Bireysel",      iconSrc: getConquestTeamModeOptionAsset("individual"), fallbackName: "bust" },
+              { value: "teams_2v2",  label: "2v2 Takımlı",   iconSrc: getConquestTeamModeOptionAsset("teams_2v2"),  fallbackName: "shield", disabled: !teamModeSelectable },
+            ]}
+          />
+          {isHost && !teamModeSelectable && (
+            <p className="cq-team-mode-helper" role="status">
+              2v2 Takımlı mod için oda kapasitesi 4 olmalı.
+            </p>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  /* Mobile-only compact read-out of the current room settings: one warm card,
+   * six summary rows (each with its custom Kuşatma PNG icon). Host gets a
+   * "Düzenle" affordance that opens the edit sheet; non-host sees a read-only
+   * hint in the same slot. */
+  function renderMobileSettingsSummary() {
+    const rows: Array<{
+      key: string;
+      label: string;
+      value: string;
+      iconSrc: string;
+      fallbackName?: import("../../components/EmojiIcon").EmojiIconName;
+      fallbackChar?: string;
+    }> = [
+      { key: "map",        label: "Harita",     value: mapLabel(settings.map),                                  iconSrc: getConquestMapAsset(settings.map) ?? CONQUEST_MAP_SELECTION_ASSET, fallbackName: "map" },
+      { key: "players",    label: "Oyuncu",     value: `${settings.maxPlayers} Kişi`,                           iconSrc: CONQUEST_SETTING_ASSETS.players,    fallbackName: "people" },
+      { key: "rounds",     label: "Tur",        value: `${settings.rounds} Tur`,                               iconSrc: CONQUEST_SETTING_ASSETS.rounds,     fallbackName: "refresh" },
+      { key: "visibility", label: "Görünürlük", value: settings.visibility === "public" ? "Açık Oda" : "Gizli Oda", iconSrc: getConquestVisibilityOptionAsset(settings.visibility), fallbackChar: settings.visibility === "public" ? "🌐" : "🔒" },
+      { key: "bonus",      label: "Bonus",      value: bonusMode === "vote" ? "Oy ile Seç" : "Rastgele",       iconSrc: getConquestBonusDistributionOptionAsset(bonusMode), fallbackChar: bonusMode === "vote" ? "🗳️" : "🎲" },
+      { key: "mode",       label: "Oyun Tipi",  value: isTeamMode ? "2v2 Takımlı" : "Bireysel",                iconSrc: getConquestTeamModeOptionAsset(teamMode), fallbackName: isTeamMode ? "shield" : "bust" },
+    ];
+    return (
+      <section className="cq-msettings" aria-label="Oda ayarları özeti">
+        <header className="cq-msettings-head">
+          <span className="cq-msettings-title">
+            <EmojiIcon name="gear" size={18} /> Oda Ayarları
+          </span>
+          {isHost ? (
+            <button
+              type="button"
+              className="cq-msettings-edit"
+              onClick={() => { playSound("click"); setEditOpen(true); }}
+              aria-haspopup="dialog"
+              aria-expanded={editOpen}
+            >
+              <EmojiIcon name="gear" size={15} /> Düzenle
+            </button>
+          ) : (
+            <span className="cq-msettings-ro">Yalnızca ev sahibi</span>
+          )}
+        </header>
+        <ul className="cq-msettings-list">
+          {rows.map(r => (
+            <li key={r.key} className="cq-msettings-row">
+              <span className="cq-msettings-icon" aria-hidden>
+                <ConquestAssetIcon src={r.iconSrc} alt="" size={22} fallbackName={r.fallbackName} fallbackChar={r.fallbackChar} />
+              </span>
+              <span className="cq-msettings-label">{r.label}</span>
+              <span className="cq-msettings-value">{r.value}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
+  /* Mobile-only settings edit bottom sheet (host only). Reuses the exact same
+   * editable controls as desktop via renderSettingsControls(). Escape / backdrop
+   * / close button all dismiss; a CSS guard hides it ≥601px as a belt-and-braces
+   * against a resize while open. */
+  function renderEditSheet() {
+    if (!editOpen || !isHost) return null;
+    return (
+      <div
+        className="cq-esheet-backdrop"
+        onClick={() => setEditOpen(false)}
+      >
+        <div
+          className="cq-esheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Oda Ayarları"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="cq-esheet-handle" aria-hidden />
+          <header className="cq-esheet-head">
+            <span className="cq-esheet-title">
+              <EmojiIcon name="gear" size={20} /> Oda Ayarları
+            </span>
+            <button
+              type="button"
+              className="cq-esheet-close"
+              aria-label="Kapat"
+              onClick={() => setEditOpen(false)}
+            >
+              ✕
+            </button>
+          </header>
+          <div className="cq-esheet-body">
+            <div className="cq-settings-selects" role="group" aria-label="Kuşatma oda ayarları">
+              {renderSettingsControls()}
+            </div>
+            {capacityWarn !== null && (
+              <p className="cq-player-count-warn" role="status">
+                Oyuncu sayısı mevcut oyuncu sayısından ({players.length}) düşük olamaz.
+              </p>
+            )}
+          </div>
+          <div className="cq-esheet-foot">
+            <button
+              type="button"
+              className="btn btn-accent cq-esheet-done"
+              onClick={() => { playSound("click"); setEditOpen(false); }}
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="duel-lobby">
       <div className="wgg-grid cq-lobby-grid">
@@ -912,138 +1178,23 @@ export default function ConquestLobby({
             />
           </div>
 
-          {/* ── Editable settings (selects for host, disabled for guests) ── */}
-          <div className="cq-settings-selects" role="group" aria-label="Kuşatma oda ayarları">
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_MAP_SELECTION_ASSET} alt="Harita" className="cq-setting-icon" size={22} fallbackName="map" /> Harita
-              </label>
-              <ConquestMapSelect
-                value={settings.map}
-                disabled={!isHost}
-                onChange={map => onUpdateSettings({ map })}
-              />
+          {/* ── Mobil/dar: kompakt salt-okunur ayar özeti (host → Düzenle) ── */}
+          {renderMobileSettingsSummary()}
+
+          {/* ── Masaüstü: tam düzenlenebilir ayar formu (mobilde gizli) ──
+              `.cq-settings-desktop` masaüstünde display:contents ile şeffaftır
+              (düzen birebir korunur), ≤600px'te display:none ile gizlenir. */}
+          <div className="cq-settings-desktop">
+            <div className="cq-settings-selects" role="group" aria-label="Kuşatma oda ayarları">
+              {renderSettingsControls()}
             </div>
 
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.players} alt="Oyuncu" className="cq-setting-icon" size={22} fallbackName="people" /> Oyuncu
-              </label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={settings.maxPlayers}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => {
-                    const next = Number(e.target.value) as ConquestMaxPlayers;
-                    if (next < players.length) {
-                      setCapacityWarn(next);
-                      return;
-                    }
-                    setCapacityWarn(null);
-                    onUpdateSettings({ maxPlayers: next });
-                  }}
-                >
-                  {CONQUEST_PLAYER_COUNTS.map(n => (
-                    <option key={n} value={n}>
-                      {n} Kişi
-                    </option>
-                  ))}
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
-            </div>
-
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.rounds} alt="Tur" className="cq-setting-icon" size={22} fallbackName="refresh" /> Tur
-              </label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={settings.rounds}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => onUpdateSettings({ rounds: Number(e.target.value) as ConquestRoundCount })}
-                >
-                  {CONQUEST_ROUND_COUNTS.map(r => (
-                    <option key={r} value={r}>{r} Tur</option>
-                  ))}
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
-            </div>
-
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.visibility} alt="Görünürlük" className="cq-setting-icon" size={22} fallbackName="unlock" /> Görünürlük
-              </label>
-              <ConquestIconSelect<ConquestVisibility>
-                value={settings.visibility}
-                disabled={!isHost}
-                ariaLabel="Oda görünürlüğü seç"
-                onChange={v => onUpdateSettings({ visibility: v })}
-                options={[
-                  { value: "public",  label: "Açık Oda",  iconSrc: getConquestVisibilityOptionAsset("public"),  fallbackChar: "🌐" },
-                  { value: "private", label: "Gizli Oda", iconSrc: getConquestVisibilityOptionAsset("private"), fallbackChar: "🔒" },
-                ]}
-              />
-            </div>
-
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.bonusDistribution} alt="Bonus Dağıtımı" className="cq-setting-icon" size={22} fallbackChar="🎁" /> Bonus Dağıtımı
-              </label>
-              <ConquestIconSelect<ConquestBonusDistribution>
-                value={bonusMode}
-                disabled={!isHost}
-                ariaLabel="Bonus dağıtımı seç"
-                onChange={onChangeBonusDistribution}
-                options={[
-                  { value: "random", label: "Rastgele",   iconSrc: getConquestBonusDistributionOptionAsset("random"), fallbackChar: "🎲" },
-                  { value: "vote",   label: "Oy ile Seç", iconSrc: getConquestBonusDistributionOptionAsset("vote"),   fallbackChar: "🗳️" },
-                ]}
-              />
-            </div>
-
-            <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.gameMode} alt="Oyun Tipi" className="cq-setting-icon" size={22} fallbackName="swords" /> Oyun Tipi
-              </label>
-              <ConquestIconSelect<ConquestTeamMode>
-                value={teamMode}
-                disabled={!isHost}
-                ariaLabel="Oyun tipi seç"
-                title={
-                  isHost && !teamModeSelectable
-                    ? "2v2 Takımlı mod için oda kapasitesi 4 olmalı."
-                    : undefined
-                }
-                onChange={next => {
-                  // 2v2 yalnız kapasite 4 iken seçilebilir — seçenek devre dışıyken
-                  // zaten pick edilemez; çift güvence olarak burada da geç.
-                  if (next === "teams_2v2" && !teamModeSelectable) return;
-                  onChangeTeamMode(next);
-                }}
-                options={[
-                  { value: "individual", label: "Bireysel",      iconSrc: getConquestTeamModeOptionAsset("individual"), fallbackName: "bust" },
-                  { value: "teams_2v2",  label: "2v2 Takımlı",   iconSrc: getConquestTeamModeOptionAsset("teams_2v2"),  fallbackName: "shield", disabled: !teamModeSelectable },
-                ]}
-              />
-              {isHost && !teamModeSelectable && (
-                <p className="cq-team-mode-helper" role="status">
-                  2v2 Takımlı mod için oda kapasitesi 4 olmalı.
-                </p>
-              )}
-            </div>
+            {isHost && capacityWarn !== null && (
+              <p className="cq-player-count-warn" role="status">
+                Oyuncu sayısı mevcut oyuncu sayısından ({players.length}) düşük olamaz.
+              </p>
+            )}
           </div>
-
-          {isHost && capacityWarn !== null && (
-            <p className="cq-player-count-warn" role="status">
-              Oyuncu sayısı mevcut oyuncu sayısından ({players.length}) düşük olamaz.
-            </p>
-          )}
 
           <div className="cq-spacer" />
 
@@ -1204,6 +1355,9 @@ export default function ConquestLobby({
           </div>
         </div>
       )}
+
+      {/* ════ MOBİL: Host oda-ayarları düzenleme sheet'i ════ */}
+      {renderEditSheet()}
     </div>
   );
 }
