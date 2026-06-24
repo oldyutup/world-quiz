@@ -24142,6 +24142,102 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   KUŞATMA — KOMPAKT MASAÜSTÜ PROFİLİ (düşük yükseklikli desktop viewport)
+   ───────────────────────────────────────────────────────────────────────
+   KÖK NEDEN: Kanonik harita kutusu YÜKSEKLİKTEN BAĞIMSIZ (sabit ~1074×524,
+   `--cq-canonical-map-width` ile). Bu, "iki oyuncu farklı chrome yüksekliğinde
+   farklı ölçek görmesin" için bilinçliydi ve KORUNUYOR. Ama yan etki: kısa
+   masaüstü viewport'unda (örn. Windows Chrome 1366×768 → efektif ~640px) sabit
+   harita, alta sabitlenmiş (`position:fixed; bottom:60px`) `.cq-game-phase-panel`
+   (hamle paneli) ile çakışıyordu → panel haritanın güney bölgelerini
+   (Adana/Antep/Konya/Hatay) örtüp tıklanamaz yapıyor, board (`overflow-y:auto`)
+   dikey scroll'a düşüyordu. MacBook gibi uzun viewport'ta (≥~810px) alt boşluk
+   yeterli olduğundan sorun görünmüyordu.
+
+   ÇÖZÜM (eski 100dvh sürekli ölçeklemeye DÖNMEDEN): viewport YÜKSEKLİĞİNE göre
+   AYRIK (discrete) bantlar. Her bant içinde harita yine yükseklikten bağımsız
+   (aynı banttaki iki oyuncu birebir aynı ölçeği görür); küçük chrome farkları
+   bant sınırını nadiren geçtiğinden rekabet adaleti korunur. SVG viewBox,
+   preserveAspectRatio="xMidYMid meet" ve tüm bölge path/marker/hit-area
+   koordinat sistemi DEĞİŞMEZ — yalnız kanonik GENİŞLİK ve dekoratif chrome
+   (başlık/scale/panel konumu) banda göre ayarlanır, harita oranı (1005/490)
+   uniform ölçeklenir → bölge tıklama doğruluğu birebir korunur.
+   Kapsam: yalnız ≥601px + .cq-game-screen. Mobil (≤600px) MobileConquestLayout
+   kullanır, bu kabuğu hiç render etmez → etkilenmez. */
+@media (min-width: 601px) and (max-height: 820px) {
+  /* Dekoratif harita başlığı gizlenir → harita ~30px yukarı, altta panel için
+     boşluk açılır (başlık aria-hidden, salt dekoratif). */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-map-title { display: none; }
+
+  /* Board iç boşluğu daraltılır. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
+    padding: 8px 16px 6px;
+  }
+
+  /* Kompozisyon scale/translate kaldırılır → harita doğal kutusunda (öngörülebilir
+     yükseklik); 5.5% upscale'in görsel taşması da ortadan kalkar. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
+    transform: none !important;
+  }
+
+  /* Alt-dock hamle/soru paneli aşağı çekilir + daha sıkı padding → güney
+     bölgelerin üstünden kalkar. Yalnız alta sabitlenen fazlar; ortalanan
+     modal fazlar (finished / defense_duel / round_result) HARİÇ. */
+  .app.duel-screen.cq-screen.cq-game-screen
+    .cq-game-phase-panel:not([data-phase="finished"]):not([data-phase="defense_duel"]):not([data-phase="round_result"]) {
+    bottom: 14px;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-phase-panel .cq-action-panel,
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-phase-panel .cq-challenge-panel {
+    padding: 11px 14px;
+  }
+}
+
+/* Daha kısa bantlar: kanonik GENİŞLİĞİ ayrık adımlarla küçült (harita oranı +
+   hit-area koordinat sistemi korunur; yalnız kutu küçülür). Sonraki (daha dar)
+   media bloğu önceki kanonik genişliği ezerek üst üste biner. */
+@media (min-width: 601px) and (max-height: 702px) {
+  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 920px; }
+}
+@media (min-width: 601px) and (max-height: 638px) {
+  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 820px; }
+}
+@media (min-width: 601px) and (max-height: 589px) {
+  .app.duel-screen.cq-screen.cq-game-screen { --cq-canonical-map-width: 720px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   KUŞATMA LOBİSİ — KOMPAKT MASAÜSTÜ PROFİLİ (düşük yükseklikli desktop)
+   ───────────────────────────────────────────────────────────────────────
+   KÖK NEDEN: 3-kolonlu lobi gridinin orta kartı (oda kodu + davet + 6 ayar +
+   başlat) sabit ~600px yüksekliğinde; kısa viewport'ta `.duel-lobby`
+   (`overflow-y:auto`) içinde dikey scroll oluşuyordu. ÇÖZÜM: 3-kolonlu desktop
+   gridin yaşadığı ≥900px genişlik + kısa yükseklikte spacing/padding daraltılır,
+   salt-tekrar olan link input gizlenir → ana kontroller (kod + ayarlar +
+   "Oyunu Başlat") scroll'suz sığar. Mobil/dar (≤899px) tek-kolon lobi
+   DOKUNULMAZ; masaüstü uzun viewport DEĞİŞMEZ. Eşik 740px: ölçülen scroll
+   sınırı (~vp 716) + gerçek kartın olası ekstra yüksekliği için pay. */
+@media (min-width: 900px) and (max-height: 740px) {
+  .cq-screen:not(.cq-game-screen) .duel-lobby { padding-top: 8px; padding-bottom: 8px; }
+  .cq-screen:not(.cq-game-screen) .wgg-grid { padding: 8px 12px 10px; gap: 12px; }
+  .cq-screen:not(.cq-game-screen) .wgg-middle-card {
+    padding: 14px 18px 14px !important;
+    gap: 9px !important;
+  }
+  .cq-screen:not(.cq-game-screen) .wgg-players-card { padding: 12px 14px 12px !important; }
+  .cq-screen:not(.cq-game-screen) .cq-status-chip { margin-bottom: 4px; }
+  .cq-screen:not(.cq-game-screen) .cq-room-code-big { font-size: 28px; }
+  .cq-screen:not(.cq-game-screen) .cq-room-code-hint { margin-top: 2px; }
+  /* Kopyala butonu işlevi karşıladığından salt-okunur link input kısa
+     viewport'ta gizlenir (mobilde zaten gizli). */
+  .cq-screen:not(.cq-game-screen) .cq-middle-card .cq-link-input { display: none; }
+  .cq-screen:not(.cq-game-screen) .cq-settings-selects { gap: 8px; }
+  .cq-screen:not(.cq-game-screen) .cq-middle-card .duel-select { height: 38px; }
+  .cq-screen:not(.cq-game-screen) .cq-actions { gap: 8px; }
+  .cq-screen:not(.cq-game-screen) .cq-start-btn { min-height: 40px; }
+}
+
 /* Kuşatma: oda kur / lobi / kodla katıl / oda listesi için ayrı arka plan.
    Aktif oyun (.cq-game-screen) mevcut conquest-war-map görünümünü korur. */
 .app.duel-screen.cq-screen:not(.cq-game-screen) {
