@@ -171,6 +171,7 @@ import ConquestBonusGuide, {
 } from "./ConquestBonusGuide";
 import XpGainBar from "../../components/XpGainBar";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import { ConquestBonusIcon } from "./ConquestAssetIcon";
 import {
   awardXpEvent,
   calculateConquestXp,
@@ -3508,6 +3509,17 @@ export default function ConquestGame({
   }, [lastResult]);
 
   const rrcIcon     = mancinikComboCard?.icon     ?? kaleSurlariCaptureCard?.icon     ?? bereketCaptureCard?.icon     ?? kahinCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? mancinikCaptureCard?.icon     ?? mancinikUsedCard?.icon     ?? rrcData.icon;
+  // Bonus *tipi* — yalnız bonus-fethi kartları için (sıra: rrcIcon ile birebir).
+  // Varsa PNG asset basılır; düz fetih/rrcData'da null → emoji korunur.
+  const rrcBonusType: ConquestRegionBonusType | null =
+    mancinikComboCard     ? "mancinik"
+    : kaleSurlariCaptureCard ? "istanbul_defense"
+    : bereketCaptureCard     ? "cukurova_score"
+    : kahinCaptureCard       ? "kahin"
+    : limanCaptureCard       ? "liman"
+    : mancinikCaptureCard    ? "mancinik"
+    : mancinikUsedCard       ? "mancinik"
+    : null;
   const rrcTitle    = mancinikComboCard?.title    ?? kaleSurlariCaptureCard?.title    ?? bereketCaptureCard?.title    ?? kahinCaptureCard?.title    ?? limanCaptureCard?.title    ?? mancinikCaptureCard?.title    ?? mancinikUsedCard?.title    ?? rrcData.title;
   const rrcSubtitle = mancinikComboCard?.subtitle ?? kaleSurlariCaptureCard?.subtitle ?? bereketCaptureCard?.subtitle ?? kahinCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? mancinikCaptureCard?.subtitle ?? mancinikUsedCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
 
@@ -3909,6 +3921,7 @@ export default function ConquestGame({
   const [majorBonusNotice, setMajorBonusNotice] = useState<{
     id:    string;
     icon:  string;
+    bonusType: ConquestRegionBonusType;
     title: string;
     body:  string;
     color: string | null;
@@ -3943,6 +3956,7 @@ export default function ConquestGame({
       ? {
           id:    lastBonusToast.id,
           icon:  "⚓",
+          bonusType: "liman" as ConquestRegionBonusType,
           title: "Liman Ele Geçirildi!",
           body:  `${regionLabel} artık senin kontrolünde. Her tur +1 puan ve +5 Gold geliri kazanacaksın.`,
           color: playerColors[lastBonusToast.playerId] ?? null,
@@ -3950,6 +3964,7 @@ export default function ConquestGame({
       : {
           id:    lastBonusToast.id,
           icon:  "⚓",
+          bonusType: "liman" as ConquestRegionBonusType,
           title: "Rakip Limanı Ele Geçirdi!",
           body:  `${lastBonusToast.playerName}, ${regionLabel} limanını aldı. Bu bölge artık her tur sahibine +1 puan ve +5 Gold kazandıracak.`,
           color: playerColors[lastBonusToast.playerId] ?? null,
@@ -3991,6 +4006,7 @@ export default function ConquestGame({
     const notice = {
       id:    lastBonusToast.id,
       icon:  "🌾",
+      bonusType: "cukurova_score" as ConquestRegionBonusType,
       title: "🌾 Hasat Zamanı!",
       body:  `Bereketli Ova 3 tur boyunca elde tutuldu. ${lastBonusToast.playerName} +4 puanlık Hasat kazandı.`,
       color: playerColors[lastBonusToast.playerId] ?? null,
@@ -4300,7 +4316,7 @@ export default function ConquestGame({
             aria-live="polite"
           >
             <span className="cq-bonus-toast-icon" aria-hidden="true">
-              <EmojiIcon char={copy.icon} />
+              <ConquestBonusIcon type={lastBonusToast.bonusType} fallbackChar={copy.icon} alt={copy.title} />
             </span>
             <div className="cq-bonus-toast-text">
               <div className="cq-bonus-toast-title">
@@ -4384,7 +4400,7 @@ export default function ConquestGame({
           aria-live="polite"
         >
           <span className="cq-major-bonus-notice-icon" aria-hidden="true">
-            <EmojiIcon char={majorBonusNotice.icon} />
+            <ConquestBonusIcon type={majorBonusNotice.bonusType} fallbackChar={majorBonusNotice.icon} alt={majorBonusNotice.title} />
           </span>
           <div className="cq-major-bonus-notice-text">
             <div className="cq-major-bonus-notice-title">
@@ -4972,7 +4988,7 @@ export default function ConquestGame({
       content: (
         <>
           <span className="cq-bonus-toast-icon" aria-hidden="true">
-            {copy.icon}
+            <ConquestBonusIcon type={lastBonusToast.bonusType} fallbackChar={copy.icon} alt={copy.title} />
           </span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">{copy.title}</div>
@@ -5212,7 +5228,11 @@ export default function ConquestGame({
           data-variant={limanCaptureCard ? "liman" : undefined}
           aria-label="Tur sonucu"
         >
-          <div className="cq-rrc-icon" aria-hidden="true">{rrcIcon}</div>
+          <div className="cq-rrc-icon" aria-hidden="true">
+            {rrcBonusType
+              ? <ConquestBonusIcon type={rrcBonusType} fallbackChar={rrcIcon} alt={rrcTitle} />
+              : rrcIcon}
+          </div>
           <div className="cq-rrc-title">{rrcTitle}</div>
           <p className="cq-rrc-subtitle">{rrcSubtitle}</p>
           {limanCaptureCard?.extra && (
@@ -5529,7 +5549,9 @@ export default function ConquestGame({
     mobileSheetDismissible = true;
     mobileSheetHandle = (
       <span className="mcq-sheet-handle-title">
-        {rrcIcon} {rrcTitle}
+        {rrcBonusType
+          ? <ConquestBonusIcon type={rrcBonusType} fallbackChar={rrcIcon} alt="" />
+          : rrcIcon}{" "}{rrcTitle}
       </span>
     );
   } else if (phase === "finished") {
@@ -5833,7 +5855,7 @@ export default function ConquestGame({
           // Visible only to the bonus owner:
           //   - pendingHiddenShield (Ankara pending placement)
           //   - hidden shield currently active on the board (placed, awaiting trigger)
-          const bonusChips: { key: string; icon: string; title: string }[] = [];
+          const bonusChips: { key: string; icon: string; title: string; assetType?: ConquestRegionBonusType }[] = [];
           // Icons follow the bonus *type*, not a fixed region — the type is
           // canonical (open shield / time bonus / hidden op), even when the
           // round assignment shifts which region carries it.
@@ -5843,13 +5865,13 @@ export default function ConquestGame({
           const eliminatorPres = getBonusTypePresentation("eleme_yetkisi");
           const mancinikPres   = getBonusTypePresentation("mancinik");
           if (openShieldOwners.has(player.id)) {
-            bonusChips.push({ key: "ist", icon: istanbulPres.icon, title: "Açık kalkan aktif" });
+            bonusChips.push({ key: "ist", icon: istanbulPres.icon, assetType: "istanbul_defense", title: "Açık kalkan aktif" });
           }
           if (pb.extraNextMoveMs > 0) {
-            bonusChips.push({ key: "kdz", icon: karadenizPres.icon, title: `${karadenizPres.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
+            bonusChips.push({ key: "kdz", icon: karadenizPres.icon, assetType: "karadeniz_extra_time", title: `${karadenizPres.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
           }
           if (isMe && pb.pendingHiddenShield) {
-            bonusChips.push({ key: "ank-pending", icon: ankaraPres.icon, title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
+            bonusChips.push({ key: "ank-pending", icon: ankaraPres.icon, assetType: "ankara_hidden_shield", title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
           }
           if (isMe && hiddenShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ank-active", icon: "🕶️", title: "Gizli Operasyon aktif (rakipler bu bölgeden habersiz)" });
@@ -5858,6 +5880,7 @@ export default function ConquestGame({
             bonusChips.push({
               key:   "elem",
               icon:  eliminatorPres.icon,
+              assetType: "eleme_yetkisi",
               title: "Eleme Yetkisi hazır: sonraki test sorunda 1 yanlış şık silinir",
             });
           }
@@ -5865,6 +5888,7 @@ export default function ConquestGame({
             bonusChips.push({
               key:   "mancinik",
               icon:  mancinikPres.icon,
+              assetType: "mancinik",
               title: isMe
                 ? "Mancınık hazır: bir sonraki saldırın komşuluk şartı olmadan haritadaki herhangi bir bölgeyi vurabilir"
                 : `${player.name} Mancınık hakkına sahip: bir sonraki saldırısı uzak bir bölgeye gelebilir`,
@@ -5928,7 +5952,9 @@ export default function ConquestGame({
                 <span className="cq-player-bonus-chips" aria-hidden="true">
                   {bonusChips.map(c => (
                     <span key={c.key} className="cq-player-bonus-chip" title={c.title}>
-                      {c.icon}
+                      {c.assetType
+                        ? <ConquestBonusIcon type={c.assetType} fallbackChar={c.icon} alt={c.title} />
+                        : c.icon}
                     </span>
                   ))}
                 </span>

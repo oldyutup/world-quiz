@@ -28,6 +28,11 @@ import {
   CONQUEST_REVEAL_DURATION_MS,
   pickRandomConquestChallenge,
 } from "./conquestChallenges";
+import {
+  buildConquestQuestionPlan,
+  pickAdHocConquestChallenge,
+  planBankIds,
+} from "./conquestQuestionPlanner";
 import { isChallengeAnswerCorrect } from "./conquestChallengeValidation";
 import { createInitialRegionStates } from "./conquestState";
 import { getPlayerTotalPoints, getRegionPoints } from "./regionPoints";
@@ -269,7 +274,23 @@ export function createInitialConquestGameState(
   const playerHiddenBonuses: Record<string, ConquestPlayerHiddenBonus[]> = {};
   for (const p of players) playerHiddenBonuses[p.id] = [];
 
-  const { challenge, bankId } = pickRandomConquestChallenge(1, players, [], undefined);
+  // Deterministic per-match question plan (Kuşatma soru planlayıcı).  Built
+  // once here from the match seed (`now`) so every client renders the same
+  // test-dominant, anti-repetition sequence; the host uploads it in
+  // `gameplay_state.questionPlan` and round transitions consume it by index
+  // (round N → questionPlan[N-1]).  Falls back to the legacy live picker only
+  // if the plan is (defensively) empty — buildConquestQuestionPlan always
+  // returns `safeRounds` entries for safeRounds ≥ 1.
+  const questionPlan = buildConquestQuestionPlan({
+    seed:        now,
+    totalRounds: safeRounds,
+    players,
+  });
+
+  const firstPlanned = questionPlan[0];
+  const { challenge, bankId } = firstPlanned
+    ? firstPlanned
+    : pickRandomConquestChallenge(1, players, [], undefined);
 
   // Anchor the first challenge's timer to after the intro so the 20-second
   // clock doesn't start until the player can actually see the question.
@@ -283,18 +304,27 @@ export function createInitialConquestGameState(
     lastResult:     null,
   };
 
-  // Kâhin Büyüsü 🔮 — pre-pick the round-2 challenge so the Kâhin region's
-  // owner can peek at the upcoming question's type during round 1.  Skipped
-  // when the match is only 1 round long (no future round to preview).
+  // Kâhin Büyüsü 🔮 — surface the round-2 challenge so the Kâhin region's
+  // owner can peek at the upcoming question's type during round 1.  Taken
+  // straight from the plan (index 1) so the preview matches what actually
+  // mounts; skipped when the match is only 1 round long (no future round).
   let nextChallenge: ConquestGameState["nextChallenge"];
-  let usedChallengeKeys = [bankId];
   if (safeRounds >= 2) {
-    const next = pickRandomConquestChallenge(
-      2, players, usedChallengeKeys, challenge.type as ConquestChallengeType,
-    );
+    const secondPlanned = questionPlan[1];
+    const next = secondPlanned
+      ? secondPlanned
+      : pickRandomConquestChallenge(
+          2, players, [bankId], challenge.type as ConquestChallengeType,
+        );
     nextChallenge = { challenge: next.challenge, bankId: next.bankId };
-    usedChallengeKeys = [...usedChallengeKeys, next.bankId];
   }
+
+  // Seed every planned bankId into the used set up front so off-plan picks
+  // (Savunma Düellosu) never collide with a future planned round.  Legacy
+  // fallback (no plan): just the picked round-1 + round-2 ids.
+  const usedChallengeKeys = questionPlan.length > 0
+    ? planBankIds(questionPlan)
+    : [bankId, ...(nextChallenge ? [nextChallenge.bankId] : [])];
 
   return {
     mapId:                  mapConfig.id,
@@ -311,6 +341,7 @@ export function createInitialConquestGameState(
     gameIntroEndsAt,
     roundBonuses,
     nextChallenge,
+    questionPlan,
     hiddenBonusPlacements,
     playerHiddenBonuses,
   };
@@ -2114,12 +2145,15 @@ function startDefenseDuel(
 ): ConquestGameState {
   const now = getConquestSyncedNowMs();
   const usedSoFar = state.usedChallengeKeys ?? [];
-  const lastType  = state.lastChallengeType;
-  const picked    = pickRandomConquestChallenge(
+  // Off-plan pick (the duel fires outside the regular round sequence): use the
+  // planner's ad-hoc picker so the duel question avoids every planned/used
+  // question, target, letter, and the current round's family — the same
+  // anti-repetition the round plan enforces.  It reconstructs the dedup sets
+  // from `usedChallengeKeys` (which carries all planned bankIds).
+  const picked    = pickAdHocConquestChallenge(
+    state,
     state.round.roundNumber,
     state.players,
-    usedSoFar,
-    lastType,
   );
   // Narrow eligibility to attacker + defender; everyone else watches.
   const challenge: ConquestChallenge = {
@@ -2696,24 +2730,29 @@ export function advanceToNextRound(
   const usedSoFar  = bereketApplied.usedChallengeKeys ?? [];
   const lastType   = bereketApplied.lastChallengeType;
   // Filter out eliminated players from challenge eligibility so they cannot
-  // submit answers next round.  Pre-picked Kâhin challenges may still carry
-  // a stale roster; the eligibility list is rebuilt below regardless.
+  // submit answers next round.  Planned / pre-picked challenges may still
+  // carry a stale roster; the eligibility list is rebuilt below regardless.
   const activeForNext = getActivePlayers(bereketApplied);
-  // Kâhin Büyüsü 🔮 — consume the pre-picked next challenge when present
-  // (so the round actually delivers the question type Kâhin previewed).
-  // Falls back to picking fresh for legacy saves with no `nextChallenge`.
-  const picked = bereketApplied.nextChallenge
-    ? bereketApplied.nextChallenge
-    : pickRandomConquestChallenge(
+  const activeIds = activeForNext.map(p => p.id);
+
+  // Source the next challenge from the deterministic question plan when
+  // present (round N → questionPlan[N-1]); fall back to the pre-picked Kâhin
+  // challenge, then to a fresh live pick for legacy in-flight rooms that have
+  // neither.  Consuming the plan by index keeps the test/write ratio and the
+  // family/letter anti-repetition decided at match creation.
+  const plan = bereketApplied.questionPlan;
+  const plannedNext = plan?.[nextRoundNumber - 1];
+  const picked = plannedNext
+    ?? bereketApplied.nextChallenge
+    ?? pickRandomConquestChallenge(
         nextRoundNumber,
         activeForNext,
         usedSoFar,
         lastType,
       );
   // Always restrict eligibility to active (non-eliminated) players, even on
-  // the pre-picked Kâhin path where the cached challenge may carry an older
-  // roster.  Pure rewrite of one field; rest of the challenge stays intact.
-  const activeIds = activeForNext.map(p => p.id);
+  // the planned / pre-picked path where the stored challenge may carry an
+  // older roster.  Pure rewrite of one field; rest of the challenge stays intact.
   const challenge: ConquestChallenge = {
     ...picked.challenge,
     eligiblePlayerIds: activeIds,
@@ -2722,28 +2761,35 @@ export function advanceToNextRound(
   const now = getConquestSyncedNowMs();
 
   // Refresh the Kâhin preview for the round AFTER the one we're about to
-  // mount, unless this transition completes the match.  Skipped when the
-  // next round is the last — there's no future round to peek at.
+  // mount, unless this transition completes the match.  Pull from the plan
+  // (round N+1 → questionPlan[N]) so the preview matches what mounts next;
+  // legacy rooms with no plan fall back to a fresh live peek.
   const totalRounds = bereketApplied.round.totalRounds;
   const usedAfterMount = bereketApplied.nextChallenge
     ? usedSoFar  // already includes bankId from the pre-pick
     : [...usedSoFar, bankId];
   let nextChallenge: ConquestGameState["nextChallenge"];
   if (nextRoundNumber < totalRounds) {
-    const peek = pickRandomConquestChallenge(
-      nextRoundNumber + 1,
-      activeForNext,
-      usedAfterMount,
-      challenge.type as ConquestChallengeType,
-    );
+    const plannedPeek = plan?.[nextRoundNumber];
+    const peek = plannedPeek
+      ?? pickRandomConquestChallenge(
+          nextRoundNumber + 1,
+          activeForNext,
+          usedAfterMount,
+          challenge.type as ConquestChallengeType,
+        );
     nextChallenge = {
       challenge: { ...peek.challenge, eligiblePlayerIds: activeIds },
       bankId:    peek.bankId,
     };
   }
-  const finalUsedKeys = nextChallenge
-    ? [...usedAfterMount, nextChallenge.bankId]
-    : usedAfterMount;
+  // With a plan, every bankId is already tracked from match creation, so the
+  // used set is unchanged; legacy rooms keep appending the mounted + preview ids.
+  const finalUsedKeys = plan
+    ? usedSoFar
+    : nextChallenge
+      ? [...usedAfterMount, nextChallenge.bankId]
+      : usedAfterMount;
 
   // Preserve the round-end income / harvest toast so the next round still
   // renders it once on every client before the challenge mounts.  Both

@@ -12,6 +12,7 @@
 
 import { useState } from "react";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import { ConquestBonusIcon } from "./ConquestAssetIcon";
 import type {
   ConquestRegionBonusDef,
   ConquestRegionBonusType,
@@ -114,7 +115,7 @@ export default function ConquestBonusGuide({
                 aria-controls={`cq-bonus-guide-effect-${regionId}`}
               >
                 <span className="cq-bonus-guide-icon" aria-hidden="true">
-                  <EmojiIcon char={def.icon} />
+                  <ConquestBonusIcon type={def.type} fallbackChar={def.icon} alt={def.label} size={28} />
                 </span>
                 <span className="cq-bonus-guide-meta">
                   <span className="cq-bonus-guide-label">{def.label}</span>

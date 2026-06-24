@@ -34,10 +34,24 @@ import { LobbyInviteBar } from "../../components/LobbyInviteBar";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
 import { useSocialOptional } from "../../components/SocialContext";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import { ConquestAssetIcon, ConquestBonusIcon } from "./ConquestAssetIcon";
+import { ConquestMapSelect } from "./ConquestMapSelect";
+import { ConquestIconSelect } from "./ConquestIconSelect";
+import {
+  CONQUEST_FRIEND_INVITE_ASSET,
+  CONQUEST_LOBBY_COPY_LINK_ASSET,
+  CONQUEST_LOBBY_SECTION_CHAT_ASSET,
+  CONQUEST_LOBBY_SECTION_PLAYERS_ASSET,
+  CONQUEST_LOBBY_START_ASSET,
+  CONQUEST_MAP_SELECTION_ASSET,
+  CONQUEST_SETTING_ASSETS,
+  getConquestBonusDistributionOptionAsset,
+  getConquestTeamModeOptionAsset,
+  getConquestVisibilityOptionAsset,
+} from "./conquestIcons";
 import { playSound } from "../../lib/sound";
 import { recallConquestClaim } from "./conquestClaim";
 import {
-  CONQUEST_MAPS,
   CONQUEST_MIN_PLAYERS,
   CONQUEST_PLAYER_COUNTS,
   CONQUEST_ROUND_COUNTS,
@@ -46,7 +60,6 @@ import {
 } from "./types";
 import type {
   ConquestBonusDistribution,
-  ConquestMapId,
   ConquestMaxPlayers,
   ConquestPlayer,
   ConquestPlayerColor,
@@ -598,7 +611,9 @@ export default function ConquestLobby({
                   data-category={entry.category}
                   title={`${entry.label} — ${entry.description}`}
                 >
-                  <span className="cq-bonus-vote-icon" aria-hidden>{entry.icon}</span>
+                  <span className="cq-bonus-vote-icon" aria-hidden>
+                    <ConquestBonusIcon type={entry.type} fallbackChar={entry.icon} alt={entry.label} size={26} />
+                  </span>
                   <span className="cq-bonus-vote-label">{entry.label}</span>
                 </div>
               );
@@ -626,7 +641,9 @@ export default function ConquestLobby({
                   onToggleBonusVote(entry.type);
                 }}
               >
-                <span className="cq-bonus-vote-icon" aria-hidden>{entry.icon}</span>
+                <span className="cq-bonus-vote-icon" aria-hidden>
+                  <ConquestBonusIcon type={entry.type} fallbackChar={entry.icon} alt={entry.label} size={26} />
+                </span>
                 <span className="cq-bonus-vote-label">{entry.label}</span>
                 {count > 0 && (
                   <span className="cq-bonus-vote-badge" aria-label={`${count} oy`}>{count}</span>
@@ -705,7 +722,9 @@ export default function ConquestLobby({
                   setMobileBonusDetail(prev => prev === entry.type ? null : entry.type);
                 }}
               >
-                <span className="cq-mbonus-icon" aria-hidden>{entry.icon}</span>
+                <span className="cq-mbonus-icon" aria-hidden>
+                  <ConquestBonusIcon type={entry.type} fallbackChar={entry.icon} alt={entry.label} size={26} />
+                </span>
                 <span className="cq-mbonus-label">{entry.label}</span>
                 {isVoting && count > 0 && (
                   <span className="cq-mbonus-badge" aria-label={`${count} oy`}>{count}</span>
@@ -751,7 +770,9 @@ export default function ConquestLobby({
                 ✕
               </button>
               <div className="cq-mbonus-card-head" data-category={detailEntry.category}>
-                <span className="cq-mbonus-card-icon" aria-hidden>{detailEntry.icon}</span>
+                <span className="cq-mbonus-card-icon" aria-hidden>
+                  <ConquestBonusIcon type={detailEntry.type} fallbackChar={detailEntry.icon} alt={detailEntry.label} size={34} />
+                </span>
                 <span className="cq-mbonus-card-title">{detailEntry.label}</span>
               </div>
               <p className="cq-mbonus-card-desc">{detailEntry.description}</p>
@@ -796,7 +817,10 @@ export default function ConquestLobby({
         {/* ══ LEFT: Oyuncular ══ */}
         <div className="duel-lobby-card wgg-players-card cq-players-card">
           <div className="cq-players-head">
-            <span className="cq-players-title"><EmojiIcon name="people" /> Oyuncular</span>
+            <span className="cq-players-title">
+              <ConquestAssetIcon src={CONQUEST_LOBBY_SECTION_PLAYERS_ASSET} alt="Oyuncular" size={20} fallbackName="people" />
+              {" "}Oyuncular
+            </span>
             <span className="cq-players-count">{countLabel}</span>
           </div>
 
@@ -863,6 +887,22 @@ export default function ConquestLobby({
               roomCode={roomCode}
               mode="conquest"
               roomUrl={`/?conquest=${roomCode}`}
+              copyButtonIcon={
+                <ConquestAssetIcon
+                  src={CONQUEST_LOBBY_COPY_LINK_ASSET}
+                  alt="Linki Kopyala"
+                  size={20}
+                  fallbackChar="📋"
+                />
+              }
+              friendsButtonIcon={
+                <ConquestAssetIcon
+                  src={CONQUEST_FRIEND_INVITE_ASSET}
+                  alt="Arkadaş Davet Et"
+                  size={26}
+                  fallbackChar="👥"
+                />
+              }
             />
             <input
               className="duel-link-input cq-link-input"
@@ -875,25 +915,20 @@ export default function ConquestLobby({
           {/* ── Editable settings (selects for host, disabled for guests) ── */}
           <div className="cq-settings-selects" role="group" aria-label="Kuşatma oda ayarları">
             <div className="duel-select-wrap">
-              <label className="duel-select-label"><EmojiIcon name="map" /> Harita</label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={settings.map}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => onUpdateSettings({ map: e.target.value as ConquestMapId })}
-                >
-                  {CONQUEST_MAPS.map(m => (
-                    <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
-                  ))}
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_MAP_SELECTION_ASSET} alt="Harita" className="cq-setting-icon" size={22} fallbackName="map" /> Harita
+              </label>
+              <ConquestMapSelect
+                value={settings.map}
+                disabled={!isHost}
+                onChange={map => onUpdateSettings({ map })}
+              />
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label"><EmojiIcon name="people" /> Oyuncu</label>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.players} alt="Oyuncu" className="cq-setting-icon" size={22} fallbackName="people" /> Oyuncu
+              </label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -921,7 +956,9 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label"><EmojiIcon name="refresh" /> Tur</label>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.rounds} alt="Tur" className="cq-setting-icon" size={22} fallbackName="refresh" /> Tur
+              </label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -939,65 +976,61 @@ export default function ConquestLobby({
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label"><EmojiIcon name="unlock" /> Görünürlük</label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={settings.visibility}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => onUpdateSettings({ visibility: e.target.value as ConquestVisibility })}
-                >
-                  <option value="public">🌐 Açık Oda</option>
-                  <option value="private">🔒 Gizli Oda</option>
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.visibility} alt="Görünürlük" className="cq-setting-icon" size={22} fallbackName="unlock" /> Görünürlük
+              </label>
+              <ConquestIconSelect<ConquestVisibility>
+                value={settings.visibility}
+                disabled={!isHost}
+                ariaLabel="Oda görünürlüğü seç"
+                onChange={v => onUpdateSettings({ visibility: v })}
+                options={[
+                  { value: "public",  label: "Açık Oda",  iconSrc: getConquestVisibilityOptionAsset("public"),  fallbackChar: "🌐" },
+                  { value: "private", label: "Gizli Oda", iconSrc: getConquestVisibilityOptionAsset("private"), fallbackChar: "🔒" },
+                ]}
+              />
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">🎁 Bonus Dağıtımı</label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={bonusMode}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  onChange={e => onChangeBonusDistribution(e.target.value as ConquestBonusDistribution)}
-                >
-                  <option value="random">🎲 Rastgele</option>
-                  <option value="vote">🗳️ Oy ile Seç</option>
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.bonusDistribution} alt="Bonus Dağıtımı" className="cq-setting-icon" size={22} fallbackChar="🎁" /> Bonus Dağıtımı
+              </label>
+              <ConquestIconSelect<ConquestBonusDistribution>
+                value={bonusMode}
+                disabled={!isHost}
+                ariaLabel="Bonus dağıtımı seç"
+                onChange={onChangeBonusDistribution}
+                options={[
+                  { value: "random", label: "Rastgele",   iconSrc: getConquestBonusDistributionOptionAsset("random"), fallbackChar: "🎲" },
+                  { value: "vote",   label: "Oy ile Seç", iconSrc: getConquestBonusDistributionOptionAsset("vote"),   fallbackChar: "🗳️" },
+                ]}
+              />
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label"><EmojiIcon name="swords" /> Oyun Tipi</label>
-              <div className="duel-select-box">
-                <select
-                  className="duel-select"
-                  value={teamMode}
-                  disabled={!isHost}
-                  style={{ opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
-                  title={
-                    isHost && !teamModeSelectable
-                      ? "2v2 Takımlı mod için oda kapasitesi 4 olmalı."
-                      : undefined
-                  }
-                  onChange={e => {
-                    const next = e.target.value as ConquestTeamMode;
-                    if (next === "teams_2v2" && !teamModeSelectable) return;
-                    onChangeTeamMode(next);
-                  }}
-                >
-                  <option value="individual">👤 Bireysel</option>
-                  <option value="teams_2v2" disabled={!teamModeSelectable}>
-                    🛡️ 2v2 Takımlı
-                  </option>
-                </select>
-                <span className="duel-select-caret">▾</span>
-              </div>
+              <label className="duel-select-label">
+                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.gameMode} alt="Oyun Tipi" className="cq-setting-icon" size={22} fallbackName="swords" /> Oyun Tipi
+              </label>
+              <ConquestIconSelect<ConquestTeamMode>
+                value={teamMode}
+                disabled={!isHost}
+                ariaLabel="Oyun tipi seç"
+                title={
+                  isHost && !teamModeSelectable
+                    ? "2v2 Takımlı mod için oda kapasitesi 4 olmalı."
+                    : undefined
+                }
+                onChange={next => {
+                  // 2v2 yalnız kapasite 4 iken seçilebilir — seçenek devre dışıyken
+                  // zaten pick edilemez; çift güvence olarak burada da geç.
+                  if (next === "teams_2v2" && !teamModeSelectable) return;
+                  onChangeTeamMode(next);
+                }}
+                options={[
+                  { value: "individual", label: "Bireysel",      iconSrc: getConquestTeamModeOptionAsset("individual"), fallbackName: "bust" },
+                  { value: "teams_2v2",  label: "2v2 Takımlı",   iconSrc: getConquestTeamModeOptionAsset("teams_2v2"),  fallbackName: "shield", disabled: !teamModeSelectable },
+                ]}
+              />
               {isHost && !teamModeSelectable && (
                 <p className="cq-team-mode-helper" role="status">
                   2v2 Takımlı mod için oda kapasitesi 4 olmalı.
@@ -1026,7 +1059,7 @@ export default function ConquestLobby({
                     ? "Oyunu başlat"
                     : startBlockedHelper ?? `En az ${CONQUEST_MIN_PLAYERS} oyuncu gerekli`}
                 >
-                  <EmojiIcon name="rocket" /> Oyunu Başlat
+                  <ConquestAssetIcon src={CONQUEST_LOBBY_START_ASSET} alt="Oyunu Başlat" size={20} fallbackName="rocket" /> Oyunu Başlat
                 </button>
                 {startBlockedHelper && (
                   <p className="cq-start-helper" role="status">{startBlockedHelper}</p>
@@ -1063,6 +1096,14 @@ export default function ConquestLobby({
               sendMode="conquest"
               playerId={myPlayerId}
               claimToken={recallConquestClaim(myPlayerId) ?? ""}
+              titleIcon={
+                <ConquestAssetIcon
+                  src={CONQUEST_LOBBY_SECTION_CHAT_ASSET}
+                  alt="Sohbet"
+                  size={20}
+                  fallbackChar="💬"
+                />
+              }
             />
           ) : (
             <div className="cq-chat-guest">
@@ -1083,7 +1124,7 @@ export default function ConquestLobby({
           aria-label="Oyuncuları aç"
           onClick={() => { playSound("click"); setPlayersOpen(true); setChatOpen(false); }}
         >
-          <span><EmojiIcon name="people" /></span>
+          <span><ConquestAssetIcon src={CONQUEST_LOBBY_SECTION_PLAYERS_ASSET} alt="Oyuncular" size={20} fallbackName="people" /></span>
           <span>Oyuncular</span>
           <span className="wgg-players-fab-badge">{countLabel}</span>
         </button>
@@ -1110,7 +1151,7 @@ export default function ConquestLobby({
             <div className="wgg-ps-handle" />
             <header className="wgg-ps-header">
               <span className="wgg-ps-title">
-                <span><EmojiIcon name="people" /></span>
+                <span><ConquestAssetIcon src={CONQUEST_LOBBY_SECTION_PLAYERS_ASSET} alt="Oyuncular" size={20} fallbackName="people" /></span>
                 <span>Oyuncular</span>
               </span>
               <span className="cq-players-count">{countLabel}</span>

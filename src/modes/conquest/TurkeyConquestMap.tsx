@@ -23,6 +23,7 @@ import type {
   ConquestRegionState,
   ConquestRoundBonusAssignment,
 } from "./types";
+import { ConquestMapBonusGlyph } from "./ConquestAssetIcon";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
 import { resolveActiveBonus } from "./conquestRoundBonuses";
@@ -889,15 +890,13 @@ export default function TurkeyConquestMap({
               >
                 <circle cx={cx} cy={cy} r={10} className="cq-map-bonus-chip-bg" />
                 <circle cx={cx} cy={cy} r={6.5} className="cq-map-bonus-chip-inner" />
-                <text
-                  x={cx}
-                  y={cy + 0.5}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="cq-map-bonus-icon"
-                >
-                  {bonus.icon}
-                </text>
+                <ConquestMapBonusGlyph
+                  type={bonus.type}
+                  fallbackChar={bonus.icon}
+                  cx={cx}
+                  cy={cy}
+                  size={16}
+                />
                 {limanTicks !== null && (
                   <g className="cq-map-liman-counter">
                     <rect

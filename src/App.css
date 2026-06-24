@@ -11234,6 +11234,200 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   KUŞATMA — "savaş masası" sıcak tema (yalnız lobi / setup yüzeyleri)
+   ───────────────────────────────────────────────────────────────
+   Soğuk lacivert-mavi yüzeyleri sıcak kömür + dumanlı slate + mat
+   bronz border diline çevirir. Mavi yalnızca aktif/focus/davet gibi
+   küçük vurgularda, düşük doygunlukta çelik-mavisi olarak kalır.
+
+   Kapsam KİLİDİ: `.cq-screen:not(.cq-game-screen)` — yani Kuşatma'nın
+   lobi / oda kurulum / oda listesi ekranları. Oyun-içi tahta
+   (.cq-game-screen) ve diğer modlar (Çark/Duel/Bayrak/Kör Nokta) ile
+   genel app teması TAMAMEN dışarıda. Düzen/grid/spacing/asset boyutu
+   değişmez — yalnız renk sıcaklığı, mat yüzey ve border yaklaşımı.
+
+   Token override'ları varsayılan temayı (data-theme yok) karşılar;
+   yüksek-specificity doğrudan kurallar ise [data-theme="…"] cam
+   kurallarını (turkiye/adventure/dark-space) yener.
+═══════════════════════════════════════════════════════════════ */
+.cq-screen:not(.cq-game-screen) {
+  /* Sıcak kömür nötrler — soğuk navy token'larının yerine geçer. */
+  --bg:          oklch(0.160 0.012 64);
+  --surface:     oklch(0.215 0.013 60);
+  --surface2:    oklch(0.255 0.014 58);
+  --surface3:    oklch(0.305 0.015 56);
+  --border:      oklch(0.420 0.028 72);
+  --text:        oklch(0.930 0.013 82);
+  --muted:       oklch(0.715 0.020 74);
+  /* Kontrollü, düşük doygunluklu çelik-mavisi: aktif/focus/davet. */
+  --accent:      oklch(0.660 0.085 246);
+  --accent-glow: oklch(0.660 0.100 246 / 0.26);
+
+  /* Mat translucent yüzeyler — war-map sahnesi üstünde bütünleşik dursun. */
+  --cq-panel-bg: oklch(0.205 0.014 58 / 0.94);
+  --cq-panel-bd: oklch(0.520 0.035 76 / 0.34);
+  --cq-panel-sh: 0 22px 54px oklch(0.05 0.010 60 / 0.52),
+                 inset 0 1px 0 oklch(0.85 0.030 80 / 0.05);
+  --cq-inset-bg: oklch(0.155 0.012 60 / 0.66);
+  --cq-inset-bd: oklch(0.500 0.030 74 / 0.26);
+  --cq-hairline: oklch(0.520 0.030 76 / 0.22);
+  --cq-bronze:   oklch(0.560 0.045 78);
+}
+
+/* ── Üst bar (header) — mavi cam yerine sıcak mat ── */
+.cq-screen:not(.cq-game-screen) .duel-header {
+  background: oklch(0.150 0.012 58 / 0.74);
+  border-bottom: 1px solid var(--cq-hairline);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.cq-screen:not(.cq-game-screen) .duel-mode-label { color: oklch(0.800 0.022 78); }
+/* Oda kodu rozeti — "aktif" çip, sınırlı çelik-mavisi korunur. */
+.cq-screen:not(.cq-game-screen) .duel-code-badge {
+  color: oklch(0.860 0.060 246);
+  background: oklch(0.400 0.055 248 / 0.22);
+  border-color: oklch(0.620 0.065 248 / 0.42);
+  box-shadow: inset 0 1px 0 oklch(0.85 0.030 80 / 0.05);
+}
+.cq-screen:not(.cq-game-screen) .duel-region-badge {
+  color: oklch(0.785 0.022 78);
+  background: oklch(0.300 0.018 60 / 0.50);
+  border-color: var(--cq-hairline);
+}
+.cq-screen:not(.cq-game-screen) .duel-header .back-btn {
+  background: oklch(0.285 0.016 60 / 0.52);
+  border-color: var(--cq-hairline);
+  color: oklch(0.840 0.020 80);
+}
+.cq-screen:not(.cq-game-screen) .duel-header .back-btn:hover {
+  border-color: oklch(0.580 0.040 78 / 0.55);
+  color: oklch(0.930 0.015 82);
+}
+
+/* ── Üç lobi paneli — mat sıcak slate, ince bronz kenar (cam değil) ── */
+.cq-screen:not(.cq-game-screen) .duel-lobby-card {
+  background: var(--cq-panel-bg);
+  border-color: var(--cq-panel-bd);
+  box-shadow: var(--cq-panel-sh);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ── Oyuncu çipleri — sıcak taban; oyuncu RENGİ (border+gradient) korunur ── */
+.cq-screen:not(.cq-game-screen) .duel-player-chip {
+  background-color: oklch(0.250 0.014 58 / 0.50);
+}
+.cq-screen:not(.cq-game-screen) .cq-player-chip[data-color] {
+  border-color: var(--cq-color-bd, var(--cq-hairline));
+  background-image: linear-gradient(90deg, var(--cq-color-bg, transparent), transparent 70%);
+}
+
+/* ── "Linki Kopyala" — bronz outline (mavi DEĞİL); davet butonu çelik kalsın ── */
+.cq-screen:not(.cq-game-screen) .lobby-invite-btn--copy {
+  background: oklch(0.250 0.014 58 / 0.62);
+  border-color: oklch(0.560 0.045 78 / 0.55);
+  color: oklch(0.865 0.030 80);
+}
+.cq-screen:not(.cq-game-screen) .lobby-invite-btn--copy:hover:not(.is-copied) {
+  background: oklch(0.300 0.018 58 / 0.70);
+  border-color: oklch(0.620 0.052 80 / 0.72);
+}
+
+/* ── Link alanı + native/özel select'ler — sıcak inset ── */
+.cq-screen:not(.cq-game-screen) .duel-link-input {
+  background: var(--cq-inset-bg);
+  border-color: var(--cq-inset-bd);
+  color: oklch(0.760 0.020 76);
+}
+.cq-screen:not(.cq-game-screen) .duel-link-input:focus {
+  border-color: oklch(0.660 0.085 246 / 0.70);
+  color: var(--text);
+}
+.cq-screen:not(.cq-game-screen) .duel-select {
+  background: var(--cq-inset-bg);
+  border-color: var(--cq-inset-bd);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 oklch(0.85 0.030 80 / 0.04);
+}
+.cq-screen:not(.cq-game-screen) .duel-select:hover:not(:focus) {
+  border-color: oklch(0.560 0.040 78 / 0.45);
+}
+.cq-screen:not(.cq-game-screen) .duel-select:focus {
+  border-color: oklch(0.660 0.085 246 / 0.60);
+  box-shadow: 0 0 0 3px var(--accent-glow),
+              inset 0 1px 0 oklch(0.85 0.030 80 / 0.04);
+}
+.cq-screen:not(.cq-game-screen) .duel-select-label,
+.cq-screen:not(.cq-game-screen) .duel-select-caret { color: var(--muted); }
+.cq-screen:not(.cq-game-screen) .duel-select option {
+  background: #1d1a15;
+  color: #efe7d8;
+}
+
+/* ── Bonus paneli + ayar kutuları — soğuk near-black yerine sıcak ── */
+.cq-screen:not(.cq-game-screen) .cq-bonus-vote,
+.cq-screen:not(.cq-game-screen) .cq-settings-grid {
+  background: oklch(0.140 0.012 58 / 0.55);
+  border-color: var(--cq-hairline);
+}
+
+/* ── Sohbet paneli (masaüstü + mobil sheet) — sıcak mat ── */
+.cq-screen:not(.cq-game-screen) .lc-panel,
+.cq-screen:not(.cq-game-screen) .lc-sheet {
+  background: var(--cq-panel-bg);
+  border-color: var(--cq-panel-bd);
+  box-shadow: var(--cq-panel-sh);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.cq-screen:not(.cq-game-screen) .lc-header,
+.cq-screen:not(.cq-game-screen) .lc-sheet-header {
+  background: linear-gradient(180deg, oklch(0.255 0.015 58 / 0.60), oklch(0.205 0.013 58 / 0.42));
+  border-bottom-color: var(--cq-hairline);
+}
+.cq-screen:not(.cq-game-screen) .lc-header:hover {
+  background: linear-gradient(180deg, oklch(0.300 0.016 58 / 0.66), oklch(0.245 0.014 58 / 0.48));
+}
+.cq-screen:not(.cq-game-screen) .lc-messages {
+  background:
+    radial-gradient(1200px 400px at 50% -10%, oklch(0.66 0.085 246 / 0.05), transparent 60%),
+    oklch(0.180 0.013 58 / 0.46);
+}
+.cq-screen:not(.cq-game-screen) .lc-messages::-webkit-scrollbar-thumb {
+  background: oklch(0.560 0.030 76 / 0.30);
+}
+.cq-screen:not(.cq-game-screen) .lc-empty,
+.cq-screen:not(.cq-game-screen) .lc-sender { color: var(--muted); }
+.cq-screen:not(.cq-game-screen) .lc-msg-opp .lc-bubble {
+  background: oklch(0.270 0.015 58 / 0.62);
+  border-color: var(--cq-hairline);
+  color: var(--text);
+}
+.cq-screen:not(.cq-game-screen) .lc-input-row {
+  background: oklch(0.205 0.013 58 / 0.55);
+  border-top-color: var(--cq-hairline);
+}
+.cq-screen:not(.cq-game-screen) .lc-input {
+  background: var(--cq-inset-bg);
+  border-color: var(--cq-inset-bd);
+  color: var(--text);
+}
+.cq-screen:not(.cq-game-screen) .lc-input::placeholder { color: var(--muted); }
+/* "Benim" balonum + gönder butonu — parlak mavi yerine çelik gradyan. */
+.cq-screen:not(.cq-game-screen) .lc-msg-me .lc-bubble,
+.cq-screen:not(.cq-game-screen) .lc-send-btn {
+  background: linear-gradient(135deg, oklch(0.660 0.085 246), oklch(0.580 0.078 248));
+  color: oklch(0.150 0.020 250);
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+
+/* ── Mobil bonus paneli — sıcak taban ── */
+.cq-screen:not(.cq-game-screen) .cq-mbonus {
+  background: oklch(0.140 0.012 58 / 0.55);
+  border-color: var(--cq-hairline);
+}
+
+/* ═══════════════════════════════════════════════════════════════
    KUŞATMA (Conquest) — Phase 4: game screen & territory board
    Color theming uses data-color attribute so CSS drives all
    visual variants cleanly; no inline color styles in components.
@@ -15186,6 +15380,99 @@ body {
   user-select: none;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75)) !important;
 }
+/* Harita bonus markerının PNG varyantı (SVG <image>). Emoji <text> ile aynı
+ * gölge dilini korur; oran preserveAspectRatio ile zaten korunur. */
+.cq-map-bonus-img {
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75));
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * Kuşatma özel PNG ikonları — conquestIcons manifesti + ConquestAssetIcon.
+ * Bonus / ayar / harita / davet ikonları emoji yerine PNG basıldığında ortak
+ * görsel kurallar: oran korunur (object-fit: contain), kırpılmaz, doğal hizalanır.
+ * ───────────────────────────────────────────────────────────────────────── */
+.cq-asset-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  object-fit: contain;       /* oran bozulmaz / kırpılmaz / ovalleşmez */
+  vertical-align: -0.15em;   /* .emoji-icon ile aynı taban hizası */
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+/* Ayar/harita başlığı ikonu — flex label içinde dengeli dursun. */
+.duel-select-label .cq-asset-icon { vertical-align: middle; }
+
+/* Arkadaş Davet Et butonundaki özel ikon — metinle aynı eksende. */
+.lobby-invite-btn-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ── Kuşatma özel açılır listesi (ConquestIconSelect) ──
+ * Native <select> açık seçeneklerde PNG ikon basamadığı için, hem kapalı (seçili
+ * değer) hem açık (dropdown) durumda seçeneğe ait PNG'yi gösteren trigger +
+ * listbox. Görünüm .duel-select ile aynı; Harita / Görünürlük / Bonus Dağıtımı /
+ * Oyun Tipi dropdown'ları bu ortak görünümü paylaşır. İkon metni itmez:
+ * baseline yerine flex hizalaması + flex:none ile satır yüksekliği sabit kalır. */
+.cq-icon-select { position: relative; }
+.cq-icon-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  overflow: hidden;
+}
+.cq-icon-select-icon { flex: none; object-fit: contain; }
+.cq-icon-select-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cq-icon-select-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  max-height: 240px;
+  overflow-y: auto;
+  outline: none;
+}
+.cq-icon-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.cq-icon-select-option:hover { background: rgba(255, 255, 255, 0.07); }
+/* Klavye gezinmesi vurgusu (hover ile aynı dilde, biraz daha belirgin). */
+.cq-icon-select-option--active { background: rgba(255, 255, 255, 0.1); }
+.cq-icon-select-option--selected {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+.cq-icon-select-option--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cq-icon-select-option--disabled:hover { background: transparent; }
 
 /* When a bonus region currently has its shield active (İstanbul today),
  * pulse the bonus chip so the player can see the buff is live without

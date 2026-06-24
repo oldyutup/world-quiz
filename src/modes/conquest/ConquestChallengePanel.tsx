@@ -125,10 +125,15 @@ export default function ConquestChallengePanel({
   // ── Sub-renderers ────────────────────────────────────────────────────
   const showChoices = challenge.type === "quiz" && Array.isArray(challenge.choices)
     && challenge.choices.length > 0;
+  // A flag is shown for the classic flag_guess (text) challenge AND for the
+  // planner's multiple-choice "Bayraktan Ülke" challenge (type "quiz" carrying
+  // a `flag`).  Drive both off flag presence so the glyph + tighter --flag
+  // spacing apply consistently without special-casing the choice grid.
+  const hasFlag = Boolean(challenge.flag);
 
   return (
     <section
-      className={`cq-challenge-panel${challenge.type === "flag_guess" ? " cq-challenge-panel--flag" : ""}`}
+      className={`cq-challenge-panel${hasFlag ? " cq-challenge-panel--flag" : ""}`}
       data-status={status}
       aria-label="Mücadele paneli"
     >
@@ -145,9 +150,9 @@ export default function ConquestChallengePanel({
 
       <h3 className="cq-challenge-title">{challenge.title}</h3>
 
-      {challenge.type === "flag_guess" && challenge.flag && (
+      {hasFlag && (
         <div className="cq-challenge-flag" aria-label="Bayrak">
-          <FlagGlyph emoji={challenge.flag} />
+          <FlagGlyph emoji={challenge.flag!} />
         </div>
       )}
 

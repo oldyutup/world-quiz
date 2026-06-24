@@ -27,7 +27,7 @@
  * Oda link/input alanı bu bileşenin DIŞINDA, çağıran lobide kalır (butonların
  * altında). Desktop web, mobil web ve native iOS/app'te aynı bileşendir.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useIsMobile } from "../lib/useIsMobile";
 import {
   fetchFriends,
@@ -51,6 +51,17 @@ interface LobbyInviteBarProps {
   mode: string;
   /** Göreli oda linki, ör. "/?duel=ABC123". */
   roomUrl: string;
+  /**
+   * Opsiyonel: "Arkadaş Davet Et" butonunda metnin solunda gösterilecek özel
+   * ikon (verilmezse 👥 emoji). Lobi-türüne özel görsel için çağıran lobi
+   * (ör. Kuşatma) geçer — paylaşılan bileşen modlara bağımlı kalmaz.
+   */
+  friendsButtonIcon?: ReactNode;
+  /**
+   * Opsiyonel: "Linki Kopyala" butonunda metnin solunda gösterilecek özel
+   * ikon (verilmezse 📋 emoji). Yalnız Kuşatma geçer.
+   */
+  copyButtonIcon?: ReactNode;
 }
 
 /** İlişki durumuna göre "Oyuncular" bölümü buton etiketi/aktifliği (FriendsButton ile aynı dil). */
@@ -75,6 +86,8 @@ export function LobbyInviteBar({
   roomCode,
   mode,
   roomUrl,
+  friendsButtonIcon,
+  copyButtonIcon,
 }: LobbyInviteBarProps) {
   const social = useSocial();
   const { isMobile } = useIsMobile();
@@ -234,14 +247,30 @@ export function LobbyInviteBar({
           className={"lobby-invite-btn lobby-invite-btn--copy" + (copied ? " is-copied" : "")}
           onClick={copyLink}
         >
-          {copied ? "✓ Kopyalandı" : "📋 Linki Kopyala"}
+          {copied ? (
+            "✓ Kopyalandı"
+          ) : copyButtonIcon ? (
+            <>
+              <span className="lobby-invite-btn-icon" aria-hidden="true">{copyButtonIcon}</span>
+              <span>Linki Kopyala</span>
+            </>
+          ) : (
+            "📋 Linki Kopyala"
+          )}
         </button>
         <button
           type="button"
           className="lobby-invite-btn lobby-invite-btn--friends"
           onClick={openPicker}
         >
-          👥 Arkadaş Davet Et
+          {friendsButtonIcon ? (
+            <>
+              <span className="lobby-invite-btn-icon" aria-hidden="true">{friendsButtonIcon}</span>
+              <span>Arkadaş Davet Et</span>
+            </>
+          ) : (
+            "👥 Arkadaş Davet Et"
+          )}
         </button>
       </div>
 

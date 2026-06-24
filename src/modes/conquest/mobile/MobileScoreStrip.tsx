@@ -23,8 +23,10 @@ import type {
   ConquestPlayer,
   ConquestPlayerBonusState,
   ConquestPlayerColor,
+  ConquestRegionBonusType,
 } from "../types";
 import { getBonusTypePresentation, getPlayerBonusState } from "../regionBonuses";
+import { ConquestBonusIcon } from "../ConquestAssetIcon";
 
 interface Props {
   players:            ConquestPlayer[];
@@ -52,6 +54,8 @@ interface BonusChip {
   key:   string;
   icon:  string;
   title: string;
+  /** Bonus tipi — varsa chip PNG asset ile basılır (emoji fallback). */
+  assetType?: ConquestRegionBonusType;
 }
 
 function buildBonusChips(
@@ -74,6 +78,7 @@ function buildBonusChips(
     chips.push({
       key:   "ist",
       icon:  istanbulPres.icon,
+      assetType: "istanbul_defense",
       title: "Açık kalkan aktif",
     });
   }
@@ -81,6 +86,7 @@ function buildBonusChips(
     chips.push({
       key:   "kdz",
       icon:  karadenizPres.icon,
+      assetType: "karadeniz_extra_time",
       title: `${karadenizPres.label} (+${Math.round(bonus.extraNextMoveMs / 1000)}sn)`,
     });
   }
@@ -88,6 +94,7 @@ function buildBonusChips(
     chips.push({
       key:   "ank-pending",
       icon:  ankaraPres.icon,
+      assetType: "ankara_hidden_shield",
       title: "Gizli Operasyon hazır",
     });
   }
@@ -102,6 +109,7 @@ function buildBonusChips(
     chips.push({
       key:   "elem",
       icon:  eliminatorPres.icon,
+      assetType: "eleme_yetkisi",
       title: "Eleme Yetkisi hazır",
     });
   }
@@ -223,7 +231,9 @@ export default function MobileScoreStrip({
                     className="mcq-strip__pill-chip"
                     title={c.title}
                   >
-                    {c.icon}
+                    {c.assetType
+                      ? <ConquestBonusIcon type={c.assetType} fallbackChar={c.icon} alt={c.title} />
+                      : c.icon}
                   </span>
                 ))}
                 {overflowCount > 0 && (

@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BONUS_TYPE_EFFECT_COPY } from "../ConquestBonusGuide";
 import type { ConquestBonusGuideEntry } from "../ConquestBonusGuide";
+import { ConquestBonusIcon } from "../ConquestAssetIcon";
 import type { ConquestRegionId } from "../types";
 
 interface Props {
@@ -80,7 +81,7 @@ export default function MobileBonusStrip({ entries }: Props) {
               aria-label={`${def.label} bonusu detayı`}
             >
               <span className="mcq-bonus-chip-icon" aria-hidden="true">
-                {def.icon}
+                <ConquestBonusIcon type={def.type} fallbackChar={def.icon} alt={def.label} size={26} />
               </span>
               <span className="mcq-bonus-chip-label">{def.label}</span>
             </button>
@@ -96,7 +97,7 @@ export default function MobileBonusStrip({ entries }: Props) {
         >
           <div className="mcq-bonus-detail-head">
             <span className="mcq-bonus-detail-icon" aria-hidden="true">
-              {active.def.icon}
+              <ConquestBonusIcon type={active.def.type} fallbackChar={active.def.icon} alt={active.def.label} size={34} />
             </span>
             <span className="mcq-bonus-detail-title">{active.def.label}</span>
             <button

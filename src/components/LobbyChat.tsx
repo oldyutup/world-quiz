@@ -64,6 +64,11 @@ interface Props {
    * modlar) eski davranış: odanın tüm mesajları görünür.
    */
   minCreatedAt?: string;
+  /**
+   * Opsiyonel: "Sohbet" başlığının solunda gösterilecek özel ikon (verilmezse
+   * 💬 emoji). Yalnız Kuşatma geçer — diğer modlar etkilenmez.
+   */
+  titleIcon?: import("react").ReactNode;
 }
 
 /** sendMode → RPC adı eşlemesi. "direct" buraya düşmez. */
@@ -171,6 +176,7 @@ export default function LobbyChat({
   playerId,
   claimToken,
   minCreatedAt,
+  titleIcon,
 }: Props) {
   const myName = playerName.trim();
   const isControlled = onMobileSheetOpenChange !== undefined;
@@ -492,7 +498,7 @@ export default function LobbyChat({
           tabIndex={0}
         >
           <span className="lc-title">
-            <span className="lc-title-icon">💬</span>
+            <span className="lc-title-icon">{titleIcon ?? "💬"}</span>
             <span>Sohbet</span>
             {!open && unread > 0 && <span className="lc-badge">{unread}</span>}
           </span>
@@ -547,7 +553,7 @@ fontWeight: 700,
         aria-label="Sohbeti aç"
         style={hideMobileFab ? { display: "none" } : undefined}
       >
-        <span>💬</span>
+        <span>{titleIcon ?? "💬"}</span>
         <span>Sohbet</span>
         {unread > 0 && <span className="lc-fab-badge">{unread}</span>}
       </button>
@@ -559,7 +565,7 @@ fontWeight: 700,
             <div className="lc-sheet-handle" />
             <header className="lc-sheet-header">
               <span className="lc-title">
-                <span className="lc-title-icon">💬</span>
+                <span className="lc-title-icon">{titleIcon ?? "💬"}</span>
                 <span>Sohbet</span>
               </span>
               <button
