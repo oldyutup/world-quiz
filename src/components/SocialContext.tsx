@@ -39,6 +39,23 @@ import {
   refreshDailyReward,
   useDailyReward,
 } from "../lib/gold";
+import { NotificationToaster } from "./NotificationToaster";
+
+/** Düz bilgi/onay toast'ı (ör. "Davet gönderildi."). Kısa ömürlü. */
+export interface InfoToast {
+  toastId: number;
+  kind: "info";
+  message: string;
+}
+
+/** Gerçek bir bildirim satırından doğan, aksiyon taşıyabilen toast. */
+export interface NotifToast {
+  toastId: number;
+  kind: "notification";
+  notification: NotificationRow;
+}
+
+export type ActiveToast = InfoToast | NotifToast;
 
 export interface RoomContext {
   /** 6 karakterli oda kodu. */
@@ -85,7 +102,12 @@ interface SocialContextValue {
   /** room_invite "Katıl" → oda linkine yönlendirme (App bağlar). */
   onJoinRoom?: (roomUrl: string) => void;
 
+  /** Düz bilgi/onay toast'ı gösterir (kısa ömürlü). */
   toast: (message: string) => void;
+  /** Ekranda + sırada bekleyen tüm toast'lar (NotificationToaster tüketir). */
+  activeToasts: ActiveToast[];
+  /** Bir toast'ı kapatır (× / aksiyon / otomatik süre). */
+  dismissToast: (toastId: number) => void;
 }
 
 const Ctx = createContext<SocialContextValue | null>(null);
@@ -114,11 +136,6 @@ interface SocialProviderProps {
   children: ReactNode;
 }
 
-interface ToastItem {
-  id: number;
-  message: string;
-}
-
 export function SocialProvider({
   profile,
   onEditProfile,
@@ -131,9 +148,11 @@ export function SocialProvider({
 }: SocialProviderProps) {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [roomContext, setRoomContext] = useState<RoomContext | null>(null);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [activeToasts, setActiveToasts] = useState<ActiveToast[]>([]);
   const [friendsRefreshKey, setFriendsRefreshKey] = useState(0);
   const toastSeq = useRef(0);
+  // Aynı bildirimi iki kez toast etmemek için (realtime replay/yeniden bağlanma).
+  const toastedNotifIds = useRef<Set<string>>(new Set());
 
   const bumpFriends = useCallback(() => setFriendsRefreshKey((k) => k + 1), []);
 
@@ -148,13 +167,30 @@ export function SocialProvider({
     setNotifications(rows);
   }, [profileId]);
 
-  const toast = useCallback((message: string) => {
-    const id = ++toastSeq.current;
-    setToasts((prev) => [...prev, { id, message }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  const dismissToast = useCallback((toastId: number) => {
+    setActiveToasts((prev) => prev.filter((t) => t.toastId !== toastId));
   }, []);
+
+  // Düz bilgi/onay toast'ı. Otomatik kapanma süresi kart tarafında (kuyrukta
+  // bekleyen toast sayacı başlatmaz) yönetilir; burada yalnız kuyruğa ekleriz.
+  const toast = useCallback((message: string) => {
+    const toastId = ++toastSeq.current;
+    setActiveToasts((prev) => [...prev, { toastId, kind: "info", message }]);
+  }, []);
+
+  // Bir bildirim satırını canlı toast olarak kuyruğa alır (id-bazlı dedupe).
+  const pushNotificationToast = useCallback((row: NotificationRow) => {
+    if (toastedNotifIds.current.has(row.id)) return;
+    toastedNotifIds.current.add(row.id);
+    const toastId = ++toastSeq.current;
+    setActiveToasts((prev) => [...prev, { toastId, kind: "notification", notification: row }]);
+  }, []);
+
+  // Oturum değişiminde toast kuyruğunu ve dedupe setini sıfırla.
+  useEffect(() => {
+    setActiveToasts([]);
+    toastedNotifIds.current = new Set();
+  }, [profileId]);
 
   // İlk yükleme + login değişiminde fetch.
   useEffect(() => {
@@ -170,12 +206,15 @@ export function SocialProvider({
         if (prev.some((n) => n.id === row.id)) return prev;
         return [row, ...prev];
       });
-      toast(row.title);
+      // Yalnız taze ekleri (son 60 sn) toast et — olası realtime replay / yeniden
+      // bağlanma sonrası eski satırların toplu toast olmasını engeller.
+      const ageMs = Date.now() - new Date(row.created_at).getTime();
+      if (Number.isFinite(ageMs) && ageMs <= 60_000) pushNotificationToast(row);
     });
     return () => {
       void supabaseRemoveChannel(channel);
     };
-  }, [profileId, toast]);
+  }, [profileId, pushNotificationToast]);
 
   const markRead = useCallback(async (id: string) => {
     setNotifications((prev) =>
@@ -277,6 +316,8 @@ export function SocialProvider({
       onJoinRoom,
       profileEditorOpen,
       toast,
+      activeToasts,
+      dismissToast,
     }),
     [
       profile,
@@ -298,21 +339,17 @@ export function SocialProvider({
       onJoinRoom,
       profileEditorOpen,
       toast,
+      activeToasts,
+      dismissToast,
     ]
   );
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      {toasts.length > 0 && (
-        <div className="social-toast-host" aria-live="polite">
-          {toasts.map((t) => (
-            <div key={t.id} className="social-toast">
-              {t.message}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Premium global toast katmanı — proje genelinde tek mount; route değişse
+          bile (provider kökte) yaşamaya devam eder. */}
+      <NotificationToaster />
     </Ctx.Provider>
   );
 }

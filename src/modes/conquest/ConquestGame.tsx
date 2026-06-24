@@ -40,6 +40,7 @@ import { playSound } from "../../lib/sound";
 import { playConquestSound, unlockConquestSounds } from "./conquestSound";
 import { useConquestSound } from "./useConquestSound";
 import { useIsMobile } from "../../lib/useIsMobile";
+import { useToastSurfaceOffset } from "../../lib/useToastOffset";
 import {
   getThemeBackgroundStyle,
   getThemeDataAttr,
@@ -475,6 +476,10 @@ export default function ConquestGame({
   // Both branches render the same TurkeyConquestMap / ConquestChallengePanel /
   // ConquestActionPanel; only the surrounding chrome differs.
   const { isMobile, orientation } = useIsMobile();
+
+  // Portre mobilde oyun alt-sayfası (bottom sheet handle) altta durur; global
+  // bildirim toast'larını onun üzerine kaldır (oyun aksiyonlarını örtmesin).
+  useToastSurfaceOffset(isMobile && orientation === "portrait", 88);
 
   const mapConfig = useMemo(
     () => getConquestMapConfig(settings.map),

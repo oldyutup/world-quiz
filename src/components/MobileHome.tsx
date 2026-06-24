@@ -29,6 +29,7 @@ import { Avatar } from "./Avatar";
 import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
+import { useToastSurfaceOffset } from "../lib/useToastOffset";
 import {
   CONQUEST_QUICK_MATCH_ENABLED,
   QUICK_MATCH_CONQUEST_ROUNDS,
@@ -630,6 +631,13 @@ export default function MobileHome({
   const social = useSocialOptional();
   const dm = useDmOptional();
   const socialBadge = (social?.unreadCount ?? 0) + (dm?.totalUnread ?? 0);
+
+  // Native app ana ekranında alt-nav (.mh-bottom-nav, ~70px) yalnız native'de
+  // görünür; global bildirim toast'larını onun üzerine kaldır (çakışma yok).
+  const isNativeApp =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("is-native-app");
+  useToastSurfaceOffset(isNativeApp, 78);
 
   const categories: Category[] = [
     {

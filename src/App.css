@@ -15556,25 +15556,38 @@ body {
     drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)) !important;
 }
 
-/* ── Desktop board stage (tek kanonik, oran = SVG viewBox 1005/490) ──
-   Stage genişliği hem viewport genişliği (board-inner max 1050px) hem de
-   header sonrası kalan dikey alanla sınırlanır; harita hiçbir desktop
-   boyutunda taşmaz veya oranı bozulmaz.  SVG (width:100% + intrinsic
-   viewBox oranı) bu kutuyu letterbox'sız doldurur.  Header / oyuncu paneli
-   / soru kartı / bonus paneli DOM overlay olarak kalır, stage ölçüsünü
-   değiştirmez.  Kapsam: yalnız desktop (≥601px) + .cq-game-screen;
-   MobileConquestLayout .cq-game-board-inner render etmez. */
+/* ── Desktop board stage — KANONİK GAMEPLAY VIEWPORT (oran = viewBox 1005/490) ──
+   KÖK NEDEN (düzeltildi): harita eskiden `min(100%, calc((100dvh - reserve) *
+   1005/490))` ile ölçekleniyordu.  `100dvh` terimi haritanın piksel boyutunu
+   viewport YÜKSEKLİĞİNE (yani monitör çözünürlüğü + tarayıcı chrome yüksekliği)
+   bağlıyordu: kısa viewport / yüksek chrome'da yükseklik-terimi sınırlayıcı
+   olup haritayı küçültüyor, etrafında daha çok atmosferik zemin bırakıyordu.
+   Sonuç: AYNI maçta iki oyuncu farklı harita ölçeği/kadrajı görüyordu.
+
+   ÇÖZÜM: gameplay stage'i artık SABİT bir kanonik genişlikten ölçeklenir
+   (`--cq-canonical-map-width`), viewport yüksekliğinden TAMAMEN bağımsız.
+   Harita doğal oranını (1005/490) + SVG `meet` (contain) korur; tüm bölge
+   path'leri, marker'lar, etiketler ve hit-area'lar aynı viewBox koordinat
+   sisteminde olduğundan birlikte ölçeklenir, asla kaymaz.  Artan dikey/yatay
+   alanı zaten `cover` basılan atmosferik war-map backdrop'u doldurur.  Board
+   alanı (`overflow-y:auto`) yalnızca aşırı kısa viewport'ta nazik bir fallback
+   sağlar — ama haritanın ÖLÇEĞİ/MERKEZİ chrome yüksekliğiyle hiç değişmez.
+   Header / oyuncu paneli / soru kartı / bonus paneli `position:fixed` overlay
+   kalır; açılıp kapanmaları stage ölçüsünü etkilemez.  Kapsam: yalnız desktop
+   (≥601px) + .cq-game-screen; MobileConquestLayout bu kabuğu render etmez. */
 @media (min-width: 601px) {
   .app.duel-screen.cq-screen.cq-game-screen {
-    --cq-vert-reserve: 150px; /* header + harita başlığı + nefes payı (gerekirse ayarlanır) */
+    /* Kanonik tasarım genişliği — board-inner max-width ile eşleşir, böylece
+       yeterince geniş her desktop viewport'unda harita aynı pikselde kalır. */
+    --cq-canonical-map-width: 1050px;
   }
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
-    max-width: 1050px;
+    max-width: var(--cq-canonical-map-width);
     margin: 0 auto;
     padding: 16px 16px 12px;
   }
   .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
-    width: min(100%, calc((100dvh - var(--cq-vert-reserve)) * 1005 / 490));
+    width: min(100%, var(--cq-canonical-map-width));
     margin: 0 auto;
     padding: 0;
     aspect-ratio: 1005 / 490;
@@ -22481,6 +22494,217 @@ html:not(.is-native-app) .apk-photo-card {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   Uygulama geneli bildirim toast'ları (premium, aksiyon-yetenekli)
+   — NotificationToaster.tsx. Desktop: sağ-alt, en fazla 3 kart. Mobil/native:
+   alt, tek kart, safe-area + yüzey-bazlı --app-toast-extra-bottom offset'iyle.
+   Modal DEĞİL: host pointer-events:none, yalnız kartlar tıklanır.
+   ════════════════════════════════════════════════════════════════════════ */
+:root { --app-toast-extra-bottom: 0px; }
+
+.app-toast-host {
+  position: fixed;
+  z-index: 6200; /* oyun/lobi UI üstünde; modal & bottom-sheet (6300+) altında */
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(20px + var(--app-toast-extra-bottom, 0px) + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+.app-toast-host > * { pointer-events: auto; }
+
+.app-toast {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  padding: 13px 13px 15px;
+  border-radius: 14px;
+  /* Önce ton, sonra gölge: hafifçe sıcağa kaçan katmanlı koyu yüzey + 1px kenar;
+     yüzen öğe olduğu için kalkık-panel gölgesi (modal değil). */
+  background: linear-gradient(180deg, rgba(29, 37, 51, 0.98) 0%, rgba(18, 24, 34, 0.98) 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(2, 6, 14, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  overflow: hidden;
+}
+.app-toast--plain { grid-template-columns: auto 1fr auto; align-items: center; padding: 11px 12px 13px; }
+
+/* Aksiyon gerektiren kart bilgi kartından AYRIŞIR: sakin mavi kenar + ince glow
+   halkası (Tek Ses kuralı — mavi). Yan-şerit / gradyan-metin YOK. */
+.app-toast--action {
+  border-color: rgba(88, 166, 255, 0.42);
+  box-shadow:
+    0 12px 32px rgba(2, 6, 14, 0.55),
+    0 0 0 1px rgba(88, 166, 255, 0.10),
+    0 0 24px rgba(88, 166, 255, 0.10);
+}
+
+.app-toast-figure {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.app-toast-figure--icon {
+  border-radius: 12px;
+  background: rgba(88, 166, 255, 0.13);
+  border: 1px solid rgba(88, 166, 255, 0.22);
+}
+.app-toast--info .app-toast-figure--icon {
+  background: var(--surface3);
+  border-color: var(--border);
+}
+.app-toast-figure--icon .emoji-icon { width: 23px; height: 23px; }
+.app-toast-avatar img {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+}
+.app-toast-figure-badge {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 21px;
+  height: 21px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--surface2);
+  border: 2px solid var(--surface);
+}
+.app-toast-figure-badge .emoji-icon { width: 12px; height: 12px; }
+
+.app-toast-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 1px;
+}
+.app-toast-title {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 13.5px;
+  line-height: 1.25;
+  color: #eaf1ff;
+}
+.app-toast-text {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: rgba(200, 215, 240, 0.78);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.app-toast-actions { display: flex; gap: 8px; margin-top: 10px; }
+.app-toast-btn {
+  height: 34px;
+  padding: 0 15px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+.app-toast-btn:active { transform: scale(0.97); }
+.app-toast-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); }
+.app-toast-btn--accept { background: var(--accent); color: #04111f; }
+.app-toast-btn--accept:hover { box-shadow: 0 0 0 3px var(--accent-glow); }
+.app-toast-btn--ghost { background: var(--surface3); color: var(--text); }
+.app-toast-btn--ghost:hover { background: var(--surface2); }
+.app-toast-btn:disabled { opacity: 0.55; cursor: default; }
+
+.app-toast-close {
+  flex: none;
+  align-self: flex-start;
+  width: 26px;
+  height: 26px;
+  margin: -3px -3px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.app-toast-close:hover { color: var(--text); background: var(--surface3); }
+.app-toast-close:focus-visible { outline: none; color: var(--text); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* Geri sayım çubuğu — transform:scaleX (layout değil); hover/focus/işlemde
+   inline animation-play-state ile durur. JS sayacı dismiss'in otoritesidir. */
+.app-toast-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5px;
+  transform-origin: left center;
+  transform: scaleX(1);
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.85), rgba(88, 166, 255, 0.4));
+  animation: app-toast-countdown linear forwards;
+}
+.app-toast--info .app-toast-progress { background: rgba(125, 133, 144, 0.5); }
+@keyframes app-toast-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+.app-toast-queue {
+  align-self: flex-end;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(18, 24, 34, 0.92);
+  border: 1px solid var(--border);
+  padding: 4px 11px;
+  border-radius: 999px;
+}
+
+/* Giriş / çıkış. Hareket tercih edenlerde hafif kayma + ölçek; aksi halde fade. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-toast { animation: app-toast-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .app-toast--leaving { animation: app-toast-out 220ms cubic-bezier(0.4, 0, 1, 1) both; }
+  @keyframes app-toast-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes app-toast-out {
+    from { opacity: 1; transform: none; }
+    to   { opacity: 0; transform: translateY(8px) scale(0.98); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast { animation: app-toast-fade-in 200ms ease both; }
+  .app-toast--leaving { animation: app-toast-fade-out 160ms ease both; }
+  @keyframes app-toast-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes app-toast-fade-out { from { opacity: 1; } to { opacity: 0; } }
+}
+
+/* Mobil / native: alt, kenar boşluklu tek kart. Tek kartla sınır JS'te (maxVisible).
+   Dokunma hedefleri büyür (WCAG AA + tek-el kullanım). */
+@media (max-width: 600px) {
+  .app-toast-host {
+    right: max(12px, env(safe-area-inset-right, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: auto;
+    bottom: calc(14px + var(--app-toast-extra-bottom, 0px) + env(safe-area-inset-bottom, 0px));
+  }
+  .app-toast-btn { height: 40px; padding: 0 18px; font-size: 13px; }
+  .app-toast-close { width: 34px; height: 34px; font-size: 20px; margin: -4px -4px 0 0; }
+}
+
 .notif-panel-count {
   min-width: 20px;
   height: 20px;
@@ -23945,6 +24169,42 @@ html.is-native-app .social-bar .notif-bell { display: none; }
       ),
       url("/assets/backgrounds/conquest-lobby-mobile.png") center top / cover no-repeat !important;
     background-attachment: scroll !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Kuşatma mobil/dar lobi — üst bar safe-area (notch / Dynamic Island)
+   ───────────────────────────────────────────────────────────────
+   Sorun: full-bleed mobil yüzeyde (native webview viewport-fit=cover ya da
+   PWA/standalone Safari) üst bar içeriği — geri butonu, "Kuşatma", oda kodu,
+   harita etiketi — iPhone'un status bar / saat / Dynamic Island alanına
+   taşıyordu.
+
+   Yaklaşım: arka plan en üst kenara kadar full-bleed KALIR; safe-area boşluğunu
+   doğrudan üst bar yönetir. Lobi/setup/oda-listesi kabuğundaki (.app) generic
+   `html.is-native-app .app { padding-top: env(safe-area-inset-top) }` değerini
+   burada sıfırlıyoruz ki native'de çift inset oluşmasın; ardından inset'i
+   üst barın kendi padding'ine taşıyoruz. Mobil web'de o generic kural zaten
+   ateşlenmiyordu (env() 0'dı), bu yüzden tek otorite artık bar oluyor → hem
+   native hem web tutarlı.
+
+   Kapsam KİLİDİ: `.cq-screen:not(.cq-game-screen)` — yalnız Kuşatma lobi
+   yüzeyleri (lobi / oda kur / oda listesi / kodla katıl / kısa yükleme
+   kabukları). Aktif oyun tahtası (.cq-game-screen, kendi mcq-header'ı +
+   .app inset'i ile) ve diğer modlar TAMAMEN dışarıda. Masaüstü (≥601px)
+   değişmez: bu blok yalnız ≤600px'te çalışır, env() masaüstünde zaten 0. */
+@media (max-width: 600px) {
+  /* Dış kabuk: arka plan full-bleed kalsın; inset'i üst bara devret. */
+  .app.duel-screen.cq-screen:not(.cq-game-screen) {
+    padding-top: 0;
+  }
+  /* Üst bar: içerik status bar + Dynamic Island'ın altından başlar; bar
+     zemini (mat cam) arkada en üste kadar uzanır. Inset üstüne nefes payı
+     + min-height ile geri butonu/çipler sıkışık görünmez. */
+  .cq-screen:not(.cq-game-screen) .duel-header {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+    padding-bottom: 12px;
+    min-height: calc(env(safe-area-inset-top, 0px) + 54px);
   }
 }
 

@@ -32,6 +32,8 @@ import { PlayerAvatar } from "../../components/PlayerAvatar";
 import { PlayerProfileTrigger } from "../../components/PlayerProfileTrigger";
 import { LobbyInviteBar } from "../../components/LobbyInviteBar";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
+import { useIsMobile } from "../../lib/useIsMobile";
+import { useToastSurfaceOffset } from "../../lib/useToastOffset";
 import { useSocialOptional } from "../../components/SocialContext";
 import { EmojiIcon } from "../../components/EmojiIcon";
 import { ConquestAssetIcon, ConquestBonusIcon } from "./ConquestAssetIcon";
@@ -175,6 +177,11 @@ export default function ConquestLobby({
    * directly.  Vote / Oyu Kaldır lives inside that card.  Desktop ignores
    * this state — its chips keep direct-click voting + hover tooltip. */
   const [mobileBonusDetail, setMobileBonusDetail] = useState<ConquestRegionBonusType | null>(null);
+
+  // Mobilde lobi alt-köşesinde Oyuncular/Sohbet FAB'ı (.wgg-players-fab, ~64px)
+  // durur; global bildirim toast'larını onun üzerine kaldır (çakışma yok).
+  const { isMobile } = useIsMobile();
+  useToastSurfaceOffset(isMobile, 76);
 
   const shareLink = useMemo(() => buildConquestShareLink(roomCode), [roomCode]);
 
