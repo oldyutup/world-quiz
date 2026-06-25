@@ -15524,6 +15524,19 @@ body {
   }
 }
 
+/* ── Phase-1 geo-context (desktop aktif oyun) ──────────────────────────────
+   Kayıtlı (registered) in-SVG deniz + gerçek komşu katmanı artık coğrafyayı
+   SAHİPLENİR; bu yüzden aktif oyun, coğrafi olarak YANLIŞ war-map backdrop'unu
+   bırakır ve düz mat bir zemine düşer (war-map yalnız lobi/kurulumda kalır).
+   FAZ 2'de bu zemine kasıtlı painterly ambience gelecek.  Yalnız desktop
+   (.cq-game-screen ≥601px); mobil MobileConquestLayout kendi yüzeyini çizer. */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen.cq-game-screen {
+    background-color: #08131d !important;
+    background-image: none !important;
+  }
+}
+
 /* Board / map katmanları şeffaf: terrain artık SVG içinde, ikinci bir
    arka plan basılmaz; dekoratif ::before/::after katmanları kapalı. */
 .app.duel-screen.cq-screen .cq-game-board-wrap,
@@ -15582,16 +15595,21 @@ body {
      dolayısıyla aynı maçtaki oyuncuların ezici çoğunluğu) AYNI ölçeği görür
      (adalet korunur). Yalnız gerçekten kısa safe-stage haritayı SIĞACAK kadar
      küçültür — eski 100dvh'nin "her chrome farkında küçült" davranışı DEĞİL.
-   • `--cq-stage-h` = haritaya kalan GERÇEK dikey alan; JS ölçüm hook'u (header +
-     footer + aktif sabit hamle/soru panelinin GERÇEK yüksekliğinden) hesaplar ve
-     bu değişkene yazar. CSS'te ham `100dvh` formülü YOK — yükseklik terimi
-     ölçülen geometriden gelir (eski yaklaşıma dönüş değil).
+   • `--cq-stage-h` = haritaya kalan GERÇEK dikey alan; JS ölçüm hook'u YALNIZCA
+     kök geometriden (header alt kenarı + footer üst kenarı + SABİT dock rezervi)
+     hesaplar — `measureConquestStageGeometry`. Aktif faz paneli ÖLÇÜLMEZ; panel
+     `position:fixed` olduğundan akışı itmez ve yüksekliği faza göre değişir, bu
+     yüzden ölçüme katılması haritayı fazlar arası büyütüp/küçültüp kaydırıyordu
+     (giderilen kök neden). CSS'te ham `100dvh` formülü YOK.
+   • FAZ-DEĞİŞMEZLİK: aynı viewport'ta question/answered/reveal/action/
+     round_result fazlarının hepsinde `--cq-stage-h` ve `--cq-stage-dock-reserve`
+     birebir aynıdır → harita rect'i (w/h/top/left) sabit kalır; yalnız gerçek
+     pencere/viewport resize bu değerleri değiştirir.
    • İlk boyamada (hook çalışmadan) fallback `--cq-stage-h: 525px` → preferred
      genişliği verir; hook useLayoutEffect'te boyamadan ÖNCE gerçek değeri yazar.
    • Harita board-wrap içinde DİKEY + YATAY ORTALANIR; alt dock paneli için
-     ölçülen `--cq-stage-dock-reserve` kadar alt boşluk bırakılır → harita ne
-     üste yapışır ne altta ölü alan bırakır; normalize merkez tüm viewport'larda
-     tutarlı kalır.
+     SABİT `--cq-stage-dock-reserve` kadar alt boşluk bırakılır → harita panelin
+     üstünde ortalanır; merkez tüm fazlarda ve viewport'larda tutarlı kalır.
    • Hiç `transform: scale()/translateY` YOK → görünür rect == layout rect; SVG
      viewBox + `meet` + tüm path/marker/hit-area koordinat sistemi DOKUNULMADAN
      uniform ölçeklenir → bölge tıklama doğruluğu birebir korunur.
@@ -24181,9 +24199,10 @@ html.is-native-app .social-bar .notif-bell { display: none; }
        safe-stage'ten süreklidir (cihaz/çözünürlük/breakpoint listesi bağımsız);
      • başlık desktop'ta tek yerde (SAFE-STAGE bloğunda) gizlenir;
      • alt dock paneli (`.cq-game-phase-panel`, `position:fixed; bottom:60px`)
-       konumu DEĞİŞMEZ; hook panelin GERÇEK yüksekliğini ölçüp board-wrap'e
-       `--cq-stage-dock-reserve` olarak yazar → harita panelin üstünde ortalanır,
-       güney bölgeleri panel altında kalmaz (tıklanabilirlik korunur).
+       konumu DEĞİŞMEZ; hook panelin yüksekliğini ÖLÇMEZ — board-wrap'e SABİT
+       `--cq-stage-dock-reserve` yazar (en uzun paneli temizleyecek bant) →
+       harita panelin üstünde ortalanır, güney bölgeleri panel altında ezilmez
+       VE faz değişimi harita geometrisini etkilemez (faz-değişmez yuva).
    Mobil (≤600px) MobileConquestLayout kullanır → etkilenmez. */
 
 /* ═══════════════════════════════════════════════════════════════════════

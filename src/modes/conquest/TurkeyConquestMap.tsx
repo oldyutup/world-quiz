@@ -25,6 +25,8 @@ import type {
 } from "./types";
 import { ConquestMapBonusGlyph } from "./ConquestAssetIcon";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
+import { CONQUEST_GEO_VIEWBOX_STR } from "./maps/conquest-neighbors";
+import { buildConquestGeoContextMarkup } from "./maps/conquestGeoContextMarkup";
 import { getRegionPoints } from "./regionPoints";
 import { resolveActiveBonus } from "./conquestRoundBonuses";
 import { BEREKET_HARVEST_INTERVAL } from "./conquestGameplay";
@@ -72,6 +74,11 @@ const TERRAIN_IMAGE_HREF    = "/assets/backgrounds/turkey-terrain-texture.png?v=
 const TERRAIN_PATTERN_ID    = "cqTurkeyTerrainImage";
 const MAP_VIEWBOX_W         = 1005;
 const MAP_VIEWBOX_H         = 490;
+
+// Geo-context painterly markup (desktop only) — built ONCE from the shared
+// builder so it's static (no per-render cost) and byte-identical to the QA
+// harness.  Injected via dangerouslySetInnerHTML into a non-interactive <g>.
+const GEO_CONTEXT_MARKUP = buildConquestGeoContextMarkup({ terrainHref: TERRAIN_IMAGE_HREF });
 
 // ─── Region label text ────────────────────────────────────────────────────────
 
@@ -209,6 +216,14 @@ interface Props {
    */
   obscureRegionPoints?: boolean;
   /**
+   * Desktop-only geo-context (Phase 1).  When true, the SVG expands to the
+   * geo-canvas viewBox and renders Türkiye's real neighbours behind the
+   * playable regions (exterior-masked, non-interactive).  Mobile / default
+   * leaves the native 1005×490 frame untouched — region paths, hit-areas and
+   * coordinates are identical in both modes.
+   */
+  geoContext?: boolean;
+  /**
    * Sis Çöktü 🌫️ (PR-4B) — when true the parent has already masked every
    * region the local viewer does NOT own (ownerPlayerId → null, shielded →
    * false, borderOutpostOwnerId / hiddenShield* → undefined).  This flag
@@ -302,6 +317,7 @@ export default function TurkeyConquestMap({
   borderOutpostRegions,
   obscureRegionPoints = false,
   fogMaskOwnership = false,
+  geoContext = false,
 }: Props) {
   const stateById   = Object.fromEntries(regionStates.map((rs) => [rs.regionId, rs]));
   const playerById  = Object.fromEntries(players.map((p) => [p.id, p]));
@@ -648,9 +664,10 @@ export default function TurkeyConquestMap({
       data-spectator-turn={spectatorTurn ? "" : undefined}
     >
       <svg
-        viewBox="0 0 1005 490"
+        viewBox={geoContext ? CONQUEST_GEO_VIEWBOX_STR : "0 0 1005 490"}
         preserveAspectRatio="xMidYMid meet"
         className="cq-turkey-map-svg"
+        data-geo-context={geoContext ? "" : undefined}
         aria-label="Türkiye Kuşatması haritası"
         role="img"
       >
@@ -676,6 +693,20 @@ export default function TurkeyConquestMap({
             />
           </pattern>
         </defs>
+
+        {/* ── Layer -1: geo-context (desktop only) — Türkiye's real neighbours +
+             painterly sea behind the playable regions.  Non-interactive, sits
+             behind everything; geometry/mask come from the generated vector data
+             (single source of truth, shared with the QA harness).  Region paths,
+             hit-areas and coordinates are untouched. */}
+        {geoContext && (
+          <g
+            className="cq-geo-context-layer"
+            pointerEvents="none"
+            aria-hidden="true"
+            dangerouslySetInnerHTML={{ __html: GEO_CONTEXT_MARKUP }}
+          />
+        )}
 
         {/* ── Layer 0: terrain image underlay (purely visual; never intercepts clicks) ── */}
         <g className="cq-terrain-image-underlay" pointerEvents="none" aria-hidden="true">
