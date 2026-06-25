@@ -17948,6 +17948,168 @@ body {
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   Kuşatma masaüstü "Komuta Çerçevesi" HUD (Seçenek A)
+   ─────────────────────────────────────────────────────────────────────
+   Dondurulmuş haritanın ETRAFINDA bilinçli bir komuta-masası çerçevesi:
+   sağ savaş-odası rayı (bonus dock + Savaş Günlüğü), alt komuta güvertesi,
+   düşük-kontrastlı gutter ambiyansı.  HEPSİ position:fixed / kök arka-plan
+   katmanı → flex akışına GİRMEZ → header.bottom / footer.top değişmez →
+   measureConquestStageGeometry aynı --cq-stage-h'i döner → harita rect'i,
+   viewBox, hit-area ve faz-değişmezlik DOKUNULMADAN kalır.  Yeni kara/deniz
+   ya da harita asset'i YOK; yalnız ışık + yüzey.
+   Yalnız desktop (≥601px); mobil kabuk (MobileConquestLayout, ≤600px) hiçbir
+   kuralı almaz.  --cq-hud-top / --cq-footer-h JS ölçüm hook'undan gelir
+   (canlı header/footer yüksekliği); fallback'ler ilk boyama içindir, sabit
+   58px'e kör bağlanmaz. ═══════════════════════════════════════════════ */
+@media (min-width: 601px) {
+  .app.duel-screen.cq-screen.cq-game-screen {
+    /* Dayanıklı HUD çapaları — JS hook canlı chrome ölçüleriyle ezer. */
+    --cq-hud-top: 56px;
+    --cq-footer-h: 54px;
+    /* Savaş Günlüğü kartının dış yüksekliği; bonus dock'un alt sınırını da
+       bu belirler (çakışma matematiksel olarak imkânsız).  Kısa viewport'ta
+       peek'e iner (aşağıdaki max-height media query). */
+    --cq-war-log-h: 188px;
+
+    /* Düşük-kontrastlı gutter ambiyansı: kenarlar hafifçe koyulaşır, merkez
+       (harita) berrak kalır.  Kök ARKA PLAN olarak çizilir → her zaman
+       haritanın ARKASINDA; haritanın kendi okyanus dolgusu gutter dışını
+       örter, böylece yalnız siyah boşluklar sahiplenilir. */
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(78% 58% at 50% 42%,
+        rgba(13, 17, 23, 0) 58%,
+        rgba(2, 5, 11, 0.5) 100%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  /* ── Alt komuta güvertesi ───────────────────────────────────────────
+     Zaten AYRILMIŞ alt rezerv bandını (--cq-stage-dock-reserve) görsel
+     olarak sahiplenir → yüzen soru/hamle kartı boşlukta değil, güvertenin
+     ÜZERİNDE oturur.  Rezervi yalnız BOYAR (değiştirmez); kartın kutusunu
+     ve haritayı etkilemez.  Üst kenar mask ile haritaya yumuşak karışır. */
+  .cq-command-deck {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--cq-footer-h, 54px);
+    height: var(--cq-stage-dock-reserve, 210px);
+    z-index: 5;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 150% at 50% 130%,
+        rgba(45, 51, 59, 0.5),
+        rgba(13, 17, 23, 0) 70%),
+      linear-gradient(to top,
+        rgba(22, 27, 34, 0.85),
+        rgba(13, 17, 23, 0) 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    -webkit-mask-image: linear-gradient(to top, #000 58%, transparent);
+    mask-image: linear-gradient(to top, #000 58%, transparent);
+  }
+}
+
+/* ── Savaş Günlüğü (sağ rayın alt çapası) ─────────────────────────────
+   Eski yüzen `.cq-event-feed--desktop` yerine başlıklı, kalıcı kart; satır
+   stili (.cq-event-feed__row) aynen paylaşılır.  Son 6 olay; informational
+   (pointer-events:none → haritayı/oyunu bloklamaz). */
+.cq-war-log {
+  position: fixed;
+  right: 14px;
+  bottom: calc(var(--cq-footer-h, 54px) + 14px);
+  width: 300px;
+  max-width: 32vw;
+  height: var(--cq-war-log-h, 188px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px 10px;
+  border-radius: 10px;
+  background: rgba(7, 10, 18, 0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.cq-war-log__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.cq-war-log__title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f6c074;
+}
+.cq-war-log__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  min-height: 0;
+}
+.cq-war-log__empty {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(241, 245, 249, 0.5);
+  font-style: italic;
+}
+/* ≤720px: mobil varyantlar (portrait-peek / landscape-dock) devralır. */
+@media (max-width: 720px) {
+  .cq-war-log { display: none; }
+}
+
+/* ── Sağ savaş-odası rayı: bonus dock + Savaş Günlüğü ─────────────────
+   Yalnız ≥721px (mobil bonus-guide override'ı ≤720px'te → çakışmaz; mobil
+   bonus kartı dokunulmadan kalır).  Bonus dock max-height'i GÜNLÜĞÜN üstünde
+   durur ve kendi içinde scroll alır → asla footer'a taşmaz, asla günlüğü
+   örtmez.  Bonus toggle davranışı (auto-aç / "?" / ✕) AYNEN korunur; bu yalnız
+   AÇIKKEN onu rail-dock'a kalibre eder. */
+@media (min-width: 721px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-bonus-guide {
+    top: calc(var(--cq-hud-top, 56px) + 4px);
+    right: 14px;
+    left: auto;
+    width: 300px;
+    max-width: calc(100vw - 28px);
+    z-index: 40;
+    max-height: calc(
+      100dvh - var(--cq-hud-top, 56px) - 4px
+      - (var(--cq-footer-h, 54px) + 14px)
+      - var(--cq-war-log-h, 188px) - 18px
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* ≤1440 geniş bandında gutter dar → rayı biraz daralt (haritanın doğu
+     kenarıyla görsel örtüşmeyi azaltır; harita rect'i değişmez, ray bugünkü
+     gibi translucent camla üstte durur). */
+  @media (max-width: 1440px) {
+    .app.duel-screen.cq-screen.cq-game-screen .cq-bonus-guide { width: 264px; }
+    .cq-war-log { width: 264px; }
+  }
+
+  /* Kısa desktop (≤820px yükseklik, ör. 1366×768): Savaş Günlüğü tek-satır
+     "peek"e iner → bonus dock'a yer açar, hiçbir şey footer'a taşmaz.  Başlık
+     gizlenir, gövde en yeni tek olayı gösterir (satırlar zaten en-yeni-üstte).
+     Harita rect'i bundan ETKİLENMEZ — yalnız overlay'ler küçülür. */
+  @media (max-height: 820px) {
+    .app.duel-screen.cq-screen.cq-game-screen { --cq-war-log-h: 46px; }
+    .cq-war-log { padding: 7px 10px; gap: 0; }
+    .cq-war-log__head { display: none; }
+    .cq-war-log__body { max-height: 30px; }
+  }
+}
+
 /* ── Conquest cinematic signal banner (single-slot, tiered) ──────
  * Center overlay used for MAJOR (1500ms) and CRITICAL (2400ms)
  * events. MINOR events stay in ConquestEventFeed; the banner's

@@ -922,10 +922,33 @@ export default function ConquestGame({
         // Mobile width (≤600px): hand layout back to the mobile shell.
         root.style.removeProperty("--cq-stage-h");
         root.style.removeProperty("--cq-stage-dock-reserve");
+        root.style.removeProperty("--cq-hud-top");
+        root.style.removeProperty("--cq-footer-h");
         return;
       }
       root.style.setProperty("--cq-stage-h", `${geo.stageH}px`);
       root.style.setProperty("--cq-stage-dock-reserve", `${geo.dockReserve}px`);
+
+      // Resilient HUD anchors for the fixed side rails + command deck —
+      // derived from the LIVE header/footer chrome (never the map slot) so the
+      // right rail sits just below the header and the deck just above the
+      // footer even if either changes height (font scale, responsive wrap).
+      // These are read by App.css overlays ONLY; they never feed back into
+      // --cq-stage-h, so the map rect + phase-invariance stay byte-identical.
+      const headerEl = root.querySelector<HTMLElement>(".cq-game-header");
+      const footerEl = root.querySelector<HTMLElement>(".cq-game-footer");
+      if (headerEl) {
+        root.style.setProperty(
+          "--cq-hud-top",
+          `${Math.round(headerEl.getBoundingClientRect().bottom)}px`,
+        );
+      }
+      if (footerEl) {
+        root.style.setProperty(
+          "--cq-footer-h",
+          `${Math.round(footerEl.getBoundingClientRect().height)}px`,
+        );
+      }
     };
 
     apply();
@@ -5455,10 +5478,15 @@ export default function ConquestGame({
     <>
       {toastsNode}
       <ConquestSignalBanner signal={activeSignal} />
+      {/* Command deck: paints the already-reserved bottom band so the floating
+          phase card reads as sitting ON a deck, not in a void.  Pure ambient
+          layer (z below the phase panel, pointer-events:none) — it does NOT
+          add reserve or touch the phase-panel box / map slot. */}
+      <div className="cq-command-deck" aria-hidden="true" />
       <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
         {phasePanelContent}
       </div>
-      <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
+      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
       <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
       {bonusGuideNode}
     </>

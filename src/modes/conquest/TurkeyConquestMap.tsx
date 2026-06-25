@@ -75,10 +75,10 @@ const TERRAIN_PATTERN_ID    = "cqTurkeyTerrainImage";
 const MAP_VIEWBOX_W         = 1005;
 const MAP_VIEWBOX_H         = 490;
 
-// Geo-context painterly markup (desktop only) — built ONCE from the shared
-// builder so it's static (no per-render cost) and byte-identical to the QA
-// harness.  Injected via dangerouslySetInnerHTML into a non-interactive <g>.
-const GEO_CONTEXT_MARKUP = buildConquestGeoContextMarkup({ terrainHref: TERRAIN_IMAGE_HREF });
+// Geo-context markup (desktop only) — built ONCE from the shared builder so it's
+// static (no per-render cost) and byte-identical to the QA harness.  Injected via
+// dangerouslySetInnerHTML into a non-interactive <g>.
+const GEO_CONTEXT_MARKUP = buildConquestGeoContextMarkup();
 
 // ─── Region label text ────────────────────────────────────────────────────────
 

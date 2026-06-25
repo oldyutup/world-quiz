@@ -54,33 +54,64 @@ const NATIVE_VB_H = 490;
 const TARGET_ASPECT = NATIVE_VB_W / NATIVE_VB_H; // 2.05102… — desktop wrap aspect
 
 const BEZIER_STEPS = 16;          // province path flattening (centroids only)
-const DILATE_LAND = 26;           // native units; land neighbours overshoot the
-                                  //   shared border so the exterior mask trims a
-                                  //   seam-free edge (no undershoot sea sliver).
-const DILATE_ISLAND = 0;          // Cyprus stays an island — never dilated.
 const CLIPPER_SCALE = 1000;       // native units → clipper ints
 const SIMPLIFY_TOL = 0.6;         // native units; 110m is already coarse
 
+// ── Two-class neighbour model (geo-topology correctness) ─────────────────────
+//  "land" — shares a REAL land border with Türkiye.  We DON'T bloat the whole
+//    polygon; we only fill the residual sea-sliver ALONG the shared border by a
+//    contact-band snap (intersection of the neighbour's and Türkiye's small
+//    dilations), so the land border reads solid without expanding elsewhere.
+//  "sea"  — separated from Türkiye by real water (Greece, Cyprus).  NEVER
+//    offset/expand/snapped toward Türkiye; the real sea gap is preserved.  Both
+//    classes are finally subtracted by the Türkiye union so NO neighbour pixel
+//    can overlap (or fuse to) Türkiye.
+const CONTACT_SNAP_D = 22;        // native units; land-border sliver-fill only
+const SEA_GAP = 8;                // native units; guaranteed water channel kept
+                                  //   between sea-class neighbours (Greece/Cyprus)
+                                  //   and Türkiye — they can never touch/fuse.
+
 // Context window = Türkiye's native bbox grown by these fractions per side, so
-// neighbours read as bordering context and Türkiye stays the DOMINANT play area
-// (≈75% of canvas width).  Composition is fixed here (canvas margins), never via
-// CSS/viewport — Türkiye's playable weight is owned by the geo-canvas itself.
-const WIN_L = 0.15, WIN_R = 0.17, WIN_T = 0.15, WIN_B = 0.30;
-const ISLAND_KEYS = new Set(["cyprus"]);
+// neighbours read as a THIN bordering band and Türkiye is the dominant, centred
+// focus (≈95% of canvas width).  Composition is fixed here (canvas margins),
+// never via CSS/viewport — Türkiye's playable weight is owned by the geo-canvas
+// itself.
+//
+// Geometry note — the canvas is padded to a FIXED aspect (NATIVE 1005/490 =
+// 2.051) and Türkiye's bbox (~991×443, aspect 2.237) is WIDER than that frame,
+// so WIDTH is the binding dimension: the horizontal margins (WIN_L+WIN_R) set
+// Türkiye's width share — f ≈ 1/(1+WIN_L+WIN_R) — while the vertical margins are
+// kept small enough (WIN_T+WIN_B ≤ ~0.15 here) that width stays binding and
+// Türkiye is never letterboxed.  The bottom bias (WIN_B≫WIN_T) preserves the
+// southern Suriye/Irak/Kıbrıs context — Kıbrıs' south tip (native y≈500) is the
+// floor on how small WIN_B can go without clipping the island.
+//
+// The top+east margins are trimmed hardest (small WIN_T, smaller WIN_R) to kill
+// the empty NE sea corner: due east / north-east of Türkiye the only real geo is
+// open water (the Caspian-side corner past Georgia/Azerbaijan has no land to slot
+// in), so generous top/east margins render a blue wedge there.  Cropping them
+// removes that dead corner — the SE band is still filled by İran/Irak land and
+// the eastern Karadeniz reads as a thin coast into Georgia.  The slightly wider
+// WIN_L keeps the Aegean/Yunanistan water gap; the bbox-centre offset is only
+// ≈0.7% of canvas width, so Türkiye still reads centred and never sticks to an
+// edge (north tip keeps a ~7-unit sea margin, Hakkari a ~20-unit land one).
+const WIN_L = 0.035, WIN_R = 0.020, WIN_T = 0.016, WIN_B = 0.135;
 
 // Türkiye's real neighbours (Natural-Earth ISO-numeric ids in countries-110m).
 // Azerbaijan (031) is a MultiPolygon → its Nahçıvan exclave (bordering Iğdır)
 // comes for free.  Cyprus is the de-facto whole island (196 + unnamed N. Cyprus).
-const NEIGHBOR_IDS: Array<{ id: string; key: string; name: string }> = [
-  { id: "300", key: "greece", name: "Yunanistan" },
-  { id: "100", key: "bulgaria", name: "Bulgaristan" },
-  { id: "268", key: "georgia", name: "Gürcistan" },
-  { id: "051", key: "armenia", name: "Ermenistan" },
-  { id: "031", key: "azerbaijan", name: "Azerbaycan" },
-  { id: "364", key: "iran", name: "İran" },
-  { id: "368", key: "iraq", name: "Irak" },
-  { id: "760", key: "syria", name: "Suriye" },
-  { id: "196", key: "cyprus", name: "Kıbrıs" },
+type NeighborClass = "land" | "sea";
+const NEIGHBOR_IDS: Array<{ id: string; key: string; name: string; cls: NeighborClass }> = [
+  { id: "100", key: "bulgaria", name: "Bulgaristan", cls: "land" },
+  { id: "268", key: "georgia", name: "Gürcistan", cls: "land" },
+  { id: "051", key: "armenia", name: "Ermenistan", cls: "land" },
+  { id: "031", key: "azerbaijan", name: "Azerbaycan", cls: "land" },
+  { id: "364", key: "iran", name: "İran", cls: "land" },
+  { id: "368", key: "iraq", name: "Irak", cls: "land" },
+  { id: "760", key: "syria", name: "Suriye", cls: "land" },
+  // Sea-separated context — true position, NO snap, real water preserved.
+  { id: "300", key: "greece", name: "Yunanistan", cls: "sea" },
+  { id: "196", key: "cyprus", name: "Kıbrıs", cls: "sea" },
 ];
 const CYPRUS_NAMES = new Set(["Cyprus", "N. Cyprus", "Northern Cyprus"]);
 
@@ -253,6 +284,45 @@ function clipRingsToRect(rings: Ring[], rect: [number, number, number, number]):
   return sol.map((p) => p.map((pt) => [pt.X / S, pt.Y / S] as Pt));
 }
 
+function clipBoolean(subject: Ring[], clip: Ring[], type: number): Ring[] {
+  const S = CLIPPER_SCALE;
+  const toInt = (rings: Ring[]) => rings.map((r) => r.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
+  const c = new ClipperLib.Clipper();
+  c.AddPaths(toInt(subject), ClipperLib.PolyType.ptSubject, true);
+  if (clip.length) c.AddPaths(toInt(clip), ClipperLib.PolyType.ptClip, true);
+  const sol: Array<Array<{ X: number; Y: number }>> = [];
+  c.Execute(type, sol, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+  return sol.map((p) => p.map((pt) => [pt.X / S, pt.Y / S] as Pt));
+}
+const intersectRings = (a: Ring[], b: Ring[]): Ring[] => clipBoolean(a, b, ClipperLib.ClipType.ctIntersection);
+const differenceRings = (a: Ring[], b: Ring[]): Ring[] => clipBoolean(a, b, ClipperLib.ClipType.ctDifference);
+
+function ringsArea(rings: Ring[]): number {
+  let a = 0;
+  for (const r of rings) {
+    let s = 0;
+    for (let i = 0; i < r.length; i++) {
+      const [x0, y0] = r[i], [x1, y1] = r[(i + 1) % r.length];
+      s += x0 * y1 - x1 * y0;
+    }
+    a += Math.abs(s) / 2;
+  }
+  return a;
+}
+
+/** Coarse min boundary distance (native units) between two ring sets — used only
+ *  for the geo-topology assertion report (sea gap Türkiye↔Greece / Cyprus). */
+function minBoundaryDistance(a: Ring[], b: Ring[]): number {
+  let best = Infinity;
+  for (const ra of a) for (const pa of ra) {
+    for (const rb of b) for (const pb of rb) {
+      const d = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
 function simplifyRing(ring: Ring): Ring {
   const s = simplify(ring.map(([x, y]) => ({ x, y })), SIMPLIFY_TOL, true);
   return s.map((p) => [p.x, p.y] as Pt);
@@ -338,8 +408,10 @@ function main(): void {
   // 4. Context window (native) from Türkiye bbox → canvas padded to exact aspect.
   const tkRings = TURKEY_CONQUEST_REGION_PATHS.flatMap((p) => flattenToRings(p.d));
   const tkBox = ringsBBox(tkRings);
-  // Merged national outline (coastal shelf / rim / soft mask source).
-  const unionD = ringsToD(unionRings(tkRings).map(simplifyRing).filter((r) => r.length >= 3));
+  const turkeyUnion = unionRings(tkRings);                        // national silhouette (boolean source)
+  const dilatedTurkey = dilateRings(turkeyUnion, CONTACT_SNAP_D); // land-border contact-band source
+  // Merged national outline (coastal rim / mask source).
+  const unionD = ringsToD(turkeyUnion.map(simplifyRing).filter((r) => r.length >= 3));
   const Wt = tkBox[2] - tkBox[0], Ht = tkBox[3] - tkBox[1];
   let minX = tkBox[0] - WIN_L * Wt, minY = tkBox[1] - WIN_T * Ht;
   let maxX = tkBox[2] + WIN_R * Wt, maxY = tkBox[3] + WIN_B * Ht;
@@ -350,9 +422,12 @@ function main(): void {
   const canvasRect: [number, number, number, number] = [minX, minY, maxX, maxY];
   const vb = { x: round2(minX), y: round2(minY), w: round2(w), h: round2(h) };
 
-  // 5. Neighbours → native, dilate toward Türkiye (islands excepted), clip to
-  //    the canvas, simplify.
-  const lands: Array<{ id: string; name: string; d: string }> = [];
+  // 5. Neighbours → native, two-class geometry (NO general dilation):
+  //    • land  — contact-band snap ONLY along the real shared border.
+  //    • sea   — Greece / Cyprus: true position, NO snap (real water kept).
+  //    Both classes are subtracted by the Türkiye union → no overlap/fusion.
+  const lands: Array<{ id: string; name: string; cls: NeighborClass; d: string }> = [];
+  const topo2: Array<{ key: string; cls: NeighborClass; rawOverlap: number; minDist: number; postOverlap: number; postMinDist: number }> = [];
   for (const nb of NEIGHBOR_IDS) {
     let rings: Ring[];
     if (nb.key === "cyprus") {
@@ -362,11 +437,39 @@ function main(): void {
       if (!f) { console.warn(`  · neighbour not found in topo: ${nb.name} (${nb.id})`); continue; }
       rings = geomToNativeRings(f.geometry, geoToNative);
     }
-    const delta = ISLAND_KEYS.has(nb.key) ? DILATE_ISLAND : DILATE_LAND;
-    const processed = clipRingsToRect(dilateRings(rings, delta), canvasRect)
-      .map(simplifyRing).filter((r) => r.length >= 3);
+
+    // Topology probes at TRUE (un-snapped) position.
+    const rawOverlap = ringsArea(intersectRings(rings, turkeyUnion));
+    const minDist = minBoundaryDistance(rings, turkeyUnion);
+
+    let snapped = rings;
+    if (nb.cls === "land") {
+      // Contact band = where BOTH the neighbour's and Türkiye's small dilations
+      // meet ⇒ exactly the shared-border zone.  Union fills the residual sliver
+      // without bloating the rest of the polygon (no Aegean/strait intrusion —
+      // sea-class neighbours are never snapped).
+      const contact = intersectRings(dilateRings(rings, CONTACT_SNAP_D), dilatedTurkey);
+      snapped = unionRings([...rings, ...contact]);
+    }
+    // Land neighbours meet Türkiye's border exactly.  Sea-class neighbours
+    // (Greece/Cyprus) subtract a DILATED Türkiye, so a real water channel is
+    // ALWAYS preserved between them and Türkiye — Greece's mainland can never
+    // touch/fuse (the Evros river border correctly reads as water).
+    const cutter = nb.cls === "sea" ? dilateRings(turkeyUnion, SEA_GAP) : turkeyUnion;
+    const cut = differenceRings(snapped, cutter);
+    const processed = clipRingsToRect(cut, canvasRect).map(simplifyRing).filter((r) => r.length >= 3);
     if (!processed.length) continue;
-    lands.push({ id: nb.key, name: nb.name, d: ringsToD(processed) });
+
+    const postOverlap = ringsArea(intersectRings(processed, turkeyUnion));
+    const postMinDist = minBoundaryDistance(processed, turkeyUnion);
+    lands.push({ id: nb.key, name: nb.name, cls: nb.cls, d: ringsToD(processed) });
+    topo2.push({ key: nb.key, cls: nb.cls, rawOverlap, minDist, postOverlap, postMinDist });
+  }
+
+  // Geo-topology assertions for sea-separated context (must never touch/fuse).
+  for (const t of topo2.filter((x) => x.cls === "sea")) {
+    if (t.postOverlap > 0.01) throw new Error(`SEA neighbour ${t.key} overlaps Türkiye (area ${t.postOverlap.toFixed(2)})`);
+    if (t.postMinDist < SEA_GAP - 1) throw new Error(`SEA neighbour ${t.key} too close to Türkiye (gap ${t.postMinDist.toFixed(1)} < ${SEA_GAP})`);
   }
 
   // 6. Emit.
@@ -381,7 +484,15 @@ function main(): void {
   console.log(`    RMS residual: ${rms.toFixed(2)} native px   max: ${maxErr.toFixed(2)} native px`);
   console.log(`  expanded viewBox: ${vb.x} ${vb.y} ${vb.w} ${vb.h}  (aspect ${(w/h).toFixed(4)} vs target ${TARGET_ASPECT.toFixed(4)})`);
   console.log(`  Türkiye native bbox: [${tkBox.map((v)=>v.toFixed(0)).join(", ")}]  → ${(turkeyFrac*100).toFixed(1)}% of canvas width`);
-  console.log(`  neighbours emitted: ${lands.map((l)=>l.id).join(", ")}`);
+  console.log("\n  geo-topology (native units):");
+  console.log("    neighbour    class | overlap→TR | gap→TR (final)");
+  for (const t of topo2) {
+    const flag = t.cls === "sea"
+      ? (t.postOverlap <= 0.01 && t.postMinDist >= SEA_GAP - 1 ? "  ✓ water gap kept (no fusion)" : "  ✗ FUSED")
+      : (t.postMinDist < 1 ? "  ✓ land contact" : `  (border ${t.postMinDist.toFixed(1)}u)`);
+    console.log(`    ${t.key.padEnd(11)} ${t.cls.padEnd(4)} | ${t.postOverlap.toFixed(2).padStart(8)}   | ${t.postMinDist.toFixed(1).padStart(6)}${flag}`);
+  }
+  console.log(`\n  → sea-class (Greece/Cyprus): overlap=0 AND gap≥${SEA_GAP}u ⇒ never touch/fuse; land-class meet the real border.`);
 }
 
 function geomToNativeRings(geom: any, geoToNative: (lon: number, lat: number) => Pt): Ring[] {
@@ -399,34 +510,42 @@ function geomToNativeRings(geom: any, geoToNative: (lon: number, lat: number) =>
 function round2(n: number): number { return Math.round(n * 100) / 100; }
 
 function emit(
-  lands: Array<{ id: string; name: string; d: string }>,
+  lands: Array<{ id: string; name: string; cls: NeighborClass; d: string }>,
   vb: { x: number; y: number; w: number; h: number },
   A: number[],
   unionD: string,
   fit: { rms: number; maxErr: number; n: number; ids: string[] },
 ): string {
   const rows = lands
-    .map((l) => `  { id: ${JSON.stringify(l.id)}, name: ${JSON.stringify(l.name)}, d: ${JSON.stringify(l.d)} },`)
+    .map((l) => `  { id: ${JSON.stringify(l.id)}, name: ${JSON.stringify(l.name)}, cls: ${JSON.stringify(l.cls)}, d: ${JSON.stringify(l.d)} },`)
     .join("\n");
   return `/**
  * AUTO-GENERATED — do not edit by hand.  Run: npx tsx scripts/build-conquest-neighbors.ts
  *
- * Phase-1 geo-context for Türkiye Kuşatması (geometry / registration proof).
- * Türkiye's region paths (viewBox ${NATIVE_VB_W}×${NATIVE_VB_H}) are the source of truth and stay
- * at IDENTITY; the registration affine below maps real lon/lat (Mercator) into
- * that native frame, and the neighbour land paths are Natural-Earth 110m
- * geometry already transformed into native coords (land dilated ${DILATE_LAND}u so the shared
- * land border overlaps Türkiye and is trimmed seam-free by the exterior mask at
- * render time).  FLAT / MUTED on purpose — Phase 1 proof, not final art.
+ * Geo-context for Türkiye Kuşatması (geometry / registration).  Türkiye's region
+ * paths (viewBox ${NATIVE_VB_W}×${NATIVE_VB_H}) are the source of truth and stay at IDENTITY; the
+ * registration affine below maps real lon/lat (Mercator) into that native frame.
+ *
+ * Neighbour topology — TWO CLASSES, no general dilation:
+ *   • "land" (Bulgaristan, Gürcistan, Ermenistan, Azerbaycan, İran, Irak, Suriye)
+ *     — true position + a contact-band snap ONLY along the real shared border.
+ *   • "sea" (Yunanistan, Kıbrıs) — true position, NEVER snapped toward Türkiye;
+ *     the real Aegean / strait / Mediterranean water is preserved.
+ * Every neighbour is subtracted by the Türkiye union ⇒ NO overlap/fusion
+ * (Greece ∩ Türkiye = ∅, Cyprus stays an independent island).
  *
  * Source data: public/data/countries-110m.json (world-atlas@2 / Natural Earth).
  */
 
+export type ConquestNeighborClass = "land" | "sea";
+
 export interface ConquestNeighborLand {
   /** stable key (greece, syria, …) */
   id: string;
-  /** Turkish display name (not rendered in Phase 1; kept for Phase 2). */
+  /** Turkish display name. */
   name: string;
+  /** "land" = shares a real land border; "sea" = sea-separated context. */
+  cls: ConquestNeighborClass;
   /** SVG path in Türkiye's NATIVE viewBox coordinate frame. */
   d: string;
 }
