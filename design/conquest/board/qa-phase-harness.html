@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QA · Kuşatma map-rect phase invariance</title>
+    <style>html, body, #root { margin: 0; height: 100%; }</style>
+  </head>
+  <body>
+    <!--
+      QA-only harness page (NOT shipped). Served by `vite` dev on demand:
+        http://localhost:<port>/design/conquest/board/qa-phase-harness.html?p=<0..4>
+      Mounts the REAL ConquestGame via qa-phase-entry.tsx. Not a build input
+      (vite bundles index.html only), so it never enters the production app.
+    -->
+    <div id="root"></div>
+    <script type="module" src="./qa-phase-entry.tsx"></script>
+  </body>
+</html>
