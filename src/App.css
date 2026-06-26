@@ -24323,6 +24323,6 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 /* Short desktop: lower the entire locked conquest scene */
 @media (min-width: 601px) and (max-height: 820px) {
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
-    transform: translateY(clamp(22px, 4vh, 34px));
+    transform: translateY(clamp(46px, 7vh, 58px));
   }
 }
