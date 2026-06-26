@@ -171,6 +171,7 @@ import { useConquestSignals } from "./useConquestSignals";
 import ConquestBonusGuide, {
   type ConquestBonusGuideEntry,
 } from "./ConquestBonusGuide";
+import ConquestCommandRail from "./ConquestCommandRail";
 import XpGainBar from "../../components/XpGainBar";
 import { EmojiIcon } from "../../components/EmojiIcon";
 import { ConquestBonusIcon } from "./ConquestAssetIcon";
@@ -5907,16 +5908,35 @@ export default function ConquestGame({
           phase-invariant `--cq-stage-h`. */}
       <div className="cq-battlefield">
 
-      {/* ── Compact player panel (top-left overlay) ─────────────── */}
-      <div
-        className="cq-players-panel"
-        role="list"
-        aria-label="Oyuncular"
-        data-team-mode={shouldUseTeamUi(settings, players) ? "true" : undefined}
-      >
-        {!shouldUseTeamUi(settings, players) && (
-          <h4 className="cq-players-panel-title" aria-hidden="true">Oyuncular</h4>
-        )}
+      {/* ── Sol komuta rayı (header altından command deck'e uzanan tek yüzey) ─
+          Oyuncular + Kader Kartı + Bu Maçtaki Bonuslar TEK çerçevede, ince
+          ayraçlarla bölünmüş üç bölüm.  Kader Kartı ve bonus listesi ayrı
+          bölümler olarak fate/bonuses prop'larıyla geçer; aşağıdaki `players`
+          prop'u yalnız oyuncular bölümünün gövdesini (rows + tarafsız + kâhin +
+          gizli envanter) taşır.  Görsel kabuk + yerleşim ConquestCommandRail'de;
+          oyun mantığı/aksiyonları burada kalır. */}
+      <ConquestCommandRail
+        teamMode={shouldUseTeamUi(settings, players)}
+        fate={
+          fateCardWidgetVisible ? (
+            <ConquestFateCardWidget
+              mode={fateCardWidgetMode}
+              visible={fateCardWidgetVisible}
+              disabled={!canDrawFateCard || fateCardSpending}
+              spending={fateCardSpending}
+              cost={CONQUEST_FATE_CARD_COST}
+              variant="desktop"
+              onDraw={handleDrawFateCard}
+            />
+          ) : undefined
+        }
+        bonuses={
+          hasBonusGuide ? (
+            <ConquestBonusGuide entries={bonusGuideEntries} variant="rail" />
+          ) : undefined
+        }
+        players={
+          <>
         {(() => {
         const renderPlayerRow = (player: ConquestPlayer) => {
           const color    = playerColors[player.id];
@@ -6189,27 +6209,9 @@ export default function ConquestGame({
             )}
           </div>
         )}
-        {/* Kader Kartı V1 — always-on widget that anchors the bottom of
-         *  the player panel.  Visibility is gated on (a) the viewer being
-         *  a match participant and (b) the match being in-progress; the
-         *  active / waiting / used state then chooses what to show. */}
-        <ConquestFateCardWidget
-          mode={fateCardWidgetMode}
-          visible={fateCardWidgetVisible}
-          disabled={!canDrawFateCard || fateCardSpending}
-          spending={fateCardSpending}
-          cost={CONQUEST_FATE_CARD_COST}
-          variant="desktop"
-          onDraw={handleDrawFateCard}
-        />
-        {/* Bu Maçtaki Bonuslar — rail'in üçüncü ve son bölümü.  Sağdan taşındı:
-         *  artık kalıcı bir overlay değil, oyuncular + Kader Kartı ile aynı
-         *  komuta yüzeyinin doğal alt bölümü.  Liste kendi içinde scroll alır
-         *  (cq-rail-bonus-scroll) → çok bonus rayı uzatmaz, haritaya dokunmaz. */}
-        {hasBonusGuide && (
-          <ConquestBonusGuide entries={bonusGuideEntries} variant="rail" />
-        )}
-      </div>
+          </>
+        }
+      />
       {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
        *  above the map so the player understands which clicks are armed.
        *  Opponents never render this; the placement state is owner-local. */}
