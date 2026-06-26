@@ -15692,12 +15692,11 @@ body {
 /* ── Phase-1 geo-context (desktop aktif oyun) ──────────────────────────────
    Kayıtlı (registered) in-SVG deniz + gerçek komşu katmanı artık coğrafyayı
    SAHİPLENİR; bu yüzden aktif oyun, coğrafi olarak YANLIŞ war-map backdrop'unu
-   bırakır ve düz mat bir zemine düşer (war-map yalnız lobi/kurulumda kalır).
-   FAZ 2'de bu zemine kasıtlı painterly ambience gelecek.  Yalnız desktop
-   (.cq-game-screen ≥601px); mobil MobileConquestLayout kendi yüzeyini çizer. */
+   bırakır ve taktik harita ambience'ına düşer (war-map yalnız lobi/kurulumda kalır).
+   Yalnız desktop (.cq-game-screen ≥601px); mobil MobileConquestLayout kendi yüzeyini çizer. */
 @media (min-width: 601px) {
   .app.duel-screen.cq-screen.cq-game-screen {
-    background-color: #08131d !important;
+    background-color: oklch(0.078 0.016 220) !important;
     background-image: none !important;
   }
 }
@@ -15813,10 +15812,34 @@ body {
        yüksekliği bazlı @container sorguları için.  JS hook bu kutuyu ölçer. */
     container-type: size;
     container-name: cq-field;
+    /* Taktik okyanus ambience: rail/deck'ten bir ton daha açık teal katman;
+       harita SVG'sindeki deniz yüzeyinin devamı gibi okunur.
+       Harita/viewBox/scale/hit-area DOKUNULMAZ. */
+    background-color: oklch(0.148 0.032 214);
     background-image:
-      radial-gradient(78% 60% at 50% 40%,
-        rgba(13, 17, 23, 0) 56%,
-        rgba(2, 5, 11, 0.55) 100%);
+      /* Köşe kararması — odağı haritaya çeker */
+      radial-gradient(
+        ellipse 90% 85% at 50% 50%,
+        transparent 40%,
+        oklch(0.068 0.014 220 / 0.60) 100%
+      ),
+      /* Çok hafif topo/seyir çizgileri — deniz haritası dokusu, dikkat çekmez */
+      repeating-linear-gradient(
+        -52deg,
+        transparent 0px,
+        transparent 22px,
+        oklch(0.30 0.028 210 / 0.030) 22px,
+        oklch(0.30 0.028 210 / 0.030) 23px,
+        transparent 23px,
+        transparent 46px
+      ),
+      /* Merkez bloom: haritanın oturduğu alan hafifçe parlar */
+      radial-gradient(
+        ellipse 72% 64% at 50% 47%,
+        oklch(0.178 0.042 212) 0%,
+        oklch(0.148 0.032 214) 52%,
+        oklch(0.118 0.022 218) 100%
+      );
   }
 
   /* Dekoratif harita başlığı header'daki rozetle tekrarlı; desktop'ta gizli. */
