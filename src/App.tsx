@@ -451,14 +451,14 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
-  const modes: { id: AppScreen; icon: EmojiIconName; title: string; desc: string; available: boolean }[] = [
-  { id: "map-game", icon: "globe", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
-  { id: "flag-game", icon: "flag", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
-  { id: "silhouette-game", icon: "map", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
-  { id: "route-game", icon: "compass", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
-  { id: "wheel-game", icon: "target", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
-  { id: "conquest-game", icon: "shield", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
-  { id: "kornokta-create", icon: "detective", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
+  const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean }[] = [
+  { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
+  { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
+  { id: "silhouette-game", icon: "map", iconPath: "/assets/icons/home/silhouette-mode.png", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
+  { id: "route-game", icon: "compass", iconPath: "/assets/icons/home/route-mode.png", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
+  { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
+  { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
+  { id: "kornokta-create", icon: "detective", iconPath: "/assets/icons/home/blind-spot.png", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
 ];
   return (
     <div className={"home-screen" + (homeTheme === "turkiye" ? " home-screen--turkiye" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : " home-screen--default")}>
@@ -474,7 +474,18 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
         {modes.map((m, i) => (
           <div key={i} className={"mode-card" + (m.available ? "" : " mode-card--soon")}>
             {!m.available && <span className="soon-badge">Yakında</span>}
-            <div className="mode-card-icon"><EmojiIcon name={m.icon} /></div>
+            <div className="mode-card-icon">
+              <img
+                src={m.iconPath}
+                alt=""
+                aria-hidden="true"
+                className={
+                  "mode-card-asset-icon"
+                  + (m.id === "conquest-game" ? " mode-card-asset-icon--conquest" : "")
+                  + (m.id === "kornokta-create" ? " mode-card-asset-icon--blind-spot" : "")
+                }
+              />
+            </div>
             <div className="mode-card-content">
               <h2 className="mode-card-title">{m.title}</h2>
               <p className="mode-card-desc">{m.desc}</p>

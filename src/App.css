@@ -24404,3 +24404,32 @@ html.is-native-app .social-bar .notif-bell { display: none; }
     line-height: 1.3;
   }
 }
+
+/* Home mode-card PNG icons */
+.mode-card-asset-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  transform: scale(1.3);
+  transform-origin: center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+@media (max-width: 600px) {
+  .mode-card-asset-icon {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Home mode-card per-icon optical sizing */
+.mode-card-asset-icon--conquest {
+  transform: scale(1.55);
+}
+
+.mode-card-asset-icon--blind-spot {
+  transform: scale(1.65);
+}
