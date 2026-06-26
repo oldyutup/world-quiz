@@ -12294,26 +12294,24 @@ body {
   width: var(--cq-rail-w, 224px);
   display: flex;
   flex-direction: column;
+  /* L-çerçeve sol kolu: sağ border/radius yok → deck ile sıfır-çizgi birleşim.
+     Arka plan gradyanı deck tonuna döner → junction'da ton sürekliliği sağlanır.
+     backdrop-filter korunur (savaş arka planı); inset sağ gölge battlefield
+     kenarında çok hafif (deck alanında ise eşleşen arka plana karışır). */
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
-  /* TEK yüzey, TAM YÜKSEKLİKLİ komuta rayı: header altından command deck üst
-     çizgisine kadar soldaki ölü alanı sahiplenir.  Üstte daha okunur, alta doğru
-     çerçeve tonuna sönen tek gradyan → bonus listesi olmadığında alt kısım pasif
-     ambient olarak okunur (ayrı "boş kart" katmanı YOK).  Eski iki katmanlı
-     (içerik kartı + fill) sistem kaldırıldı; okunabilirlik tek yüzeye taşındı. */
+  border-right: none;
+  border-radius: 12px 0 0 12px;
   background: linear-gradient(
     180deg,
-    rgba(12, 16, 24, 0.85) 0%,
-    rgba(10, 13, 21, 0.80) 70%,
-    rgba(8, 11, 18, 0.62) 100%
+    oklch(0.08 0.006 225 / 0.87) 0%,
+    oklch(0.12 0.009 228 / 0.92) calc(100% - var(--cq-deck-h, 190px)),
+    oklch(0.12 0.009 228 / 0.93) 100%
   );
   backdrop-filter: blur(7px);
   -webkit-backdrop-filter: blur(7px);
-  /* Map'e bağlanan sağ çerçeve hattı (TAM YÜKSEKLİK): içte ince sağ vurgu +
-     haritaya düşen yumuşak gölge.  İnce iç kenar = çerçevenin kendi border'ı. */
   box-shadow:
     8px 0 26px -22px rgba(0, 0, 0, 0.85),
-    inset -1px 0 0 rgba(255, 255, 255, 0.03);
+    inset -1px 0 0 rgba(255, 255, 255, 0.04);
   pointer-events: none;
   overflow: hidden;               /* içerik dolgusunu köşe yarıçapına kırpar */
 }
@@ -18184,20 +18182,23 @@ body {
     container-name: cq-deck;
     display: flex;
     justify-content: center;
-    background:
-      linear-gradient(to bottom,
-        rgba(27, 33, 42, 0.94),
-        rgba(15, 19, 26, 0.97));
-    border-top: 1px solid rgba(120, 150, 200, 0.18);
-    box-shadow: 0 -12px 30px -22px rgba(0, 0, 0, 0.9) inset;
+    /* Rail'in alt tonu ile aynı family → junction sürekliliği.
+       Üst renk railin gradient bitiş değeriyle birebir eşleşir. */
+    background: linear-gradient(
+      180deg,
+      oklch(0.12 0.009 228 / 0.93),
+      oklch(0.09 0.007 225 / 0.96)
+    );
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 -8px 24px -18px rgba(0, 0, 0, 0.80) inset;
   }
   /* Sıra sende: güverte üst kenarı kimlik mavisiyle hafifçe canlanır (hamle
      fazı, data-turn="mine").  Rakip sırasında nötr kalır. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck[data-turn="mine"] {
-    border-top-color: rgba(88, 166, 255, 0.55);
+    border-top-color: rgba(88, 166, 255, 0.42);
     box-shadow:
-      0 -12px 30px -22px rgba(0, 0, 0, 0.9) inset,
-      0 1px 0 rgba(88, 166, 255, 0.22) inset;
+      0 -8px 24px -18px rgba(0, 0, 0, 0.80) inset,
+      0 1px 0 rgba(88, 166, 255, 0.18) inset;
   }
   .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-inner {
     width: 100%;
