@@ -12,8 +12,7 @@
  *   - diğer                   → tıklayınca okundu
  */
 import { useState } from "react";
-import { type NotificationRow } from "../lib/social";
-import { useNotificationActions } from "../lib/notificationActions";
+import { respondFriendRequest, type NotificationRow } from "../lib/social";
 import { useSocial } from "./SocialContext";
 
 /**
@@ -87,26 +86,49 @@ export function NotificationList({
   onNavigate,
 }: NotificationListProps) {
   const social = useSocial();
-  // Toast'larla ORTAK aksiyon akışı (tek doğruluk kaynağı, kopya sistem yok).
-  const actions = useNotificationActions();
   // Bu oturumda yanıtlanan arkadaşlık istekleri → aksiyon butonları gizlenir.
   const [resolved, setResolved] = useState<Record<string, "accepted" | "rejected">>({});
 
-  const { notifications, markRead } = social;
+  const { notifications, markRead, refreshNotifications } = social;
   const rows = filter ? notifications.filter(filter) : notifications;
 
   const handleFriendResponse = async (n: NotificationRow, response: "accepted" | "rejected") => {
-    const res = await actions.respondFriend(n, response);
-    if (res.ok) setResolved((m) => ({ ...m, [n.id]: response }));
+    const reqId = n.payload?.friendRequestId as string | undefined;
+    if (!reqId) {
+      console.error("friend_request notification without friendRequestId", n);
+      social.toast("İstek bilgisi eksik, sayfayı yenile.");
+      return;
+    }
+    const res = await respondFriendRequest(reqId, response);
+    if (!res.ok) {
+      social.toast(res.error ?? "İstek işlenemedi.");
+      return;
+    }
+    setResolved((m) => ({ ...m, [n.id]: response }));
+    await markRead(n.id);
+    if (response === "accepted") social.bumpFriends();
+    social.toast(
+      response === "accepted"
+        ? "Arkadaşlık isteği kabul edildi"
+        : "Arkadaşlık isteği reddedildi"
+    );
+    await refreshNotifications();
   };
 
   const handleJoin = async (n: NotificationRow) => {
-    await actions.joinRoom(n);
+    const url = n.payload?.roomUrl as string | undefined;
+    await markRead(n.id);
+    if (url && social.onJoinRoom) {
+      social.onJoinRoom(url);
+    } else {
+      social.toast("Bu davet artık geçerli değil.");
+    }
     onNavigate?.();
   };
 
   const handleReward = async (n: NotificationRow) => {
-    await actions.openRewards(n);
+    await markRead(n.id);
+    social.onOpenRewards?.();
     onNavigate?.();
   };
 

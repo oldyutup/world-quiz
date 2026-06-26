@@ -22,30 +22,10 @@
  *  - profiles.id === auth.uid() (bkz. getProfile) → "SEN" tespiti supabase.auth
  *    ile yapilir, ek RPC/rank verisi gerektirmez.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
-
-/** Mobil / dar görünüm (≤520px) tespiti. Leaderboard'u mobilde toplam 8 kişiyle
- *  (podyum 3 + liste 5 → rank 4–8) sınırlamak için YALNIZ render katmanında
- *  kullanılır. Veri/RPC (p_limit:10) değişmez; desktop (>520px) tam listeyi
- *  (rank 4–10) görmeye devam eder. Resize/rotate'a tepki verir. */
-function useIsNarrow(): boolean {
-  const QUERY = "(max-width: 520px)";
-  const [narrow, setNarrow] = useState<boolean>(
-    () => typeof window !== "undefined" && window.matchMedia(QUERY).matches,
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia(QUERY);
-    const onChange = () => setNarrow(mq.matches);
-    onChange();
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-  return narrow;
-}
 
 type LeaderType = "xp" | "gold";
 type XpScope = "general" | "country" | "flag" | "wheel" | "conquest";
@@ -150,11 +130,6 @@ export function LeaderboardModal({ onClose }: Props) {
    *  vurgusu icin; sıralama/veri/filtre mantığını ETKİLEMEZ. */
   const [selfId, setSelfId] = useState<string | null>(null);
 
-  /** Mobil/dar görünümde toplam gösterilen sıralama 8'e iner (render-only). */
-  const isNarrow = useIsNarrow();
-  /** Aktif mod sekmesi — dar ekranda yatay rail'de görünür konuma kaydırılır. */
-  const activeScopeRef = useRef<HTMLButtonElement | null>(null);
-
   // ESC kapatma
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -217,17 +192,6 @@ export function LeaderboardModal({ onClose }: Props) {
     return () => { alive = false; };
   }, [type, scope, reloadKey]);
 
-  // Mod sekmesi değişince (yalnız XP'de sekmeler var) aktif sekmeyi yatay rail'de
-  // görünür konuma getir → "Kuşatma" gibi sondaki sekme seçiliyken kenarda yarım
-  // kalmaz. Yatay eksende ("inline:nearest"), sayfayı/modali dikeyde zıplatmadan.
-  useEffect(() => {
-    if (type !== "xp") return;
-    const el = activeScopeRef.current;
-    if (!el) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", inline: "nearest", block: "nearest" });
-  }, [scope, type]);
-
   const rows: Row[] = type === "xp" ? xpRows : goldRows;
   const isEmpty = !loading && !error && rows.length === 0;
   const unit = type === "xp" ? "XP" : "Gold";
@@ -237,10 +201,7 @@ export function LeaderboardModal({ onClose }: Props) {
 
   // İlk 3 → podyum (görsel sıra: 2 sol · 1 orta/yüksek · 3 sağ). 4+ → liste.
   const top = rows.slice(0, 3);
-  // Mobil/dar (≤520px): liste rank 4–8 (5 satır) → toplam 8 kişi. Desktop: rank
-  // 4–10 (7 satır) → toplam 10. Yalnız render katmanı; çekilen veri (p_limit:10)
-  // her iki tarafta da aynıdır, sıralama/filtre değişmez.
-  const listRows = isNarrow ? rows.slice(3, 8) : rows.slice(3);
+  const listRows = rows.slice(3);
   const podiumOrder: { row: Row; rank: number }[] =
     top.length >= 3
       ? [
@@ -301,7 +262,6 @@ export function LeaderboardModal({ onClose }: Props) {
             {XP_SCOPES.map((s) => (
               <button
                 key={s.key}
-                ref={scope === s.key ? activeScopeRef : undefined}
                 type="button"
                 role="tab"
                 aria-selected={scope === s.key}

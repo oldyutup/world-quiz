@@ -765,49 +765,6 @@ export type ConquestChallengeType =
   | "neighbor_question"
   | "placeholder";
 
-/**
- * Coarse answer interaction for a challenge, used by the question planner to
- * enforce a test-dominant per-match round plan:
- *   - "test"  → multiple-choice (renders choice buttons)
- *   - "write" → free-text input (type the answer)
- * Optional on {@link ConquestChallenge} so pre-planner saves deserialize
- * cleanly; readers should derive a fallback from `type`/`choices` when absent.
- */
-export type ConquestAnswerMode = "test" | "write";
-
-/**
- * Fine-grained question family — the *shape* of a question, independent of
- * its content.  Drives the planner's "no two consecutive rounds share a
- * family" rule and the letter/target anti-repetition tracking.  Kept as a
- * string union so a new family is a one-line addition; readers must treat an
- * unknown/absent value as "unclassified" rather than crashing.
- */
-export type ConquestQuestionFamily =
-  // ── test (multiple-choice) families ──
-  | "country_to_capital_mc"   // country given → choose its capital
-  | "capital_to_country_mc"   // capital given → choose its country
-  | "flag_to_country_mc"      // flag shown   → choose the country
-  | "flag_symbol_mc"          // flag symbol described → choose the country
-  | "neighbor_mc"             // borders / neighbours
-  | "physical_geo_mc"         // rivers, mountains, seas, straits, deserts, islands, climate
-  | "region_mc"               // location & features: continents, landlocked, peninsulas, island nations
-  | "landmark_mc"             // monuments, ancient cities, world heritage, famous cities
-  | "world_record_mc"         // global superlatives with a stated, undisputed metric
-  | "history_geo_mc"          // completion/opening years, civilisations behind landmarks
-  // ── write (free-text) families ──
-  | "country_starts_with_letter" // "X harfiyle başlayan bir ülke yaz"
-  | "country_by_criteria"        // "Avrupa'da / denize kıyısı olmayan … bir ülke yaz"
-  | "flag_to_country_text";      // flag shown → type the country
-
-/**
- * Coarse content difficulty of a single question, used by the content-balance
- * check to keep the bank "kolay-orta, eğlenceli ve öğretici": ~70% easy,
- * ~25% medium, ≤5% hard.  Authored per bank entry rather than derived, so the
- * mix is auditable.  Not synced onto {@link ConquestChallenge} — it is bank
- * metadata only and never affects gameplay or multiplayer state.
- */
-export type ConquestQuestionDifficulty = "easy" | "medium" | "hard";
-
 /** Lifecycle of a single challenge instance within a round. */
 export type ConquestChallengeStatus =
   | "active"     // challenge live, no winner yet
@@ -841,18 +798,6 @@ export interface ConquestChallenge {
   flag?:              string;
   /** Acceptable normalised answers — anything matching wins the challenge. */
   acceptedAnswers?:   string[];
-  /**
-   * Planner metadata — the answer interaction (test vs write) this challenge
-   * was planned as.  Optional for pre-planner saves; defaults can be derived
-   * from `type` + `choices` (a quiz with choices is a test, everything else
-   * is write).
-   */
-  answerMode?:        ConquestAnswerMode;
-  /**
-   * Planner metadata — the question family used for consecutive-family
-   * anti-repetition.  Optional for pre-planner saves.
-   */
-  family?:            ConquestQuestionFamily;
 }
 
 /**
@@ -1058,21 +1003,6 @@ export interface ConquestGameState {
   usedChallengeKeys:  string[];
   /** Challenge type shown in the previous round; used to avoid consecutive same-type challenges. */
   lastChallengeType?: ConquestChallengeType;
-  /**
-   * Pre-built, deterministic per-round question plan.  Generated once at
-   * match creation by `buildConquestQuestionPlan` (seeded by `startedAt`) and
-   * uploaded by the host, so every client renders the identical sequence —
-   * the test/write ratio (≥60% test) and family/letter/target anti-repetition
-   * are decided up front rather than rolled per round.  Index `i` holds the
-   * challenge for round `i + 1`.  Absent on legacy in-flight rooms; readers
-   * (advanceToNextRound) fall back to the live picker when missing.  The
-   * stored `eligiblePlayerIds` snapshot is always re-narrowed to the active
-   * roster when a round actually mounts.
-   */
-  questionPlan?: Array<{
-    challenge: ConquestChallenge;
-    bankId:    string;
-  }>;
   /**
    * Per-player bonus state (Phase: bonus layer v1).  Optional so pre-bonus
    * in-flight rooms keep deserializing cleanly; readers must default missing

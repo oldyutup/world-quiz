@@ -12,7 +12,6 @@
 
 import { useState } from "react";
 import { EmojiIcon } from "../../components/EmojiIcon";
-import { ConquestBonusIcon } from "./ConquestAssetIcon";
 import type {
   ConquestRegionBonusDef,
   ConquestRegionBonusType,
@@ -55,25 +54,15 @@ export interface ConquestBonusGuideEntry {
 
 interface Props {
   entries:    ConquestBonusGuideEntry[];
-  onClose?:   () => void;
+  onClose:    () => void;
   /** Shown above the list. Defaults to "Bu Maçtaki Bonuslar". */
   title?:     string;
-  /**
-   * Presentation surface.
-   *   - "overlay" (default): floating dismissible card — mobile + legacy.
-   *   - "rail": a flush, always-on section that lives as the bottom block of
-   *     the desktop left command rail (no close button, no hint paragraph;
-   *     the list scrolls inside itself so a long bonus set never stretches
-   *     the rail or touches the map).
-   */
-  variant?:   "overlay" | "rail";
 }
 
 export default function ConquestBonusGuide({
   entries,
   onClose,
   title = "Bu Maçtaki Bonuslar",
-  variant = "overlay",
 }: Props) {
   // First row open by default — gives the player something to read without
   // forcing an interaction.  Null collapses everything.
@@ -82,69 +71,6 @@ export default function ConquestBonusGuide({
   );
 
   if (entries.length === 0) return null;
-
-  const isRail   = variant === "rail";
-  const iconSize = isRail ? 22 : 28;
-
-  const list = (
-    <ul className="cq-bonus-guide-list" role="list">
-      {entries.map(({ regionId, def, regionLabel }) => {
-        const isOpen = openId === regionId;
-        const effect = BONUS_TYPE_EFFECT_COPY[def.type] ?? def.description;
-        return (
-          <li key={regionId} className="cq-bonus-guide-item">
-            <button
-              type="button"
-              className={
-                "cq-bonus-guide-row" + (isOpen ? " cq-bonus-guide-row--open" : "")
-              }
-              onClick={() => setOpenId(isOpen ? null : regionId)}
-              aria-expanded={isOpen}
-              aria-controls={`cq-bonus-guide-effect-${regionId}`}
-            >
-              <span className="cq-bonus-guide-icon" aria-hidden="true">
-                <ConquestBonusIcon type={def.type} fallbackChar={def.icon} alt={def.label} size={iconSize} />
-              </span>
-              <span className="cq-bonus-guide-meta">
-                <span className="cq-bonus-guide-label">{def.label}</span>
-                <span className="cq-bonus-guide-region">{regionLabel}</span>
-              </span>
-              <span className="cq-bonus-guide-chev" aria-hidden="true">
-                {isOpen ? "▾" : "▸"}
-              </span>
-            </button>
-            {isOpen && (
-              <p
-                id={`cq-bonus-guide-effect-${regionId}`}
-                className="cq-bonus-guide-effect"
-              >
-                {effect}
-              </p>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-
-  // Rail section — the bottom block of the desktop command rail.  Same row
-  // vocabulary as the overlay, but flush (no card chrome, no close): it reads
-  // as the rail's third section, not a detached panel.
-  if (isRail) {
-    return (
-      <section
-        className="cq-rail-bonus"
-        role="region"
-        aria-labelledby="cq-rail-bonus-title"
-      >
-        <h4 id="cq-rail-bonus-title" className="cq-rail-bonus-title">
-          <EmojiIcon name="swords" />
-          <span>{title}</span>
-        </h4>
-        <div className="cq-rail-bonus-scroll">{list}</div>
-      </section>
-    );
-  }
 
   return (
     <aside
@@ -172,7 +98,44 @@ export default function ConquestBonusGuide({
         Bonus bölgeyi fetheden oyuncu özel avantaj kazanır. Detay için bir bonusa dokun.
       </p>
 
-      {list}
+      <ul className="cq-bonus-guide-list" role="list">
+        {entries.map(({ regionId, def, regionLabel }) => {
+          const isOpen = openId === regionId;
+          const effect = BONUS_TYPE_EFFECT_COPY[def.type] ?? def.description;
+          return (
+            <li key={regionId} className="cq-bonus-guide-item">
+              <button
+                type="button"
+                className={
+                  "cq-bonus-guide-row" + (isOpen ? " cq-bonus-guide-row--open" : "")
+                }
+                onClick={() => setOpenId(isOpen ? null : regionId)}
+                aria-expanded={isOpen}
+                aria-controls={`cq-bonus-guide-effect-${regionId}`}
+              >
+                <span className="cq-bonus-guide-icon" aria-hidden="true">
+                  <EmojiIcon char={def.icon} />
+                </span>
+                <span className="cq-bonus-guide-meta">
+                  <span className="cq-bonus-guide-label">{def.label}</span>
+                  <span className="cq-bonus-guide-region">{regionLabel}</span>
+                </span>
+                <span className="cq-bonus-guide-chev" aria-hidden="true">
+                  {isOpen ? "▾" : "▸"}
+                </span>
+              </button>
+              {isOpen && (
+                <p
+                  id={`cq-bonus-guide-effect-${regionId}`}
+                  className="cq-bonus-guide-effect"
+                >
+                  {effect}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </aside>
   );
 }

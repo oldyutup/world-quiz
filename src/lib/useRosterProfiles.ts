@@ -6,20 +6,11 @@
  * kümesi değiştiğinde (oyuncu girdi/çıktı) tek batched RPC atar — N+1 YOK,
  * 1000+ oyunculu gelecek için de güvenli (oda kapasiteleri zaten küçük).
  *
- * KENDİ KAYDIM CANLI: RPC yalnız id kümesi değişince koşar. Kullanıcı lobide
- * profilini düzenleyip avatarını/adını değiştirdiğinde id kümesi değişmez →
- * RPC tekrar koşmaz → kendi satırı stale kalırdı. Bunu önlemek için, Social
- * context'teki canlı oturum profili (App `setProfile` ile güncellenir) kendi
- * roster kaydının ÜZERİNE bindirilir. Böylece tüm lobi türlerinde (Çark 1v1/
- * grup, Kuşatma, Kör Nokta, Bayrak, Duel…) kendi avatar/ad/level değişimi anında
- * yansır — yeniden fetch, polling, presence reconnect veya re-join OLMADAN.
- *
  * Dönüş: profileId → { avatarId, username, level } map'i. Guest satırlar
  * (profile_id null) çağrıdan dışlanır; map'te bulunmaz, çağıran default avatara düşer.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getPublicProfiles, type PublicProfileLite } from "./social";
-import { useSocialOptional } from "../components/SocialContext";
 
 export function useRosterProfiles(
   profileIds: (string | null | undefined)[]
@@ -49,24 +40,5 @@ export function useRosterProfiles(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  // Canlı oturum profili (avatar/ad/level değiştikçe güncellenir). Provider
-  // dışında (ör. izole test) null → bindirme yapılmaz, RPC sonucu aynen döner.
-  const self = useSocialOptional()?.profile ?? null;
-
-  // Yalnız GÖRSEL bindirme: kendi kaydım bu roster'da varsa, fetch edilen
-  // değerin üzerine canlı profili yaz (yeni nesne → React re-render alır).
-  // Çerçeve (activeAvatarFrameId) Profile'da yok → fetch edilen değer korunur.
-  return useMemo(() => {
-    if (!self?.id || !map.has(self.id)) return map;
-    const merged = new Map(map);
-    const existing = merged.get(self.id);
-    merged.set(self.id, {
-      profileId: self.id,
-      username: self.username ?? existing?.username ?? null,
-      avatarId: self.avatar_id ?? existing?.avatarId ?? null,
-      level: self.level ?? existing?.level ?? 1,
-      activeAvatarFrameId: existing?.activeAvatarFrameId ?? null,
-    });
-    return merged;
-  }, [map, self?.id, self?.username, self?.avatar_id, self?.level]);
+  return map;
 }

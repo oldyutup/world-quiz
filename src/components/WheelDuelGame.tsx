@@ -55,10 +55,7 @@ import { LobbyInviteBar } from "./LobbyInviteBar";
 import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useSocialOptional } from "./SocialContext";
 import {
-  getWheelPool,
-  pickProgressionTopoId,
-  expectedWheelTargets,
-  targetIndexProgress,
+  getFlagPool,
   getContinentIds,
   TOPOID_TO_DISPLAY,
   type Continent,
@@ -87,9 +84,57 @@ function quickMatchBracket(searchSeconds: number): number {
 const FEEDBACK_MS = 1200;   // Doğru bilinince hedef bu kadar süre kapalı kalır (host pick gecikmesi)
 const WRONG_FLASH_MS = 600; // Yanlış tıklama kırmızı flash süresi (lokal)
 
-// Mikro / haritada tıklanamaz ülkeler artık merkezî WHEEL_INELIGIBLE_CODES
-// üzerinden getWheelPool() ile dışlanıyor (countries.ts). Eski yerel
-// WHEEL_DUEL_EXCLUDED_TOPOIDS seti kaldırıldı — tek kaynak orada.
+/** Online Çark 1v1 hedef havuzundan ÇIKARILAN ülkeler.
+ *
+ *  Mikro devletler ve haritada tıklanması zor ada ülkeleri online
+ *  rekabette adil olmuyor — yalnız bu mod için dışarıda bırakılır.
+ *  Offline WheelGame ve diğer modlar etkilenmez.
+ *
+ *  topoId üzerinden filtreliyoruz (display adı dilden dile değişebilir,
+ *  ISO numerik kod kararlıdır). Listeyi düzenlemek için satır eklemek/
+ *  silmek yeterli; her topoId'in yanına ülke adını yorum olarak yazdım.
+ */
+const WHEEL_DUEL_EXCLUDED_TOPOIDS = new Set<string>([
+  // ── Avrupa mikro-devletleri ──
+  "020",  // Andorra
+  "438",  // Lihtenştayn / Liechtenstein
+  "470",  // Malta
+  "492",  // Monako / Monaco
+  "674",  // San Marino
+  "336",  // Vatikan / Vatican
+
+  // ── Asya küçük/ada ülkeleri ──
+  "048",  // Bahreyn / Bahrain
+  "462",  // Maldivler / Maldives
+  "702",  // Singapur / Singapore
+
+  // ── Afrika ada ülkeleri ──
+  "132",  // Cabo Verde / Cape Verde
+  "174",  // Komorlar / Comoros
+  "480",  // Mauritius
+  "678",  // Sao Tome ve Principe / Sao Tome and Principe
+  "690",  // Seyşeller / Seychelles
+
+  // ── Karayipler / K.Amerika mikro adaları ──
+  "028",  // Antigua ve Barbuda
+  "052",  // Barbados
+  "212",  // Dominika / Dominica
+  "308",  // Grenada
+  "659",  // Saint Kitts ve Nevis
+  "662",  // Saint Lucia
+  "670",  // Saint Vincent ve Grenadinler
+
+  // ── Okyanusya mikro adaları ──
+  "242",  // Fiji
+  "296",  // Kiribati
+  "520",  // Nauru
+  "583",  // Mikronezya / Micronesia
+  "584",  // Marshall Adaları / Marshall Islands
+  "585",  // Palau
+  "776",  // Tonga
+  "798",  // Tuvalu
+  "882",  // Samoa
+]);
 type Region =
   | "world"
   | "europe"
@@ -562,10 +607,10 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
 
   const buildTargetPool = useCallback((regionDb: string): string[] => {
     const denorm = denormalizeRegion(regionDb);
-    // getWheelPool already drops micro / unclickable countries centrally.
-    return getWheelPool(denorm as Continent | "world", "all")
+    return getFlagPool(denorm as Continent | "world", "all")
       .map(c => c.topoId)
-      .filter((id): id is string => !!id);
+      .filter((id): id is string => !!id)
+      .filter(id => !WHEEL_DUEL_EXCLUDED_TOPOIDS.has(id));
   }, []);
 
   const pickNextTarget = useCallback(async () => {
@@ -585,20 +630,7 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       return;
     }
 
-    // Progression: zorluk geçen SÜREYE göre DEĞİL, odada tamamlanan ortak hedef
-    // sırasına göre artar (brief A). `used.size` host-otoriter + tüm oda için
-    // aynı → hızlı/yavaş oynamak zorluğu değiştirmez, sıra ortak/adil kalır.
-    // `duration_seconds` yalnız rampa uzunluğunu belirler (beklenen hedef
-    // sayısı); saat difficulty hesabına GİRMEZ.
-    const progress = targetIndexProgress(
-      used.size,
-      expectedWheelTargets(Number(r.duration_seconds) || 0),
-    );
-    const next = pickProgressionTopoId(remaining, progress);
-    if (!next) {
-      await finishGameRef.current?.("pool");
-      return;
-    }
+    const next = remaining[Math.floor(Math.random() * remaining.length)];
 
     // RPC server tarafında aynı atomik guard'ı uygular (status=playing +
     // current_target IS NULL). pas alanları RPC tarafından temizlenir.

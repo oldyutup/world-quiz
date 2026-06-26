@@ -125,22 +125,13 @@ export default function ConquestChallengePanel({
   // ── Sub-renderers ────────────────────────────────────────────────────
   const showChoices = challenge.type === "quiz" && Array.isArray(challenge.choices)
     && challenge.choices.length > 0;
-  // A flag is shown for the classic flag_guess (text) challenge AND for the
-  // planner's multiple-choice "Bayraktan Ülke" challenge (type "quiz" carrying
-  // a `flag`).  Drive both off flag presence so the glyph + tighter --flag
-  // spacing apply consistently without special-casing the choice grid.
-  const hasFlag = Boolean(challenge.flag);
 
   return (
     <section
-      className={`cq-challenge-panel${hasFlag ? " cq-challenge-panel--flag" : ""}`}
+      className={`cq-challenge-panel${challenge.type === "flag_guess" ? " cq-challenge-panel--flag" : ""}`}
       data-status={status}
       aria-label="Mücadele paneli"
     >
-      {/* Question side + answer side wrappers.  `display:contents` by default
-          (mobile sheet / centered modal keep the exact flat flow), so these
-          only become real columns inside the desktop command deck (App.css). */}
-      <div className="cq-challenge-q">
       <header className="cq-challenge-head">
         <span className="cq-challenge-type-chip" aria-hidden="true">
           {meta.icon} {meta.label}
@@ -154,18 +145,16 @@ export default function ConquestChallengePanel({
 
       <h3 className="cq-challenge-title">{challenge.title}</h3>
 
-      {hasFlag && (
+      {challenge.type === "flag_guess" && challenge.flag && (
         <div className="cq-challenge-flag" aria-label="Bayrak">
-          <FlagGlyph emoji={challenge.flag!} />
+          <FlagGlyph emoji={challenge.flag} />
         </div>
       )}
 
       {challenge.prompt && (
         <p className="cq-challenge-prompt">{challenge.prompt}</p>
       )}
-      </div>
 
-      <div className="cq-challenge-a">
       {/* Countdown bar — only while active */}
       {isActive && (
         <div
@@ -297,7 +286,6 @@ export default function ConquestChallengePanel({
           <EmojiIcon name="alarm" /> Süre bitti. Kimse doğru cevap veremedi.
         </p>
       )}
-      </div>
     </section>
   );
 }

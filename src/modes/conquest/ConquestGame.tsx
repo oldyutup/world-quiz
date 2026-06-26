@@ -28,7 +28,7 @@
  * synced copy and push the returned next-state to Supabase.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   addGold,
   useGold,
@@ -40,7 +40,6 @@ import { playSound } from "../../lib/sound";
 import { playConquestSound, unlockConquestSounds } from "./conquestSound";
 import { useConquestSound } from "./useConquestSound";
 import { useIsMobile } from "../../lib/useIsMobile";
-import { useToastSurfaceOffset } from "../../lib/useToastOffset";
 import {
   getThemeBackgroundStyle,
   getThemeDataAttr,
@@ -152,7 +151,6 @@ import {
 import { BEREKET_CAPTURE_POINTS } from "./conquestGameplay";
 import DefenseDuelPanel from "./DefenseDuelPanel";
 import TurkeyConquestMap from "./TurkeyConquestMap";
-import { measureConquestStageGeometry } from "./conquestStageGeometry";
 import MobileConquestLayout from "./mobile/MobileConquestLayout";
 import MobileHeader from "./mobile/MobileHeader";
 import MobileScoreStrip from "./mobile/MobileScoreStrip";
@@ -171,10 +169,8 @@ import { useConquestSignals } from "./useConquestSignals";
 import ConquestBonusGuide, {
   type ConquestBonusGuideEntry,
 } from "./ConquestBonusGuide";
-import ConquestCommandRail from "./ConquestCommandRail";
 import XpGainBar from "../../components/XpGainBar";
 import { EmojiIcon } from "../../components/EmojiIcon";
-import { ConquestBonusIcon } from "./ConquestAssetIcon";
 import {
   awardXpEvent,
   calculateConquestXp,
@@ -479,10 +475,6 @@ export default function ConquestGame({
   // ConquestActionPanel; only the surrounding chrome differs.
   const { isMobile, orientation } = useIsMobile();
 
-  // Portre mobilde oyun alt-sayfası (bottom sheet handle) altta durur; global
-  // bildirim toast'larını onun üzerine kaldır (oyun aksiyonlarını örtmesin).
-  useToastSurfaceOffset(isMobile && orientation === "portrait", 88);
-
   const mapConfig = useMemo(
     () => getConquestMapConfig(settings.map),
     [settings.map],
@@ -506,13 +498,6 @@ export default function ConquestGame({
    *  the component (e.g. Pusu placement) can fire the same flash effect
    *  without depending on the callback's identity in a closure. */
   const flashIllegalRef = useRef<((id: ConquestRegionId) => void) | null>(null);
-
-  // Desktop battlefield geometry — root of the `.cq-game-screen` shell.  The
-  // measurement hook (useLayoutEffect below) reads the `.cq-battlefield`
-  // (flex:1) height off this subtree and writes `--cq-stage-h` so the map fits
-  // + centres fluidly.  Null on mobile (that branch renders
-  // MobileConquestLayout, not this root).
-  const stageRootRef = useRef<HTMLDivElement | null>(null);
 
   // Stable refs so timeout callbacks always see the latest values without
   // needing to be in the dependency arrays (avoids restarting timers on every
@@ -902,54 +887,6 @@ export default function ConquestGame({
     );
     return () => timers.forEach(t => window.clearTimeout(t));
   }, [playerPoints]);
-
-  // ── Desktop map slot geometry (battlefield height only — PHASE-INVARIANT) ──
-  // Writes `--cq-stage-h` consumed by the `min(cap, 100%, stageH * aspect)`
-  // map-width rule in App.css.  The geometry is measured by
-  // `measureConquestStageGeometry` PURELY from the `.cq-battlefield` (flex:1)
-  // region: its height = viewport − header − command deck − footer.  All three
-  // are phase-independent (the deck height is a viewport-only clamp), so on a
-  // single viewport the map slot stays byte-identical across every gameplay
-  // phase (challenge / reveal / action / round_result); it only changes on a
-  // real window/viewport resize.  The deck swaps its content inside a
-  // fixed-height slot (overflow scroll for overflow), never resizing the
-  // battlefield → no measure→resize feedback.  Mobile (≤600px /
-  // MobileConquestLayout) renders no `.cq-battlefield` → the hook bails.
-  useLayoutEffect(() => {
-    const root = stageRootRef.current;
-    if (!root) return;
-
-    const apply = () => {
-      const geo = measureConquestStageGeometry(root);
-      if (!geo) {
-        // Mobile width (≤600px): hand layout back to the mobile shell.
-        root.style.removeProperty("--cq-stage-h");
-        return;
-      }
-      root.style.setProperty("--cq-stage-h", `${geo.stageH}px`);
-    };
-
-    apply();
-
-    // Re-measure ONLY on genuine viewport geometry changes: the viewport
-    // (window / visualViewport resize) and the battlefield's own box (which
-    // shrinks/grows when the chrome or deck height changes on resize).  Phase
-    // content swaps inside the fixed-height deck never resize the battlefield,
-    // so they never re-trigger this — the map rect stays phase-invariant.
-    const ro = new ResizeObserver(apply);
-    ro.observe(root);
-    const battlefield = root.querySelector<HTMLElement>(".cq-battlefield");
-    if (battlefield) ro.observe(battlefield);
-
-    const onResize = () => apply();
-    window.addEventListener("resize", onResize);
-    window.visualViewport?.addEventListener("resize", onResize);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", onResize);
-      window.visualViewport?.removeEventListener("resize", onResize);
-    };
-  }, [isMobile]);
 
   // ── Hidden bonuses — Suikast inventory + target picker ─────────────
   // Only renders the consume UI for the LOCAL viewer; opponents never see
@@ -3571,17 +3508,6 @@ export default function ConquestGame({
   }, [lastResult]);
 
   const rrcIcon     = mancinikComboCard?.icon     ?? kaleSurlariCaptureCard?.icon     ?? bereketCaptureCard?.icon     ?? kahinCaptureCard?.icon     ?? limanCaptureCard?.icon     ?? mancinikCaptureCard?.icon     ?? mancinikUsedCard?.icon     ?? rrcData.icon;
-  // Bonus *tipi* — yalnız bonus-fethi kartları için (sıra: rrcIcon ile birebir).
-  // Varsa PNG asset basılır; düz fetih/rrcData'da null → emoji korunur.
-  const rrcBonusType: ConquestRegionBonusType | null =
-    mancinikComboCard     ? "mancinik"
-    : kaleSurlariCaptureCard ? "istanbul_defense"
-    : bereketCaptureCard     ? "cukurova_score"
-    : kahinCaptureCard       ? "kahin"
-    : limanCaptureCard       ? "liman"
-    : mancinikCaptureCard    ? "mancinik"
-    : mancinikUsedCard       ? "mancinik"
-    : null;
   const rrcTitle    = mancinikComboCard?.title    ?? kaleSurlariCaptureCard?.title    ?? bereketCaptureCard?.title    ?? kahinCaptureCard?.title    ?? limanCaptureCard?.title    ?? mancinikCaptureCard?.title    ?? mancinikUsedCard?.title    ?? rrcData.title;
   const rrcSubtitle = mancinikComboCard?.subtitle ?? kaleSurlariCaptureCard?.subtitle ?? bereketCaptureCard?.subtitle ?? kahinCaptureCard?.subtitle ?? limanCaptureCard?.subtitle ?? mancinikCaptureCard?.subtitle ?? mancinikUsedCard?.subtitle ?? (lastResult?.message ?? "Tur tamamlandı.");
 
@@ -3770,10 +3696,8 @@ export default function ConquestGame({
       })
     : [];
   const hasBonusGuide = bonusGuideEntries.length > 0;
-  // Toggle state drives only the mobile overlay (`?` header button).  On
-  // desktop the guide is an always-on rail section, so there is nothing to
-  // toggle there.
   const [bonusGuideOpen, setBonusGuideOpen] = useState(false);
+  const [desktopVolumeCloseKey, setDesktopVolumeCloseKey] = useState(0);
   const bonusGuideAutoShownRef = useRef(false);
   useEffect(() => {
     if (bonusGuideAutoShownRef.current) return;
@@ -3985,7 +3909,6 @@ export default function ConquestGame({
   const [majorBonusNotice, setMajorBonusNotice] = useState<{
     id:    string;
     icon:  string;
-    bonusType: ConquestRegionBonusType;
     title: string;
     body:  string;
     color: string | null;
@@ -4020,7 +3943,6 @@ export default function ConquestGame({
       ? {
           id:    lastBonusToast.id,
           icon:  "⚓",
-          bonusType: "liman" as ConquestRegionBonusType,
           title: "Liman Ele Geçirildi!",
           body:  `${regionLabel} artık senin kontrolünde. Her tur +1 puan ve +5 Gold geliri kazanacaksın.`,
           color: playerColors[lastBonusToast.playerId] ?? null,
@@ -4028,7 +3950,6 @@ export default function ConquestGame({
       : {
           id:    lastBonusToast.id,
           icon:  "⚓",
-          bonusType: "liman" as ConquestRegionBonusType,
           title: "Rakip Limanı Ele Geçirdi!",
           body:  `${lastBonusToast.playerName}, ${regionLabel} limanını aldı. Bu bölge artık her tur sahibine +1 puan ve +5 Gold kazandıracak.`,
           color: playerColors[lastBonusToast.playerId] ?? null,
@@ -4070,7 +3991,6 @@ export default function ConquestGame({
     const notice = {
       id:    lastBonusToast.id,
       icon:  "🌾",
-      bonusType: "cukurova_score" as ConquestRegionBonusType,
       title: "🌾 Hasat Zamanı!",
       body:  `Bereketli Ova 3 tur boyunca elde tutuldu. ${lastBonusToast.playerName} +4 puanlık Hasat kazandı.`,
       color: playerColors[lastBonusToast.playerId] ?? null,
@@ -4308,7 +4228,6 @@ export default function ConquestGame({
         borderOutpostRegions={myFogActive ? undefined : borderOutpostRegions}
         obscureRegionPoints={myFogActive}
         fogMaskOwnership={myFogActive}
-        geoContext={!isMobile}
       />
       {/* Mobile fallback: card grid below map (labels hidden on mobile via CSS) */}
       <div className="cq-map-card-fallback">
@@ -4381,7 +4300,7 @@ export default function ConquestGame({
             aria-live="polite"
           >
             <span className="cq-bonus-toast-icon" aria-hidden="true">
-              <ConquestBonusIcon type={lastBonusToast.bonusType} fallbackChar={copy.icon} alt={copy.title} />
+              <EmojiIcon char={copy.icon} />
             </span>
             <div className="cq-bonus-toast-text">
               <div className="cq-bonus-toast-title">
@@ -4465,7 +4384,7 @@ export default function ConquestGame({
           aria-live="polite"
         >
           <span className="cq-major-bonus-notice-icon" aria-hidden="true">
-            <ConquestBonusIcon type={majorBonusNotice.bonusType} fallbackChar={majorBonusNotice.icon} alt={majorBonusNotice.title} />
+            <EmojiIcon char={majorBonusNotice.icon} />
           </span>
           <div className="cq-major-bonus-notice-text">
             <div className="cq-major-bonus-notice-title">
@@ -5053,7 +4972,7 @@ export default function ConquestGame({
       content: (
         <>
           <span className="cq-bonus-toast-icon" aria-hidden="true">
-            <ConquestBonusIcon type={lastBonusToast.bonusType} fallbackChar={copy.icon} alt={copy.title} />
+            {copy.icon}
           </span>
           <div className="cq-bonus-toast-text">
             <div className="cq-bonus-toast-title">{copy.title}</div>
@@ -5293,11 +5212,7 @@ export default function ConquestGame({
           data-variant={limanCaptureCard ? "liman" : undefined}
           aria-label="Tur sonucu"
         >
-          <div className="cq-rrc-icon" aria-hidden="true">
-            {rrcBonusType
-              ? <ConquestBonusIcon type={rrcBonusType} fallbackChar={rrcIcon} alt={rrcTitle} />
-              : rrcIcon}
-          </div>
+          <div className="cq-rrc-icon" aria-hidden="true">{rrcIcon}</div>
           <div className="cq-rrc-title">{rrcTitle}</div>
           <p className="cq-rrc-subtitle">{rrcSubtitle}</p>
           {limanCaptureCard?.extra && (
@@ -5452,32 +5367,18 @@ export default function ConquestGame({
   const turnAttr: "mine" | "theirs" | undefined =
     phase === "action" ? (isActionHolder ? "mine" : "theirs") : undefined;
 
-  // ── Desktop phase routing: deck vs. centered cinematic modal ──────────
-  // The per-turn interaction (question + move) lives INSIDE the in-flow
-  // command deck.  The cinematic beats (round result, defense duel, match
-  // over) stay a centered modal that stops the scene.  Reveal is owned by the
-  // centered reveal overlay (inside `toastsNode`); the deck rests under it.
-  // `phasePanelContent` self-gates each section by phase, so mounting the same
-  // node in either slot only ever outputs the one section that belongs there.
-  const phaseInDeck = shouldShowQuestionPanel || phase === "action";
-  const phaseInModal =
-    phase === "round_result"
-    || phase === "finished"
-    || (phase === "defense_duel" && showDuelPanel);
-  // Calm resting line for the deck whenever no live question/move owns it, so
-  // the deck is always a real, owned surface (never an empty void) while a
-  // centered overlay owns the dramatic moment.
-  const deckRestingLabel =
-    phase === "reveal"        ? "Sonuç açıklanıyor…"
-    : phase === "round_result" ? "Tur değerlendiriliyor…"
-    : phase === "defense_duel" ? "Savunma düellosu sürüyor…"
-    : phase === "finished"     ? "Kuşatma tamamlandı"
-    : "Sıradaki tur hazırlanıyor…";
-  const deckRestingNode = (
-    <div className="cq-command-deck-resting" role="status">
-      <span className="cq-command-deck-resting-glyph" aria-hidden="true">🛡️</span>
-      <span className="cq-command-deck-resting-text">{deckRestingLabel}</span>
-    </div>
+  // ── Desktop overlays: toasts + the legacy floating phase card + feed.
+  const overlaysNode = (
+    <>
+      {toastsNode}
+      <ConquestSignalBanner signal={activeSignal} />
+      <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
+        {phasePanelContent}
+      </div>
+      <ConquestEventFeed events={eventFeedEntries} variant="desktop" />
+      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
+      {bonusGuideNode}
+    </>
   );
 
   // ── Landscape mobile dock content (Step 7) ────────────────────────
@@ -5628,9 +5529,7 @@ export default function ConquestGame({
     mobileSheetDismissible = true;
     mobileSheetHandle = (
       <span className="mcq-sheet-handle-title">
-        {rrcBonusType
-          ? <ConquestBonusIcon type={rrcBonusType} fallbackChar={rrcIcon} alt="" />
-          : rrcIcon}{" "}{rrcTitle}
+        {rrcIcon} {rrcTitle}
       </span>
     );
   } else if (phase === "finished") {
@@ -5857,7 +5756,6 @@ export default function ConquestGame({
 
   return (
     <div
-      ref={stageRootRef}
       className="app duel-screen cq-screen cq-game-screen"
       style={themeStyle}
       data-theme={themeAttr}
@@ -5894,42 +5792,34 @@ export default function ConquestGame({
           </span>
           <ConquestVolumeControl
             variant="desktop"
+            closeKey={desktopVolumeCloseKey}
             onOpen={() => setBonusGuideOpen(false)}
           />
+          {hasBonusGuide ? (
+            <button
+              type="button"
+              className="cq-help-btn"
+              onClick={() => { setDesktopVolumeCloseKey(k => k + 1); handleToggleBonusGuide(); }}
+              aria-label="Bonus rehberi"
+              aria-pressed={bonusGuideOpen}
+              title="Bonus rehberi"
+            >
+              ?
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {/* ── ★ Savaş köküu: sol ray (in-flow) + sağ sütun (harita + güverte)
-          `.cq-battle-root` bir flex-row; sol ConquestCommandRail in-flow tam
-          sütun, sağ `.cq-battle-main` flex:1 sütun (battlefield + deck).
-          JS hook `.cq-battlefield`'ı ölçerek `--cq-stage-h`'ı yazar. */}
-      <div className="cq-battle-root">
-
-      {/* ── Sol komuta rayı — in-flow sol sütun ─────────────────────
-          Oyuncular + Kader Kartı + Bonuslar tek çerçevede.
-          Görsel kabuk ConquestCommandRail'de; oyun mantığı burada kalır. */}
-      <ConquestCommandRail
-        teamMode={shouldUseTeamUi(settings, players)}
-        fate={
-          fateCardWidgetVisible ? (
-            <ConquestFateCardWidget
-              mode={fateCardWidgetMode}
-              visible={fateCardWidgetVisible}
-              disabled={!canDrawFateCard || fateCardSpending}
-              spending={fateCardSpending}
-              cost={CONQUEST_FATE_CARD_COST}
-              variant="desktop"
-              onDraw={handleDrawFateCard}
-            />
-          ) : undefined
-        }
-        bonuses={
-          hasBonusGuide ? (
-            <ConquestBonusGuide entries={bonusGuideEntries} variant="rail" />
-          ) : undefined
-        }
-        players={
-          <>
+      {/* ── Compact player panel (top-left overlay) ─────────────── */}
+      <div
+        className="cq-players-panel"
+        role="list"
+        aria-label="Oyuncular"
+        data-team-mode={shouldUseTeamUi(settings, players) ? "true" : undefined}
+      >
+        {!shouldUseTeamUi(settings, players) && (
+          <h4 className="cq-players-panel-title" aria-hidden="true">Oyuncular</h4>
+        )}
         {(() => {
         const renderPlayerRow = (player: ConquestPlayer) => {
           const color    = playerColors[player.id];
@@ -5943,7 +5833,7 @@ export default function ConquestGame({
           // Visible only to the bonus owner:
           //   - pendingHiddenShield (Ankara pending placement)
           //   - hidden shield currently active on the board (placed, awaiting trigger)
-          const bonusChips: { key: string; icon: string; title: string; assetType?: ConquestRegionBonusType }[] = [];
+          const bonusChips: { key: string; icon: string; title: string }[] = [];
           // Icons follow the bonus *type*, not a fixed region — the type is
           // canonical (open shield / time bonus / hidden op), even when the
           // round assignment shifts which region carries it.
@@ -5953,13 +5843,13 @@ export default function ConquestGame({
           const eliminatorPres = getBonusTypePresentation("eleme_yetkisi");
           const mancinikPres   = getBonusTypePresentation("mancinik");
           if (openShieldOwners.has(player.id)) {
-            bonusChips.push({ key: "ist", icon: istanbulPres.icon, assetType: "istanbul_defense", title: "Açık kalkan aktif" });
+            bonusChips.push({ key: "ist", icon: istanbulPres.icon, title: "Açık kalkan aktif" });
           }
           if (pb.extraNextMoveMs > 0) {
-            bonusChips.push({ key: "kdz", icon: karadenizPres.icon, assetType: "karadeniz_extra_time", title: `${karadenizPres.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
+            bonusChips.push({ key: "kdz", icon: karadenizPres.icon, title: `${karadenizPres.label} (+${Math.round(pb.extraNextMoveMs / 1000)}sn)` });
           }
           if (isMe && pb.pendingHiddenShield) {
-            bonusChips.push({ key: "ank-pending", icon: ankaraPres.icon, assetType: "ankara_hidden_shield", title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
+            bonusChips.push({ key: "ank-pending", icon: ankaraPres.icon, title: "Gizli Operasyon hazır: kendi bölgene tıklarsan gizli kalkan, tarafsız bölgeye tıklarsan gizli fetih kurulur (komşuluk şartı yok)" });
           }
           if (isMe && hiddenShieldOwners.has(player.id)) {
             bonusChips.push({ key: "ank-active", icon: "🕶️", title: "Gizli Operasyon aktif (rakipler bu bölgeden habersiz)" });
@@ -5968,7 +5858,6 @@ export default function ConquestGame({
             bonusChips.push({
               key:   "elem",
               icon:  eliminatorPres.icon,
-              assetType: "eleme_yetkisi",
               title: "Eleme Yetkisi hazır: sonraki test sorunda 1 yanlış şık silinir",
             });
           }
@@ -5976,7 +5865,6 @@ export default function ConquestGame({
             bonusChips.push({
               key:   "mancinik",
               icon:  mancinikPres.icon,
-              assetType: "mancinik",
               title: isMe
                 ? "Mancınık hazır: bir sonraki saldırın komşuluk şartı olmadan haritadaki herhangi bir bölgeyi vurabilir"
                 : `${player.name} Mancınık hakkına sahip: bir sonraki saldırısı uzak bir bölgeye gelebilir`,
@@ -6040,9 +5928,7 @@ export default function ConquestGame({
                 <span className="cq-player-bonus-chips" aria-hidden="true">
                   {bonusChips.map(c => (
                     <span key={c.key} className="cq-player-bonus-chip" title={c.title}>
-                      {c.assetType
-                        ? <ConquestBonusIcon type={c.assetType} fallbackChar={c.icon} alt={c.title} />
-                        : c.icon}
+                      {c.icon}
                     </span>
                   ))}
                 </span>
@@ -6202,13 +6088,20 @@ export default function ConquestGame({
             )}
           </div>
         )}
-          </>
-        }
-      />
-      {/* ── Sağ sütun: harita alanı + komuta güvertesi ───────────── */}
-      <div className="cq-battle-main">
-      <div className="cq-battlefield">
-
+        {/* Kader Kartı V1 — always-on widget that anchors the bottom of
+         *  the player panel.  Visibility is gated on (a) the viewer being
+         *  a match participant and (b) the match being in-progress; the
+         *  active / waiting / used state then chooses what to show. */}
+        <ConquestFateCardWidget
+          mode={fateCardWidgetMode}
+          visible={fateCardWidgetVisible}
+          disabled={!canDrawFateCard || fateCardSpending}
+          spending={fateCardSpending}
+          cost={CONQUEST_FATE_CARD_COST}
+          variant="desktop"
+          onDraw={handleDrawFateCard}
+        />
+      </div>
       {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
        *  above the map so the player understands which clicks are armed.
        *  Opponents never render this; the placement state is owner-local. */}
@@ -6251,66 +6144,6 @@ export default function ConquestGame({
             Sınır Karakolu: Bölgene komşu boş bir bölgeye karakol kur.
             Sahipli veya zaten karakollu bölgelere kurulamaz; bölge senin olmaz.
           </span>
-        </div>
-      )}
-
-      {/* NOT: Suikast + Lanet Mührü seçici modalları (fixed, full-screen) ve
-          diğer fixed overlay'ler battlefield DIŞINA — güverteden sonra ekran
-          köküne — taşındı (aşağıya bkz.).  Sebep: `.cq-battlefield` artık SIZE
-          container'ı (`cq-field`); size-containment fixed çocukları battlefield'a
-          bağlardı, merkezleme + z-sırasını bozardı. */}
-
-      {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
-      <div className="cq-game-board-wrap">
-        <div className="cq-game-board-inner">
-          <p className="cq-game-map-title" aria-hidden="true">
-            {mapIcon(settings.map)} {mapConfig.displayName}
-          </p>
-          {mapNode}
-        </div>
-      </div>
-
-      {/* ── Savaş Günlüğü: sağ-alt geçici toast-log ─────────────────
-          Bonus rehberi artık sağda değil — sol komuta rayının alt bölümünde
-          yaşıyor (yukarıya bkz.).  Sağ taraf kalıcı panelden arındı; harita
-          doğu tarafında nefes alır.  Savaş Günlüğü yalnız olay olunca belirip
-          kendiliğinden sönen geçici bir overlay'dir, kalıcı kart değil. */}
-      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
-      </div>{/* ── ★ /.cq-battlefield ── */}
-
-      {/* ── ★ Komuta güvertesi (battle-main içinde, faz-bağımsız yükseklik) ── */}
-      <div className="cq-command-deck" data-phase={phase} data-turn={turnAttr}>
-        <div className="cq-command-deck-inner">
-          {phaseInDeck ? phasePanelContent : deckRestingNode}
-        </div>
-      </div>
-      </div>{/* ── ★ /.cq-battle-main ── */}
-      </div>{/* ── ★ /.cq-battle-root ── */}
-
-      {/* ── ★ Ekran-kökü fixed overlay'leri ──────────────────────────────
-          Bu overlay'ler `position:fixed` (viewport'a göre merkezli/tam ekran) ve
-          yüksek z-index'li → battlefield DIŞINDA, ekran kökünde yaşar.  Battlefield
-          artık SIZE container'ı (`cq-field`) olduğundan, içeride kalsalardı
-          size-containment onları battlefield'a bağlar (merkezleme battlefield'a
-          kayar) ve battlefield'ın stacking context'ine hapsederek güvertenin
-          ALTINA iterdi.  Burada, güvertenin kardeşi olarak, viewport'a göre
-          merkezleme + güverte üstü z-sırası AYNEN korunur. */}
-
-      {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
-      {phase === "finished" && (
-        <div className="cq-finished-backdrop" aria-hidden="true" />
-      )}
-
-      {/* ── Geçici overlay'ler (fixed/centered): toast, sinyal, kader kartı ── */}
-      {toastsNode}
-      <ConquestSignalBanner signal={activeSignal} />
-      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
-
-      {/* ── Sinematik merkez modal: tur sonucu / savunma düellosu / maç sonu.
-          Per-turn soru/hamle BURADA değil, yukarıdaki in-flow güvertede. */}
-      {phaseInModal && (
-        <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
-          {phasePanelContent}
         </div>
       )}
 
@@ -6417,6 +6250,24 @@ export default function ConquestGame({
           </div>
         </div>
       )}
+
+      {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
+      <div className="cq-game-board-wrap">
+        <div className="cq-game-board-inner">
+          <p className="cq-game-map-title" aria-hidden="true">
+            {mapIcon(settings.map)} {mapConfig.displayName}
+          </p>
+          {mapNode}
+        </div>
+      </div>
+
+      {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
+      {phase === "finished" && (
+        <div className="cq-finished-backdrop" aria-hidden="true" />
+      )}
+
+      {/* ── Toasts + floating phase card (shared with mobile shell) ── */}
+      {overlaysNode}
 
 
       {/* ── DEV-ONLY: three separate dev test panels ───────────────────

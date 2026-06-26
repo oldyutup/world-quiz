@@ -23,10 +23,7 @@ import {
 } from "react";
 import WorldMap from "./WorldMap";
 import {
-  getWheelPool,
-  pickProgressionEntry,
-  expectedWheelTargets,
-  targetIndexProgress,
+  getFlagPool,
   getContinentIds,
   type Continent,
   type CountryEntry,
@@ -89,15 +86,14 @@ interface GameOverResult {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   POOL HELPER — getWheelPool already drops micro / unclickable
-   countries (central WHEEL_INELIGIBLE_CODES) and requires code+topoId,
-   so the map click can always resolve the target fairly.
+   POOL HELPER — getFlagPool returns code-bearing entries; we
+   additionally require topoId because the map click resolves topoId.
 ═══════════════════════════════════════════════════════════════ */
 function buildWheelPool(
   continent: ContinentFilter,
   difficulty: Difficulty
 ): CountryEntry[] {
-  return getWheelPool(continent, difficulty);
+  return getFlagPool(continent, difficulty).filter((c) => Boolean(c.topoId));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -544,13 +540,8 @@ export default function WheelGame({ onHome }: WheelGameProps) {
     setTarget(null);
     setWrongId("");
 
-    // Progression: zorluk geçen SÜREYE göre değil, tamamlanan hedef SAYISINA
-    // göre artar (online Çark ile aynı kural). `duration` yalnız rampa uzunluğunu
-    // (beklenen hedef sayısı) belirler; saat difficulty hesabına girmez. Spin
-    // flash aşağıda tüm havuzdan akar (yalnız görsel).
-    const completed = guessedRef.current.size + passedRef.current.size;
-    const progress  = targetIndexProgress(completed, expectedWheelTargets(duration));
-    const finalTarget = pickProgressionEntry(remainingPool, progress) ?? remainingPool[0];
+    const finalIdx = Math.floor(Math.random() * remainingPool.length);
+    const finalTarget = remainingPool[finalIdx];
     const totalSpinMs = SPIN_MIN_MS + Math.random() * (SPIN_MAX_MS - SPIN_MIN_MS);
 
     spinIntervalRef.current = setInterval(() => {
@@ -565,7 +556,7 @@ export default function WheelGame({ onHome }: WheelGameProps) {
       setTarget(finalTarget);
       setSpinning(false);
     }, totalSpinMs);
-  }, [spinning, finished, poolEmpty, remainingPool, started, endGame, duration]);
+  }, [spinning, finished, poolEmpty, remainingPool, started, endGame]);
 
   /* ── Handle country click on map ── */
   const handleCountryClick = useCallback(

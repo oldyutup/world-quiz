@@ -22,13 +22,6 @@ Var oluş sebebi: coğrafyayı bir sınav değil, bir **oyun ve keşif alanı** 
 
 - **Ses/ton:** Sıcak, arkadaşça, hafif oyuncu bir "dünya rehberi". Ders veren değil, yanına alıp gezdiren. Türkçe metinler net, samimi ve kısa.
 - **Duygusal hedef:** Merak ("şurası neresiymiş?"), küçük zaferlerin keyfi, ait olma/sosyallik. Stres ve kaygı değil; hata yapmak güvenli ve oyunun parçası.
-- **Hedef his:** Açılınca bir **"gece atlası / keşif defteri"** açmış hissi — sıcak, katmanlı, canlı; soğuk bir teknik araç değil.
-
-**Konumlandırma (mobil/native).** Torble yalnızca "koyu temalı bir dünya haritası uygulaması" değil; **modern, sıcak, keşif odaklı, hafif premium ve rekabetin keyifli kıvılcımını taşıyan bir mobil dünya/bilgi oyunu** gibi algılanmalı.
-
-- **Hafif premium** = pahalı, ağır ya da gösterişli değil; **özenli, katmanlı, güven veren** demek.
-- **Rekabet** = "kazanma baskısı" değil; "bir tur daha" dedirten **enerji ve kıvılcım**. Oyunun kalbi hâlâ merak ve keşif (bkz. Product Purpose).
-- Harita arka plan değil **oyun alanı** gibi hissettirmeli; yüzeyler oyuncuyu içine çekmeli.
 
 ## Anti-references
 
@@ -37,8 +30,7 @@ Torble **kesinlikle** şunlara benzememeli:
 - **Ucuz/spam mobil oyun:** Agresif pop-up'lar, her köşede reklam, bedava-oyun tuzakları, sahte aciliyet, ucuz parlak gradyanlar. Para kazanma asla kullanıcıyı sıkıştırmaz.
 - **Aşırı ciddi eğitim/sınav yazılımı:** Ders kitabı kuruluğu, neşesiz bürokratik form hissi, "doğru/yanlış" cezalandırıcı tonu.
 - **Bilgi kirliliği / kalabalık UI:** Her yere serpiştirilmiş rozet/buton/bildirim, aynı anda bağıran onlarca öğe, dikkat dağıtan yoğunluk.
-- **Soğuk kurumsal dashboard / harita aracı:** Gri ve ruhsuz admin paneli, birbirinin aynı kart ızgaraları, klişe "büyük rakam + küçük etiket" hero-metric şablonu; ve oyunu bir **harita/GIS aracı** gibi gösteren buz gibi teknik UI. Oyun alanı asla arka plana düşmemeli.
-- **Generic neon gradient / sahte premium:** Her yere yayılan parlak neon-gradyan dili, dekoratif cam, ucuz "ışıltı" ile sahte bir lüks taklidi. Premium his **özen ve katmandan** gelir, efektten değil.
+- **Sıkıcı kurumsal/SaaS dashboard:** Gri ve ruhsuz admin paneli, birbirinin aynı kart ızgaraları, klişe "büyük rakam + küçük etiket" hero-metric şablonu.
 
 ## Design Principles
 

@@ -22,14 +22,13 @@
    stay desktop-web-only for now (invite links still work; only
    this mobile navigation omits them).
 ═══════════════════════════════════════════════════════════════ */
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sound";
 import { Avatar } from "./Avatar";
 import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
-import { useToastSurfaceOffset } from "../lib/useToastOffset";
 import {
   CONQUEST_QUICK_MATCH_ENABLED,
   QUICK_MATCH_CONQUEST_ROUNDS,
@@ -283,10 +282,6 @@ function QmSelect({
   const open = openField === field.id;
   const rootRef = useRef<HTMLDivElement>(null);
   const popRef  = useRef<HTMLDivElement>(null);
-  // Cap the upward popover to the room above the field inside the sheet so it
-  // never spills past the sheet's top edge (and thus the viewport/safe-area);
-  // the list scrolls internally past that. `undefined` falls back to the CSS.
-  const [popMaxH, setPopMaxH] = useState<number | undefined>(undefined);
 
   // While open: outside-tap and Escape close the popover. Capture phase so we
   // win before the sheet's own Escape-to-close handler fires.
@@ -305,28 +300,6 @@ function QmSelect({
       document.removeEventListener("keydown", onKey, true);
     };
   }, [open, setOpenField]);
-
-  // On open, size the popover to the space above the field within the scrollable
-  // sheet (bounded by the sheet keeps it inside the viewport + top safe-area).
-  // Measured before paint to avoid a flash, and re-measured on resize/rotate.
-  useLayoutEffect(() => {
-    if (!open) { setPopMaxH(undefined); return; }
-    const root = rootRef.current;
-    if (!root) return;
-    const measure = () => {
-      const fieldTop = root.getBoundingClientRect().top;
-      const sheet    = root.closest<HTMLElement>(".mh-sheet");
-      const topBound = sheet ? sheet.getBoundingClientRect().top : 0;
-      const GAP = 6;   // mirrors the CSS gap between popover and field
-      const PAD = 8;   // breathing room from the sheet's top edge
-      const avail = fieldTop - topBound - GAP - PAD;
-      // Keep the 46vh visual cap, never exceed the room above, never collapse.
-      setPopMaxH(Math.max(96, Math.min(avail, window.innerHeight * 0.46)));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [open]);
 
   // On open, drop focus on the selected (or first enabled) option so keyboard
   // users land inside the list.
@@ -374,7 +347,6 @@ function QmSelect({
           role="listbox"
           aria-label={field.label}
           onKeyDown={onListKey}
-          style={popMaxH != null ? { maxHeight: popMaxH } : undefined}
         >
           {field.options.map(o => {
             const isSel = o.value === field.value;
@@ -631,13 +603,6 @@ export default function MobileHome({
   const social = useSocialOptional();
   const dm = useDmOptional();
   const socialBadge = (social?.unreadCount ?? 0) + (dm?.totalUnread ?? 0);
-
-  // Native app ana ekranında alt-nav (.mh-bottom-nav, ~70px) yalnız native'de
-  // görünür; global bildirim toast'larını onun üzerine kaldır (çakışma yok).
-  const isNativeApp =
-    typeof document !== "undefined" &&
-    document.documentElement.classList.contains("is-native-app");
-  useToastSurfaceOffset(isNativeApp, 78);
 
   const categories: Category[] = [
     {

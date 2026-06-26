@@ -36,9 +36,9 @@ const ROUTE_GOLD: Record<RouteDifficulty, { base: number; optimal: number }> = {
 };
 
 const DIFF_LABELS: Record<RouteDifficulty, string> = {
-  easy:   "🟢 Kolay (2–3 ülke)",
-  normal: "🟡 Normal (4–5 ülke)",
-  hard:   "🔴 Zor (6+ ülke)",
+  easy:   "🟢 Kolay (2-3 ara ülke)",
+  normal: "🟡 Normal (4-5 ara ülke)",
+  hard:   "🔴 Zor (6+ ara ülke)",
 };
 
 type RoutePhase = "setup" | "playing" | "won";

@@ -124,13 +124,10 @@ export default function DefenseDuelPanel({
   const showChoices = challenge.type === "quiz"
     && Array.isArray(challenge.choices)
     && challenge.choices.length > 0;
-  // Render the flag for both the classic flag_guess duel and a multiple-choice
-  // "Bayraktan Ülke" duel (type "quiz" carrying a `flag`).
-  const hasFlag = Boolean(challenge.flag);
 
   return (
     <section
-      className={`cq-challenge-panel cq-duel-panel${hasFlag ? " cq-challenge-panel--flag" : ""}`}
+      className={`cq-challenge-panel cq-duel-panel${challenge.type === "flag_guess" ? " cq-challenge-panel--flag" : ""}`}
       data-status={duel.status}
       aria-label="Savunma Düellosu"
     >
@@ -181,9 +178,9 @@ export default function DefenseDuelPanel({
         {meta.icon} {challenge.title}
       </h3>
 
-      {hasFlag && (
+      {challenge.type === "flag_guess" && challenge.flag && (
         <div className="cq-challenge-flag" aria-label="Bayrak">
-          <FlagGlyph emoji={challenge.flag!} />
+          <FlagGlyph emoji={challenge.flag} />
         </div>
       )}
 

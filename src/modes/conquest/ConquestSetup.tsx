@@ -8,16 +8,9 @@ import { useEffect, useState } from "react";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
 import { EmojiIcon } from "../../components/EmojiIcon";
-import { ConquestAssetIcon } from "./ConquestAssetIcon";
-import { ConquestMapSelect } from "./ConquestMapSelect";
-import { ConquestIconSelect } from "./ConquestIconSelect";
-import {
-  CONQUEST_MAP_SELECTION_ASSET,
-  CONQUEST_SETTING_ASSETS,
-  getConquestVisibilityOptionAsset,
-} from "./conquestIcons";
 import {
   CONQUEST_DEFAULT_SETTINGS,
+  CONQUEST_MAPS,
   CONQUEST_PLAYER_COUNTS,
   CONQUEST_ROUND_COUNTS,
   type ConquestMapId,
@@ -124,9 +117,7 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
 
           <div className="cq-settings-selects">
             <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.players} alt="Oyuncu Sayısı" className="cq-setting-icon" size={22} fallbackName="people" /> Oyuncu Sayısı
-              </label>
+              <label className="duel-select-label"><EmojiIcon name="people" /> Oyuncu Sayısı</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -142,19 +133,23 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_MAP_SELECTION_ASSET} alt="Harita" className="cq-setting-icon" size={22} fallbackName="map" /> Harita
-              </label>
-              <ConquestMapSelect
-                value={map}
-                onChange={setMap}
-              />
+              <label className="duel-select-label"><EmojiIcon name="map" /> Harita</label>
+              <div className="duel-select-box">
+                <select
+                  className="duel-select"
+                  value={map}
+                  onChange={e => setMap(e.target.value as ConquestMapId)}
+                >
+                  {CONQUEST_MAPS.map(m => (
+                    <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
+                  ))}
+                </select>
+                <span className="duel-select-caret">▾</span>
+              </div>
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.rounds} alt="Tur Sayısı" className="cq-setting-icon" size={22} fallbackName="refresh" /> Tur Sayısı
-              </label>
+              <label className="duel-select-label"><EmojiIcon name="refresh" /> Tur Sayısı</label>
               <div className="duel-select-box">
                 <select
                   className="duel-select"
@@ -170,18 +165,18 @@ export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
             </div>
 
             <div className="duel-select-wrap">
-              <label className="duel-select-label">
-                <ConquestAssetIcon src={CONQUEST_SETTING_ASSETS.visibility} alt="Oda Görünürlüğü" className="cq-setting-icon" size={22} fallbackName="unlock" /> Oda Görünürlüğü
-              </label>
-              <ConquestIconSelect<ConquestVisibility>
-                value={visibility}
-                ariaLabel="Oda görünürlüğü seç"
-                onChange={setVisibility}
-                options={[
-                  { value: "public",  label: "Açık Oda",  iconSrc: getConquestVisibilityOptionAsset("public"),  fallbackChar: "🌐" },
-                  { value: "private", label: "Gizli Oda", iconSrc: getConquestVisibilityOptionAsset("private"), fallbackChar: "🔒" },
-                ]}
-              />
+              <label className="duel-select-label"><EmojiIcon name="unlock" /> Oda Görünürlüğü</label>
+              <div className="duel-select-box">
+                <select
+                  className="duel-select"
+                  value={visibility}
+                  onChange={e => setVisibility(e.target.value as ConquestVisibility)}
+                >
+                  <option value="public">🌐 Açık Oda</option>
+                  <option value="private">🔒 Gizli Oda</option>
+                </select>
+                <span className="duel-select-caret">▾</span>
+              </div>
             </div>
           </div>
 
