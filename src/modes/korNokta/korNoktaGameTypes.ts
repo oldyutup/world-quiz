@@ -34,9 +34,11 @@ export const KN_INCLUDE_REAL_SCENES = true;
 /** Tüm bilinen sahneler (AI + gerçek). findKnScene id'leri her zaman buradan çözer. */
 export const korNoktaAllScenes: KorNoktaScene[] = [...korNoktaScenes, ...korNoktaRealScenes];
 
-/** start_game'in kullandığı aktif havuz (flag'e göre). */
+/** Yeni maçların aktif sahne havuzu.
+ * Tarihi/AI sahneler korNoktaAllScenes içinde korunur; böylece eski oda
+ * kayıtlarındaki sahne ID'leri ve findKnScene çözümlemesi bozulmaz. */
 const korNoktaActivePool: KorNoktaScene[] = KN_INCLUDE_REAL_SCENES
-  ? korNoktaAllScenes
+  ? korNoktaRealScenes
   : korNoktaScenes;
 
 export type KnPhase =
