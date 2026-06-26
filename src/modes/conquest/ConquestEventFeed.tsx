@@ -5,8 +5,9 @@
  * passed in.  Three visual variants share one row vocabulary:
  *
  *   • "war-log"        — desktop right-rail card titled "⚔ Savaş Günlüğü"
- *                        (last 6 events; always rendered so the rail keeps a
- *                        permanent anchor, with an inviting empty state)
+ *                        (last 3 events; renders ONLY when there is at least one
+ *                        event so an empty match never shows a hollow card —
+ *                        it stays out of the scene until the war actually starts)
  *   • "landscape-dock" — appended below the phase panel in the mobile dock
  *   • "portrait-peek"  — single-row floating chip above the bottom sheet
  *
@@ -35,12 +36,14 @@ function FeedRow({ e }: { e: ConquestEventFeedEntry }) {
 }
 
 export default function ConquestEventFeed({ events, variant }: Props) {
-  // Desktop war-room log: a persistent, titled rail card.  Renders even when
-  // empty (inviting placeholder) so the right rail always has an anchor and
-  // never reads as unowned space.  Height is bounded in CSS; on short desktop
-  // viewports it collapses to a single-row "peek" (see App.css).
+  // Desktop war-room log: a compact, titled rail card.  Renders ONLY when at
+  // least one event exists — an empty match shows no card at all (no hollow
+  // "boş kart" claiming the right rail).  Shows the 3 most recent events
+  // (newest first); height auto-fits the rows and is capped in CSS.  Hidden
+  // entirely on short desktops (see App.css) to give the map + deck priority.
   if (variant === "war-log") {
-    const visible = events.slice(0, 6);
+    if (events.length === 0) return null;
+    const visible = events.slice(0, 3);
     return (
       <div
         className="cq-war-log"
@@ -52,11 +55,7 @@ export default function ConquestEventFeed({ events, variant }: Props) {
           <span className="cq-war-log__title">⚔ Savaş Günlüğü</span>
         </div>
         <div className="cq-war-log__body">
-          {visible.length === 0 ? (
-            <p className="cq-war-log__empty">İlk hamleler burada belirecek.</p>
-          ) : (
-            visible.map(e => <FeedRow key={e.id} e={e} />)
-          )}
+          {visible.map(e => <FeedRow key={e.id} e={e} />)}
         </div>
       </div>
     );

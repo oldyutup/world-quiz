@@ -506,11 +506,11 @@ export default function ConquestGame({
    *  without depending on the callback's identity in a closure. */
   const flashIllegalRef = useRef<((id: ConquestRegionId) => void) | null>(null);
 
-  // Desktop safe-stage geometry — root of the `.cq-game-screen` shell.  The
-  // measurement hook (useLayoutEffect below) reads header/footer/dock-panel
-  // sizes off this subtree and writes `--cq-stage-h` / `--cq-stage-dock-reserve`
-  // so the map fits + centres without scroll or panel overlap.  Null on mobile
-  // (that branch renders MobileConquestLayout, not this root).
+  // Desktop battlefield geometry — root of the `.cq-game-screen` shell.  The
+  // measurement hook (useLayoutEffect below) reads the `.cq-battlefield`
+  // (flex:1) height off this subtree and writes `--cq-stage-h` so the map fits
+  // + centres fluidly.  Null on mobile (that branch renders
+  // MobileConquestLayout, not this root).
   const stageRootRef = useRef<HTMLDivElement | null>(null);
 
   // Stable refs so timeout callbacks always see the latest values without
@@ -902,16 +902,18 @@ export default function ConquestGame({
     return () => timers.forEach(t => window.clearTimeout(t));
   }, [playerPoints]);
 
-  // ── Desktop map slot geometry (viewport/root only — PHASE-INVARIANT) ──
-  // Writes `--cq-stage-h` / `--cq-stage-dock-reserve` consumed by the
-  // `min(preferred, 100%, stageH * aspect)` rule in App.css.  The geometry is
-  // measured by `measureConquestStageGeometry` PURELY from root chrome (sticky
-  // header bottom + in-flow footer top + a CONSTANT dock reserve) — the fixed
-  // phase panel is intentionally NOT measured.  This is the fix: on a single
-  // viewport the map slot stays byte-identical across every gameplay phase
-  // (question / answered / reveal / action / round_result); it only changes on
-  // a real window/viewport resize.  Mobile (≤600px / MobileConquestLayout)
-  // leaves the ref null → the effect bails.
+  // ── Desktop map slot geometry (battlefield height only — PHASE-INVARIANT) ──
+  // Writes `--cq-stage-h` consumed by the `min(cap, 100%, stageH * aspect)`
+  // map-width rule in App.css.  The geometry is measured by
+  // `measureConquestStageGeometry` PURELY from the `.cq-battlefield` (flex:1)
+  // region: its height = viewport − header − command deck − footer.  All three
+  // are phase-independent (the deck height is a viewport-only clamp), so on a
+  // single viewport the map slot stays byte-identical across every gameplay
+  // phase (challenge / reveal / action / round_result); it only changes on a
+  // real window/viewport resize.  The deck swaps its content inside a
+  // fixed-height slot (overflow scroll for overflow), never resizing the
+  // battlefield → no measure→resize feedback.  Mobile (≤600px /
+  // MobileConquestLayout) renders no `.cq-battlefield` → the hook bails.
   useLayoutEffect(() => {
     const root = stageRootRef.current;
     if (!root) return;
@@ -921,48 +923,22 @@ export default function ConquestGame({
       if (!geo) {
         // Mobile width (≤600px): hand layout back to the mobile shell.
         root.style.removeProperty("--cq-stage-h");
-        root.style.removeProperty("--cq-stage-dock-reserve");
-        root.style.removeProperty("--cq-hud-top");
-        root.style.removeProperty("--cq-footer-h");
         return;
       }
       root.style.setProperty("--cq-stage-h", `${geo.stageH}px`);
-      root.style.setProperty("--cq-stage-dock-reserve", `${geo.dockReserve}px`);
-
-      // Resilient HUD anchors for the fixed side rails + command deck —
-      // derived from the LIVE header/footer chrome (never the map slot) so the
-      // right rail sits just below the header and the deck just above the
-      // footer even if either changes height (font scale, responsive wrap).
-      // These are read by App.css overlays ONLY; they never feed back into
-      // --cq-stage-h, so the map rect + phase-invariance stay byte-identical.
-      const headerEl = root.querySelector<HTMLElement>(".cq-game-header");
-      const footerEl = root.querySelector<HTMLElement>(".cq-game-footer");
-      if (headerEl) {
-        root.style.setProperty(
-          "--cq-hud-top",
-          `${Math.round(headerEl.getBoundingClientRect().bottom)}px`,
-        );
-      }
-      if (footerEl) {
-        root.style.setProperty(
-          "--cq-footer-h",
-          `${Math.round(footerEl.getBoundingClientRect().height)}px`,
-        );
-      }
     };
 
     apply();
 
-    // Re-measure ONLY on genuine viewport/root geometry changes: the viewport
-    // (window / visualViewport resize) and the two chrome elements that bound
-    // the slot (header, footer).  The phase panel is deliberately NOT observed
-    // — its content/phase swaps must never resize the map.  Observing chrome
-    // (not the map) also avoids any measure→resize feedback loop.
+    // Re-measure ONLY on genuine viewport geometry changes: the viewport
+    // (window / visualViewport resize) and the battlefield's own box (which
+    // shrinks/grows when the chrome or deck height changes on resize).  Phase
+    // content swaps inside the fixed-height deck never resize the battlefield,
+    // so they never re-trigger this — the map rect stays phase-invariant.
     const ro = new ResizeObserver(apply);
     ro.observe(root);
-    root.querySelectorAll<HTMLElement>(
-      ".cq-game-header, .cq-game-footer",
-    ).forEach(el => ro.observe(el));
+    const battlefield = root.querySelector<HTMLElement>(".cq-battlefield");
+    if (battlefield) ro.observe(battlefield);
 
     const onResize = () => apply();
     window.addEventListener("resize", onResize);
@@ -5473,23 +5449,32 @@ export default function ConquestGame({
   const turnAttr: "mine" | "theirs" | undefined =
     phase === "action" ? (isActionHolder ? "mine" : "theirs") : undefined;
 
-  // ── Desktop overlays: toasts + the legacy floating phase card + feed.
-  const overlaysNode = (
-    <>
-      {toastsNode}
-      <ConquestSignalBanner signal={activeSignal} />
-      {/* Command deck: paints the already-reserved bottom band so the floating
-          phase card reads as sitting ON a deck, not in a void.  Pure ambient
-          layer (z below the phase panel, pointer-events:none) — it does NOT
-          add reserve or touch the phase-panel box / map slot. */}
-      <div className="cq-command-deck" aria-hidden="true" />
-      <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
-        {phasePanelContent}
-      </div>
-      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
-      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
-      {bonusGuideNode}
-    </>
+  // ── Desktop phase routing: deck vs. centered cinematic modal ──────────
+  // The per-turn interaction (question + move) lives INSIDE the in-flow
+  // command deck.  The cinematic beats (round result, defense duel, match
+  // over) stay a centered modal that stops the scene.  Reveal is owned by the
+  // centered reveal overlay (inside `toastsNode`); the deck rests under it.
+  // `phasePanelContent` self-gates each section by phase, so mounting the same
+  // node in either slot only ever outputs the one section that belongs there.
+  const phaseInDeck = shouldShowQuestionPanel || phase === "action";
+  const phaseInModal =
+    phase === "round_result"
+    || phase === "finished"
+    || (phase === "defense_duel" && showDuelPanel);
+  // Calm resting line for the deck whenever no live question/move owns it, so
+  // the deck is always a real, owned surface (never an empty void) while a
+  // centered overlay owns the dramatic moment.
+  const deckRestingLabel =
+    phase === "reveal"        ? "Sonuç açıklanıyor…"
+    : phase === "round_result" ? "Tur değerlendiriliyor…"
+    : phase === "defense_duel" ? "Savunma düellosu sürüyor…"
+    : phase === "finished"     ? "Kuşatma tamamlandı"
+    : "Sıradaki tur hazırlanıyor…";
+  const deckRestingNode = (
+    <div className="cq-command-deck-resting" role="status">
+      <span className="cq-command-deck-resting-glyph" aria-hidden="true">🛡️</span>
+      <span className="cq-command-deck-resting-text">{deckRestingLabel}</span>
+    </div>
   );
 
   // ── Landscape mobile dock content (Step 7) ────────────────────────
@@ -5923,6 +5908,15 @@ export default function ConquestGame({
           ) : null}
         </div>
       </div>
+
+      {/* ── ★ Battlefield stage: map focus + overlay HUD rails ───────
+          A real in-flow region (flex:1) that owns the map AND the HUD
+          overlays.  The map is centered inside; the players / bonus / war-log
+          rails are absolute children anchored to THIS box (not the viewport),
+          so they read as one scene and never squeeze the map via flex/grid.
+          `measureConquestStageGeometry` reads THIS box's height for the
+          phase-invariant `--cq-stage-h`. */}
+      <div className="cq-battlefield">
 
       {/* ── Compact player panel (top-left overlay) ─────────────── */}
       <div
@@ -6379,13 +6373,41 @@ export default function ConquestGame({
         </div>
       </div>
 
+      {/* ── Sağ savaş-odası rayı: bonus rehberi + Savaş Günlüğü ─────
+          Overlay HUD (battlefield'a absolute çapalı); haritayı flex/grid ile
+          küçültmez.  Savaş Günlüğü yalnız olay varken render edilir. */}
+      {bonusGuideNode}
+      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
+
       {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
       {phase === "finished" && (
         <div className="cq-finished-backdrop" aria-hidden="true" />
       )}
 
-      {/* ── Toasts + floating phase card (shared with mobile shell) ── */}
-      {overlaysNode}
+      {/* ── Geçici overlay'ler (fixed/centered): toast, sinyal, kader kartı ── */}
+      {toastsNode}
+      <ConquestSignalBanner signal={activeSignal} />
+      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
+
+      {/* ── Sinematik merkez modal: tur sonucu / savunma düellosu / maç sonu.
+          Per-turn soru/hamle BURADA değil, aşağıdaki in-flow güvertede. */}
+      {phaseInModal && (
+        <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
+          {phasePanelContent}
+        </div>
+      )}
+      </div>{/* ── ★ /.cq-battlefield ── */}
+
+      {/* ── ★ Komuta güvertesi (in-flow, full-width) ────────────────
+          Footer'a kadar uzanan görünür yüzey; tur-içi soru/hamle yüzeyi onun
+          İÇİNE gömülür.  Yüksekliği `--cq-deck-h` clamp'iyle SABİT ve
+          faz-bağımsızdır → harita rect'i fazlar arası değişmez; içerik yuvası
+          gerektiğinde güverte içinde nazikçe kaydırılır (taşma güvenlik ağı). */}
+      <div className="cq-command-deck" data-phase={phase} data-turn={turnAttr}>
+        <div className="cq-command-deck-inner">
+          {phaseInDeck ? phasePanelContent : deckRestingNode}
+        </div>
+      </div>
 
 
       {/* ── DEV-ONLY: three separate dev test panels ───────────────────

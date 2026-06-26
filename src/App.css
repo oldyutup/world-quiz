@@ -12257,18 +12257,26 @@ body {
   white-space: nowrap;
 }
 
-/* ── Compact player panel (fixed overlay, top-left) ──────────── */
+/* ── Compact player panel (overlay HUD, anchored top-left of battlefield) ──
+   Absolute within `.cq-battlefield` (not the viewport) so it reads as part of
+   the war-table scene and sits in the left safe-zone gutter.  Container is
+   pointer-events:none so empty areas pass clicks THROUGH to the map; the
+   interactive children (kahin / hidden-inventory / fate-card widget) re-enable
+   pointer-events:auto individually (see their rules) — never a blanket lock. */
 .cq-players-panel {
-  position: fixed;
-  top: 58px;
+  position: absolute;
+  top: 12px;
   left: 12px;
   z-index: 10;
   width: 210px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: rgba(7, 10, 18, 0.86);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0 0 4px;
   pointer-events: none;
 }
@@ -14170,24 +14178,20 @@ body {
 }
 
 /* ── Floating phase card container ─────────────────────────────── */
+/* Cinematic centered modal — only mounts for round_result / defense_duel /
+   finished (the per-turn question + move now live in the in-flow command
+   deck).  Centered so these "stop the scene" beats land in the middle, ABOVE
+   the deck (z over the deck's low z).  Fixed → positions to the viewport. */
 .cq-game-phase-panel {
   position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  width: min(520px, 92vw);
-  pointer-events: auto;
-}
-
-.cq-game-phase-panel[data-phase="finished"],
-.cq-game-phase-panel[data-phase="defense_duel"],
-.cq-game-phase-panel[data-phase="round_result"] {
-  bottom: auto;
   top: 50%;
+  left: 50%;
   transform: translate(-50%, -50%);
-  max-height: calc(100vh - 120px);
+  z-index: 60;
+  width: min(520px, 92vw);
+  max-height: calc(100dvh - 96px);
   overflow-y: auto;
+  pointer-events: auto;
 }
 
 /* ── Sonuç ekranı arka plan: hafif blur + ince koyu overlay ─────
@@ -14240,6 +14244,12 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+/* Question / answer side wrappers are layout-transparent everywhere by
+   default (mobile bottom sheet, centered modal) so the flat flex flow is
+   byte-identical to before.  Only the desktop command deck promotes them to
+   real grid columns (see `.cq-command-deck .cq-challenge-*` in the HUD block). */
+.cq-challenge-q,
+.cq-challenge-a { display: contents; }
 .cq-challenge-head {
   display: flex;
   align-items: center;
@@ -15569,98 +15579,97 @@ body {
     drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)) !important;
 }
 
-/* ── Desktop board stage — SAFE-STAGE GEOMETRY (oran = viewBox 1005/490) ──
-   KÖK NEDEN (2 nesil hata):
-   1) İlk hata: harita `min(100%, calc((100dvh - reserve) * 1005/490))` ile
-      ölçekleniyordu → `100dvh` terimi haritayı SADECE viewport yüksekliğine
-      bağlıyordu; her chrome farkı haritayı farklı küçültüyor, aynı maçtaki iki
-      oyuncu farklı ölçek görüyordu.
-   2) Düzeltme denemesi: harita SABİT bir kanonik genişliğe (`--cq-canonical-
-      map-width`) kilitlendi + yükseklik bantları (max-height 820/702/638/589) +
-      `scale(1.055)` kompozisyon transform'u eklendi. Yan etkiler: (a) board-inner
-      içinde harita ÜSTTEN hizalıydı (justify yok) → yeterince uzun ama "yanlış
-      oranlı" viewport'ta harita yukarı asılıp ALTTA büyük ölü backdrop bırakıyordu;
-      (b) ayrık yükseklik bantları kısa viewport'ta haritayı gereğinden çok
-      küçültüyordu; (c) `scale(1.055)` görünür rect'i layout rect'ten ayırıyordu
-      (geniş desktopta ~%5 fazla büyük).
+/* ── Desktop savaş sahnesi — AKIŞKAN in-flow kabuk ──────────────────────────
+   Kabuk: header / .cq-battlefield (flex:1) / .cq-command-deck (in-flow) / footer.
+   YENİ MİMARİ (önceki 2 nesil hatayı kapatır): harita artık alt 210px'lik SABİT
+   bir dock rezervinden + üstünde yüzen `position:fixed` faz kartından DEĞİL,
+   gerçek bir in-flow `.cq-battlefield` bölgesinden beslenir.  Komuta güvertesi
+   (`.cq-command-deck`) onun in-flow flex KARDEŞİDİR; tur-içi soru/hamle yüzeyini
+   İÇİNE gömer, yüksekliği `--cq-deck-h` clamp'iyle SABİT ve faz-bağımsızdır.
 
-   ÇÖZÜM — ÖLÇÜLEN SAFE-STAGE (cihaz/çözünürlük bağımsız, breakpoint listesi YOK):
+   AKIŞKAN HARİTA GENİŞLİĞİ (cihaz/çözünürlük bağımsız, breakpoint listesi YOK):
      mapWidth = min(
-       preferredMapWidth,                       // yeterli alan varsa kullanılan max ölçek
-       100%,                                     // safe-stage GENİŞLİĞİ (board-inner içerik kutusu)
-       safeStageHeight × (1005/490)              // safe-stage YÜKSEKLİĞİ → orana çevrilmiş
+       --cq-map-width-cap,            // viewport GENİŞLİĞİNE bağlı akışkan tavan
+       100%,                          // kullanılabilir merkez genişliği (board-inner)
+       --cq-stage-h × (1005/490)      // battlefield YÜKSEKLİĞİ → orana çevrilmiş
      )
-   • `preferredMapWidth` SABİT değil, TAVAN'dır: safe-stage onu sığdırabildiği
-     SÜRECE harita tam o pikselde kalır → yeterli alanı olan tüm desktop'lar (ve
-     dolayısıyla aynı maçtaki oyuncuların ezici çoğunluğu) AYNI ölçeği görür
-     (adalet korunur). Yalnız gerçekten kısa safe-stage haritayı SIĞACAK kadar
-     küçültür — eski 100dvh'nin "her chrome farkında küçült" davranışı DEĞİL.
-   • `--cq-stage-h` = haritaya kalan GERÇEK dikey alan; JS ölçüm hook'u YALNIZCA
-     kök geometriden (header alt kenarı + footer üst kenarı + SABİT dock rezervi)
-     hesaplar — `measureConquestStageGeometry`. Aktif faz paneli ÖLÇÜLMEZ; panel
-     `position:fixed` olduğundan akışı itmez ve yüksekliği faza göre değişir, bu
-     yüzden ölçüme katılması haritayı fazlar arası büyütüp/küçültüp kaydırıyordu
-     (giderilen kök neden). CSS'te ham `100dvh` formülü YOK.
-   • FAZ-DEĞİŞMEZLİK: aynı viewport'ta question/answered/reveal/action/
-     round_result fazlarının hepsinde `--cq-stage-h` ve `--cq-stage-dock-reserve`
-     birebir aynıdır → harita rect'i (w/h/top/left) sabit kalır; yalnız gerçek
-     pencere/viewport resize bu değerleri değiştirir.
-   • İlk boyamada (hook çalışmadan) fallback `--cq-stage-h: 525px` → preferred
-     genişliği verir; hook useLayoutEffect'te boyamadan ÖNCE gerçek değeri yazar.
-   • Harita board-wrap içinde DİKEY + YATAY ORTALANIR; alt dock paneli için
-     SABİT `--cq-stage-dock-reserve` kadar alt boşluk bırakılır → harita panelin
-     üstünde ortalanır; merkez tüm fazlarda ve viewport'larda tutarlı kalır.
-   • Hiç `transform: scale()/translateY` YOK → görünür rect == layout rect; SVG
-     viewBox + `meet` + tüm path/marker/hit-area koordinat sistemi DOKUNULMADAN
-     uniform ölçeklenir → bölge tıklama doğruluğu birebir korunur.
-   Kapsam: yalnız desktop (≥601px) + .cq-game-screen; MobileConquestLayout bu
-   kabuğu render etmez → mobil etkilenmez. */
+   Üç terim haritayı BİRLİKTE türetir; hangisi küçükse o bağlar:
+   • Kısa viewport (1366×768 + Chrome ≈ 640px): yükseklik bağlar → ~720–760px;
+     eski modeldeki ~600px ÇÖKÜŞÜ biter (210px rezerv + üstte-ortalama gitti).
+   • 1440×900 / 1920×1080: doğal olarak büyür; tavan (`--cq-map-width-cap`)
+     bağlar → ~1180–1260px bandı.  Bu büyüme SVG viewBox/geometri DEĞİL, aynı
+     SVG'nin responsive render ölçüsüdür (path/marker/hit-area uniform ölçeklenir).
+   • `--cq-map-width-cap = clamp(1040px, 82vw, 1260px)`: geniş monitörde harita
+     1074'te gereksiz küçük KALMAZ; güvenli üst sınır 1260px.  Adalet: yeterli
+     alanı olan aynı-viewport oyuncular aynı ölçeği görür.
+
+   FAZ-DEĞİŞMEZLİK: `--cq-stage-h` = battlefield yüksekliği = viewport − header
+   − güverte − footer; üçü de faz-bağımsız → aynı viewport'ta tüm fazlarda harita
+   rect'i (w/h/top/left) birebir aynı.  Faz içeriği güverte İÇİNDE sabit yuvada
+   değişir (taşarsa güverte içinde scroll), battlefield'ı yeniden boyutlamaz.
+   İlk boyamada fallback `--cq-stage-h: 525px`; hook useLayoutEffect'te gerçek
+   değeri yazar.  `transform: scale()` YOK → görünür rect == layout rect; SVG
+   viewBox + `meet` + tüm path/marker/hit-area DOKUNULMADAN uniform ölçeklenir.
+   Kapsam: yalnız desktop (≥601px) + .cq-game-screen; mobil etkilenmez. */
 @media (min-width: 601px) {
   .app.duel-screen.cq-screen.cq-game-screen {
-    /* Yeterli safe-stage olan geniş/uzun desktop'ta haritanın ulaşacağı TAVAN
-       GÖRÜNÜR genişliği = eski iyi MacBook referansının görünür boyutu.
-       Referans, eski layout genişliği (1018px) × eski `scale(1.055)` = ~1074px
-       idi; transform kaldırıldığı için aynı GÖRÜNÜR boyutu artık doğrudan
-       layout genişliği veriyor (görünür rect == layout rect). Map yüksekliği
-       buna bağlı: 1074 × 490/1005 ≈ 524 → referans ~1074×524 korunur. */
-    --cq-preferred-map-width: 1074px;
-    /* Haritaya kalan dikey alan (JS hook ölçer). Fallback = preferred genişliği
-       veren değer (1074 / (1005/490) ≈ 524); ham 100dvh formülü YOK. */
+    /* Akışkan harita genişlik TAVANI: viewport genişliğiyle büyür, güvenli
+       1040–1260px bandında sınırlanır.  Geniş monitörde 1074'e takılı kalmaz. */
+    --cq-map-width-cap: clamp(1040px, 82vw, 1260px);
+    /* Komuta güvertesinin SABİT (faz-bağımsız) yüksekliği: kısa desktopta
+       ~162px taban (standart soru + progress + 2×2 şık iç-scroll'a düşmez),
+       uzun ekranda akışkan ~220px tavana büyür. */
+    --cq-deck-h: clamp(162px, 20vh, 220px);
+    /* Haritaya kalan dikey alan (JS hook `.cq-battlefield`'dan ölçer).  Fallback
+       = ~1074px harita veren değer (1074 / (1005/490) ≈ 524); ilk boyama içindir. */
     --cq-stage-h: 525px;
-    /* Alt dock (hamle/soru paneli) için board-wrap'in altında tutulan boşluk
-       (JS hook ölçer). Fallback 0 → hook çalışana kadar tam alanda ortalanır. */
-    --cq-stage-dock-reserve: 0px;
   }
 
-  /* Dekoratif harita başlığı header'daki harita rozetiyle zaten tekrarlı;
-     desktop'ta gizlenir → harita tüm safe-stage'i sahiplenir ve temiz ortalanır. */
+  /* Battlefield: haritanın ve overlay HUD raylarının sahibi olan in-flow odak
+     bölgesi.  Kalan tüm dikey alanı alır (flex:1); harita içeride ortalanır,
+     raylar buna absolute çapalanır → tek sahne, harita flex/grid ile EZİLMEZ.
+     Düşük-kontrastlı gutter ambiyansı kök yerine BURADA → siyah kenarlar
+     sahiplenilir, merkez (harita) berrak kalır. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* No isolation/stacking context here: the centered cinematic modal +
+       toasts are `position:fixed` and must paint ABOVE the in-flow deck, so
+       they stay in the root stacking context with the deck (deck z is low). */
+    background-image:
+      radial-gradient(78% 60% at 50% 40%,
+        rgba(13, 17, 23, 0) 56%,
+        rgba(2, 5, 11, 0.55) 100%);
+  }
+
+  /* Dekoratif harita başlığı header'daki rozetle tekrarlı; desktop'ta gizli. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-map-title { display: none; }
 
-  /* Board alanı: haritayı dikey + yatay ortalayan flex kabuk. Alt dock için
-     ölçülen rezerv kadar padding-bottom; üstte küçük nefes payı.
-     `justify-content: safe center` → safe-stage sığdığında (gerçekçi tüm desktop
-     yükseklikleri) harita ORTALANIR ve scrollbar oluşmaz; yalnızca aşırı kısa
-     viewport + en uzun soru paneli gibi patolojik durumda hizalama `start`'a
-     düşer → harita üstten hizalanıp `overflow-y:auto` ile NAZİKÇE kaydırılabilir
-     (içerik kırpılmaz, üst kenar erişilebilir kalır). */
+  /* Board: haritayı battlefield içinde dikey + yatay ortalayan flex kabuk.
+     Artık dock rezervi YOK (güverte ayrı in-flow kardeş).  `safe center` →
+     gerçekçi tüm yüksekliklerde ortalar, scrollbar oluşmaz; yalnız patolojik
+     kısa viewport'ta `start`'a düşüp `overflow-y:auto` ile nazik kaydırır. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: safe center;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 0 var(--cq-stage-dock-reserve);
+    padding: 8px 0;
   }
 
-  /* board-inner içerik kutusu, geniş desktop'ta haritanın preferred GÖRÜNÜR
-     genişliğine ulaşabilmesi için preferred + yan padding kadar olmalı; yoksa
-     16px'lik yan padding `100%` terimini kısıp haritayı preferred'ın altında
-     tutardı. Dar viewport'ta (≤ ~1106px) board-inner viewport'a daralır ve yan
-     padding haritayı kenardan korur. */
+  /* board-inner içerik kutusu, haritanın akışkan tavana ulaşabilmesi için
+     cap + yan padding kadar olabilir; dar viewport'ta viewport'a daralır ve
+     yan padding haritayı kenardan korur. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
     width: 100%;
-    max-width: calc(var(--cq-preferred-map-width) + 32px);
+    max-width: calc(var(--cq-map-width-cap) + 32px);
     margin: 0;
     padding: 0 16px;
     display: flex;
@@ -15669,7 +15678,7 @@ body {
 
   .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
     width: min(
-      var(--cq-preferred-map-width),
+      var(--cq-map-width-cap),
       100%,
       calc(var(--cq-stage-h) * 1005 / 490)
     );
@@ -15677,6 +15686,21 @@ body {
     padding: 0;
     aspect-ratio: 1005 / 490;
     transform: none;
+  }
+
+  /* Yerleştirme modu ipucu bantları (Pusu / Bölge Kalkanı / Sınır Karakolu):
+     battlefield içinde harita ÜZERİNE absolute float → in-flow akışı itip
+     haritanın rect'ini kaydırmaz (map-rect faz/sub-mode değişmezliği korunur).
+     Etkileşimli (İptal butonu) → pointer-events:auto. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-pusu-placement-banner {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 14;
+    margin: 0;
+    max-width: min(720px, calc(100% - 24px));
+    pointer-events: auto;
   }
 }
 
@@ -17949,84 +17973,136 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   Kuşatma masaüstü "Komuta Çerçevesi" HUD (Seçenek A)
+   Kuşatma masaüstü savaş sahnesi — in-flow komuta güvertesi + overlay HUD
    ─────────────────────────────────────────────────────────────────────
-   Dondurulmuş haritanın ETRAFINDA bilinçli bir komuta-masası çerçevesi:
-   sağ savaş-odası rayı (bonus dock + Savaş Günlüğü), alt komuta güvertesi,
-   düşük-kontrastlı gutter ambiyansı.  HEPSİ position:fixed / kök arka-plan
-   katmanı → flex akışına GİRMEZ → header.bottom / footer.top değişmez →
-   measureConquestStageGeometry aynı --cq-stage-h'i döner → harita rect'i,
-   viewBox, hit-area ve faz-değişmezlik DOKUNULMADAN kalır.  Yeni kara/deniz
-   ya da harita asset'i YOK; yalnız ışık + yüzey.
-   Yalnız desktop (≥601px); mobil kabuk (MobileConquestLayout, ≤600px) hiçbir
-   kuralı almaz.  --cq-hud-top / --cq-footer-h JS ölçüm hook'undan gelir
-   (canlı header/footer yüksekliği); fallback'ler ilk boyama içindir, sabit
-   58px'e kör bağlanmaz. ═══════════════════════════════════════════════ */
+   Komuta güvertesi artık GERÇEK in-flow flex kardeşi (header / battlefield /
+   güverte / footer); tur-içi soru/hamle yüzeyini İÇİNE gömer.  Sağ savaş-odası
+   rayı (bonus drawer + Savaş Günlüğü) ve sol oyuncu rayı, `.cq-battlefield`'a
+   ABSOLUTE çapalı overlay'lerdir → haritayı flex/grid ile EZMEZ, viewport
+   yerine SAHNEYE oturur.  Gutter ambiyansı battlefield'da (yukarıda) tanımlı.
+   Yalnız desktop (≥601px); mobil kabuk (MobileConquestLayout, ≤600px) bu
+   kuralların hiçbirini almaz — overlay'ler battlefield içinde yaşar, mobilde
+   battlefield yoktur. ═════════════════════════════════════════════════ */
 @media (min-width: 601px) {
-  .app.duel-screen.cq-screen.cq-game-screen {
-    /* Dayanıklı HUD çapaları — JS hook canlı chrome ölçüleriyle ezer. */
-    --cq-hud-top: 56px;
-    --cq-footer-h: 54px;
-    /* Savaş Günlüğü kartının dış yüksekliği; bonus dock'un alt sınırını da
-       bu belirler (çakışma matematiksel olarak imkânsız).  Kısa viewport'ta
-       peek'e iner (aşağıdaki max-height media query). */
-    --cq-war-log-h: 188px;
-
-    /* Düşük-kontrastlı gutter ambiyansı: kenarlar hafifçe koyulaşır, merkez
-       (harita) berrak kalır.  Kök ARKA PLAN olarak çizilir → her zaman
-       haritanın ARKASINDA; haritanın kendi okyanus dolgusu gutter dışını
-       örter, böylece yalnız siyah boşluklar sahiplenilir. */
-    background-color: var(--bg);
-    background-image:
-      radial-gradient(78% 58% at 50% 42%,
-        rgba(13, 17, 23, 0) 58%,
-        rgba(2, 5, 11, 0.5) 100%);
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+  /* ── Komuta güvertesi (in-flow, full-width) ─────────────────────────
+     Footer'a kadar uzanan görünür yüzey.  Yüksekliği SABİT (`--cq-deck-h`
+     clamp) → faz-bağımsız; içerik iç kolonu sabit yuvayı doldurur, taşarsa
+     YALNIZ İÇERİDE nazikçe kaydırır (battlefield'ı yeniden boyutlamaz). */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck {
+    flex: 0 0 var(--cq-deck-h);
+    position: relative;
+    z-index: 4;
+    display: flex;
+    justify-content: center;
+    background:
+      linear-gradient(to bottom,
+        rgba(27, 33, 42, 0.94),
+        rgba(15, 19, 26, 0.97));
+    border-top: 1px solid rgba(120, 150, 200, 0.18);
+    box-shadow: 0 -12px 30px -22px rgba(0, 0, 0, 0.9) inset;
+  }
+  /* Sıra sende: güverte üst kenarı kimlik mavisiyle hafifçe canlanır (hamle
+     fazı, data-turn="mine").  Rakip sırasında nötr kalır. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck[data-turn="mine"] {
+    border-top-color: rgba(88, 166, 255, 0.55);
+    box-shadow:
+      0 -12px 30px -22px rgba(0, 0, 0, 0.9) inset,
+      0 1px 0 rgba(88, 166, 255, 0.22) inset;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-inner {
+    width: 100%;
+    max-width: 980px;
+    height: 100%;
+    margin: 0 auto;
+    padding: 11px clamp(16px, 3vw, 34px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow-y: auto;          /* güvenlik ağı: yalnız istisnai uzun içerik */
+    overscroll-behavior: contain;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-inner > * {
+    width: 100%;
   }
 
-  /* ── Alt komuta güvertesi ───────────────────────────────────────────
-     Zaten AYRILMIŞ alt rezerv bandını (--cq-stage-dock-reserve) görsel
-     olarak sahiplenir → yüzen soru/hamle kartı boşlukta değil, güvertenin
-     ÜZERİNDE oturur.  Rezervi yalnız BOYAR (değiştirmez); kartın kutusunu
-     ve haritayı etkilemez.  Üst kenar mask ile haritaya yumuşak karışır. */
-  .cq-command-deck {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: var(--cq-footer-h, 54px);
-    height: var(--cq-stage-dock-reserve, 210px);
-    z-index: 5;
-    pointer-events: none;
-    background:
-      radial-gradient(120% 150% at 50% 130%,
-        rgba(45, 51, 59, 0.5),
-        rgba(13, 17, 23, 0) 70%),
-      linear-gradient(to top,
-        rgba(22, 27, 34, 0.85),
-        rgba(13, 17, 23, 0) 100%);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    -webkit-mask-image: linear-gradient(to top, #000 58%, transparent);
-    mask-image: linear-gradient(to top, #000 58%, transparent);
+  /* Güverte dinlenme hali — canlı soru/hamle yokken sahip çıkan sakin satır,
+     güverte asla boş void gibi durmaz (sinematik an merkezde sürerken bile). */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-resting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .cq-command-deck-resting-glyph { font-size: 18px; opacity: 0.78; }
+
+  /* ── Tur-içi panel güvertede: kart kromu YOK (güverte zaten yüzey →
+     iç-içe kart yasağı), yatay konsol düzeni → düşük yükseklik (162px taban)
+     iç-scroll olmadan sığar.  Soru sol kolon, cevaplar sağ kolon. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-challenge-panel,
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-action-panel {
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+    margin: 0;
+    animation: none;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-challenge-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    align-items: center;
+    gap: 6px 28px;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-challenge-q {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+  }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-challenge-a {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  /* Güvertede bayrak daha kompakt (yatay düzende dikey alanı korur). */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-challenge-flag {
+    font-size: 44px;
+    margin: 2px 0 0;
+  }
+  /* Hamle paneli güvertede ortalı, dar bir konsol bandı olarak okunur. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck .cq-action-panel {
+    max-width: 640px;
+    margin: 0 auto;
   }
 }
 
-/* ── Savaş Günlüğü (sağ rayın alt çapası) ─────────────────────────────
-   Eski yüzen `.cq-event-feed--desktop` yerine başlıklı, kalıcı kart; satır
-   stili (.cq-event-feed__row) aynen paylaşılır.  Son 6 olay; informational
-   (pointer-events:none → haritayı/oyunu bloklamaz). */
-.cq-war-log {
-  position: fixed;
-  right: 14px;
-  bottom: calc(var(--cq-footer-h, 54px) + 14px);
+/* ── Savaş Günlüğü (battlefield sağ-alt çapası, overlay HUD) ───────────
+   Yalnız OLAY VARKEN render edilir (boş kart YOK — ConquestEventFeed empty'de
+   null döner).  En fazla 3 satır; gövde içeriğe göre büyür, dış yükseklik
+   CSS'le sınırlanır.  Informational (pointer-events:none → haritayı/oyunu
+   bloklamaz).  `.cq-battlefield` descendant guard → yalnız desktop. */
+.app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
   width: 300px;
-  max-width: 32vw;
-  height: var(--cq-war-log-h, 188px);
-  z-index: 30;
+  max-width: 30%;
+  max-height: 42%;
+  z-index: 12;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 9px 10px 10px;
+  padding: 9px 11px 10px;
   border-radius: 10px;
   background: rgba(7, 10, 18, 0.86);
   backdrop-filter: blur(10px);
@@ -18055,58 +18131,44 @@ body {
   overflow: hidden;
   min-height: 0;
 }
-.cq-war-log__empty {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: rgba(241, 245, 249, 0.5);
-  font-style: italic;
+
+/* ── Sağ savaş-odası rayı: bonus drawer (battlefield sağ-üst çapası) ───
+   Bonus toggle davranışı (auto-aç / "?" / ✕) AYNEN korunur; bu yalnız AÇIKKEN
+   onu sağ-üst güvenli bölgeye kalibre eder.  Savaş Günlüğü'nün üstünde durur
+   (üst %60 vs alt %42 → matematiksel olarak çakışmaz), kendi içinde scroll
+   alır.  `.cq-battlefield` descendant guard → yalnız desktop; mobil landscape
+   bonus kartı battlefield DIŞINDA render edilir → base fixed kuralını korur. */
+.app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: auto;
+  width: 300px;
+  max-width: calc(100% - 24px);
+  z-index: 14;
+  max-height: calc(60% - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-/* ≤720px: mobil varyantlar (portrait-peek / landscape-dock) devralır. */
-@media (max-width: 720px) {
-  .cq-war-log { display: none; }
+
+/* ≤1440 dar gutter bandında rayları biraz daralt (harita rect'i değişmez). */
+@media (max-width: 1440px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide { width: 270px; }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log { width: 270px; }
 }
 
-/* ── Sağ savaş-odası rayı: bonus dock + Savaş Günlüğü ─────────────────
-   Yalnız ≥721px (mobil bonus-guide override'ı ≤720px'te → çakışmaz; mobil
-   bonus kartı dokunulmadan kalır).  Bonus dock max-height'i GÜNLÜĞÜN üstünde
-   durur ve kendi içinde scroll alır → asla footer'a taşmaz, asla günlüğü
-   örtmez.  Bonus toggle davranışı (auto-aç / "?" / ✕) AYNEN korunur; bu yalnız
-   AÇIKKEN onu rail-dock'a kalibre eder. */
-@media (min-width: 721px) {
-  .app.duel-screen.cq-screen.cq-game-screen .cq-bonus-guide {
-    top: calc(var(--cq-hud-top, 56px) + 4px);
-    right: 14px;
-    left: auto;
-    width: 300px;
-    max-width: calc(100vw - 28px);
-    z-index: 40;
-    max-height: calc(
-      100dvh - var(--cq-hud-top, 56px) - 4px
-      - (var(--cq-footer-h, 54px) + 14px)
-      - var(--cq-war-log-h, 188px) - 18px
-    );
-    overflow-y: auto;
-    overscroll-behavior: contain;
+/* Kısa desktop (≤760px yükseklik, ör. 1366×768 + Chrome ≈ 640px): içerik
+   yoğunluğu azalır → Savaş Günlüğü tamamen gizlenir (harita + güverte
+   önceliklenir), bonus drawer tam yüksekliği kullanabilir, güverte iç boşluğu
+   biraz sıkışır.  Harita rect'i ETKİLENMEZ — yalnız overlay/yoğunluk. */
+@media (max-height: 760px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log { display: none; }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide {
+    max-height: calc(100% - 24px);
   }
-
-  /* ≤1440 geniş bandında gutter dar → rayı biraz daralt (haritanın doğu
-     kenarıyla görsel örtüşmeyi azaltır; harita rect'i değişmez, ray bugünkü
-     gibi translucent camla üstte durur). */
-  @media (max-width: 1440px) {
-    .app.duel-screen.cq-screen.cq-game-screen .cq-bonus-guide { width: 264px; }
-    .cq-war-log { width: 264px; }
-  }
-
-  /* Kısa desktop (≤820px yükseklik, ör. 1366×768): Savaş Günlüğü tek-satır
-     "peek"e iner → bonus dock'a yer açar, hiçbir şey footer'a taşmaz.  Başlık
-     gizlenir, gövde en yeni tek olayı gösterir (satırlar zaten en-yeni-üstte).
-     Harita rect'i bundan ETKİLENMEZ — yalnız overlay'ler küçülür. */
-  @media (max-height: 820px) {
-    .app.duel-screen.cq-screen.cq-game-screen { --cq-war-log-h: 46px; }
-    .cq-war-log { padding: 7px 10px; gap: 0; }
-    .cq-war-log__head { display: none; }
-    .cq-war-log__body { max-height: 30px; }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-inner {
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 }
 

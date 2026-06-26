@@ -137,6 +137,10 @@ export default function ConquestChallengePanel({
       data-status={status}
       aria-label="Mücadele paneli"
     >
+      {/* Question side + answer side wrappers.  `display:contents` by default
+          (mobile sheet / centered modal keep the exact flat flow), so these
+          only become real columns inside the desktop command deck (App.css). */}
+      <div className="cq-challenge-q">
       <header className="cq-challenge-head">
         <span className="cq-challenge-type-chip" aria-hidden="true">
           {meta.icon} {meta.label}
@@ -159,7 +163,9 @@ export default function ConquestChallengePanel({
       {challenge.prompt && (
         <p className="cq-challenge-prompt">{challenge.prompt}</p>
       )}
+      </div>
 
+      <div className="cq-challenge-a">
       {/* Countdown bar — only while active */}
       {isActive && (
         <div
@@ -291,6 +297,7 @@ export default function ConquestChallengePanel({
           <EmojiIcon name="alarm" /> Süre bitti. Kimse doğru cevap veremedi.
         </p>
       )}
+      </div>
     </section>
   );
 }
