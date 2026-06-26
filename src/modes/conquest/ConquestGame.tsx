@@ -3769,8 +3769,10 @@ export default function ConquestGame({
       })
     : [];
   const hasBonusGuide = bonusGuideEntries.length > 0;
+  // Toggle state drives only the mobile overlay (`?` header button).  On
+  // desktop the guide is an always-on rail section, so there is nothing to
+  // toggle there.
   const [bonusGuideOpen, setBonusGuideOpen] = useState(false);
-  const [desktopVolumeCloseKey, setDesktopVolumeCloseKey] = useState(0);
   const bonusGuideAutoShownRef = useRef(false);
   useEffect(() => {
     if (bonusGuideAutoShownRef.current) return;
@@ -5891,21 +5893,8 @@ export default function ConquestGame({
           </span>
           <ConquestVolumeControl
             variant="desktop"
-            closeKey={desktopVolumeCloseKey}
             onOpen={() => setBonusGuideOpen(false)}
           />
-          {hasBonusGuide ? (
-            <button
-              type="button"
-              className="cq-help-btn"
-              onClick={() => { setDesktopVolumeCloseKey(k => k + 1); handleToggleBonusGuide(); }}
-              aria-label="Bonus rehberi"
-              aria-pressed={bonusGuideOpen}
-              title="Bonus rehberi"
-            >
-              ?
-            </button>
-          ) : null}
         </div>
       </div>
 
@@ -6213,6 +6202,13 @@ export default function ConquestGame({
           variant="desktop"
           onDraw={handleDrawFateCard}
         />
+        {/* Bu Maçtaki Bonuslar — rail'in üçüncü ve son bölümü.  Sağdan taşındı:
+         *  artık kalıcı bir overlay değil, oyuncular + Kader Kartı ile aynı
+         *  komuta yüzeyinin doğal alt bölümü.  Liste kendi içinde scroll alır
+         *  (cq-rail-bonus-scroll) → çok bonus rayı uzatmaz, haritaya dokunmaz. */}
+        {hasBonusGuide && (
+          <ConquestBonusGuide entries={bonusGuideEntries} variant="rail" />
+        )}
       </div>
       {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
        *  above the map so the player understands which clicks are armed.
@@ -6373,10 +6369,11 @@ export default function ConquestGame({
         </div>
       </div>
 
-      {/* ── Sağ savaş-odası rayı: bonus rehberi + Savaş Günlüğü ─────
-          Overlay HUD (battlefield'a absolute çapalı); haritayı flex/grid ile
-          küçültmez.  Savaş Günlüğü yalnız olay varken render edilir. */}
-      {bonusGuideNode}
+      {/* ── Savaş Günlüğü: sağ-alt geçici toast-log ─────────────────
+          Bonus rehberi artık sağda değil — sol komuta rayının alt bölümünde
+          yaşıyor (yukarıya bkz.).  Sağ taraf kalıcı panelden arındı; harita
+          doğu tarafında nefes alır.  Savaş Günlüğü yalnız olay olunca belirip
+          kendiliğinden sönen geçici bir overlay'dir, kalıcı kart değil. */}
       <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
 
       {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}

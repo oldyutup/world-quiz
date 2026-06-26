@@ -12257,18 +12257,25 @@ body {
   white-space: nowrap;
 }
 
-/* ── Compact player panel (overlay HUD, anchored top-left of battlefield) ──
-   Absolute within `.cq-battlefield` (not the viewport) so it reads as part of
-   the war-table scene and sits in the left safe-zone gutter.  Container is
+/* ── Left command rail (overlay HUD, anchored top-left of battlefield) ──────
+   ONE low-contrast command surface holding three sections in order: players
+   (top) → Kader Kartı (middle) → Bu Maçtaki Bonuslar (bottom).  Thin dividers
+   + shared material make them read as sections of a single rail, not three
+   detached black boxes.  Absolute within `.cq-battlefield` (not the viewport)
+   so it sits in the left safe-zone gutter and never squeezes the map via
+   flex/grid — it is purely a presentation layer.  Container is
    pointer-events:none so empty areas pass clicks THROUGH to the map; the
-   interactive children (kahin / hidden-inventory / fate-card widget) re-enable
-   pointer-events:auto individually (see their rules) — never a blanket lock. */
+   interactive children (kahin / hidden-inventory / fate-card / bonus rows)
+   re-enable pointer-events:auto individually (see their rules) — never a
+   blanket lock.  Panel-level overflow is the last-resort safety net; the
+   bonus section scrolls inside ITSELF first so a long bonus set never
+   stretches the rail or reaches the map. */
 .cq-players-panel {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 10;
-  width: 210px;
+  width: 224px;
   max-height: calc(100% - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -13397,6 +13404,63 @@ body {
     width: calc(100vw - 24px);
     max-width: 360px;
   }
+}
+
+/* ── Bu Maçtaki Bonuslar — desktop command-rail bottom section ──────────────
+   Flush continuation of the left rail (top divider + shared material), never a
+   detached card and never the old persistent right panel.  The row list lives
+   in an inner scroll box so a long, variable bonus set scrolls inside ITSELF:
+   the rail keeps its height, the map keeps its rect, an opened description just
+   expands within the scroll box, and a short set stays content-height (no
+   artificially tall empty box).  Desktop-only by construction —
+   `.cq-players-panel` is not rendered in the mobile shell. */
+.cq-rail-bonus {
+  margin-top: 6px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(245, 158, 11, 0.03);
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.cq-rail-bonus-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f6c074;
+}
+.cq-rail-bonus-scroll {
+  min-height: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -2px;
+  padding: 0 2px;
+}
+/* Compact the shared bonus rows for the narrow rail — function/clickability
+   unchanged, just tighter. */
+.cq-rail-bonus .cq-bonus-guide-list   { gap: 3px; margin-top: 0; }
+.cq-rail-bonus .cq-bonus-guide-row    { gap: 8px; padding: 6px 8px; }
+.cq-rail-bonus .cq-bonus-guide-icon   { font-size: 16px; }
+.cq-rail-bonus .cq-bonus-guide-label  { font-size: 12px; }
+.cq-rail-bonus .cq-bonus-guide-region { font-size: 10.5px; }
+.cq-rail-bonus .cq-bonus-guide-effect { font-size: 11px; padding: 7px 10px 8px; }
+
+/* The fate-card widget is the rail's MIDDLE section whenever a bonus section
+   follows it, so drop its bottom rounding (the bonus block owns the rail's
+   bottom corners).  With no bonuses it stays the last child and keeps them. */
+.cq-players-panel .cq-fate-card-widget:not(:last-child) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* Duel overlay toast base — shared by intro overlay and result toast.
@@ -15623,6 +15687,19 @@ body {
     /* Haritaya kalan dikey alan (JS hook `.cq-battlefield`'dan ölçer).  Fallback
        = ~1074px harita veren değer (1074 / (1005/490) ≈ 524); ilk boyama içindir. */
     --cq-stage-h: 525px;
+    /* Sol komuta rayının yatay ayak izi: sol oluk(12) + ray(224) + harita
+       boşluğu(16).  Harita merkezleme kutusunun SOLUNDA bu kadar yer ayrılır
+       → harita rayın altına girmez, sağa kayar.  Yalnız SLACK varsa uygulanır
+       (aşağıdaki padding clamp'ı), ray haritayı asla ezmez. */
+    --cq-rail-reserve: 252px;
+    /* Haritanın ulaşabileceği EN GENİŞ render boyu = min(genişlik tavanı,
+       yükseklikten türeyen tavan).  board-inner'in `100%` terimiyle aynı
+       formülün üst sınırı; rezerv sadece bunun ötesindeki boşluktan beslenir
+       → harita ölçeği DEĞİŞMEZ. */
+    --cq-map-ceil: min(
+      var(--cq-map-width-cap),
+      calc(var(--cq-stage-h) * 1005 / 490)
+    );
   }
 
   /* Battlefield: haritanın ve overlay HUD raylarının sahibi olan in-flow odak
@@ -15661,7 +15738,20 @@ body {
     justify-content: safe center;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Right bonus panel kalktı → doğu serbest.  Haritayı, sol komuta rayını
+       AŞAN biçimde sağa kaydırmak için merkezleme kutusunun soluna ray ayak
+       izi kadar yer ayır.  AMA asla haritanın boyundan çalmaz: rezerv, mevcut
+       yatay SLACK ile (board genişliği − haritanın en geniş hâli − 24px nefes)
+       sınırlanır; slack azaldıkça 0'a iner → kısa/dar desktopta harita merkezli
+       ve TAM görünür kalır, hiçbir kenardan kırpılmaz.  Saf padding → harita
+       min() genişlik formülü dokunulmaz (ölçek değişmez), ray flex/grid ile
+       küçültmez; faz değişince rect aynı kalır (terimlerin hepsi faz-bağımsız). */
     padding: 8px 0;
+    padding-left: clamp(
+      0px,
+      calc(100% - var(--cq-map-ceil) - 24px),
+      var(--cq-rail-reserve)
+    );
   }
 
   /* board-inner içerik kutusu, haritanın akışkan tavana ulaşabilmesi için
@@ -17976,10 +18066,12 @@ body {
    Kuşatma masaüstü savaş sahnesi — in-flow komuta güvertesi + overlay HUD
    ─────────────────────────────────────────────────────────────────────
    Komuta güvertesi artık GERÇEK in-flow flex kardeşi (header / battlefield /
-   güverte / footer); tur-içi soru/hamle yüzeyini İÇİNE gömer.  Sağ savaş-odası
-   rayı (bonus drawer + Savaş Günlüğü) ve sol oyuncu rayı, `.cq-battlefield`'a
-   ABSOLUTE çapalı overlay'lerdir → haritayı flex/grid ile EZMEZ, viewport
-   yerine SAHNEYE oturur.  Gutter ambiyansı battlefield'da (yukarıda) tanımlı.
+   güverte / footer); tur-içi soru/hamle yüzeyini İÇİNE gömer.  TEK sol komuta
+   rayı (oyuncular + Kader Kartı + Bu Maçtaki Bonuslar) ve sağ-altta geçici
+   Savaş Günlüğü toast'u `.cq-battlefield`'a ABSOLUTE çapalı overlay'lerdir →
+   haritayı flex/grid ile EZMEZ, viewport yerine SAHNEYE oturur.  Sağ taraf
+   kalıcı panelden arındı; harita doğu tarafında nefes alır.  Gutter ambiyansı
+   battlefield'da (yukarıda) tanımlı.
    Yalnız desktop (≥601px); mobil kabuk (MobileConquestLayout, ≤600px) bu
    kuralların hiçbirini almaz — overlay'ler battlefield içinde yaşar, mobilde
    battlefield yoktur. ═════════════════════════════════════════════════ */
@@ -18086,30 +18178,41 @@ body {
   }
 }
 
-/* ── Savaş Günlüğü (battlefield sağ-alt çapası, overlay HUD) ───────────
-   Yalnız OLAY VARKEN render edilir (boş kart YOK — ConquestEventFeed empty'de
-   null döner).  En fazla 3 satır; gövde içeriğe göre büyür, dış yükseklik
-   CSS'le sınırlanır.  Informational (pointer-events:none → haritayı/oyunu
-   bloklamaz).  `.cq-battlefield` descendant guard → yalnız desktop. */
+/* ── Savaş Günlüğü (battlefield sağ-alt çapası, GEÇİCİ toast-log) ───────
+   Yalnız OLAY OLUNCA belirir ve kendiliğinden söner (transient — görünürlük
+   ConquestEventFeed'deki zamanlayıcıyla yönetilir; boş/sessiz maçta hiç
+   render edilmez → sağ tarafta kalıcı kart YOK).  En fazla 3 satır; kompakt,
+   hafif kromlu, informational (pointer-events:none → haritayı/oyunu bloklamaz).
+   `.cq-battlefield` descendant guard → yalnız desktop. */
 .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log {
   position: absolute;
   right: 12px;
   bottom: 12px;
-  width: 300px;
-  max-width: 30%;
-  max-height: 42%;
+  width: 260px;
+  max-width: 28%;
+  max-height: 40%;
   z-index: 12;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 9px 11px 10px;
-  border-radius: 10px;
-  background: rgba(7, 10, 18, 0.86);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+  gap: 5px;
+  padding: 8px 10px 9px;
+  border-radius: 9px;
+  background: rgba(7, 10, 18, 0.8);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
   pointer-events: none;
+  animation: cq-war-log-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes cq-war-log-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log {
+    animation: none;
+  }
 }
 .cq-war-log__head {
   display: flex;
@@ -18132,40 +18235,27 @@ body {
   min-height: 0;
 }
 
-/* ── Sağ savaş-odası rayı: bonus drawer (battlefield sağ-üst çapası) ───
-   Bonus toggle davranışı (auto-aç / "?" / ✕) AYNEN korunur; bu yalnız AÇIKKEN
-   onu sağ-üst güvenli bölgeye kalibre eder.  Savaş Günlüğü'nün üstünde durur
-   (üst %60 vs alt %42 → matematiksel olarak çakışmaz), kendi içinde scroll
-   alır.  `.cq-battlefield` descendant guard → yalnız desktop; mobil landscape
-   bonus kartı battlefield DIŞINDA render edilir → base fixed kuralını korur. */
-.app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  left: auto;
-  width: 300px;
-  max-width: calc(100% - 24px);
-  z-index: 14;
-  max-height: calc(60% - 12px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
+/* NOT: Desktop "Bu Maçtaki Bonuslar" artık battlefield içinde sağ overlay
+   olarak render EDİLMEZ — sol komuta rayının alt bölümüne (`.cq-rail-bonus`,
+   yukarıda) taşındı.  Sağ taraf kalıcı panelden arındı; eski
+   `.cq-battlefield .cq-bonus-guide` kalibrasyon kuralları kaldırıldı.  Base
+   `.cq-bonus-guide` (fixed) yalnız mobil overlay için duruyor. */
 
-/* ≤1440 dar gutter bandında rayları biraz daralt (harita rect'i değişmez). */
+/* ≤1440 dar gutter bandında geçici günlüğü biraz daralt (harita rect'i
+   değişmez — yalnız overlay). */
 @media (max-width: 1440px) {
-  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide { width: 270px; }
-  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log { width: 270px; }
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log { width: 240px; }
 }
 
 /* Kısa desktop (≤760px yükseklik, ör. 1366×768 + Chrome ≈ 640px): içerik
-   yoğunluğu azalır → Savaş Günlüğü tamamen gizlenir (harita + güverte
-   önceliklenir), bonus drawer tam yüksekliği kullanabilir, güverte iç boşluğu
-   biraz sıkışır.  Harita rect'i ETKİLENMEZ — yalnız overlay/yoğunluk. */
+   yoğunluğu azalır → ray bonus listesi ve satırları kompaktlaşır (işlev/
+   tıklanabilirlik korunur), güverte iç boşluğu biraz sıkışır.  Savaş Günlüğü
+   artık GEÇİCİ olduğundan gizlenmez; kompakt toast olarak belirip söner.
+   Harita rect'i ETKİLENMEZ — yalnız overlay/yoğunluk. */
 @media (max-height: 760px) {
-  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-war-log { display: none; }
-  .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield .cq-bonus-guide {
-    max-height: calc(100% - 24px);
-  }
+  .cq-rail-bonus-scroll { max-height: 168px; }
+  .cq-rail-bonus .cq-bonus-guide-row { padding: 5px 8px; }
+  .cq-rail-bonus .cq-bonus-guide-effect { padding: 6px 10px 7px; }
   .app.duel-screen.cq-screen.cq-game-screen .cq-command-deck-inner {
     padding-top: 9px;
     padding-bottom: 9px;
