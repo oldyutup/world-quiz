@@ -16,14 +16,16 @@
  * the mobile shell (MobileConquestLayout) never renders it.
  *
  * Layout contract (see `.cq-command-rail` in App.css):
- *   • The outer frame spans the full battlefield height as a low-contrast
- *     ambient surface; the content shell sits at the top and only takes the
- *     height its content needs, so a sparse rail never reads as one huge empty
- *     panel — the remainder stays passive ambience.
+ *   • The frame spans the full battlefield height (header → command deck) as ONE
+ *     ambient surface.  The shell is a single vertical flex flow: Oyuncular and
+ *     Kader Kartı take their natural height, and Bu Maçtaki Bonuslar takes the
+ *     remaining space (minmax(0,1fr)) — so a sparse rail fades to passive ambience
+ *     rather than a separate empty card, and a tall one fills cleanly.
+ *   • ONLY the bonus list scrolls (inside its own box).  The frame and shell are
+ *     `overflow: hidden`, so the rail never produces a second/global scrollbar and
+ *     the map keeps its rect.
  *   • The frame is `pointer-events: none`; interactive children (kâhin, gizli
  *     envanter, Kader Kartı, bonus rows) re-enable pointer-events individually.
- *   • A long bonus set scrolls inside ITS OWN section box, so the rail keeps
- *     its height and the map keeps its rect.
  */
 
 import type { ReactNode } from "react";
@@ -56,10 +58,10 @@ export default function ConquestCommandRail({
         className="cq-command-rail-shell"
         data-team-mode={teamMode ? "true" : undefined}
       >
-        {/* İçerik katmanı: üç bölüm üstte DOĞAL yüksekliğinde.  Altındaki
-            .cq-command-rail-fill kalan alanı pasif rail yüzeyi olarak command
-            deck üst çizgisine kadar sürdürür (dev boş kart değil). */}
-        <div className="cq-command-rail-content">
+        {/* Tek dikey akış: Oyuncular (auto) / Kader Kartı (auto) / Bonuslar
+            (kalan alanı alır, içindeki liste kendi kutusunda kayar).  Eski
+            .cq-command-rail-content + .cq-command-rail-fill katmanları kaldırıldı
+            → ray hiçbir katmanda ikinci scrollbar üretmez. */}
         {/* ── 1 · Oyuncular / skor / sıra ─────────────────────────── */}
         <section className="cq-rail-section cq-rail-section--players">
           {!teamMode && (
@@ -91,11 +93,6 @@ export default function ConquestCommandRail({
             {bonuses}
           </section>
         )}
-        </div>
-        {/* Pasif rail continuation — içerik bittikten sonra çerçevenin koyu,
-            düşük kontrastlı yüzeyi command deck'e kadar sürer; içerik çerçeveyi
-            doldurursa 0'a iner. */}
-        <div className="cq-command-rail-fill" aria-hidden="true" />
       </div>
     </aside>
   );

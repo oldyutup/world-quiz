@@ -6257,6 +6257,68 @@ export default function ConquestGame({
         </div>
       )}
 
+      {/* NOT: Suikast + Lanet Mührü seçici modalları (fixed, full-screen) ve
+          diğer fixed overlay'ler battlefield DIŞINA — güverteden sonra ekran
+          köküne — taşındı (aşağıya bkz.).  Sebep: `.cq-battlefield` artık SIZE
+          container'ı (`cq-field`); size-containment fixed çocukları battlefield'a
+          bağlardı, merkezleme + z-sırasını bozardı. */}
+
+      {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
+      <div className="cq-game-board-wrap">
+        <div className="cq-game-board-inner">
+          <p className="cq-game-map-title" aria-hidden="true">
+            {mapIcon(settings.map)} {mapConfig.displayName}
+          </p>
+          {mapNode}
+        </div>
+      </div>
+
+      {/* ── Savaş Günlüğü: sağ-alt geçici toast-log ─────────────────
+          Bonus rehberi artık sağda değil — sol komuta rayının alt bölümünde
+          yaşıyor (yukarıya bkz.).  Sağ taraf kalıcı panelden arındı; harita
+          doğu tarafında nefes alır.  Savaş Günlüğü yalnız olay olunca belirip
+          kendiliğinden sönen geçici bir overlay'dir, kalıcı kart değil. */}
+      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
+      </div>{/* ── ★ /.cq-battlefield ── */}
+
+      {/* ── ★ Komuta güvertesi (in-flow, full-width) ────────────────
+          Footer'a kadar uzanan görünür yüzey; tur-içi soru/hamle yüzeyi onun
+          İÇİNE gömülür.  Yüksekliği `--cq-deck-h` clamp'iyle SABİT ve
+          faz-bağımsızdır → harita rect'i fazlar arası değişmez; içerik yuvası
+          gerektiğinde güverte içinde nazikçe kaydırılır (taşma güvenlik ağı). */}
+      <div className="cq-command-deck" data-phase={phase} data-turn={turnAttr}>
+        <div className="cq-command-deck-inner">
+          {phaseInDeck ? phasePanelContent : deckRestingNode}
+        </div>
+      </div>
+
+      {/* ── ★ Ekran-kökü fixed overlay'leri ──────────────────────────────
+          Bu overlay'ler `position:fixed` (viewport'a göre merkezli/tam ekran) ve
+          yüksek z-index'li → battlefield DIŞINDA, ekran kökünde yaşar.  Battlefield
+          artık SIZE container'ı (`cq-field`) olduğundan, içeride kalsalardı
+          size-containment onları battlefield'a bağlar (merkezleme battlefield'a
+          kayar) ve battlefield'ın stacking context'ine hapsederek güvertenin
+          ALTINA iterdi.  Burada, güvertenin kardeşi olarak, viewport'a göre
+          merkezleme + güverte üstü z-sırası AYNEN korunur. */}
+
+      {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
+      {phase === "finished" && (
+        <div className="cq-finished-backdrop" aria-hidden="true" />
+      )}
+
+      {/* ── Geçici overlay'ler (fixed/centered): toast, sinyal, kader kartı ── */}
+      {toastsNode}
+      <ConquestSignalBanner signal={activeSignal} />
+      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
+
+      {/* ── Sinematik merkez modal: tur sonucu / savunma düellosu / maç sonu.
+          Per-turn soru/hamle BURADA değil, yukarıdaki in-flow güvertede. */}
+      {phaseInModal && (
+        <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
+          {phasePanelContent}
+        </div>
+      )}
+
       {/* Suikast target picker — modal overlay.  Lists opponents only; the
        *  local viewer is filtered out so self-targeting is impossible at the
        *  UI layer too (gameplay rejects it as a second guard). */}
@@ -6360,53 +6422,6 @@ export default function ConquestGame({
           </div>
         </div>
       )}
-
-      {/* ── Board (desktop wrap; mobile shell uses .mcq-map-slot) ─ */}
-      <div className="cq-game-board-wrap">
-        <div className="cq-game-board-inner">
-          <p className="cq-game-map-title" aria-hidden="true">
-            {mapIcon(settings.map)} {mapConfig.displayName}
-          </p>
-          {mapNode}
-        </div>
-      </div>
-
-      {/* ── Savaş Günlüğü: sağ-alt geçici toast-log ─────────────────
-          Bonus rehberi artık sağda değil — sol komuta rayının alt bölümünde
-          yaşıyor (yukarıya bkz.).  Sağ taraf kalıcı panelden arındı; harita
-          doğu tarafında nefes alır.  Savaş Günlüğü yalnız olay olunca belirip
-          kendiliğinden sönen geçici bir overlay'dir, kalıcı kart değil. */}
-      <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
-
-      {/* ── Sonuç ekranı arka plan blur + hafif koyu overlay ── */}
-      {phase === "finished" && (
-        <div className="cq-finished-backdrop" aria-hidden="true" />
-      )}
-
-      {/* ── Geçici overlay'ler (fixed/centered): toast, sinyal, kader kartı ── */}
-      {toastsNode}
-      <ConquestSignalBanner signal={activeSignal} />
-      <ConquestFateCardReveal event={lastFateCardEvent} viewerPlayerId={myPlayerId} />
-
-      {/* ── Sinematik merkez modal: tur sonucu / savunma düellosu / maç sonu.
-          Per-turn soru/hamle BURADA değil, aşağıdaki in-flow güvertede. */}
-      {phaseInModal && (
-        <div className="cq-game-phase-panel" data-phase={phase} data-turn={turnAttr}>
-          {phasePanelContent}
-        </div>
-      )}
-      </div>{/* ── ★ /.cq-battlefield ── */}
-
-      {/* ── ★ Komuta güvertesi (in-flow, full-width) ────────────────
-          Footer'a kadar uzanan görünür yüzey; tur-içi soru/hamle yüzeyi onun
-          İÇİNE gömülür.  Yüksekliği `--cq-deck-h` clamp'iyle SABİT ve
-          faz-bağımsızdır → harita rect'i fazlar arası değişmez; içerik yuvası
-          gerektiğinde güverte içinde nazikçe kaydırılır (taşma güvenlik ağı). */}
-      <div className="cq-command-deck" data-phase={phase} data-turn={turnAttr}>
-        <div className="cq-command-deck-inner">
-          {phaseInDeck ? phasePanelContent : deckRestingNode}
-        </div>
-      </div>
 
 
       {/* ── DEV-ONLY: three separate dev test panels ───────────────────
