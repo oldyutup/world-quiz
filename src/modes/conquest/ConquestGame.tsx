@@ -5899,22 +5899,15 @@ export default function ConquestGame({
         </div>
       </div>
 
-      {/* ── ★ Battlefield stage: map focus + overlay HUD rails ───────
-          A real in-flow region (flex:1) that owns the map AND the HUD
-          overlays.  The map is centered inside; the players / bonus / war-log
-          rails are absolute children anchored to THIS box (not the viewport),
-          so they read as one scene and never squeeze the map via flex/grid.
-          `measureConquestStageGeometry` reads THIS box's height for the
-          phase-invariant `--cq-stage-h`. */}
-      <div className="cq-battlefield">
+      {/* ── ★ Savaş köküu: sol ray (in-flow) + sağ sütun (harita + güverte)
+          `.cq-battle-root` bir flex-row; sol ConquestCommandRail in-flow tam
+          sütun, sağ `.cq-battle-main` flex:1 sütun (battlefield + deck).
+          JS hook `.cq-battlefield`'ı ölçerek `--cq-stage-h`'ı yazar. */}
+      <div className="cq-battle-root">
 
-      {/* ── Sol komuta rayı (header altından command deck'e uzanan tek yüzey) ─
-          Oyuncular + Kader Kartı + Bu Maçtaki Bonuslar TEK çerçevede, ince
-          ayraçlarla bölünmüş üç bölüm.  Kader Kartı ve bonus listesi ayrı
-          bölümler olarak fate/bonuses prop'larıyla geçer; aşağıdaki `players`
-          prop'u yalnız oyuncular bölümünün gövdesini (rows + tarafsız + kâhin +
-          gizli envanter) taşır.  Görsel kabuk + yerleşim ConquestCommandRail'de;
-          oyun mantığı/aksiyonları burada kalır. */}
+      {/* ── Sol komuta rayı — in-flow sol sütun ─────────────────────
+          Oyuncular + Kader Kartı + Bonuslar tek çerçevede.
+          Görsel kabuk ConquestCommandRail'de; oyun mantığı burada kalır. */}
       <ConquestCommandRail
         teamMode={shouldUseTeamUi(settings, players)}
         fate={
@@ -6212,6 +6205,10 @@ export default function ConquestGame({
           </>
         }
       />
+      {/* ── Sağ sütun: harita alanı + komuta güvertesi ───────────── */}
+      <div className="cq-battle-main">
+      <div className="cq-battlefield">
+
       {/* Pusu placement-mode hint banner — only the owner sees it.  Floats
        *  above the map so the player understands which clicks are armed.
        *  Opponents never render this; the placement state is owner-local. */}
@@ -6281,16 +6278,14 @@ export default function ConquestGame({
       <ConquestEventFeed events={eventFeedEntries} variant="war-log" />
       </div>{/* ── ★ /.cq-battlefield ── */}
 
-      {/* ── ★ Komuta güvertesi (in-flow, full-width) ────────────────
-          Footer'a kadar uzanan görünür yüzey; tur-içi soru/hamle yüzeyi onun
-          İÇİNE gömülür.  Yüksekliği `--cq-deck-h` clamp'iyle SABİT ve
-          faz-bağımsızdır → harita rect'i fazlar arası değişmez; içerik yuvası
-          gerektiğinde güverte içinde nazikçe kaydırılır (taşma güvenlik ağı). */}
+      {/* ── ★ Komuta güvertesi (battle-main içinde, faz-bağımsız yükseklik) ── */}
       <div className="cq-command-deck" data-phase={phase} data-turn={turnAttr}>
         <div className="cq-command-deck-inner">
           {phaseInDeck ? phasePanelContent : deckRestingNode}
         </div>
       </div>
+      </div>{/* ── ★ /.cq-battle-main ── */}
+      </div>{/* ── ★ /.cq-battle-root ── */}
 
       {/* ── ★ Ekran-kökü fixed overlay'leri ──────────────────────────────
           Bu overlay'ler `position:fixed` (viewport'a göre merkezli/tam ekran) ve

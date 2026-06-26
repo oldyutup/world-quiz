@@ -12285,11 +12285,12 @@ body {
    • `.cq-rail-section`     → ortak yüzeyin ince ayraçla bölünmüş bölümleri.
    ════════════════════════════════════════════════════════════════════════ */
 .cq-command-rail {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  bottom: 12px;
-  z-index: 10;
+  /* In-flow sol sütun: battle-root flex-row içinde tam yüksekliğe uzanır.
+     Eski absolute konumlama kaldırıldı; margin ile header/kenar nefesi verilir. */
+  flex-shrink: 0;
+  align-self: stretch;
+  margin: 8px 0 0 8px;
+  z-index: 2;
   width: var(--cq-rail-w, 224px);
   display: flex;
   flex-direction: column;
@@ -15736,41 +15737,17 @@ body {
 }
 
 /* ── Desktop savaş sahnesi — AKIŞKAN in-flow kabuk ──────────────────────────
-   Kabuk: header / .cq-battlefield (flex:1) / .cq-command-deck (in-flow) / footer.
-   YENİ MİMARİ (önceki 2 nesil hatayı kapatır): harita artık alt 210px'lik SABİT
-   bir dock rezervinden + üstünde yüzen `position:fixed` faz kartından DEĞİL,
-   gerçek bir in-flow `.cq-battlefield` bölgesinden beslenir.  Komuta güvertesi
-   (`.cq-command-deck`) onun in-flow flex KARDEŞİDİR; tur-içi soru/hamle yüzeyini
-   İÇİNE gömer, yüksekliği `--cq-deck-h` clamp'iyle SABİT ve faz-bağımsızdır.
+   Kabuk: header / .cq-battle-root (flex:1, flex-row) / footer.
+   .cq-battle-root = sol ComandRail (in-flow sütun) + sağ .cq-battle-main.
+   .cq-battle-main = .cq-battlefield (flex:1) + .cq-command-deck (sabit yükseklik).
 
-   HARİTA artık AÇIK bir MAP SLOT içinde SAĞA yaslı (eski "ortalanmış + slack
-   padding ile sağa it" modeli kaldırıldı): slot sol = ray ayak izi
-   (`--cq-map-slot-left`, ray cqw clamp'iyle akışkan), slot sağ = küçük gutter;
-   board-inner align-items/justify flex-end ile sağ kenara oturur.
-
-   AKIŞKAN HARİTA GENİŞLİĞİ (cihaz/çözünürlük bağımsız, breakpoint listesi YOK):
-     mapWidth = min(
-       --cq-map-width-cap,            // viewport GENİŞLİĞİNE bağlı akışkan tavan
-       100%,                          // kullanılabilir SLOT genişliği (board-inner, sağa yaslı, max-width:--cq-map-ceil)
-       --cq-stage-h × (1005/490)      // battlefield YÜKSEKLİĞİ → orana çevrilmiş
-     )
-   Üç terim haritayı BİRLİKTE türetir; hangisi küçükse o bağlar:
-   • Kısa viewport (1366×768 + Chrome ≈ 640px): yükseklik bağlar → ~720–760px;
-     eski modeldeki ~600px ÇÖKÜŞÜ biter (210px rezerv + üstte-ortalama gitti).
-   • 1440×900 / 1920×1080: doğal olarak büyür; tavan (`--cq-map-width-cap`)
-     bağlar → ~1180–1260px bandı.  Bu büyüme SVG viewBox/geometri DEĞİL, aynı
-     SVG'nin responsive render ölçüsüdür (path/marker/hit-area uniform ölçeklenir).
-   • `--cq-map-width-cap = clamp(1040px, 82vw, 1260px)`: geniş monitörde harita
-     1074'te gereksiz küçük KALMAZ; güvenli üst sınır 1260px.  Adalet: yeterli
-     alanı olan aynı-viewport oyuncular aynı ölçeği görür.
+   HARİTA .cq-battle-main içinde ortalanır (eski "sağa yaslı + sol rezerv" modeli
+   kaldırıldı); harita genişlik formülü DEĞİŞMEDİ:
+     mapWidth = min(--cq-map-width-cap, 100%, --cq-stage-h × 1005/490)
 
    FAZ-DEĞİŞMEZLİK: `--cq-stage-h` = battlefield yüksekliği = viewport − header
-   − güverte − footer; üçü de faz-bağımsız → aynı viewport'ta tüm fazlarda harita
-   rect'i (w/h/top/left) birebir aynı.  Faz içeriği güverte İÇİNDE sabit yuvada
-   değişir (taşarsa güverte içinde scroll), battlefield'ı yeniden boyutlamaz.
-   İlk boyamada fallback `--cq-stage-h: 525px`; hook useLayoutEffect'te gerçek
-   değeri yazar.  `transform: scale()` YOK → görünür rect == layout rect; SVG
-   viewBox + `meet` + tüm path/marker/hit-area DOKUNULMADAN uniform ölçeklenir.
+   − güverte − footer; tümü faz-bağımsız → aynı viewport'ta harita rect sabit.
+   `transform: scale()` YOK → SVG viewBox/hit-area DOKUNULMADAN uniform ölçeklenir.
    Kapsam: yalnız desktop (≥601px) + .cq-game-screen; mobil etkilenmez. */
 @media (min-width: 601px) {
   .app.duel-screen.cq-screen.cq-game-screen {
@@ -15785,18 +15762,11 @@ body {
     /* Haritaya kalan dikey alan (JS hook `.cq-battlefield`'dan ölçer).  Fallback
        = ~1074px harita veren değer (1074 / (1005/490) ≈ 524); ilk boyama içindir. */
     --cq-stage-h: 525px;
-    /* Sol komuta rayının AKIŞKAN genişliği — artık battlefield CONTAINER'ına bağlı
-       (cqw), viewport/monitör adına değil.  Dar battlefield'da kendiliğinden
-       daralır (~252 → 184 tabanı); ray daraldıkça map slotunun sol rezervi de
-       (`--cq-map-slot-left`) daralır → harita ölçeği değişmeden, rayın altına
-       girmeden sağ slota sığar.  Faz değişse de DEĞİŞMEZ (yalnız battlefield
-       ölçüsüyle değişir). */
+    /* Sol komuta rayının AKIŞKAN genişliği — kullanım yerinde (cq-command-rail)
+       en yakın container olan cq-battle-root'a bağlı (≈ viewport genişliği).
+       Dar ekranda kendiliğinden daralır (252 → 184 tabanı). */
     --cq-rail-w: clamp(184px, 15.5cqw, 252px);
-    /* Map slot'un sol rezervi = sol oluk(12) + ray + ray↔harita boşluğu(16).
-       Rayın AKIŞKAN ayak izi; ray daraldıkça bu da daralır.  Slot'un AÇIK sol
-       sınırı — slack tahmini DEĞİL (harita rayın altına asla girmez). */
-    --cq-map-slot-left: calc(12px + var(--cq-rail-w) + 16px);
-    /* Map slot'un küçük, akışkan SAĞ oluğu (battlefield genişliğine bağlı). */
+    /* Map slot'un küçük, akışkan SAĞ/SOL oluğu — board-wrap simetrik padding. */
     --cq-map-gutter-right: clamp(14px, 1.6cqw, 30px);
     /* Harita ile slot kenarı arası küçük dikey nefes. */
     --cq-stage-gap: 8px;
@@ -15810,26 +15780,39 @@ body {
     );
   }
 
-  /* Battlefield: haritanın ve overlay HUD raylarının sahibi olan in-flow odak
-     bölgesi.  Kalan tüm dikey alanı alır (flex:1); harita içeride ortalanır,
-     raylar buna absolute çapalanır → tek sahne, harita flex/grid ile EZİLMEZ.
-     Düşük-kontrastlı gutter ambiyansı kök yerine BURADA → siyah kenarlar
-     sahiplenilir, merkez (harita) berrak kalır. */
+  /* ── Savaş köküu: sol ray + sağ sütun yan yana ────────────────────────────
+     `cq-field` outer container → ray'ın `cqw` değerleri buraya bağlanır
+     (viewport genişliğiyle akışkan).  Battlefield'ın kendi iç `cq-field`
+     container'ı spec'e göre daha yakın → battlefield içindeki ögeler o
+     container'ı kullanır, ray ögeler bu dış container'ı kullanır. */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battle-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    container-type: size;
+    container-name: cq-field;
+  }
+
+  /* ── Sağ sütun: harita alanı + komuta güvertesi ──────────────────────── */
+  .app.duel-screen.cq-screen.cq-game-screen .cq-battle-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Battlefield: haritanın in-flow odak bölgesi (battle-main içinde flex:1).
+     Kalan tüm dikey alanı alır; harita içeride ortalanır. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-battlefield {
     flex: 1 1 auto;
     min-height: 0;
     position: relative;
     display: flex;
     flex-direction: column;
-    /* ── KAYNAK ÖLÇÜ: battlefield artık adlandırılmış SIZE container'ı
-       (`cq-field`).  Rayın ve map slotunun akışkan ölçü + yoğunluk kuralları
-       buradan — gerçek content-box GENİŞLİK/YÜKSEKLİK — türer; viewport/monitör
-       DEĞİL (cqw + @container cq-field).  Battlefield flex:1 yüksekliği parent'tan
-       gelir → contain:size güvenli; JS stage-height hook'u bu kutuyu ölçmeye
-       devam eder.  Size-containment fixed çocukları battlefield'a bağlardı; bu
-       yüzden TÜM fixed overlay'ler (toast/sinyal/kader/sinematik modal/seçiciler)
-       ConquestGame'de battlefield DIŞINA, ekran köküne taşındı → viewport'a göre
-       merkezleme + z-sırası (deck üstü) AYNEN korunur. */
+    /* İç `cq-field` container: savaş günlüğü `cqw` referansı + battlefield
+       yüksekliği bazlı @container sorguları için.  JS hook bu kutuyu ölçer. */
     container-type: size;
     container-name: cq-field;
     background-image:
@@ -15842,50 +15825,41 @@ body {
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-map-title { display: none; }
 
   /* ── MAP SLOT ──────────────────────────────────────────────────────────
-     Battlefield içindeki AÇIK harita yuvası (slack tahmini YOK).  Slot'un
-     SOL kenarı = ray ayak izi (`--cq-map-slot-left`), SAĞ kenarı = küçük gutter
-     (`--cq-map-gutter-right`).  Harita board'u (board-inner) bu slotta SAĞA
-     hizalanır (align-items:flex-end + board-inner justify-end).  Harita genişlik
-     formülü DEĞİŞMEZ; slot yalnız `max-width:100%` güvenlik sınırı verir.
-       • Yeterli alanda harita sağa yaslanır → sağdaki ölü boşluk kapanır, sol
-         ray için alan açılır.
-       • Alan daralınca ray (cqw clamp) compactlaşır → sol rezerv küçülür, harita
-         rayın ALTINA girmez, CROP olmaz, gereksiz küçülmez (yalnız gerçekten
-         yer kalmazsa max-width:100% güvenliğiyle slota sığar).
-       • Tüm terimler faz-bağımsız → aynı viewport'ta faz değişince map rect AYNI.
+     Harita .cq-battle-main içinde ortalanır; simetrik yatay gutter
+     (`--cq-map-gutter-right`) sol ve sağda eşit.  Harita genişlik
+     formülü DEĞİŞMEZ (min(cap, 100%, stageH×1005/490)).  Tüm terimler
+     faz-bağımsız → aynı viewport'ta faz değişince map rect AYNI.
      Slot ASLA scroll üretmez (overflow:hidden). */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-wrap {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;          /* harita slotun SAĞ kenarına yaslanır */
+    align-items: center;            /* harita battle-main içinde yatayda ortalanır */
     justify-content: safe center;   /* harita dikeyde ortalı */
     overflow: hidden;               /* ikinci/global scrollbar yok */
     padding:
       var(--cq-stage-gap)
       var(--cq-map-gutter-right)
       var(--cq-stage-gap)
-      var(--cq-map-slot-left);
+      var(--cq-map-gutter-right);  /* sol = sağ; simetrik → harita merkezde */
   }
 
-  /* Harita tutucu: slot içinde SAĞA yaslı; en fazla haritanın en geniş render
-     boyu (`--cq-map-ceil`) kadar olur — üstündeki fazla genişlik slotun sol
-     boşluğu olur (harita ölçeği değişmez).  Dar slotta `width:100%` ile slota
-     daralır → harita formülünün `100%` terimi = güvenlik sınırı. */
+  /* Harita tutucu: ortalanmış; en fazla haritanın en geniş render boyu
+     (`--cq-map-ceil`) kadar olur.  Dar slotta `width:100%` ile slota daralır
+     → harita formülünün `100%` terimi = güvenlik sınırı. */
   .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
     width: 100%;
     max-width: var(--cq-map-ceil);
     margin: 0;
     padding: 0;
     display: flex;
-    justify-content: flex-end;      /* harita board-inner'ın SAĞINA yaslanır */
+    justify-content: center;        /* harita ortalanır */
   }
 
   .app.duel-screen.cq-screen.cq-game-screen .cq-turkey-map-wrap {
     /* Harita genişlik FORMÜLÜ DOKUNULMADI (min(cap, 100%, stageH×1005/490)).
-       `margin: 0` → board-inner'ın justify-end'i etkili olur (auto margin haritayı
-       ortalardı); konumlama değişti, ölçek değil. */
+       `margin: 0` ile board-inner'ın justify-content:center etkili olur. */
     width: min(
       var(--cq-map-width-cap),
       100%,
