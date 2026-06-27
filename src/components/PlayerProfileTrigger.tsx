@@ -12,6 +12,7 @@
  * Guest oyuncularda (profileId yok) tıklama no-op'tur — kart açılmaz.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useIsMobile } from "../lib/useIsMobile";
 import {
   blockUser,
@@ -204,7 +205,7 @@ export function PlayerProfileTrigger({
         {children}
       </Tag>
 
-      {open && (
+      {open && createPortal(
         <div
           className={`ppc-overlay${isMobile ? " ppc-overlay--sheet" : ""}`}
           onClick={close}
@@ -255,10 +256,11 @@ export function PlayerProfileTrigger({
               />
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {confirmKind === "remove" && (
+      {confirmKind === "remove" && createPortal(
         <ConfirmDialog
           title="Arkadaşlıktan çıkar?"
           description="Bu kullanıcı arkadaş listenden kaldırılacak."
@@ -268,10 +270,11 @@ export function PlayerProfileTrigger({
           busy={busy}
           onConfirm={() => void handleConfirm()}
           onCancel={() => !busy && setConfirmKind(null)}
-        />
+        />,
+        document.body,
       )}
 
-      {confirmKind === "block" && (
+      {confirmKind === "block" && createPortal(
         <ConfirmDialog
           title="Kullanıcıyı engelle?"
           description="Bu kullanıcı sana istek veya davet gönderemez. Mesajları görünmez. İstersen daha sonra engeli kaldırabilirsin."
@@ -281,7 +284,8 @@ export function PlayerProfileTrigger({
           busy={busy}
           onConfirm={() => void handleConfirm()}
           onCancel={() => !busy && setConfirmKind(null)}
-        />
+        />,
+        document.body,
       )}
     </>
   );
