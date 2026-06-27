@@ -24433,3 +24433,10 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 .mode-card-asset-icon--blind-spot {
   transform: scale(1.65);
 }
+
+/* Full HD-like desktop: lower locked conquest scene slightly */
+@media (min-width: 1500px) and (min-height: 820px) and (max-height: 980px) {
+  .app.duel-screen.cq-screen.cq-game-screen .cq-game-board-inner {
+    transform: translateY(1.5%) !important;
+  }
+}
