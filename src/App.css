@@ -21839,6 +21839,7 @@ html:not(.is-native-app) .apk-photo-card {
    .ppc-overlay-inner'ı global genişletmeden). Mobil sheet'te 100% (yukarıdaki
    --sheet kuralı daha yüksek specificity ile kazanır). */
 .ppc-overlay-inner--card { max-width: 672px; }
+.ppc-overlay-inner--invite { max-width: 440px; }
 .ppc-close {
   position: absolute;
   top: 8px;
@@ -22886,10 +22887,10 @@ html:not(.is-native-app) .apk-photo-card {
 }
 .friends-search-clear:hover { background: rgba(140, 170, 220, 0.14); color: #eaf1ff; }
 
-/* Davet modalında arama: sticky değil (modal kabuğu içinde akar), kenar boşluğu modale uyumlu. */
+/* Davet modalında arama: sticky değil, başlığın altında doğal akışta durur. */
 .friends-search--invite {
   position: static;
-  margin: 0 -20px 4px;
+  margin: 12px 0 0;
   padding: 0 20px 12px;
   background: transparent;
   border-bottom: 1px solid rgba(140, 170, 220, 0.1);
@@ -22966,26 +22967,61 @@ html:not(.is-native-app) .apk-photo-card {
   .lobby-invite-btn { font-size: 0.8rem; }
 }
 
-/* Arkadaş davet seçici (ppc-overlay kabuğunu paylaşır) */
+/* ── Arkadaş davet seçici (ppc-overlay kabuğunu paylaşır) ── */
+
+/* Header: başlık + kapatma butonu aynı satırda, kart kenarlarından 20px içeride. */
+.lobby-invite-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 20px 0;
+}
 .lobby-invite-picker-title {
-  margin: 0 0 12px;
-  font-size: 16px;
-  font-weight: 800;
+  flex: 1;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   color: #eaf1ff;
 }
+.lobby-invite-picker-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: rgba(140, 170, 220, 0.1);
+  color: var(--muted);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lobby-invite-picker-close:hover { background: rgba(140, 170, 220, 0.2); color: #eaf1ff; }
+
+/* Liste: yalnız bu alan scroll'lar; başlık + arama üstte doğal akışta kalır. */
 .lobby-invite-list {
   max-height: 50vh;
   overflow-y: auto;
-  margin: 4px -20px 0;
+  margin: 4px 0 0;
+  padding: 0 0 8px;
 }
 .lobby-invite-row {
   padding-left: 20px;
   padding-right: 20px;
 }
+
+/* "Davet Et" / durum butonu: sabit genişlik, uzun kullanıcı adlarından etkilenmez. */
 .lobby-invite-send {
   flex: 0 0 auto;
-  padding: 8px 14px;
+  min-width: 88px;
+  padding: 7px 14px;
   border-radius: 9px;
+  font-family: var(--font-body);
   font-weight: 700;
   font-size: 12.5px;
   cursor: pointer;
@@ -22993,9 +23029,11 @@ html:not(.is-native-app) .apk-photo-card {
   border: 1px solid transparent;
   color: #04111f;
   white-space: nowrap;
+  text-align: center;
   transition: filter 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
 }
 .lobby-invite-send:hover:not(:disabled) { filter: brightness(1.06); }
+.lobby-invite-send:active:not(:disabled) { transform: scale(0.97); }
 .lobby-invite-send:disabled { cursor: default; }
 .lobby-invite-send.is-invited {
   background: rgba(63, 185, 80, 0.12);
@@ -23003,30 +23041,50 @@ html:not(.is-native-app) .apk-photo-card {
   color: var(--green);
 }
 
-/* Arama aktifken: "Arkadaşlar" + "Oyuncular" bölümleri tek scroll kabında */
+/* Arama aktifken: "Arkadaşlar" + "Oyuncular" bölümleri aynı scroll kabında */
 .lobby-invite-sections {
   max-height: 50vh;
   overflow-y: auto;
-  margin: 4px -20px 0;
-  padding: 0 20px;
+  margin: 4px 0 0;
+  padding: 0 20px 8px;
 }
 .lobby-invite-section + .lobby-invite-section { margin-top: 10px; }
 .lobby-invite-section-label {
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(170, 190, 220, 0.65);
-  margin: 6px 0 2px;
+  color: rgba(170, 190, 220, 0.55);
+  margin: 8px 0 2px;
 }
-/* Bölüm içindeki listeler kendi scroll'unu/negatif kenarını taşımaz (kap hallediyor) */
+/* Bölüm içi satırlar: sections'ın kendi paddingi var, ekstra padding yok. */
 .lobby-invite-sections .lobby-invite-list {
   max-height: none;
   overflow: visible;
   margin: 0;
+  padding: 0;
 }
 .lobby-invite-sections .lobby-invite-row { padding-left: 0; padding-right: 0; }
 .lobby-invite-sections .friends-empty { padding: 8px 0; }
+/* Yükleniyor / aranıyor durumları */
+.lobby-invite-picker .notif-empty { flex: 0 0 auto; }
+
+/* Satır hover: zarif geçiş; separator son satırda yok. */
+.lobby-invite-picker .friend-row { transition: background 0.13s; }
+.lobby-invite-picker .lobby-invite-list > .friend-row:last-child,
+.lobby-invite-sections .lobby-invite-list > .friend-row:last-child { border-bottom: none; }
+
+/* Mobil sheet: yükseklik sınırı biraz daha geniş, alt safe-area'ya yer bırak. */
+@media (max-width: 600px) {
+  .ppc-overlay--sheet .lobby-invite-picker {
+    max-height: 88dvh;
+  }
+  .lobby-invite-picker-head { padding: 18px 16px 0; }
+  .lobby-invite-picker .friends-search--invite { padding: 0 16px 12px; }
+  .lobby-invite-picker .lobby-invite-list { padding-bottom: 12px; }
+  .lobby-invite-picker .lobby-invite-sections { padding: 0 16px 12px; }
+  .lobby-invite-row { padding-left: 16px; padding-right: 16px; }
+}
 
 /* ── Native profil panelindeki sosyal menü satırları ── */
 .upd-social-menu {

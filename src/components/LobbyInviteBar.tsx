@@ -280,12 +280,14 @@ export function LobbyInviteBar({
           onClick={closePicker}
           role="presentation"
         >
-          <div className="ppc-overlay-inner" onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="ppc-close" onClick={closePicker} aria-label="Kapat">
-              ×
-            </button>
+          <div className="ppc-overlay-inner ppc-overlay-inner--invite" onClick={(e) => e.stopPropagation()}>
             <div className="ppc-card lobby-invite-picker" role="dialog" aria-label="Arkadaş davet et">
-              <h3 className="lobby-invite-picker-title">Arkadaş Davet Et</h3>
+              <div className="lobby-invite-picker-head">
+                <h3 className="lobby-invite-picker-title">Arkadaş Davet Et</h3>
+                <button type="button" className="lobby-invite-picker-close" onClick={closePicker} aria-label="Kapat">
+                  ×
+                </button>
+              </div>
 
               {!loading && (
                 <div className="friends-search friends-search--invite">
