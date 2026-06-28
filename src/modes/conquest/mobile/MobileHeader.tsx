@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { playSound } from "../../../lib/sound";
+import GoldIcon from "../../../components/GoldIcon";
 import ConquestVolumeControl from "../ConquestVolumeControl";
 
 interface Props {
@@ -76,7 +77,7 @@ export default function MobileHeader({
             title="Hesap Gold bakiyen"
             aria-label={`Hesap Gold: ${accountGold}`}
           >
-            <span className="cq-gold-chip-icon" aria-hidden="true">🟡</span>
+            <span className="cq-gold-chip-icon" aria-hidden="true"><GoldIcon /></span>
             <span className="cq-gold-chip-value">{accountGold}g</span>
           </span>
         )}

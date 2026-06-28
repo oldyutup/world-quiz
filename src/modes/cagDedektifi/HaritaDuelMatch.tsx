@@ -33,6 +33,7 @@ import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { supabase } from "../../lib/supabase";
+import GoldIcon from "../../components/GoldIcon";
 import {
   HARITA_DEDEKTIFI_SCENES,
   type HaritaDedektifiScene,
@@ -1530,7 +1531,7 @@ export default function HaritaDuelMatch({
 
             {goldAwarded && (
               <p className="harita-final-modal__gold" role="status">
-                🪙 +{WINNER_GOLD} Gold
+                <GoldIcon /> +{WINNER_GOLD} Gold
               </p>
             )}
 

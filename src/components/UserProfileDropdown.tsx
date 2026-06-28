@@ -4,6 +4,7 @@ import type { Profile } from "../lib/auth";
 import type { CountdownSoundMode } from "../lib/sound";
 import type { HomeTheme } from "../lib/themeBackgrounds";
 import { Avatar } from "./Avatar";
+import GoldIcon from "./GoldIcon";
 
 interface Props {
   /** Aktif ana ekran teması. `.upd-wrap`'a data-theme olarak yansıtılır:
@@ -214,7 +215,7 @@ export function UserProfileDropdown({
 
           {/* — Gold — */}
           <div className="upd-row upd-row--gold">
-            <span className="upd-gold-icon">🟡</span>
+            <span className="upd-gold-icon"><GoldIcon /></span>
             <span className="upd-gold-num">{gold}</span>
             <span className="upd-gold-label">Gold</span>
           </div>

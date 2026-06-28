@@ -27,6 +27,7 @@ import type {
 } from "../types";
 import { getBonusTypePresentation, getPlayerBonusState } from "../regionBonuses";
 import { ConquestBonusIcon } from "../ConquestAssetIcon";
+import GoldIcon from "../../../components/GoldIcon";
 
 interface Props {
   players:            ConquestPlayer[];
@@ -208,9 +209,9 @@ export default function MobileScoreStrip({
               {(bonus.matchGoldEarned ?? 0) > 0 && (
                 <span
                   className="mcq-strip__pill-gold"
-                  title={`Bu maçta +${bonus.matchGoldEarned ?? 0} 🪙`}
+                  title={`Bu maçta +${bonus.matchGoldEarned ?? 0} Gold`}
                 >
-                  +{bonus.matchGoldEarned ?? 0}🪙
+                  +{bonus.matchGoldEarned ?? 0}<GoldIcon />
                 </span>
               )}
               {delta && (

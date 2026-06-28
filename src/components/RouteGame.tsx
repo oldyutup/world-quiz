@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { playSound } from "../lib/sound";
 import { RouteMapView } from "./WorldMap";
+import GoldIcon from "./GoldIcon";
 import {
   NORM_TO_ROUTE_KEY,
   COUNTRIES,
@@ -270,7 +271,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
         </div>
 
         <div className="route-gold">
-          <span className="gold-icon">🟡</span>
+          <span className="gold-icon"><GoldIcon /></span>
           <span className="gold-num">{gold}</span>
           <span className="gold-label">Gold</span>
         </div>
@@ -395,7 +396,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
                   title={gold < HINT_COST_NEIGHBORS ? `Yetersiz gold (${HINT_COST_NEIGHBORS} gerekli)` : undefined}
                 >
                   👁 Komşuları Göster
-                  <span className="joker-cost">🟡{HINT_COST_NEIGHBORS}</span>
+                  <span className="joker-cost"><GoldIcon />{HINT_COST_NEIGHBORS}</span>
                 </button>
               ) : (
                 <span className="joker-used-badge">👁 Komşular açık</span>
@@ -417,7 +418,7 @@ export default function RouteGame({ onHome }: RouteGameProps) {
                 <span className="route-reward-claimed-note">+0 gold</span>
               ) : (
                 <div className="route-win-gold-badge">
-                  <span>🟡</span>
+                  <span><GoldIcon /></span>
                   <span>+{rewardAmount}</span>
                 </div>
               )}

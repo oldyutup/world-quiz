@@ -172,6 +172,7 @@ import ConquestBonusGuide, {
 } from "./ConquestBonusGuide";
 import XpGainBar from "../../components/XpGainBar";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import GoldIcon from "../../components/GoldIcon";
 import { ConquestBonusIcon } from "./ConquestAssetIcon";
 import {
   awardXpEvent,
@@ -5814,7 +5815,7 @@ export default function ConquestGame({
             title="Hesap Gold bakiyen"
             aria-label={`Hesap Gold: ${accountGold}`}
           >
-            <span className="cq-gold-chip-icon" aria-hidden="true">🟡</span>
+            <span className="cq-gold-chip-icon" aria-hidden="true"><GoldIcon /></span>
             <span className="cq-gold-chip-value">{accountGold}g</span>
           </span>
           <ConquestVolumeControl
@@ -5950,7 +5951,7 @@ export default function ConquestGame({
                 title={`Bu maçta kazanılan Gold: ${pb.matchGoldEarned ?? 0}g`}
                 aria-label={`Bu maçta ${pb.matchGoldEarned ?? 0} Gold`}
               >
-                <span aria-hidden="true">🟡</span>
+                <span aria-hidden="true"><GoldIcon /></span>
                 <span className="cq-players-panel-gold-amount">{pb.matchGoldEarned ?? 0}g</span>
               </span>
               {bonusChips.length > 0 && (

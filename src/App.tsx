@@ -69,6 +69,7 @@ import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
 import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
+import GoldIcon from "./components/GoldIcon";
 import { AccountSettingsModal } from "./components/AccountSettingsModal";
 import { AvatarPickerModal } from "./components/AvatarPickerModal";
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -895,7 +896,7 @@ function GoldBar({ gold, canBonus, onClaimBonus }: GoldBarProps) {
   return (
     <div className="gold-bar">
       <span className="gold-amount">
-        <span className="gold-icon"><EmojiIcon name="yellow-circle" /></span>
+        <span className="gold-icon"><GoldIcon /></span>
         <span className="gold-num">{gold}</span>
         <span className="gold-label">Gold</span>
       </span>
@@ -969,7 +970,7 @@ function HintPanel({ gold, hints, currentEntry, isPlaying, mode = "flag", onBuyH
                 title={affordable ? `${h.cost} gold harca` : `Yetersiz gold (${h.cost} gerekli)`}
               >
                 <span className="hint-label">{h.label}</span>
-                <span className="hint-cost"><EmojiIcon name="yellow-circle" />{h.cost}</span>
+                <span className="hint-cost"><GoldIcon />{h.cost}</span>
               </button>
             )}
           </div>
@@ -1024,7 +1025,7 @@ function ResultModal(p: ModalProps) {
         {/* Gold earned */}
         {p.earnedGold > 0 && (
           <div className="modal-gold-earned">
-            <span className="modal-gold-icon"><EmojiIcon name="yellow-circle" /></span>
+            <span className="modal-gold-icon"><GoldIcon /></span>
             <span className="modal-gold-text">+{p.earnedGold} Gold kazandın!</span>
           </div>
         )}

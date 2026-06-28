@@ -54,6 +54,7 @@ import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import { PlayerAvatar } from "./PlayerAvatar";
+import GoldIcon from "./GoldIcon";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
 import { LobbyInviteBar } from "./LobbyInviteBar";
 import { useRosterProfiles } from "../lib/useRosterProfiles";
@@ -209,7 +210,7 @@ function HintPanel({ gold, hints, currentEntry, isPlaying, onBuyHint }: HintPane
                 title={affordable ? `${h.cost} gold harca` : `Yetersiz gold (${h.cost} gerekli)`}
               >
                 <span className="hint-label">{h.label}</span>
-                <span className="hint-cost">🟡{h.cost}</span>
+                <span className="hint-cost"><GoldIcon />{h.cost}</span>
               </button>
             )}
           </div>
@@ -232,7 +233,7 @@ function GoldBar({ gold, canBonus, onClaimBonus }: GoldBarProps) {
   return (
     <div className="gold-bar">
       <span className="gold-amount">
-        <span className="gold-icon">🟡</span>
+        <span className="gold-icon"><GoldIcon /></span>
         <span className="gold-num">{gold}</span>
         <span className="gold-label">Gold</span>
       </span>

@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import GoldIcon from "./GoldIcon";
 
 /** Mobil / dar görünüm (≤520px) tespiti. Leaderboard'u mobilde toplam 8 kişiyle
  *  (podyum 3 + liste 5 → rank 4–8) sınırlamak için YALNIZ render katmanında
@@ -91,18 +92,6 @@ function CompassMark({ className }: { className?: string }) {
         fillOpacity="0.14"
       />
       <circle cx="12" cy="12" r="1.05" fill="currentColor" />
-    </svg>
-  );
-}
-function CoinMark({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="5.4" stroke="currentColor" strokeWidth="1.2" opacity="0.6" />
-      <path
-        d="M12 8.7 L12.9 11.1 L15.3 12 L12.9 12.9 L12 15.3 L11.1 12.9 L8.7 12 L11.1 11.1 Z"
-        fill="currentColor"
-      />
     </svg>
   );
 }
@@ -285,7 +274,7 @@ export function LeaderboardModal({ onClose }: Props) {
               className="lb-type-btn lb-type-btn--gold"
               onClick={() => setType("gold")}
             >
-              <CoinMark className="lb-type-coin" />
+              <GoldIcon className="lb-type-coin" />
               Gold
             </button>
           </div>
@@ -395,7 +384,7 @@ export function LeaderboardModal({ onClose }: Props) {
                           <span className="lb-pod-level">SEVİYE {row.level}</span>
                         )}
                         <span className="lb-pod-xp">
-                          {type === "gold" && <CoinMark className="lb-val-coin" />}
+                          {type === "gold" && <GoldIcon className="lb-val-coin" />}
                           <span className="lb-pod-num">
                             {type === "gold"
                               ? formatGold(valueOf(row))
@@ -444,7 +433,7 @@ export function LeaderboardModal({ onClose }: Props) {
                             <span className="lb-level-hex">{row.level}</span>
                           </span>
                           <span className="lb-value">
-                            {type === "gold" && <CoinMark className="lb-val-coin" />}
+                            {type === "gold" && <GoldIcon className="lb-val-coin" />}
                             <span className="lb-value-num">
                               {type === "gold"
                                 ? formatGold(valueOf(row))
