@@ -8469,9 +8469,14 @@ body {
 }
 .upd-bonus-btn:active { transform: translateY(1px); }
 .upd-bonus-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+  cursor: default;
   box-shadow: none;
+}
+.upd-bonus-btn--claimed,
+.upd-bonus-btn--claimed:hover,
+.upd-bonus-btn--claimed:focus-visible {
+  color: #fff !important;
+  opacity: 1;
 }
 .upd-bonus-done {
   display: flex;
@@ -24377,7 +24382,9 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 /* Profil paneli — günlük bonus metni */
 .upd-bonus-btn,
 .upd-bonus-btn:hover,
-.upd-bonus-btn:focus-visible {
+.upd-bonus-btn:focus-visible,
+.upd-bonus-btn--claimed,
+.upd-bonus-btn--claimed:hover {
   color: #fff !important;
 }
 

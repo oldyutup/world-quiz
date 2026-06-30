@@ -88,6 +88,7 @@ import {
   spendGold as spendGoldStore,
   canClaimDailyBonus,
   claimDailyBonus,
+  claimDailyBonusAsync,
   useDailyReward,
   refreshDailyReward,
   setActiveProfile as setActiveGoldProfile,
@@ -2637,9 +2638,15 @@ export default function App() {
   };
 
   const handleAppClaimBonus = () => {
-  // claimDailyBonus() günlük-bonus gözlemlenebilirini false yapar → canBonus
-  // (useDailyReward) ve Bildirimler panelindeki kart birlikte güncellenir.
-  claimDailyBonus();
+  // claimDailyBonusAsync() server RPC'sini bekleyip günlük-bonus
+  // gözlemlenebilirini SADECE claim onaylanınca (ok / already_claimed) false
+  // yapar; gerçek RPC hatasında dokunmaz. Böylece profil panelindeki buton ve
+  // Bildirimler kartı, claim onaylanır onaylanmaz — panel AÇIKKEN, remount
+  // gerekmeden — "alındı" durumuna geçer (canBonus = useDailyReward().available).
+  // Eski sync claimDailyBonus() cihaz-yerel localStorage bayrağı bayatsa
+  // (server "available" derken) erken çıkıp gözlemlenebiliri hiç güncellemiyordu;
+  // metin ancak panel yeniden açılıp refreshDailyReward() senkronlayınca düzeliyordu.
+  void claimDailyBonusAsync();
 };
 const handleSpendGold = (amount: number): boolean => {
   return spendGoldStore(amount);

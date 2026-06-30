@@ -232,7 +232,13 @@ export function UserProfileDropdown({
                 🎁 +50 Gold · Bugünkü Bonusu Al
               </button>
             ) : (
-              <div className="upd-bonus-done">✓ Bugünün damgası alındı · Yarın tekrar gel</div>
+              <button
+                type="button"
+                className="upd-bonus-btn upd-bonus-btn--claimed"
+                disabled
+              >
+                ✓ Bugünkü hakkını aldın · Yarın yine gel
+              </button>
             )}
           </div>
 
