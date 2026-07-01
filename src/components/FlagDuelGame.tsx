@@ -810,6 +810,7 @@ useEffect(() => {
 
   const myPassed      = passedThisRound.has(myId);
   const oppPassed     = oppPlayer ? passedThisRound.has(oppPlayer.id) : false;
+  const bothPassed    = myPassed && oppPassed;
 
   const roundAnswered = winnerOfThisRound !== null;
   const roundTimedOut = timeoutOfThisRound !== null;
@@ -2520,7 +2521,7 @@ ${shareLink}`
                 {!feedback && !roundResolved && timedOut && (
                   <span className="fb fb-hint">⏳ Süren doldu — rakibi bekliyoruz…</span>
                 )}
-                {!feedback && !roundResolved && !timedOut && myPassed && (
+                {!feedback && !roundResolved && !timedOut && myPassed && !bothPassed && (
                   <span className="fb fb-hint">Pas geçtin — rakibi bekliyoruz…</span>
                 )}
               </div>
@@ -2567,15 +2568,10 @@ ${shareLink}`
               )}
             </div>
           )}
-          {!isPlaying && myPassed && !roundResolved && (
-            <div className="pas-gec-bar">
-              <span className="pas-gec-answer">
-                {oppPassed
-                  ? "⏭️ Bayrak pas geçildi — yeni bayrak geliyor…"
-                  : "⏳ Pas isteğin gönderildi — rakip bekleniyor…"}
-              </span>
-            </div>
-          )}
+          {/* Pas sonrası ülke adı ASLA status satırında gösterilmez. Tek pas →
+              "rakibi bekliyoruz" mesajı feedback slotunda; iki taraf da pas
+              geçince ülke adı reveal olarak bayrağın altında (flag-area)
+              gösterilir. */}
 
           {/* Bayrak alanı */}
           <div className="flag-area">
@@ -2626,6 +2622,11 @@ ${shareLink}`
       <span className="skip-country">{currentFlag.display}</span>
     </div>
   )
+) : bothPassed ? (
+  <div className="skip-answer-reveal skip-answer-reveal--timeout">
+    <span className="skip-label">⏭️ Pas geçildi</span>
+    <span className="skip-country">{currentFlag.display}</span>
+  </div>
 ) : timedOut ? (
                   <p className="flag-prompt">⏳ Süren doldu — rakibi bekliyoruz…</p>
                 ) : (

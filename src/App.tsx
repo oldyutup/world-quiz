@@ -344,7 +344,7 @@ async function shareScore(
   const dur     = DURATION_OPTIONS.find(d => d.value === duration)?.label ?? `${duration}sn`;
   const modeName =
     gameType === "flag-game"
-      ? `Bayrak Modu${difficulty && difficulty !== "all" ? " (" + (DIFFICULTY_OPTIONS.find(d => d.value === difficulty)?.label ?? "") + ")" : ""}`
+      ? `Bayrak Bilmece${difficulty && difficulty !== "all" ? " (" + (DIFFICULTY_OPTIONS.find(d => d.value === difficulty)?.label ?? "") + ")" : ""}`
       : gameType === "silhouette-game"
       ? `Silüet Modu${difficulty && difficulty !== "all" ? " (" + (DIFFICULTY_OPTIONS.find(d => d.value === difficulty)?.label ?? "") + ")" : ""}`
       : "Ülke Yaz";
@@ -455,7 +455,7 @@ const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean }[] = [
   { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
-  { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Modu", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
+  { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Bilmece", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
   { id: "silhouette-game", icon: "map", iconPath: "/assets/icons/home/silhouette-mode.png", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
   { id: "route-game", icon: "compass", iconPath: "/assets/icons/home/route-mode.png", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
   { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
@@ -604,7 +604,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   >
     <div className="modal" onClick={(e) => e.stopPropagation()}>
 
-      <h2><EmojiIcon name="flag" /> Bayrak Modu</h2>
+      <h2><EmojiIcon name="flag" /> Bayrak Bilmece</h2>
 
       <button
         className="modal-btn"
@@ -2129,7 +2129,7 @@ function FlagGame({
         {g.mode === "idle" && (
           <div className="flag-idle">
             <div className="flag-idle-icon"><EmojiIcon name="flag" /></div>
-            <p className="flag-idle-text">Bayrak Modu</p>
+            <p className="flag-idle-text">Bayrak Bilmece</p>
             <p className="flag-idle-sub">{diffOpt?.label} · {continentLabel} · {flagTotal} bayrak</p>
             <p className="flag-idle-sub" style={{ marginTop: "4px", fontSize: ".78rem", opacity: .6 }}>Başlamak için bir mod seç</p>
           </div>

@@ -11,6 +11,10 @@
  *   difficulty — "easy" | "normal" | "hard" (used by Flag Mode filter)
  */
 
+// Auto-generated multilingual aliases (Intl.DisplayNames, build-time only).
+// Regenerate with: node scripts/build-country-locale-aliases.mjs
+import { COUNTRY_LOCALE_ALIASES } from "./countryLocaleAliases.generated";
+
 export type Continent =
   | "europe"
   | "asia"
@@ -33,28 +37,40 @@ export interface CountryEntry {
    NORMALIZER
 ───────────────────────────────────────────────── */
 /**
- * Central country answer canonicaliser.
+ * Central, script-aware country answer canonicaliser.
+ *
+ * Goal: a player who types a country name in their own language *and* writing
+ * system resolves to the same canonical country. Latin, Cyrillic, Arabic,
+ * Chinese (Hans/Hant), Japanese, Korean and Devanagari are all preserved in
+ * their own script \u2014 we never romanise them and never fuzzy-match.
  *
  * Rules:
- *   1) Unicode NFD decomposition (splits "\u00fc" \u2192 u + combining diaeresis,
- *      "\u015f" \u2192 s + combining cedilla, "\u0130" \u2192 I + combining dot, \u2026).
- *   2) Strip every combining mark (the accent halves left behind).
- *   3) Lowercase.
- *   4) Manually map letters that have no canonical decomposition (\u0131 especially);
- *      the rest are safety nets in case NFD is bypassed.
- *   5) Apostrophes / dashes / dots / slashes become word breaks \u2192 spaces.
- *      Lets "Cote d'Ivoire", "Bosnia-Herzegovina", "Washington D.C." match
- *      their spaced variants.
- *   6) Strip remaining non-[a-z0-9 ] noise (emoji, regional indicators, etc.).
- *   7) Collapse whitespace runs, trim.
+ *   1) Unicode NFKC (folds full-width / compatibility / ligature forms, e.g.
+ *      Japanese full-width Latin \u2192 ASCII). This is the form the spec asks for.
+ *   2) Arabic tidy-up (script preserved, only ambiguity removed):
+ *        \u2022 strip tatweel (\u0640) + harakat (\u064b\u2013\u065f, \u0670)
+ *        \u2022 fold alef variants \u0622\u0623\u0625\u0671 \u2192 \u0627, alef maqsura \u0649 \u2192 ya \u064a
+ *   3) Lowercase (no-op for scripts without case).
+ *   4) Map Latin letters with no canonical decomposition (\u0131 especially) plus
+ *      Turkish/German safety nets in case NFD is bypassed.
+ *   5) NFD + strip combining marks \u2192 tolerates Latin accent differences
+ *      (Devanagari matras / Arabic marks are handled above/kept below).
+ *   6) Apostrophes / dashes / dots / slashes become word breaks \u2192 spaces.
+ *      Lets "Cote d'Ivoire", "Bosnia-Herzegovina", "Washington D.C." match.
+ *   7) Strip noise (emoji, symbols, regional indicators, stray punctuation) but
+ *      KEEP letters of every script, digits and combining marks (\p{L}\p{N}\p{M}).
+ *   8) Collapse whitespace runs, trim.
  *
- * Idempotent \u2014 safe on already-normalised text.
+ * Idempotent \u2014 deterministic and safe on already-normalised text.
  */
 export function normalizeCountryAnswer(raw: string): string {
   if (!raw) return "";
   let s = String(raw);
-  s = s.normalize("NFD");
-  s = s.replace(/[\u0300-\u036f]/g, "");
+  s = s.normalize("NFKC");
+  // Arabic: drop tatweel + harakat, then fold safe alef / ya variants.
+  s = s.replace(/[\u0640\u064b-\u065f\u0670]/g, "");
+  s = s.replace(/[\u0622\u0623\u0625\u0671]/g, "\u0627"); // \u0622\u0623\u0625\u0671 \u2192 \u0627
+  s = s.replace(/\u0649/g, "\u064a");                     // \u0649 (alef maqsura) \u2192 \u064a
   s = s.toLowerCase();
   s = s
     .replace(/\u0131/g, "i")   // \u0131 (dotless small i)
@@ -68,9 +84,13 @@ export function normalizeCountryAnswer(raw: string): string {
     .replace(/\xee/g,   "i")   // \u00ee
     .replace(/\xfb/g,   "u")   // \u00fb
     .replace(/\xdf/g,   "ss"); // \u00df \u2192 ss
+  s = s.normalize("NFD");
+  s = s.replace(/[\u0300-\u036f]/g, "");
   s = s.replace(/['\u2018\u2019\u02bc\u2032`\xb4.,;:!?&]/g, " ");
   s = s.replace(/[-\u2013\u2014_/\\]/g, " ");
-  s = s.replace(/[^a-z0-9 ]/g, "");
+  // Keep letters of any script + digits + combining marks (Devanagari matras,
+  // nukta); drop everything else (emoji, symbols, leftover punctuation).
+  s = s.replace(/[^\p{L}\p{N}\p{M} ]/gu, "");
   s = s.replace(/\s+/g, " ").trim();
   return s;
 }
@@ -299,24 +319,32 @@ export const COUNTRIES: CountryEntry[] = [
 ];
 
 /* ─────────────────────────────────────────────────
-   EXTRA ALIASES
-   Multilingual / colloquial names that aren't in `COUNTRIES[i].names`
-   but should still resolve to the right country in every text-input mode.
+   EXTRA (CURATED) ALIASES
+   Hand-maintained multilingual / colloquial names that aren't in
+   `COUNTRIES[i].names` but should still resolve to the right country in every
+   text-input mode. These are PRIMARY (curated) — they take precedence over the
+   auto-generated locale aliases and can never be shadowed by them.
+
+   The specially-requested aliases (ABD/USA/Amerika, Türkiye/Turkey/Turkiye,
+   Çekya/Czechia/Czech Republic, Güney Kore/South Korea/Republic of Korea,
+   Fildişi Sahili/Ivory Coast/Côte d'Ivoire) are guaranteed here or in the
+   corresponding COUNTRIES[i].names entry.
 ───────────────────────────────────────────────── */
 const EXTRA_COUNTRY_ALIASES: Record<string, string[]> = {
   // ISO alpha-2 code → additional accepted answers
   de: ["deutschland"],                              // Germany
   gr: ["hellas", "ellada", "ελλαδα"],               // Greece
   ru: ["russian federation"],                       // Russia
-  kr: ["republic of korea", "korea republic", "rok"], // South Korea
+  kr: ["republic of korea", "korea republic", "rok", "güney kore"], // South Korea
   kp: ["dprk", "democratic people's republic of korea", "kuzey kore cumhuriyeti"],
-  cz: ["czech rep"],                                // Czechia
+  cz: ["czech rep", "czech republic", "çekya", "czechia"], // Czechia
   gb: ["great britain", "britanya"],                // United Kingdom
-  us: ["amerika birleşik devletleri"],              // USA
+  us: ["amerika birleşik devletleri", "abd", "usa", "amerika"], // USA
+  tr: ["türkiye", "turkiye", "turkey"],             // Türkiye
   cy: ["kıbrıs cumhuriyeti", "kibris cumhuriyeti"], // Cyprus
   ge: ["sakartvelo"],                               // Georgia
   ba: ["bosna ve hersek", "bosnia & herzegovina"],  // Bosnia
-  ci: ["ivory coast", "côte d'ivoire", "republic of cote d'ivoire"], // Côte d’Ivoire
+  ci: ["ivory coast", "côte d'ivoire", "republic of cote d'ivoire", "fildişi sahili"], // Côte d’Ivoire
   nl: ["niderlanda", "the netherlands"],            // Netherlands
   va: ["holy see"],                                 // Vatican
   mm: ["birmanya"],                                 // Myanmar
@@ -325,18 +353,38 @@ const EXTRA_COUNTRY_ALIASES: Record<string, string[]> = {
 };
 
 /* ─────────────────────────────────────────────────
-   LOOKUP TABLES
+   LOOKUP TABLES  +  CONFLICT-AWARE ALIAS RESOLUTION
 ───────────────────────────────────────────────── */
-export const NAME_TO_TOPOID:      Record<string, string>    = {};
-export const TOPOID_TO_DISPLAY:   Record<string, string>    = {};
-export const TOPOID_TO_CONTINENT: Record<string, Continent> = {};
+export const NAME_TO_TOPOID:      Record<string, string>      = {};
+export const TOPOID_TO_DISPLAY:   Record<string, string>      = {};
+export const TOPOID_TO_CONTINENT: Record<string, Continent>   = {};
 export const CODE_TO_ENTRY:       Record<string, CountryEntry> = {};
 export const TOPOID_TO_ENTRY:     Record<string, CountryEntry> = {};
+/** Normalised accepted-answer string → the single canonical country it resolves to. */
+export const NAME_TO_ENTRY:       Record<string, CountryEntry> = {};
 
-/** Every normalised accepted-answer string for a country (display + names + extras). */
+/** Every normalised accepted-answer string that RESOLVES to a given country. */
 const ENTRY_TO_ACCEPTED: WeakMap<CountryEntry, Set<string>> = new WeakMap();
 
-function buildAcceptedFor(entry: CountryEntry): Set<string> {
+/**
+ * Alias-resolution report, populated once at module load.
+ *
+ *  • ALIAS_CONFLICTS — a normalised alias claimed by ≥2 countries at the same
+ *    priority tier. It is DROPPED from every lookup table so we never silently
+ *    accept a random country; typing it resolves to nothing.
+ *  • ALIAS_SHADOWED  — an auto-generated locale alias that collides with
+ *    another country's curated (primary) name. It resolves safely to the
+ *    curated winner and is recorded here for auditing only.
+ *
+ * Consumed by scripts/check-country-answer-resolver.mjs.
+ */
+export interface AliasConflict { key: string; codes: string[]; tier: "primary" | "locale"; }
+export interface AliasShadow   { key: string; winner: string; shadowed: string[]; }
+export const ALIAS_CONFLICTS: AliasConflict[] = [];
+export const ALIAS_SHADOWED:  AliasShadow[]   = [];
+
+/** Curated (primary) accepted answers: display + names[] + EXTRA_COUNTRY_ALIASES. */
+function buildPrimaryAcceptedFor(entry: CountryEntry): Set<string> {
   const set = new Set<string>();
   const add = (s: string | undefined) => {
     if (!s) return;
@@ -349,28 +397,82 @@ function buildAcceptedFor(entry: CountryEntry): Set<string> {
   return set;
 }
 
+/** Auto-generated locale (secondary) accepted answers for a country. */
+function buildLocaleAcceptedFor(entry: CountryEntry): Set<string> {
+  const set = new Set<string>();
+  (COUNTRY_LOCALE_ALIASES[entry.code] ?? []).forEach(s => {
+    const k = normalizeCountryAnswer(s);
+    if (k) set.add(k);
+  });
+  return set;
+}
+
+// Unique-id maps first (no ambiguity — keyed by code / topoId).
 COUNTRIES.forEach(entry => {
   const { code, topoId, display, continent } = entry;
-  if (topoId) TOPOID_TO_DISPLAY[topoId]   = display;
-  if (topoId) TOPOID_TO_CONTINENT[topoId] = continent;
-  if (topoId) TOPOID_TO_ENTRY[topoId]     = entry;
+  if (topoId) {
+    TOPOID_TO_DISPLAY[topoId]   = display;
+    TOPOID_TO_CONTINENT[topoId] = continent;
+    TOPOID_TO_ENTRY[topoId]     = entry;
+  }
   CODE_TO_ENTRY[code] = entry;
+});
 
-  const accepted = buildAcceptedFor(entry);
-  ENTRY_TO_ACCEPTED.set(entry, accepted);
+// Two-tier alias claim map → resolve winners, detect conflicts / shadows.
+{
+  const primaryClaims = new Map<string, Set<string>>();
+  const localeClaims  = new Map<string, Set<string>>();
+  const entryByCode   = new Map<string, CountryEntry>();
+  const acceptedByCode = new Map<string, Set<string>>();
 
-  accepted.forEach(key => {
-    if (!(key in NAME_TO_TOPOID) && topoId) NAME_TO_TOPOID[key] = topoId;
-    CODE_TO_ENTRY[key] = entry; // overwritten is fine
+  const claim = (map: Map<string, Set<string>>, key: string, code: string) => {
+    let s = map.get(key);
+    if (!s) { s = new Set(); map.set(key, s); }
+    s.add(code);
+  };
+  const acceptedFor = (code: string) => {
+    let s = acceptedByCode.get(code);
+    if (!s) { s = new Set(); acceptedByCode.set(code, s); }
+    return s;
+  };
+
+  COUNTRIES.forEach(entry => {
+    entryByCode.set(entry.code, entry);
+    buildPrimaryAcceptedFor(entry).forEach(k => claim(primaryClaims, k, entry.code));
+    buildLocaleAcceptedFor(entry).forEach(k  => claim(localeClaims,  k, entry.code));
   });
-});
 
-// Map normalised names → entry for flag/silhouette/type-write modes.
-export const NAME_TO_ENTRY: Record<string, CountryEntry> = {};
-COUNTRIES.forEach(entry => {
-  const accepted = ENTRY_TO_ACCEPTED.get(entry);
-  accepted?.forEach(key => { NAME_TO_ENTRY[key] = entry; });
-});
+  const allKeys = new Set<string>([...primaryClaims.keys(), ...localeClaims.keys()]);
+  allKeys.forEach(key => {
+    const pCodes = primaryClaims.get(key) ? [...primaryClaims.get(key)!] : [];
+    const lCodes = localeClaims.get(key)  ? [...localeClaims.get(key)!]  : [];
+
+    let winner: string | null = null;
+    if (pCodes.length === 1) {
+      // Curated name wins; any locale alias of a *different* country is shadowed.
+      winner = pCodes[0];
+      const shadowed = lCodes.filter(c => c !== winner);
+      if (shadowed.length) ALIAS_SHADOWED.push({ key, winner, shadowed: shadowed.sort() });
+    } else if (pCodes.length >= 2) {
+      ALIAS_CONFLICTS.push({ key, codes: pCodes.sort(), tier: "primary" });
+    } else if (lCodes.length === 1) {
+      winner = lCodes[0];
+    } else if (lCodes.length >= 2) {
+      ALIAS_CONFLICTS.push({ key, codes: lCodes.sort(), tier: "locale" });
+    }
+
+    if (!winner) return; // conflicting → resolves to nothing, on purpose.
+    const entry = entryByCode.get(winner)!;
+    NAME_TO_ENTRY[key] = entry;
+    CODE_TO_ENTRY[key] = entry;                 // legacy: lookup by normalised name too
+    if (entry.topoId) NAME_TO_TOPOID[key] = entry.topoId;
+    acceptedFor(winner).add(key);
+  });
+
+  COUNTRIES.forEach(entry => {
+    ENTRY_TO_ACCEPTED.set(entry, acceptedFor(entry.code));
+  });
+}
 
 /* ─────────────────────────────────────────────────
    PUBLIC COUNTRY-ANSWER HELPERS
@@ -378,11 +480,12 @@ COUNTRIES.forEach(entry => {
    route through these — keep the validation logic in one place.
 ───────────────────────────────────────────────── */
 
-/** All normalised accepted answers for a country (display + Turkish + English + extras). */
+/** All normalised accepted answers that RESOLVE to a country (curated + locale, minus conflicts). */
 export function getCountryAcceptedAnswers(entry: CountryEntry): string[] {
   const cached = ENTRY_TO_ACCEPTED.get(entry);
   if (cached) return [...cached];
-  return [...buildAcceptedFor(entry)];
+  // Fallback (cache miss): union of curated + locale, best-effort.
+  return [...new Set([...buildPrimaryAcceptedFor(entry), ...buildLocaleAcceptedFor(entry)])];
 }
 
 /** Resolve any raw user input to a CountryEntry, or undefined for no match. */
@@ -390,6 +493,23 @@ export function findCountryByAnswer(raw: string): CountryEntry | undefined {
   const key = normalizeCountryAnswer(raw);
   if (!key) return undefined;
   return NAME_TO_ENTRY[key];
+}
+
+/**
+ * THE central country-answer resolver.
+ *
+ * Normalises any raw user input — in any language and writing system of the
+ * supported locale pack — and returns the single canonical country ID (the
+ * ISO 3166-1 alpha-2 `code`), or null when nothing resolves.
+ *
+ * Every "type the country name" mode should key validation and de-duplication
+ * off this canonical ID (or its entry-returning sibling `findCountryByAnswer`),
+ * never off the raw text. That guarantees e.g. "Germany", "Almanya", "Германия"
+ * and "ドイツ" all collapse to the same country and can't be counted twice.
+ */
+export function resolveCountryAnswer(input: string): string | null {
+  const entry = findCountryByAnswer(input);
+  return entry ? entry.code : null;
 }
 
 /** True iff the player's raw input matches the given country (any alias). */
