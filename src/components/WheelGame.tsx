@@ -34,6 +34,7 @@ import {
 } from "../data/countries";
 import { playSound, stopSound, shouldPlayCountdownSound, getCountdownSoundMode } from "../lib/sound";
 import { recordGameComplete } from "../lib/achievementStats";
+import { useEscapePass } from "../lib/useEscapePass";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES & CONSTANTS
@@ -401,6 +402,8 @@ export default function WheelGame({ onHome }: WheelGameProps) {
   /* ── Game state ── */
   const [started,     setStarted]     = useState(false);
   const [finished,    setFinished]    = useState(false);
+  /** Escape kısayolunun tetikleyeceği mevcut "Pas Geç" butonu (endless). */
+  const passButtonRef = useRef<HTMLButtonElement | null>(null);
   const [finalResult, setFinalResult] = useState<GameOverResult | null>(null);
 
   const [score,       setScore]       = useState(0);
@@ -665,6 +668,11 @@ export default function WheelGame({ onHome }: WheelGameProps) {
     }
   }, [lifeMode, target, spinning, finished, remainingPool.length, endGame]);
 
+  /* Escape → endless modundaki mevcut "Pas Geç" butonuna tıkla. Buton yalnız
+   * `target && lifeMode === "endless"` iken render olur; handleSkip kendi
+   * spinning/finished guard'ına sahip (bkz. useEscapePass). */
+  useEscapePass(passButtonRef, started && !finished);
+
   /* ── Reset on Replay ── */
   const handleReplay = useCallback(() => {
     if (spinIntervalRef.current)  clearInterval(spinIntervalRef.current);
@@ -842,10 +850,11 @@ export default function WheelGame({ onHome }: WheelGameProps) {
           )}
           {target && lifeMode === "endless" && (
             <button
+              ref={passButtonRef}
               type="button"
               className="wheel-topbar-skip"
               onClick={handleSkip}
-              aria-label="Hedef ülkeyi pas geç"
+              aria-label="Hedef ülkeyi pas geç (Esc)"
             >
               ⏭️ Pas Geç
             </button>

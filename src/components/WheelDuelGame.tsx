@@ -29,6 +29,7 @@ import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
 import { useInviteJoin } from "../lib/useInviteJoin";
+import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
@@ -344,6 +345,8 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   /** Lokal "pas oyumu gönderdim" bayrağı. UI optimistic state + lost-vote
    *  auto-retry sinyali. Hedef değişince otomatik sıfırlanır. */
   const [iPressedLocally, setIPressedLocally] = useState(false);
+  /** Escape kısayolunun tetikleyeceği mevcut "Pas Geç" butonu. */
+  const passButtonRef = useRef<HTMLButtonElement | null>(null);
   /** Lokal "rövanş oyumu gönderdim" bayrağı. UI optimistic + lost-vote
    *  auto-retry sinyali. status finished'dan çıkınca sıfırlanır. */
   const [iRequestedRematchLocally, setIRequestedRematchLocally] = useState(false);
@@ -1080,6 +1083,17 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       console.error("[WheelDuel] request_pass RPC failed", error);
     }
   }, []);
+
+  /* Escape → mevcut "Pas Geç" butonuna tıkla. Yalnız aktif maçta ve hiçbir
+   * modal/sayaç overlay'i açık değilken; butonun kendi disabled/görünürlük
+   * mantığı geçerli kalır (bkz. useEscapePass). */
+  useEscapePass(
+    passButtonRef,
+    phase === "playing" &&
+      !quitModal &&
+      !hostClosedRoom &&
+      !(room?.room_source === "quick_match" && countdownSeconds > 0),
+  );
 
   /** Sadece host. İki oy toplandığında atomik skip UPDATE'i atar:
    *   current_target_topoid = null (mevcut pick-next-target effect 1.2s
@@ -2494,10 +2508,11 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
 
                   return (
                     <button
+                      ref={passButtonRef}
                       className="btn btn-ghost wd-pass-btn"
                       onClick={requestPass}
                       disabled={disabled}
-                      title="Aktif hedefi her iki oyuncu da pas geçerse atlanır"
+                      title="Aktif hedefi her iki oyuncu da pas geçerse atlanır (Esc)"
                     >
                       {label}
                     </button>

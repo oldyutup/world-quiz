@@ -42,6 +42,7 @@ import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
 import { useInviteJoin } from "../lib/useInviteJoin";
+import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import {
@@ -378,6 +379,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
    *  hemen "Pas Bekleniyor…" gösterir. roomRef.current?.current_target_topoid
    *  değişince effect üzerinden sıfırlanır. */
   const [pressedPassTarget, setPressedPassTarget] = useState<string | null>(null);
+  /** Escape kısayolunun tetikleyeceği mevcut "Pas Geç" butonu. */
+  const passButtonRef = useRef<HTMLButtonElement | null>(null);
 
   /* ── Final leaderboard (sonuç ekranında dondurulur) ─── */
   const [finalLeaderboard, setFinalLeaderboard] = useState<
@@ -737,6 +740,20 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       setPressedPassTarget(prev => (prev === target ? null : prev));
     }
   }, []);
+
+  /* Escape → mevcut "Pas Geç" oy butonuna tıkla. Yalnız aktif maçta ve hiçbir
+   * modal/menü açık değilken; butonun kendi disabled/görünürlük mantığı geçerli
+   * kalır (bkz. useEscapePass). maxMenuAnchor'ın kendi Esc-kapatma davranışına
+   * çakışmamak için ayrıca dışlanır. */
+  useEscapePass(
+    passButtonRef,
+    phase === "playing" &&
+      !quitModal &&
+      !hostClosedRoom &&
+      !kickedNoticeOpen &&
+      !newHostModalOpen &&
+      !maxMenuAnchor,
+  );
 
   /** Hedef değişince optimistic flag'i temizle. */
   useEffect(() => {
@@ -2206,10 +2223,11 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
                   return (
                     <button
+                      ref={passButtonRef}
                       className="btn btn-ghost wd-pass-btn"
                       onClick={requestPass}
                       disabled={disabled}
-                      title="Yeterli oy toplanırsa mevcut hedef pas geçilir"
+                      title="Yeterli oy toplanırsa mevcut hedef pas geçilir (Esc)"
                     >
                       {label}
                     </button>
