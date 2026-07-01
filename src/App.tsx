@@ -64,6 +64,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
+import { isSafeInternalRoomPath } from "./lib/social";
 import { DmProvider } from "./components/DmContext";
 import { isGameplayActive, type AppScreen as ScreenPolicyAppScreen } from "./lib/screenPolicy";
 import { PresenceProvider } from "./components/PresenceContext";
@@ -3443,7 +3444,14 @@ useEffect(() => {
       onChangeAvatar={profile ? () => setAvatarModalOpen(true) : undefined}
       onShowcaseBadges={profile ? () => setBadgeShowcaseOpen(true) : undefined}
       onOpenRewards={profile ? () => setAvatarModalOpen(true) : undefined}
-      onJoinRoom={(roomUrl) => { window.location.href = roomUrl; }}
+      onJoinRoom={(roomUrl) => {
+        // Son navigation kapısı: yalnız same-origin, göreceli oda yolları açılır.
+        // Absolute/protocol-relative/javascript:/data: veya geçersiz URL sessizce
+        // engellenir (open-redirect / phishing koruması, defense-in-depth).
+        if (!isSafeInternalRoomPath(roomUrl)) return;
+        const target = new URL(roomUrl, window.location.origin);
+        window.location.href = target.pathname + target.search + target.hash;
+      }}
       profileEditorOpen={selfProfileEditorOpen}
     >
       <PresenceProvider profile={profile}>

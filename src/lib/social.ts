@@ -145,6 +145,8 @@ export function describeSocialError(message: string | undefined | null): string 
   if (m.includes("not_your_request")) return "Bu isteği yanıtlayamazsın.";
   if (m.includes("request_not_found")) return "İstek bulunamadı.";
   if (m.includes("cannot_invite_self")) return "Kendini davet edemezsin.";
+  if (m.includes("not_friends")) return "Yalnızca arkadaşlarını odaya davet edebilirsin.";
+  if (m.includes("invalid_room_url")) return "Geçersiz davet bağlantısı.";
   if (m.includes("recipient_not_found")) return "Oyuncu bulunamadı.";
   if (m.includes("cannot_block_self")) return "Kendini engelleyemezsin.";
   if (m.includes("blocked_between")) return "Bu kullanıcıyla etkileşemezsin.";
@@ -374,12 +376,51 @@ export async function searchPublicProfiles(query: string): Promise<SearchProfile
    Oyun / lobi daveti
    ────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Bir davet URL'sinin GÜVENLE açılabilir, uygulama-içi (same-origin) göreceli
+ * bir oda yolu olup olmadığını doğrular. Open-redirect / phishing koruması:
+ * yalnız `/?conquest=CODE` gibi relative path'ler geçer.
+ *
+ * Reddedilir: `https://…`, `http://…`, `javascript:…`, `data:…`, `//evil.com`,
+ * `\\evil.com`, boşluk/kontrol karakteri içerenler ve `new URL(...)` sonrası
+ * origin'i `window.location.origin`'den farklı olan her şey. Bu kontrol, hem
+ * yeni davetleri hem de eski veritabanında kalmış kötü davetleri kapsar.
+ */
+export function isSafeInternalRoomPath(raw: unknown): raw is string {
+  if (typeof raw !== "string" || raw.length === 0) return false;
+  // Baş/son boşluğu sessizce kırpmayız — böyle bir değer zaten şüphelidir.
+  if (raw.trim() !== raw) return false;
+  // Göreceli path olmalı; protocol-relative (`//`) ve mutlak URL değil.
+  if (!raw.startsWith("/") || raw.startsWith("//")) return false;
+  // Backslash (`/\evil.com` bazı tarayıcılarda `//`'e dönüşür) ve boşluk/
+  // kontrol karakterleri kesinlikle yasak.
+  if (raw.includes("\\")) return false;
+  // Boşluk ve kontrol karakterleri (0x00-0x1F, 0x7F) reddedilir.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F\s]/.test(raw)) return false;
+  if (typeof window === "undefined") return false;
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    return (
+      parsed.origin === window.location.origin &&
+      parsed.protocol === window.location.protocol
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function sendRoomInvite(args: {
   recipientProfileId: string;
   roomCode: string;
   mode: string;
   roomUrl: string;
 }): Promise<RpcResult> {
+  // Sunucu son otorite (send_room_invite p_room_url'i doğrular), ama harici bir
+  // URL'yi ağ üzerinden hiç göndermemek için burada da erken reddederiz.
+  if (!isSafeInternalRoomPath(args.roomUrl)) {
+    return { ok: false, error: "Geçersiz davet bağlantısı." };
+  }
   const { error } = await supabase.rpc("send_room_invite", {
     p_recipient: args.recipientProfileId,
     p_room_code: args.roomCode,

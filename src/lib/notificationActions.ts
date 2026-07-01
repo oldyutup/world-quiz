@@ -11,7 +11,7 @@
  * inbox ise "✓ Kabul edildi" gibi yerel durumunu işaretler.
  */
 import { useCallback } from "react";
-import { respondFriendRequest, type NotificationRow } from "./social";
+import { respondFriendRequest, isSafeInternalRoomPath, type NotificationRow } from "./social";
 import { useSocial } from "../components/SocialContext";
 
 export interface ActionResult {
@@ -60,9 +60,16 @@ export function useNotificationActions(): NotificationActions {
 
   const joinRoom = useCallback<NotificationActions["joinRoom"]>(
     async (n) => {
-      const url = n.payload?.roomUrl as string | undefined;
+      const url = n.payload?.roomUrl as unknown;
       await social.markRead(n.id);
-      if (url && social.onJoinRoom) {
+      // Ham URL'yi doğrudan navigation'a vermeyiz: yalnız same-origin, göreceli
+      // oda yolları açılabilir (open-redirect / phishing koruması). Bu kontrol
+      // eski veritabanında kalmış kötü davetleri de güvenle engeller.
+      if (!isSafeInternalRoomPath(url)) {
+        social.toast("Geçersiz davet bağlantısı.");
+        return { ok: false };
+      }
+      if (social.onJoinRoom) {
         // Davetin hâlâ geçerli olduğu / odada yer olduğu, hedef modun mevcut
         // auto-join akışında (useInviteJoin / conquest join) doğrulanır; geçersizse
         // kullanıcı orada kısa hata görür. Burada ikinci bir doğrulama sistemi kurmayız.
