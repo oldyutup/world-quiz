@@ -65,6 +65,7 @@ import { UserProfileDropdown } from "./components/UserProfileDropdown";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
 import { DmProvider } from "./components/DmContext";
+import { isGameplayActive, type AppScreen as ScreenPolicyAppScreen } from "./lib/screenPolicy";
 import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
@@ -103,7 +104,8 @@ import {
 /* ═══════════════════════════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════════════════════════ */
-type AppScreen = "home" | "map-game" | "flag-game" | "silhouette-game" | "route-game" | "duel-game" | "duel-group-game" | "flag-duel-game" | "wheel-game" | "wheel-duel-game" | "wheel-group-game" | "conquest-game" | "conquest-rooms" | "conquest-join" | "cag-dedektifi" | "harita-dedektifi" | "harita-duel-game" | "kornokta-create" | "kornokta-join";
+// AppScreen union + ekran-bazlı politika (isGameplayActive) merkezî katmandan gelir.
+type AppScreen = ScreenPolicyAppScreen;
 
 /** Why the auth modal was opened. Single-player modes never trigger it; the
  *  online gates below ("duel-gate" / "multi-gate" / "kusatma-gate") hide the
@@ -3443,7 +3445,9 @@ useEffect(() => {
       profileEditorOpen={selfProfileEditorOpen}
     >
       <PresenceProvider profile={profile}>
-        <DmProvider profile={profile}>
+        {/* Aktif oyun ekranında arkadaş DM toast'ı bastırılır (mesaj/unread
+            yine kaydedilir); ana menü, profil/sosyal ve lobilerde gösterilir. */}
+        <DmProvider profile={profile} suppressDmToasts={isGameplayActive(screen)}>
           {renderScreen()}
           {renderProfileEditModals()}
         </DmProvider>

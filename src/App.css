@@ -22685,6 +22685,27 @@ html:not(.is-native-app) .apk-photo-card {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* DM önizlemesi: tek satır + ellipsis (çok satır kutusunu geçersiz kıl). */
+.app-toast-text--single {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-toast-sender { color: #eaf1ff; font-weight: 700; }
+
+/* Arkadaş DM toast'ı: davet kartıyla aynı dil (mavi aksiyon kenarı), fakat tüm
+   kart tıklanabilir → sohbeti açar. Hover/odakta hafif belirginleşir. */
+.app-toast--dm { cursor: pointer; }
+.app-toast--dm:hover {
+  border-color: rgba(88, 166, 255, 0.55);
+  box-shadow:
+    0 14px 34px rgba(2, 6, 14, 0.6),
+    0 0 0 1px rgba(88, 166, 255, 0.16),
+    0 0 26px rgba(88, 166, 255, 0.16);
+}
+.app-toast--dm:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); }
+
 .app-toast-actions { display: flex; gap: 8px; margin-top: 10px; }
 .app-toast-btn {
   height: 34px;

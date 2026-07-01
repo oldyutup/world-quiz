@@ -32,11 +32,12 @@ import {
   fetchDmUnreadSummary,
   getOrCreateConversation,
   markConversationRead,
+  sanitizeMessagePreview,
   subscribeDirectMessages,
   type DmMessage,
   type DmUnreadSummary,
 } from "../lib/dm";
-import { useSocialOptional } from "./SocialContext";
+import { useSocialOptional, type DmToastActor } from "./SocialContext";
 import { DMChatModal } from "./DMChatModal";
 
 /** Sohbet açmak için gereken minimum arkadaş bilgisi (FriendRow ile uyumlu). */
@@ -88,10 +89,13 @@ export function useDmOptional(): DmContextValue | null {
 
 interface DmProviderProps {
   profile: Profile | null;
+  /** Aktif oyun ekranında mı? true ise gelen DM için sağ-alt toast bastırılır
+   *  (mesaj/unread yine kaydedilir). Merkezî screen-policy'den (App) gelir. */
+  suppressDmToasts?: boolean;
   children: ReactNode;
 }
 
-export function DmProvider({ profile, children }: DmProviderProps) {
+export function DmProvider({ profile, suppressDmToasts = false, children }: DmProviderProps) {
   const social = useSocialOptional();
   const profileId = profile?.id ?? null;
 
@@ -108,6 +112,19 @@ export function DmProvider({ profile, children }: DmProviderProps) {
   // Aktif konuşma + modalın mesaj ekleyici handler'ı (realtime yönlendirme için).
   const activeConvRef = useRef<string | null>(null);
   const activeHandlerRef = useRef<((m: DmMessage) => void) | null>(null);
+
+  // Toast köprüsü ref'leri: realtime aboneliği ekran değişiminde YENİDEN
+  // kurulmasın diye bu değerler effect deps'ine girmez; olay anında ref'ten
+  // güncel değer okunur (suppress bayrağı, toast push, sohbet açıcı).
+  const suppressToastsRef = useRef(suppressDmToasts);
+  useEffect(() => {
+    suppressToastsRef.current = suppressDmToasts;
+  }, [suppressDmToasts]);
+  const pushDmToastRef = useRef(social?.pushDmToast);
+  useEffect(() => {
+    pushDmToastRef.current = social?.pushDmToast;
+  }, [social]);
+  const openFromToastRef = useRef<(senderId: string, actor: DmToastActor | null) => void>(() => {});
 
   const refreshUnread = useCallback(async () => {
     if (!profileId) {
@@ -142,18 +159,32 @@ export function DmProvider({ profile, children }: DmProviderProps) {
   useEffect(() => {
     if (!profileId) return;
     const channel: RealtimeChannel = subscribeDirectMessages(profileId, (msg) => {
-      // Açık modal bu konuşmadaysa: doğrudan düşür + okundu tut (badge artmaz).
+      // Emniyet: kendi gönderdiğim mesaj buraya düşmez (filtre recipient=me),
+      // yine de kendime toast/badge üretme.
+      if (msg.senderId === profileId) return;
+      // Açık modal bu konuşmadaysa: doğrudan düşür + okundu tut (badge artmaz,
+      // toast yok — kullanıcı zaten o kişiyle konuşuyor).
       if (activeConvRef.current === msg.conversationId && activeHandlerRef.current) {
         activeHandlerRef.current(msg);
         void markConversationRead(msg.conversationId).then(() => void refreshUnread());
         return;
       }
-      // Aksi halde: o arkadaştan okunmamış sayısını artır.
+      // Okunmamış sayısını artır — HER durumda (aktif oyunda da state korunur,
+      // oyuncu oyundan çıkınca görür).
       setUnread((prev) => {
         const byUser = { ...prev.byUser };
         byUser[msg.senderId] = (byUser[msg.senderId] ?? 0) + 1;
         return { total: prev.total + 1, byUser };
       });
+      // Sağ-alt DM toast'ı — YALNIZ toast'a izin veren ekranlarda. Aktif oyunda
+      // yalnız UI toast bastırılır; mesaj/unread yukarıda zaten kaydedildi.
+      if (!suppressToastsRef.current) {
+        pushDmToastRef.current?.({
+          senderId: msg.senderId,
+          preview: sanitizeMessagePreview(msg.content),
+          open: (actor) => openFromToastRef.current(msg.senderId, actor),
+        });
+      }
     });
     return () => {
       void supabase.removeChannel(channel);
@@ -208,6 +239,24 @@ export function DmProvider({ profile, children }: DmProviderProps) {
     },
     [profileId, social]
   );
+
+  // Toast'tan sohbet açımı: toaster çözdüğü gönderen profilini geçirir → modal
+  // başlığı avatar/adla hazır gelir (ekstra fetch yok). Realtime handler bu
+  // callback'i ref üzerinden çağırır (bkz. openFromToastRef).
+  const openChatFromToast = useCallback(
+    (senderId: string, actor: DmToastActor | null) => {
+      openChatWith({
+        profileId: senderId,
+        username: actor?.username ?? null,
+        avatarId: actor?.avatarId ?? null,
+        frameId: actor?.frameId ?? null,
+      });
+    },
+    [openChatWith]
+  );
+  useEffect(() => {
+    openFromToastRef.current = openChatFromToast;
+  }, [openChatFromToast]);
 
   const value = useMemo<DmContextValue>(
     () => ({

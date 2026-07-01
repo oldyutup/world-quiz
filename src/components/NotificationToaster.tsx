@@ -24,13 +24,22 @@ import { useIsMobile } from "../lib/useIsMobile";
 import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useNotificationActions } from "../lib/notificationActions";
 import type { PublicProfileLite } from "../lib/social";
-import { useSocial, type ActiveToast, type NotifToast } from "./SocialContext";
+import { useSocial, type ActiveToast, type DmToast, type NotifToast } from "./SocialContext";
 
 /** Bildirim toast'ının yaşam süresi (görev: 20 sn). Düz bilgi toast'ı daha kısa. */
 const NOTIF_TTL_MS = 20_000;
 const INFO_TTL_MS = 5_000;
+/** DM toast'ı: okumaya + tıklamaya yetecek kadar, ama davetten kısa. */
+const DM_TTL_MS = 8_000;
 /** Çıkış animasyonu süresi (App.css ile eş). */
 const LEAVE_MS = 220;
+
+/** Bir toast'ın otomatik kapanma süresi (kind'e göre). */
+function ttlFor(toast: ActiveToast): number {
+  if (toast.kind === "notification") return NOTIF_TTL_MS;
+  if (toast.kind === "dm") return DM_TTL_MS;
+  return INFO_TTL_MS;
+}
 
 type ToastTone = "action" | "info";
 
@@ -92,7 +101,7 @@ function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps
   const [busy, setBusy] = useState(false);
 
   // Sayaç bookkeeping'i: hover/focus/işlem sırasında durur, kalan süreden devam eder.
-  const remainingRef = useRef(toast.kind === "notification" ? NOTIF_TTL_MS : INFO_TTL_MS);
+  const remainingRef = useRef(ttlFor(toast));
   const startRef = useRef(0);
 
   const dismiss = useCallback(() => {
@@ -150,6 +159,79 @@ function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps
           className="app-toast-progress"
           aria-hidden="true"
           style={{ animationDuration: `${INFO_TTL_MS}ms`, animationPlayState: paused ? "paused" : "running" }}
+        />
+      </div>
+    );
+  }
+
+  // Arkadaş DM toast'ı: tüm kart tıklanabilir → ilgili sohbeti açar. Avatar/ad
+  // burada (useRosterProfiles ile) çözülür; tıklamada `open`'a geçirilir ki
+  // sohbet başlığı hazır gelsin.
+  if (toast.kind === "dm") {
+    const dm = toast as DmToast;
+    const resolved = actorMap.get(dm.senderId);
+    const senderName = resolved?.username ?? "Arkadaşın";
+    const senderAvatar = resolved?.avatarId ?? null;
+    const openChat = () => {
+      dm.open(
+        resolved
+          ? {
+              username: resolved.username,
+              avatarId: resolved.avatarId,
+              frameId: resolved.activeAvatarFrameId,
+            }
+          : null
+      );
+      dismiss();
+    };
+    return (
+      <div
+        className={`app-toast app-toast--action app-toast--dm${leaving ? " app-toast--leaving" : ""}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`${senderName}: yeni mesaj`}
+        onClick={openChat}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openChat();
+          }
+        }}
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocusCapture={() => setPaused(true)}
+        onBlurCapture={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setPaused(false);
+        }}
+      >
+        <span className="app-toast-figure app-toast-avatar">
+          <Avatar avatarId={senderAvatar} username={senderName} size={42} />
+          <span className="app-toast-figure-badge" aria-hidden="true">
+            <EmojiIcon name="speech" />
+          </span>
+        </span>
+        <div className="app-toast-body">
+          <span className="app-toast-title">Yeni mesaj</span>
+          <span className="app-toast-text app-toast-text--single">
+            <strong className="app-toast-sender">{senderName}</strong> {dm.preview}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="app-toast-close"
+          aria-label="Kapat"
+          onClick={(e) => {
+            // Yalnız toast kapansın; sohbeti açma, mesajı okundu sayma.
+            e.stopPropagation();
+            dismiss();
+          }}
+        >
+          ×
+        </button>
+        <span
+          className="app-toast-progress"
+          aria-hidden="true"
+          style={{ animationDuration: `${DM_TTL_MS}ms`, animationPlayState: paused ? "paused" : "running" }}
         />
       </div>
     );
@@ -279,12 +361,16 @@ export function NotificationToaster() {
   const visible = toasts.slice(0, maxVisible);
   const queued = toasts.length - visible.length;
 
-  // Görünür aksiyon kartlarındaki gönderen avatarını TEK batched RPC ile çöz.
+  // Görünür kartlardaki gönderen avatarını TEK batched RPC ile çöz: bildirim
+  // aktörleri + DM gönderenleri.
   const actorIds = visible
     .filter((t): t is NotifToast => t.kind === "notification")
     .map((t) => t.notification.actor_profile_id)
     .filter((x): x is string => !!x);
-  const actorMap = useRosterProfiles(actorIds);
+  const dmSenderIds = visible
+    .filter((t): t is DmToast => t.kind === "dm")
+    .map((t) => t.senderId);
+  const actorMap = useRosterProfiles([...actorIds, ...dmSenderIds]);
 
   // Bildirim toast'ları zaten yalnız oturum açık kullanıcıya gelir (realtime
   // abonelik profile'a bağlı); düz bilgi toast'ları her durumda gösterilebilsin.

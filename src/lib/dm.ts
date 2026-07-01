@@ -70,6 +70,30 @@ export function describeDmError(message: string | undefined | null): string {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   Önizleme temizliği (toast/bildirim için tek satır)
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Bir DM içeriğinden toast/bildirim için güvenli, tek satırlık önizleme üretir.
+ *   - Kontrol karakterlerini (C0/C1) ve görünmez/zero-width karakterleri boşluğa
+ *     çevirir → satır kaymaz, bozuk glyph taşınmaz.
+ *   - Tüm boşluk dizilerini (yeni satır dâhil) tek boşluğa indirger → tek satır.
+ *   - Uzunsa güvenli biçimde keser ve "…" ekler.
+ * NOT: React zaten metni escape ettiği için HTML/render edilebilir içerik toast'a
+ * geçmez; bu fonksiyon yalnız düzen/gürültü temizliğidir.
+ */
+export function sanitizeMessagePreview(content: string, maxLen = 90): string {
+  const cleaned = (content ?? "")
+    // C0/C1 kontrol karakterleri + zero-width/görünmez birleştiriciler + BOM.
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\u2060\uFEFF]/g, " ")
+    // Tüm boşluk dizilerini (yeni satır dâhil) tek boşluğa indir → tek satır.
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  return cleaned.slice(0, maxLen - 1).trimEnd() + "…";
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    Satır eşleme (snake_case RPC → camelCase)
    ────────────────────────────────────────────────────────────────────────── */
 

@@ -55,7 +55,30 @@ export interface NotifToast {
   notification: NotificationRow;
 }
 
-export type ActiveToast = InfoToast | NotifToast;
+/** Toaster'ın çözüp DM toast'ının `open` çağrısına geçirdiği gönderen profili. */
+export interface DmToastActor {
+  username: string | null;
+  avatarId: string | null;
+  frameId: string | null;
+}
+
+/**
+ * Arkadaştan gelen yeni bir DM için sağ-alt toast. Tıklanınca ilgili sohbeti
+ * açar (`open` closure'ı DmProvider'dan gelir; sağlayıcı sınırını aşmadan
+ * çalışır). Avatar/kullanıcı adı toaster tarafında (useRosterProfiles) çözülür.
+ */
+export interface DmToast {
+  toastId: number;
+  kind: "dm";
+  /** Gönderen (arkadaş) profil id — avatar/ad çözümü ve sohbet açımı için. */
+  senderId: string;
+  /** Tek satırlık, temizlenmiş mesaj önizlemesi. */
+  preview: string;
+  /** Toast'a tıklanınca sohbeti açar (toaster çözdüğü profili geçirir). */
+  open: (actor: DmToastActor | null) => void;
+}
+
+export type ActiveToast = InfoToast | NotifToast | DmToast;
 
 export interface RoomContext {
   /** 6 karakterli oda kodu. */
@@ -104,6 +127,13 @@ interface SocialContextValue {
 
   /** Düz bilgi/onay toast'ı gösterir (kısa ömürlü). */
   toast: (message: string) => void;
+  /** Arkadaş DM'i için sağ-alt toast'ı kuyruğa alır (aynı gönderenden varsa
+   *  yenisiyle güncellenir → duplicate kart yığmaz). DmProvider çağırır. */
+  pushDmToast: (payload: {
+    senderId: string;
+    preview: string;
+    open: (actor: DmToastActor | null) => void;
+  }) => void;
   /** Ekranda + sırada bekleyen tüm toast'lar (NotificationToaster tüketir). */
   activeToasts: ActiveToast[];
   /** Bir toast'ı kapatır (× / aksiyon / otomatik süre). */
@@ -177,6 +207,31 @@ export function SocialProvider({
     const toastId = ++toastSeq.current;
     setActiveToasts((prev) => [...prev, { toastId, kind: "info", message }]);
   }, []);
+
+  // Arkadaş DM toast'ı. Aynı gönderenden zaten aktif bir DM kartı varsa onu
+  // kaldırıp yenisini ekler → tek gönderenden mesaj yağarken kart yığılmaz ve
+  // her zaman en güncel önizleme + taze sayaç gösterilir ("duplicate toast" yok).
+  const pushDmToast = useCallback(
+    (payload: { senderId: string; preview: string; open: (actor: DmToastActor | null) => void }) => {
+      setActiveToasts((prev) => {
+        const withoutSameSender = prev.filter(
+          (t) => !(t.kind === "dm" && t.senderId === payload.senderId)
+        );
+        const toastId = ++toastSeq.current;
+        return [
+          ...withoutSameSender,
+          {
+            toastId,
+            kind: "dm",
+            senderId: payload.senderId,
+            preview: payload.preview,
+            open: payload.open,
+          },
+        ];
+      });
+    },
+    []
+  );
 
   // Bir bildirim satırını canlı toast olarak kuyruğa alır (id-bazlı dedupe).
   const pushNotificationToast = useCallback((row: NotificationRow) => {
@@ -316,6 +371,7 @@ export function SocialProvider({
       onJoinRoom,
       profileEditorOpen,
       toast,
+      pushDmToast,
       activeToasts,
       dismissToast,
     }),
@@ -339,6 +395,7 @@ export function SocialProvider({
       onJoinRoom,
       profileEditorOpen,
       toast,
+      pushDmToast,
       activeToasts,
       dismissToast,
     ]
