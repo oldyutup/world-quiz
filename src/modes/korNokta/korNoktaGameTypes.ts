@@ -13,9 +13,12 @@
  * cevap verir (answer_questions), dedektif anonim cevaplara göre haritada tahmin
  * yapar (detective_guess). Eski serbest-metin rapor akışı kaldırıldı.
  *
- * Faz süreleri server'da sabittir (role 4 / observe 35 / answer 20 / guess 20 /
- * reveal 15); observe_report TEK ortak inceleme+soru-seçim fazıdır (ayrı timer yok).
- * client geri sayımı phaseEndsAt − getSyncedNowMs() üzerinden render eder.
+ * Faz süreleri server'da sabittir. Üç ana sekans (observe_report / answer_questions /
+ * detective_guess) TEK KAYNAKTAN 35 sn'dir (server: tevatur_kn_phase_duration_ms);
+ * role_reveal 4 sn giriş, round_reveal 15 sn tur sonucu (ana sekans değil).
+ * observe_report TEK ortak inceleme+soru-seçim fazıdır (ayrı timer yok). Client'ta
+ * süre sabiti YOKTUR: geri sayım phaseEndsAt − getSyncedNowMs() üzerinden render
+ * edilir (host/diğer oyuncular ve reconnect aynı server deadline'ını okur).
  */
 
 import { korNoktaScenes, type KorNoktaScene } from "./korNoktaScenes";
