@@ -17,10 +17,10 @@
    select modal (with its existing auth handling). No gameplay
    logic, no new AppScreen ids, no invite-link changes.
 
-   App v1 scope: Kör Nokta, Harita/Çağ Dedektifi and other
-   360/panorama modes are intentionally NOT surfaced here — they
-   stay desktop-web-only for now (invite links still work; only
-   this mobile navigation omits them).
+   Kör Nokta IS surfaced here (Çok Oyunculu sheet): its 360 scenes
+   load remotely / on-demand on native (resolveAssetUrl + prune),
+   so no heavy panorama ships in the app bundle. Harita/Çağ
+   Dedektifi (solo 360) stay desktop-web-only for now.
 ═══════════════════════════════════════════════════════════════ */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -71,6 +71,10 @@ interface MobileHomeProps {
   onStartQuickMatch: (intent: QuickMatchIntent) => void;
   /** Opens the existing ConquestModeSelectModal (create / join / browse + auth). */
   onOpenConquest: () => void;
+  /** Opens the existing KorNoktaSelectModal (create / join + login gate). Same
+   *  modal the desktop Kör Nokta card uses; the 360 scenes load remotely /
+   *  on-demand on native, so nothing heavy ships in the app bundle. */
+  onOpenKorNokta: () => void;
   /** Bottom-nav (native app shell only). Each reuses an App-level handler:
    *  ranking opens the existing LeaderboardModal; profile opens the AuthModal
    *  when logged out or the existing UserProfileDropdown when logged in. */
@@ -610,6 +614,7 @@ export default function MobileHome({
   onPlay,
   onStartQuickMatch,
   onOpenConquest,
+  onOpenKorNokta,
   onOpenRanking,
   onOpenProfile,
   isLoggedIn,
@@ -671,6 +676,7 @@ export default function MobileHome({
       tagline: "Oda kur, arkadaşlarınla oyna.",
       modes: [
         { icon: "🛡️", title: "Kuşatma", desc: "Bölgeleri kuşat, haritayı ele geçir.", featured: true, onTap: onOpenConquest },
+        { icon: "🕵️", title: "Kör Nokta",     desc: "Raporlara güven, gizli konumu bul.", onTap: onOpenKorNokta },
         { icon: "🌍", title: "Ülke Yaz Grup", desc: "Arkadaşlarınla aynı odada yarış.", onTap: () => onPlay("duel-group-game") },
         { icon: "🎯", title: "Çark Grup",     desc: "Grup halinde çark yarışı.",        onTap: () => onPlay("wheel-group-game") },
       ],

@@ -523,12 +523,14 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
       {/* Mobile-only app-style home (≤600px) — hidden on desktop via CSS.
           Routes through the same onSelect / select-modal flows as the
           desktop mode cards above; see components/MobileHome.tsx.
-          App v1: Kör Nokta / panorama modes are desktop-web-only and
-          intentionally absent from this mobile navigation. */}
+          Kör Nokta opens the same KorNoktaSelectModal as the desktop card
+          (setShowKorNoktaMenu); its 360 scenes load remotely / on-demand on
+          native so nothing heavy ships in the app bundle. */}
       <MobileHome
         onPlay={onSelect}
         onStartQuickMatch={onStartQuickMatch}
         onOpenConquest={() => setShowConquestMenu(true)}
+        onOpenKorNokta={() => setShowKorNoktaMenu(true)}
         onOpenRanking={onOpenRanking}
         onOpenProfile={onOpenProfile}
         isLoggedIn={!!profile?.username}

@@ -68,6 +68,10 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Yükleme başarısızsa kullanıcı "Tekrar Dene" ile bu sayacı artırır → effect
+  // yeniden çalışır, sahne baştan yüklenir (özellikle native'de remote asset
+  // düşük bağlantıda ilk seferde düşerse kullanıcı kilitlenmez).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -184,21 +188,27 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
       },
     );
 
-    let dragging = false;
-    let lastX = 0;
-    let lastY = 0;
-    let activePointerId: number | null = null;
+    // Aktif işaretçiler (fare/tek dokunuş → sürükle bak; iki dokunuş → pinch zoom).
+    // Pointer Events kullanıldığı için fare ve dokunmatik tek kod yolundan işlenir;
+    // canvas'ta CSS `touch-action: none` var (sayfa kaydırma/pinch ile çakışmaz).
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinchPrevDist = 0;
 
     function getSensitivity() {
       return (view.fov * DEG2RAD) / Math.max(1, container?.clientHeight || 1);
     }
 
+    function pinchDistance() {
+      const pts = Array.from(pointers.values());
+      if (pts.length < 2) return 0;
+      return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
+
     function onPointerDown(e: PointerEvent) {
-      if (e.button !== undefined && e.button !== 0) return;
-      dragging = true;
-      activePointerId = e.pointerId;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      // Fare: yalnız sol tuş. Dokunmatik/kalem primary → button 0 (sorun değil).
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) pinchPrevDist = pinchDistance();
       try {
         renderer.domElement.setPointerCapture(e.pointerId);
       } catch {
@@ -207,13 +217,24 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
     }
 
     function onPointerMove(e: PointerEvent) {
-      if (!dragging) return;
-      if (activePointerId !== null && e.pointerId !== activePointerId) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      const prev = pointers.get(e.pointerId);
+      if (!prev) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+      // İki işaretçi → pinch zoom (FOV). Parmaklar açılınca yaklaş (fov küçülür).
+      if (pointers.size >= 2) {
+        const dist = pinchDistance();
+        if (pinchPrevDist > 0 && dist > 0) {
+          view.fov = clamp(view.fov + (pinchPrevDist - dist) * 0.2, MIN_FOV, MAX_FOV);
+          updateCamera();
+        }
+        pinchPrevDist = dist;
+        return;
+      }
+
+      // Tek işaretçi → sürükleyerek bak.
+      const dx = e.clientX - prev.x;
+      const dy = e.clientY - prev.y;
       const sens = getSensitivity();
       view.yaw = normalizeYawDeg(view.yaw + dx * sens * RAD2DEG);
       view.pitch = clamp(view.pitch + dy * sens * RAD2DEG, MIN_PITCH_DEG, MAX_PITCH_DEG);
@@ -221,10 +242,8 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
     }
 
     function onPointerUp(e: PointerEvent) {
-      if (!dragging) return;
-      if (activePointerId !== null && e.pointerId !== activePointerId) return;
-      dragging = false;
-      activePointerId = null;
+      if (!pointers.delete(e.pointerId)) return;
+      if (pointers.size < 2) pinchPrevDist = 0;
       try {
         renderer.domElement.releasePointerCapture(e.pointerId);
       } catch {
@@ -232,9 +251,9 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
       }
     }
 
-    function onPointerCancel() {
-      dragging = false;
-      activePointerId = null;
+    function onPointerCancel(e: PointerEvent) {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchPrevDist = 0;
     }
 
     function onWheel(e: WheelEvent) {
@@ -282,7 +301,7 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
         container.removeChild(canvas);
       }
     };
-  }, [src, mirrorX]);
+  }, [src, mirrorX, reloadNonce]);
 
   return (
     <div className={"kn-pano" + (className ? ` ${className}` : "")}>
@@ -297,6 +316,16 @@ export default function Panorama360({ src, className, attribution, mirrorX = fal
         <div className="kn-pano__overlay kn-pano__overlay--error">
           <strong>Sahne yüklenemedi</strong>
           <span>{loadError}</span>
+          <button
+            type="button"
+            className="kn-pano__retry"
+            onClick={() => {
+              setLoadError(null);
+              setReloadNonce((n) => n + 1);
+            }}
+          >
+            Tekrar Dene
+          </button>
         </div>
       )}
       {attribution && isLoaded && (

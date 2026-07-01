@@ -9,13 +9,19 @@
  * mutlaktır (/assets/...). Vite bunları import etmez; <div> background-image
  * olarak doğrudan URL kullanılır.
  *
+ * Native (Capacitor): bu PNG'ler app bundle'ından çıkarılır
+ * (scripts/prune-app-assets.mjs → assets/backgrounds/kor-nokta). resolveKnBackground
+ * URL'i resolveAssetUrl'den geçirir → native'de Torble web origin'inden UZAKTAN,
+ * web'de same-origin AYNEN yüklenir. background-image olduğu için yükleme bloklamaz.
+ *
  * Fallback: resolveKnBackground her zaman geçerli bir key döndürür (en kötü
- * "default"). Dosya 404 verirse oyun KIRILMAZ — .kn-screen'in CSS'inde koyu
- * base color + overlay gradyanı kalır, paneller okunur durumda kalır
+ * "default"). Dosya 404 / bağlantı düşerse oyun KIRILMAZ — .kn-screen'in CSS'inde
+ * koyu base color + overlay gradyanı kalır, paneller okunur durumda kalır
  * (bkz. KorNoktaGame.css). Konsola tarayıcı kendi 404 uyarısını basabilir.
  */
 
 import type { KnPhase, KnRole } from "./korNoktaGameTypes";
+import { resolveAssetUrl } from "../../lib/assetUrl";
 
 export type KnBgKey =
   | "default"
@@ -86,7 +92,8 @@ export function resolveKnBackground(
 ): KnBackground {
   const key = resolveKnBgKey(phase, role);
   return {
-    url: KOR_NOKTA_BACKGROUNDS[key],
+    // Web: relative path AYNEN. Native: Torble web origin'inden mutlak URL.
+    url: resolveAssetUrl(KOR_NOKTA_BACKGROUNDS[key]),
     themeClass: `kn-theme-${key}`,
   };
 }
