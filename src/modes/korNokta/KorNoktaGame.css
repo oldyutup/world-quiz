@@ -2228,6 +2228,16 @@
 .kn-final__winner-name--blue { color: #6fa3ff; }
 .kn-final__winner-name--red  { color: #ff7a7a; }
 
+/* Sonuç ekranı aksiyonları: Lobiye Dön (birincil) + Ana Menü (ikincil),
+ * dikey yığılmış tam-genişlik (Kuşatma finished-actions muadili). */
+.kn-final__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
 @media (max-width: 600px) {
   .kn-result-cols { grid-template-columns: 1fr; }
   .kn-result-mid { flex-direction: row; gap: 10px; min-width: 0; }

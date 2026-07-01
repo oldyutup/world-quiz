@@ -201,6 +201,10 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   const [errorMsg, setErrorMsg]   = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [starting, setStarting]   = useState(false);
+  /** Sonuç ekranı "Lobiye Dön" — odadan ayrılmadan yerel görünümü lobiye
+   *  çevirir (Kuşatma pattern'i). true iken oyun bitmiş olsa da lobi render
+   *  edilir; KorNoktaGame unmount olup tüm timer/listener/overlay temizlenir. */
+  const [returnedToLobby, setReturnedToLobby] = useState(false);
 
   /* ── Modal state ─────────────────────────────────────────── */
   const [kickTarget, setKickTarget]             = useState<TevaturPlayer | null>(null);
@@ -239,10 +243,12 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   /* ── Derived ── */
   const isHost = !!room && room.host_player_id === myIdRef.current;
 
-  /** game_state dolu + status playing/finished → lobi yerine oyun ekranı. */
+  /** game_state dolu + status playing/finished → lobi yerine oyun ekranı.
+   *  "Lobiye Dön" tıklandıysa (returnedToLobby) oyun bitmiş olsa da lobi
+   *  gösterilir — oyuncu odada kalır, KorNoktaGame unmount olur. */
   const knGameState = room ? parseKnGameState(room.game_state) : null;
   const knInGame =
-    !!room && !!knGameState &&
+    !!room && !!knGameState && !returnedToLobby &&
     (room.status === "playing" || room.status === "finished");
 
   /** Hem realtime echo'su hem RPC cevabı buradan geçer; updated_at'i daha
@@ -256,6 +262,15 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       }
       return r;
     });
+  }, []);
+
+  /** Sonuç ekranı "Lobiye Dön" (Kuşatma pattern'i): odadan ayrılmadan yerel
+   *  görünümü lobiye çevirir. knInGame false olur → KorNoktaGame unmount →
+   *  timer/interval/submit listener/sonuç overlay React cleanup'larıyla
+   *  temizlenir. Oda silinmez, status flip edilmez, oyun yeniden başlamaz. */
+  const handleReturnToLobby = useCallback(() => {
+    setErrorMsg(null);
+    setReturnedToLobby(true);
   }, []);
 
   /* ── Share/invite ── */
@@ -288,6 +303,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setErrorMsg(null);
     setStatusMsg("Oda kuruluyor…");
+    setReturnedToLobby(false);
     setPhase("creating");
 
     clearKorNoktaSession();
@@ -364,6 +380,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setErrorMsg(null);
     setStatusMsg("Odaya bağlanılıyor…");
+    setReturnedToLobby(false);
     setPhase("creating");
 
     clearKorNoktaSession();
@@ -417,6 +434,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setErrorMsg(null);
     setStatusMsg(null);
     setStarting(false);
+    setReturnedToLobby(false);
     clearKorNoktaSession();
 
     if (!currentRoom) return;
@@ -887,6 +905,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           claimToken={myClaimTokenRef.current}
           isHost={isHost}
           onRoomUpdate={applyRoomUpdate}
+          onReturnToLobby={handleReturnToLobby}
           onExit={() => {
             void leaveRoom();
             onHome();

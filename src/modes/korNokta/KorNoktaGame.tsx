@@ -164,6 +164,10 @@ interface KorNoktaGameProps {
   isHost: boolean;
   /** RPC cevaplarını ve watchdog refetch'lerini parent'ın room state'ine uygular. */
   onRoomUpdate?: (room: TevaturRoom) => void;
+  /** Sonuç ekranı "Lobiye Dön" — odadan AYRILMADAN yerel görünümü lobiye
+   *  çevirir (Kuşatma pattern'i). Bu bileşen unmount olunca timer/interval/
+   *  submit listener/sonuç overlay temizlenir. */
+  onReturnToLobby: () => void;
   onExit: () => void;
 }
 
@@ -185,6 +189,7 @@ export default function KorNoktaGame({
   claimToken,
   isHost,
   onRoomUpdate,
+  onReturnToLobby,
   onExit,
 }: KorNoktaGameProps) {
   const state: KnGameState | null = parseKnGameState(room.game_state);
@@ -325,6 +330,12 @@ export default function KorNoktaGame({
   const [actionError, setActionError]       = useState<string | null>(null);
   const [guessError, setGuessError]         = useState<string | null>(null);
   const [guessSubmitting, setGuessSubmitting] = useState(false);
+  // İlk geçerli pin bırakılınca latch olur → harita + buton kilitlenir.
+  const [guessLocked, setGuessLocked]       = useState(false);
+  // Sert çift-submit koruması: render'lar arası yaşar; RPC başlamadan set
+  // edilir. UI state'ine ek olarak, çift tık/çift pin/lag re-delivery'de
+  // yalnız ilk çağrının RPC'ye gitmesini garanti eder.
+  const guessSubmitGuardRef                 = useRef(false);
 
   useEffect(() => {
     setPickedLocal(null);
@@ -333,6 +344,8 @@ export default function KorNoktaGame({
     setGuess(null);
     setGuessError(null);
     setGuessSubmitting(false);
+    setGuessLocked(false);
+    guessSubmitGuardRef.current = false;
   }, [roundIndex]);
 
   /* ── Maç sonu XP (her oyuncu kendi profili, idempotent RPC) ── */
@@ -516,8 +529,22 @@ export default function KorNoktaGame({
     })();
   }
 
-  async function submitGuess() {
-    if (!guess || guessSubmitting) return;
+  /**
+   * Tahmini gönderir. `explicit` verilirse onu, yoksa mevcut `guess` state'ini
+   * kullanır — otomatik kayıt (ilk pin) taze koordinatı doğrudan geçer, çünkü
+   * setGuess henüz commit olmamış olabilir.
+   *
+   * Çift-submit koruması: guessSubmitGuardRef ilk çağrıda latch olur; ikinci
+   * çağrı (buton, çift tık, çift pin, lag) erken döner. Server ayrıca
+   * 'already_submitted' guard'ıyla ikinci yazıyı reddeder — çift skor olmaz.
+   * Phase/deadline'a DOKUNULMAZ (yalnız game_state.guesses yazılır).
+   */
+  async function submitGuess(explicit?: KnLatLng) {
+    const target = explicit ?? guess;
+    if (!target) return;
+    if (guessSubmitGuardRef.current) return; // bu tur zaten gönderiliyor/gönderildi
+    guessSubmitGuardRef.current = true;
+    setGuessLocked(true);
     playSound("click");
     setGuessSubmitting(true);
     setGuessError(null);
@@ -525,12 +552,18 @@ export default function KorNoktaGame({
       p_room_id:     room.id,
       p_player_id:   myId,
       p_claim_token: claimToken,
-      p_lat:         guess.lat,
-      p_lng:         guess.lng,
+      p_lat:         target.lat,
+      p_lng:         target.lng,
     });
     setGuessSubmitting(false);
     if (error) {
-      logKnRpcError("submit_guess", error, { lat: guess.lat, lng: guess.lng });
+      logKnRpcError("submit_guess", error, { lat: target.lat, lng: target.lng });
+      // 'already_submitted' → server tahmini zaten kaydetti (çift tık/lag);
+      // hata gösterme, kilidi koru → realtime echo bekleme ekranına geçirir.
+      if ((error.message ?? "").toLowerCase().includes("already_submitted")) return;
+      // Gerçek hata → kilidi çöz, tekrar denemeye izin ver (skorsuz kalmasın).
+      guessSubmitGuardRef.current = false;
+      setGuessLocked(false);
       setGuessError(knActionErrorText(error, "Tahmin gönderilemedi. Tekrar dene."));
       return;
     }
@@ -846,9 +879,9 @@ export default function KorNoktaGame({
             <div className="kn-briefing kn-anim-scale-in">
               <div className="kn-radar" aria-hidden />
               <span className="kn-briefing__eyebrow">Tahmin Kilitlendi</span>
-              <h2 className="kn-briefing__title">Diğer Dedektif Bekleniyor</h2>
+              <h2 className="kn-briefing__title">Süre Bekleniyor</h2>
               <p className="kn-briefing__desc">
-                Tahminin kaydedildi. İki takım da tahmin yapınca ortak sonuç açılacak.
+                Tahminin kaydedildi. Konum tahmini süresi dolunca ortak sonuç açılacak.
               </p>
             </div>
           </div>
@@ -856,7 +889,8 @@ export default function KorNoktaGame({
       );
     }
 
-    const canSubmitGuess = !!guess && !guessSubmitting;
+    // Buton kilitliyken (otomatik kayıt sonrası) devre dışı + güvenli no-op.
+    const canSubmitGuess = !!guess && !guessSubmitting && !guessLocked;
 
     return (
       <div {...knScreen()}>
@@ -867,8 +901,9 @@ export default function KorNoktaGame({
               <span className="kn-guess__eyebrow">Dosya Hazır</span>
               <h2 className="kn-guess__title">Anonim Cevaplar</h2>
               <p className="kn-guess__sub">
-                Tanıkların cevaplarını incele ve konumu işaretle. Hangi cevabın
-                kimden geldiği gizlidir.
+                Tanıkların cevaplarını incele ve konumu işaretle. Haritaya pin
+                bıraktığın an tahminin otomatik kaydedilir; sonra değiştirilemez.
+                Hangi cevabın kimden geldiği gizlidir.
               </p>
             </header>
 
@@ -907,7 +942,11 @@ export default function KorNoktaGame({
             })}
 
             <div className="kn-guess__checklist">
-              <span className={guess ? "is-done" : ""}>📍 Haritaya pin koy</span>
+              <span className={guessLocked || guess ? "is-done" : ""}>
+                {guessLocked
+                  ? "✅ Tahmin kaydedildi — süre sonu bekleniyor"
+                  : "📍 Haritaya pin koy"}
+              </span>
             </div>
           </div>
 
@@ -915,7 +954,14 @@ export default function KorNoktaGame({
             <KorNoktaGuessMap
               key={`pick-${state.roundIndex}`}
               mode="pick"
-              onGuessChange={setGuess}
+              locked={guessLocked}
+              onGuessChange={g => {
+                // İlk geçerli pin → mevcut submit akışını bir kez tetikle.
+                // Sonrası kilitli; ikinci pin/olay guard'a takılır.
+                if (guessSubmitGuardRef.current) return;
+                setGuess(g);
+                void submitGuess(g);
+              }}
               className="kn-guess__map"
             />
             <button
@@ -924,7 +970,11 @@ export default function KorNoktaGame({
               onClick={() => void submitGuess()}
               disabled={!canSubmitGuess}
             >
-              {guessSubmitting ? "Gönderiliyor…" : "Tahmini Gönder"}
+              {guessSubmitting
+                ? "Gönderiliyor…"
+                : guessLocked
+                  ? "Tahmin Kaydedildi"
+                  : "Tahmini Gönder"}
             </button>
             {guessError && <p className="kn-error">{guessError}</p>}
           </div>
@@ -1136,16 +1186,28 @@ export default function KorNoktaGame({
               </div>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-accent kn-wide-btn"
-              onClick={() => {
-                playSound("click");
-                onExit();
-              }}
-            >
-              Ana Menüye Dön
-            </button>
+            <div className="kn-final__actions">
+              <button
+                type="button"
+                className="btn btn-accent kn-wide-btn"
+                onClick={() => {
+                  playSound("click");
+                  onReturnToLobby();
+                }}
+              >
+                ← Lobiye Dön
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost kn-wide-btn"
+                onClick={() => {
+                  playSound("click");
+                  onExit();
+                }}
+              >
+                Ana Menüye Dön
+              </button>
+            </div>
           </div>
         </div>
 

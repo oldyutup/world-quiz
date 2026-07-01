@@ -40,6 +40,10 @@ export interface KnRevealGuess extends KnLatLng {
 interface KorNoktaGuessMapProps {
   mode: "pick" | "reveal";
   onGuessChange?: (guess: KnLatLng) => void;
+  /** pick modunda true → ilk pin bırakıldıktan sonra harita kilitlenir:
+   *  yeni tıklama marker'ı taşımaz, marker sürüklenemez → tahmin değişmez.
+   *  (Otomatik kayıt sonrası çağıran bileşen tarafından set edilir.) */
+  locked?: boolean;
   revealGuess?: KnLatLng | null;
   /** Çok tahmin (takım modu): her biri kendi renginde marker + çizgi. */
   revealGuesses?: KnRevealGuess[] | null;
@@ -53,6 +57,7 @@ const MAP_DEFAULT_ZOOM = 2;
 export default function KorNoktaGuessMap({
   mode,
   onGuessChange,
+  locked,
   revealGuess,
   revealGuesses,
   revealActual,
@@ -66,6 +71,19 @@ export default function KorNoktaGuessMap({
   useEffect(() => {
     onGuessChangeRef.current = onGuessChange;
   }, [onGuessChange]);
+
+  // pick marker + kilit durumu ref'te tutulur ki mount effect'i (yalnız
+  // [mode]'a bağlı) yeniden bağlanmadan kilit uygulanabilsin.
+  const guessMarkerRef = useRef<L.Marker | null>(null);
+  const lockedRef = useRef(!!locked);
+  useEffect(() => {
+    lockedRef.current = !!locked;
+    const marker = guessMarkerRef.current;
+    if (!marker) return;
+    // Kilitliyken marker'ı sürüklenemez yap (görsel oynamayı da engeller).
+    if (locked) marker.dragging?.disable();
+    else marker.dragging?.enable();
+  }, [locked]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -106,20 +124,28 @@ export default function KorNoktaGuessMap({
       ...(provider.zoomOffset !== undefined ? { zoomOffset: provider.zoomOffset } : {}),
     }).addTo(map);
 
-    let guessMarker: L.Marker | null = null;
-
     if (mode === "pick") {
       const emitGuess = (ll: L.LatLng) => {
         onGuessChangeRef.current?.({ lat: ll.lat, lng: ll.lng });
       };
 
       map.on("click", (e) => {
-        if (guessMarker) {
-          guessMarker.setLatLng(e.latlng);
+        // İlk pin bırakılıp kilitlendikten sonra tıklama tahmini değiştirmez.
+        if (lockedRef.current) return;
+        const existing = guessMarkerRef.current;
+        if (existing) {
+          existing.setLatLng(e.latlng);
         } else {
-          guessMarker = L.marker(e.latlng, { draggable: true }).addTo(map);
-          guessMarker.on("drag", (ev) => emitGuess((ev.target as L.Marker).getLatLng()));
-          guessMarker.on("dragend", (ev) => emitGuess((ev.target as L.Marker).getLatLng()));
+          const marker = L.marker(e.latlng, { draggable: true }).addTo(map);
+          marker.on("drag", (ev) => {
+            if (lockedRef.current) return;
+            emitGuess((ev.target as L.Marker).getLatLng());
+          });
+          marker.on("dragend", (ev) => {
+            if (lockedRef.current) return;
+            emitGuess((ev.target as L.Marker).getLatLng());
+          });
+          guessMarkerRef.current = marker;
         }
         emitGuess(e.latlng);
       });
@@ -205,6 +231,7 @@ export default function KorNoktaGuessMap({
       window.cancelAnimationFrame(raf);
       resizeObserver.disconnect();
       map.remove();
+      guessMarkerRef.current = null;
     };
     // Reveal koordinatları faz başına sabittir; bileşen faz değişiminde
     // key ile remount edilir, bu yüzden yalnız mode'a bağlanmak yeterli.
