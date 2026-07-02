@@ -231,7 +231,9 @@ export function FriendsButton({ variant = "bar" }: FriendsButtonProps) {
         aria-label="Arkadaşlar"
         aria-expanded={open}
       >
-        <span className="notif-bell-icon" aria-hidden="true"><EmojiIcon name="people" /></span>
+        <span className="notif-bell-icon" aria-hidden="true">
+          <img className="notif-bell-img-icon" src="/assets/icons/home/friends-icon.png" alt="" />
+        </span>
         {badge}
       </button>
     );

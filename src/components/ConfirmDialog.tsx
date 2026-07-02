@@ -6,8 +6,13 @@
  * onaylanırken işaretli olup olmadığını onConfirm'e geçirir (çağıran kalıcılığı
  * kendi yönetir — örn. localStorage). z-index bildirim bottom-sheet'inin (6301)
  * üstündedir, böylece mobilde panel açıkken de görünür.
+ *
+ * App-level katman: overlay `document.body`'e portallanır. Böylece tetikleyen
+ * panel/dropdown (ör. bildirim paneli) veya transform/backdrop-filter uygulayan
+ * bir üst kap içinde sıkışmaz — merkezî olarak tüm ekranın üstünde açılır.
  */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface ConfirmDialogProps {
   title: string;
@@ -51,7 +56,16 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onCancel, busy]);
 
-  return (
+  // Scroll lock — proje modal diliyle (SocialCenterSheet vb.) uyumlu.
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
+
+  return createPortal(
     <div
       className="confirm-overlay"
       role="dialog"
@@ -95,6 +109,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

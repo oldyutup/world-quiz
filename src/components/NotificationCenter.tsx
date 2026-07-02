@@ -104,7 +104,9 @@ export function NotificationCenter({ variant = "bar" }: NotificationCenterProps)
         aria-label="Bildirimler"
         aria-expanded={open}
       >
-        <span className="notif-bell-icon" aria-hidden="true"><EmojiIcon name="bell" /></span>
+        <span className="notif-bell-icon" aria-hidden="true">
+          <img className="notif-bell-img-icon notif-bell-img-icon--bell" src="/assets/icons/home/notifications-bell.png" alt="" />
+        </span>
         {badge}
       </button>
     );

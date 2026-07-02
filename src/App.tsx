@@ -428,6 +428,99 @@ function DDItem({ active, onClick, children }: DDItemProps) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   HOME ÜST BAR — tek parça koyu-navy chrome şeridi (yalnız desktop web;
+   ≤600px + native'de CSS bar'ı ÇÖZER, bkz. App.css "HOME ÜST BAR").
+   Bilgi mimarisi üç bölge: SOL marka (küçük logo + slogan) · ORTA
+   oyuncu eylemleri (Hızlı Eşleş birincil CTA + Sıralama + Günün Görevi)
+   · SAĞ kimlik kümesi (.top-right-stack: Bildirim/Arkadaş/Profil).
+═══════════════════════════════════════════════════════════════ */
+
+/* Sol marka: küçük, sakin, İKİNCİL kimlik işareti. aria-hidden — asıl
+   erişilebilir marka adı + slogan zaten ortadaki hero'da (.home-logo /
+   .home-subtitle); ekran okuyucuya "Torble / Dünya bilginizi test edin"
+   iki kez okunmasın. Büyük hero logosu YERİNDE kalır. */
+function HomeTopBarBrand() {
+  return (
+    <div className="htb-brand" aria-hidden="true">
+      <img
+        src="/assets/brand/torble-logo.png"
+        alt=""
+        className="htb-brand-logo"
+      />
+      <span className="htb-brand-slogan">Dünya bilginizi test edin.</span>
+    </div>
+  );
+}
+
+/* Orta eylem kümesi: Hızlı Eşleş bar'ın tek accent birincil CTA'sı,
+   Sıralama sakin ghost, Günün Görevi en sessiz (disabled + amber
+   "Yakında"). YENİ akış kurmaz: Hızlı Eşleş mevcut QuickMatchModal'ı,
+   Sıralama mevcut LeaderboardModal'ı açar (state App'te, home'da mount). */
+function HomeTopBarActions({
+  onQuickMatch,
+  onOpenRanking,
+}: {
+  onQuickMatch: () => void;
+  onOpenRanking: () => void;
+}) {
+  return (
+    <nav className="home-topbar-actions" aria-label="Ana eylemler">
+      <button
+        type="button"
+        className="htb-btn htb-btn--qm"
+        onClick={() => {
+          playSound("click");
+          onQuickMatch();
+        }}
+      >
+        <img
+          className="htb-btn-qm-icon"
+          src="/assets/icons/home/quick-match-lightning.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="htb-btn-label">Hızlı Eşleş</span>
+      </button>
+      <button
+        type="button"
+        className="htb-btn htb-btn--rank"
+        aria-label="Sıralama"
+        onClick={() => {
+          playSound("click");
+          onOpenRanking();
+        }}
+      >
+        <img
+          className="htb-btn-img-icon"
+          src="/assets/icons/home/ranking-trophy.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="htb-btn-label">Sıralama</span>
+      </button>
+      {/* Günün Görevi — henüz işlevsiz; amber "Yakında" etiketi mevcut
+          soon-badge / atlas-strip-self ödül-ailesi diliyle konuşur. disabled:
+          tab durağı harcamaz, ekran okuyucu gezinirken adıyla keşfeder. */}
+      <button
+        type="button"
+        className="htb-btn htb-btn--quest"
+        disabled
+        aria-label="Günün Görevi — Yakında"
+      >
+        <img
+          className="htb-btn-img-icon"
+          src="/assets/icons/home/daily-quest-scroll.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="htb-btn-label">Günün Görevi</span>
+        <span className="htb-quest-tag">Yakında</span>
+      </button>
+    </nav>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    HOME SCREEN
 ═══════════════════════════════════════════════════════════════ */
 
@@ -458,9 +551,6 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
-// Hızlı Eşleş (desktop) — 8. ızgara kartı bu modalı açar; modal intent'i
-// onStartQuickMatch ile App'e taşır (mevcut auth gate + queue akışı).
-const [showQuickMatch, setShowQuickMatch] = useState(false);
   const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean }[] = [
   { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Bilmece", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -525,33 +615,10 @@ const [showQuickMatch, setShowQuickMatch] = useState(false);
             >{m.available ? "Oyna" : "Yakında"}</button>
           </div>
         ))}
-        {/* 8. hücre — Hızlı Eşleş girişi (Rota Modu'nun altı). Bir oyun modu
-            DEĞİL, online eşleşmeye giriş kartı: mod kartlarıyla aynı grid
-            ölçüsünde ama fısıltı-accent kenarla hafifçe
-            ayrışır. Kartın tamamı tıklanabilir (buton); içteki "Rakip Bul"
-            görsel bir CTA ve aynı aksiyonu tetikler. ≤600px'te .mode-grid
-            gizlendiğinden yalnız masaüstünde görünür (mobilde MobileHome'un
-            kendi ⚡ girişi var). */}
-        <button
-          type="button"
-          className="mode-card qm-card"
-          aria-label="Hızlı Eşleş: bir mod seç, rakip bul, hemen başla"
-          onClick={() => { playSound("click"); setShowQuickMatch(true); }}
-        >
-          <span className="mode-card-icon" aria-hidden="true">
-            <img
-              src="/assets/icons/home/quick-match-lightning.png"
-              alt=""
-              aria-hidden="true"
-              className="mode-card-asset-icon"
-            />
-          </span>
-          <span className="qm-card-content">
-            <span className="mode-card-title">HIZLI EŞLEŞ</span>
-            <span className="mode-card-desc">Bir mod seç, rakip bul, hemen başla.</span>
-          </span>
-          <span className="btn btn-accent mode-card-btn qm-card-cta">Rakip Bul</span>
-        </button>
+        {/* Hızlı Eşleş girişi artık ÜST BAR'daki birincil CTA (bkz.
+            HomeTopBarActions → homeQuickMatchOpen → QuickMatchModal). Eski 8.
+            ızgara kartı KALDIRILDI; 7 gerçek mod kartı auto-fit 4 sütunda aynı
+            ölçüde kalır, ikinci satırın 4. hücresi boş bırakılır. */}
       </div>
       {/* Atlas Klasmanı daveti — mod ızgarasının altında tek sessiz satır;
           LeaderboardModal'ı açar. ≤600px'te CSS gizler (MobileHome alt-nav'ında
@@ -785,16 +852,6 @@ const [showQuickMatch, setShowQuickMatch] = useState(false);
     onClose={() => {
       playSound("click");
       setShowConquestMenu(false);
-    }}
-  />
-)}
-
-{showQuickMatch && (
-  <QuickMatchModal
-    onStartQuickMatch={onStartQuickMatch}
-    onClose={() => {
-      playSound("click");
-      setShowQuickMatch(false);
     }}
   />
 )}
@@ -2572,6 +2629,10 @@ export default function App() {
   const canBonus = dailyReward.available;
   const [authOpen, setAuthOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  // Üst bar Hızlı Eşleş girişi — HomeScreen'in kendi QM kart state'inden ayrı,
+  // çünkü bar App chrome'unda (HomeScreen dışında) yaşıyor. Modal handleSearch
+  // içinde onClose'u kendisi çağırdığından ekran değişse de state kapanır.
+  const [homeQuickMatchOpen, setHomeQuickMatchOpen] = useState(false);
   // Native app only: the bottom-nav Profil tab drives the (otherwise
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
@@ -3052,43 +3113,55 @@ useEffect(() => {
   if (screen === "home")
   return (
     <>
-      <div className="top-right-stack">
-        {/* Sağ üst kimlik şeridi (desktop + mobil web) — barsız TEK yatay satır:
-              [Bildirimler] [Arkadaşlar] [Profil pill]
-            Bar yüzeyi yok; öğeleri ortak yükseklik/radius/cam dili birleştirir,
-            sağ uçtaki profil pill'i çıpadır. Sıralama artık burada DEĞİL: ana
-            içerikteki Atlas Klasmanı şeridi (AtlasRankStrip) açıyor. Dropdown
-            pill'in altına açıldığı için ikonların gizlenmesi de gerekmiyor.
-            Native app'te blok gizlenir (pointer-events:none + display:none
-            kuralları); sosyal erişim alt-nav'daki Arkadaşlar sekmesindedir. */}
-        {profile && (
-          <div className="social-row">
-            <NotificationCenter variant="icon" />
-            <FriendsButton variant="icon" />
+      {/* ÜST BAR (alternatif ana menü) — yalnız desktop web'de görünen tek
+          parça koyu-navy chrome şeridi. Üç bölge: SOL marka · ORTA eylemler
+          (Hızlı Eşleş / Sıralama / Günün Görevi) · SAĞ kimlik kümesi. ≤600px
+          mobil web + native'de bar CSS ile ÇÖZÜLÜR (display:contents): marka
+          ve eylemler gizlenir, sağ küme bugünkü fixed sağ-üst konumunu birebir
+          korur. */}
+      <header className="home-topbar">
+        <HomeTopBarBrand />
+        <HomeTopBarActions
+          onQuickMatch={() => setHomeQuickMatchOpen(true)}
+          onOpenRanking={() => setLeaderboardOpen(true)}
+        />
+        <div className="top-right-stack top-right-stack--inbar">
+          {/* Sağ kimlik kümesi: [Bildirimler] [Arkadaşlar] [Profil pill].
+              Desktop web'de üst bar içinde akar (--inbar: position static);
+              mobil web'de eski fixed sağ-üst davranışına döner. Öğeleri ortak
+              yükseklik/radius/cam dili birleştirir, sağ uçtaki profil pill'i
+              çıpadır. Dropdown pill'in altına açılır. Native app'te blok
+              gizlenir (pointer-events:none + display:none kuralları); sosyal
+              erişim alt-nav'daki Arkadaşlar sekmesindedir. */}
+          {profile && (
+            <div className="social-row">
+              <NotificationCenter variant="icon" />
+              <FriendsButton variant="icon" />
+            </div>
+          )}
+          <div className="social-bar">
+            <UserProfileDropdown
+              homeTheme={homeTheme}
+              profile={profile}
+              authLoading={authLoading}
+              gold={gold}
+              canBonus={canBonus}
+              soundEnabled={soundEnabled}
+              countdownSoundMode={countdownSoundMode}
+              onClaimBonus={handleAppClaimBonus}
+              onSetSoundEnabled={handleSetSoundEnabled}
+              onSetCountdownSoundMode={handleSetCountdownSoundMode}
+              onLogout={handleLogout}
+              onLogin={() => setAuthOpen(true)}
+              controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
+              onOpenChange={(o) => setProfileNavOpen(o)}
+              onRequestEditProfile={
+                profile ? () => setProfileEditOpen(true) : undefined
+              }
+            />
           </div>
-        )}
-        <div className="social-bar">
-          <UserProfileDropdown
-            homeTheme={homeTheme}
-            profile={profile}
-            authLoading={authLoading}
-            gold={gold}
-            canBonus={canBonus}
-            soundEnabled={soundEnabled}
-            countdownSoundMode={countdownSoundMode}
-            onClaimBonus={handleAppClaimBonus}
-            onSetSoundEnabled={handleSetSoundEnabled}
-            onSetCountdownSoundMode={handleSetCountdownSoundMode}
-            onLogout={handleLogout}
-            onLogin={() => setAuthOpen(true)}
-            controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
-            onOpenChange={(o) => setProfileNavOpen(o)}
-            onRequestEditProfile={
-              profile ? () => setProfileEditOpen(true) : undefined
-            }
-          />
         </div>
-      </div>
+      </header>
 
       <HomeScreen
         onSelect={navigateOnline}
@@ -3112,6 +3185,19 @@ useEffect(() => {
 
       {leaderboardOpen && (
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
+      )}
+
+      {/* Üst bar Hızlı Eşleş girişi — HomeScreen'deki QM kartıyla AYNI modal ve
+          AYNI startQuickMatch akışı (auth gate + intent + yönlendirme). Yeni
+          matchmaking mantığı YOK; yalnızca ikinci bir giriş yüzeyi. */}
+      {homeQuickMatchOpen && (
+        <QuickMatchModal
+          onStartQuickMatch={startQuickMatch}
+          onClose={() => {
+            playSound("click");
+            setHomeQuickMatchOpen(false);
+          }}
+        />
       )}
 
       {/* Profil düzenleme modalları (hub + alt akışlar) artık SocialProvider

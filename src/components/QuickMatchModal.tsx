@@ -28,7 +28,6 @@ import {
   type ReactNode,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { EmojiIcon, type EmojiIconName } from "./EmojiIcon";
 import { playSound } from "../lib/sound";
 import {
   QUICK_MATCH_MODE_META,
@@ -44,15 +43,22 @@ import {
   type QmOption,
 } from "../lib/quickMatch";
 
-/** Masaüstü mod çipi ikonu — EmojiIcon (mevcut modal ikon dili, native emoji
- *  değil). Her mod kendi mevcut sembolüyle: Ülke=globe, Çark=target, Bayrak=
- *  flag, Kuşatma=shield. */
-const MODE_ICON: Record<QuickMatchMode, EmojiIconName> = {
-  country: "globe",
-  wheel: "target",
-  flag: "flag",
-  conquest: "shield",
+/** Masaüstü mod ikonu — ana menüdeki (App.tsx) HOME kart asset'lerinin BİREBİR
+ *  aynısı. Quick Match modalı ile ana ekran aynı görsel dili konuşsun diye
+ *  emoji/SVG yerine mevcut home PNG'leri doğrudan reuse edilir; yeni/duplicate
+ *  asset üretilmez. `object-fit: contain` ile kesilmeden gösterilir. */
+const MODE_ICON: Record<QuickMatchMode, string> = {
+  country: "/assets/icons/home/country-write.png",
+  wheel: "/assets/icons/home/wheel-mode.png",
+  flag: "/assets/icons/home/flag-mode.png",
+  conquest: "/assets/icons/home/conquest-mode.png",
 };
+
+/** Mod satırı için ortak ikon görseli — trigger (seçili) ve liste satırlarında
+ *  aynı asset + aynı ölçü/hizalama. */
+function QmModeIcon({ mode }: { mode: QuickMatchMode }) {
+  return <img className="qms-mode-img" src={MODE_ICON[mode]} alt="" aria-hidden="true" />;
+}
 
 /** Hızlı Eşleş işareti — "hızlı" (şimşek) sembolü; mobil ⚡ Eşleş kimliğini
  *  yankılar. Gerçek mod ikonlarından (PNG/emoji) kasıtlı olarak ayrı, accent
@@ -436,7 +442,7 @@ export function QuickMatchModal({
             options={QUICK_MATCH_MODE_META.map((m) => ({
               label: m.label,
               value: m.mode,
-              icon: <EmojiIcon name={MODE_ICON[m.mode]} />,
+              icon: <QmModeIcon mode={m.mode} />,
             }))}
           />
           {fields.map((f) => (

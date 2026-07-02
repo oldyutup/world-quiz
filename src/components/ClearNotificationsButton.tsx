@@ -84,8 +84,8 @@ export function ClearNotificationsButton({ className = "notif-clear", label = "T
 
       {confirmClear && (
         <ConfirmDialog
-          title="Bildirimleri temizle?"
-          description="Bu işlem bildirim panelindeki bildirimleri temizler. Devam etmek istiyor musun?"
+          title="Bildirimler temizlensin mi?"
+          description="Tüm bildirimlerin okunmuş olarak işaretlenecek."
           confirmLabel="Temizle"
           cancelLabel="Vazgeç"
           dontAskAgainLabel="Bir daha sorma"
