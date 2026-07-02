@@ -2073,6 +2073,32 @@
 }
 .kn-team-move-btn:hover { background: rgba(255, 255, 255, 0.14); }
 
+/* Maç sonu lobisinde henüz "Lobiye Dön" dememiş oyuncu: kart yerinde kalır ama
+   gri/pasif görünür (aktif rosterdan görsel olarak düşer). Kuşatma'daki
+   cq-player-chip--inactive paritesi. Dönünce class kalkar → normal kart. */
+.duel-player-chip.kn-team-chip--idle {
+  opacity: 0.45;
+  filter: grayscale(0.85);
+}
+
+/* Oyuncu adının yanındaki küçük durum etiketi ("Sonuç ekranında").
+   Kuşatma cq-player-status-tag--idle paritesi. */
+.kn-status-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.kn-status-tag--idle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.7);
+}
+
 /* ── Takım çipleri (topbar) ── */
 .kn-chip--team-blue {
   background: rgba(79, 139, 255, 0.2);

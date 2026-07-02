@@ -121,6 +121,14 @@ export interface KnGameState {
   phase: KnPhase;
   phaseEndsAt: number | null;
   rounds: KnTeamRound[];
+  /**
+   * Maç sonu (final_results) "Lobiye Dön" diyen oyuncuların id listesi.
+   * Kuşatma readyPlayerIds akışının Kör Nokta karşılığı — server (tevatur_kn_
+   * return_to_lobby RPC) yazar, realtime UPDATE ile tüm istemcilere yayılır.
+   * Bu listede OLMAYAN oyuncu hâlâ sonuç ekranındadır (lobide gri/pasif). Oyun
+   * fazlarında yazılmaz (start_game sıfırdan game_state kurar → doğal reset).
+   */
+  returnedPlayerIds?: string[];
 }
 
 const KN_PHASES: readonly string[] = [

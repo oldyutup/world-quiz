@@ -201,10 +201,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   const [errorMsg, setErrorMsg]   = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [starting, setStarting]   = useState(false);
-  /** Sonuç ekranı "Lobiye Dön" — odadan ayrılmadan yerel görünümü lobiye
-   *  çevirir (Kuşatma pattern'i). true iken oyun bitmiş olsa da lobi render
-   *  edilir; KorNoktaGame unmount olup tüm timer/listener/overlay temizlenir. */
-  const [returnedToLobby, setReturnedToLobby] = useState(false);
 
   /* ── Modal state ─────────────────────────────────────────── */
   const [kickTarget, setKickTarget]             = useState<TevaturPlayer | null>(null);
@@ -243,12 +239,30 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   /* ── Derived ── */
   const isHost = !!room && room.host_player_id === myIdRef.current;
 
-  /** game_state dolu + status playing/finished → lobi yerine oyun ekranı.
-   *  "Lobiye Dön" tıklandıysa (returnedToLobby) oyun bitmiş olsa da lobi
-   *  gösterilir — oyuncu odada kalır, KorNoktaGame unmount olur. */
   const knGameState = room ? parseKnGameState(room.game_state) : null;
+
+  /** Maç sonu "Lobiye Dön" diyen oyuncuların id'leri — SERVER game_state'inde
+   *  (returnedPlayerIds) tutulur, realtime UPDATE ile tüm istemcilere yayılır.
+   *  Kuşatma'nın readyPlayerIds akışının Kör Nokta karşılığı. */
+  const returnedSet = useMemo(
+    () => new Set(knGameState?.returnedPlayerIds ?? []),
+    [knGameState],
+  );
+
+  /** Maç bitti (sonuç ekranı). Kuşatma rematchMode karşılığı: YALNIZ bu durumda
+   *  lobide, henüz dönmemiş oyuncular gri "Sonuç ekranında" kartında görünür. */
+  const isResultLobby = !!knGameState && room?.status === "finished";
+
+  /** Kendi görünümüm: ortak state'e göre lobiye döndüm mü? Yerel bool YOK —
+   *  yalnız game_state.returnedPlayerIds. Böylece reconnect/refresh'te herkes
+   *  yanlışlıkla "lobiye dönmüş" görünmez; kanonik durum korunur. */
+  const iReturnedToLobby = !!myIdRef.current && returnedSet.has(myIdRef.current);
+
+  /** game_state dolu + status playing/finished + BEN dönmedim → oyun ekranı.
+   *  "Lobiye Dön" dedimse (returnedPlayerIds'te id'm var) oyun bitmiş olsa da
+   *  lobi gösterilir — oyuncu odada kalır, KorNoktaGame unmount olur. */
   const knInGame =
-    !!room && !!knGameState && !returnedToLobby &&
+    !!room && !!knGameState && !iReturnedToLobby &&
     (room.status === "playing" || room.status === "finished");
 
   /** Hem realtime echo'su hem RPC cevabı buradan geçer; updated_at'i daha
@@ -264,14 +278,43 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     });
   }, []);
 
-  /** Sonuç ekranı "Lobiye Dön" (Kuşatma pattern'i): odadan ayrılmadan yerel
-   *  görünümü lobiye çevirir. knInGame false olur → KorNoktaGame unmount →
-   *  timer/interval/submit listener/sonuç overlay React cleanup'larıyla
-   *  temizlenir. Oda silinmez, status flip edilmez, oyun yeniden başlamaz. */
-  const handleReturnToLobby = useCallback(() => {
-    setErrorMsg(null);
-    setReturnedToLobby(true);
+  /** Optimistic: kendi id'mi YEREL game_state.returnedPlayerIds'e ekle (RPC
+   *  cevabı / realtime echo gelene kadar anında lobiye geçmek için). updated_at
+   *  DEĞİŞMEZ → daha yeni echo kanonik değeri getirince applyRoomUpdate ezer. */
+  const markReturnedLocally = useCallback((playerId: string) => {
+    setRoom(prev => {
+      if (!prev) return prev;
+      const gs = parseKnGameState(prev.game_state);
+      if (!gs) return prev;
+      const cur = gs.returnedPlayerIds ?? [];
+      if (cur.includes(playerId)) return prev;
+      return { ...prev, game_state: { ...gs, returnedPlayerIds: [...cur, playerId] } };
+    });
   }, []);
+
+  /** Sonuç ekranı "Lobiye Dön" (Kuşatma readyPlayerIds paritesi): odadan
+   *  AYRILMADAN kendi id'mi ortak game_state.returnedPlayerIds'e yazar. Server
+   *  RPC realtime UPDATE ile diğer istemcilere yayar → onlar beni aktif lobi
+   *  kartında görür; ben lobiye geçerim (knInGame false → KorNoktaGame unmount,
+   *  timer/interval/submit listener/sonuç overlay cleanup). Oda silinmez, status
+   *  flip edilmez, oyun yeniden başlamaz. */
+  const handleReturnToLobby = useCallback(async () => {
+    setErrorMsg(null);
+    const currentRoom = roomRef.current;
+    const myId = myIdRef.current;
+    if (!currentRoom || !myId) return;
+    markReturnedLocally(myId);  // anında lobiye geç (optimistic)
+    const { data, error } = await supabase.rpc("tevatur_kn_return_to_lobby", {
+      p_room_id:     currentRoom.id,
+      p_player_id:   myId,
+      p_claim_token: myClaimTokenRef.current,
+    });
+    if (error) {
+      console.error("[KorNokta] return_to_lobby RPC failed", error);
+      return;  // realtime echo eninde sonunda kanonik durumu getirir
+    }
+    if (data?.id) applyRoomUpdate(data as TevaturRoom);
+  }, [markReturnedLocally, applyRoomUpdate]);
 
   /* ── Share/invite ── */
   const shareLink = useMemo(() => {
@@ -303,7 +346,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setErrorMsg(null);
     setStatusMsg("Oda kuruluyor…");
-    setReturnedToLobby(false);
     setPhase("creating");
 
     clearKorNoktaSession();
@@ -380,7 +422,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setErrorMsg(null);
     setStatusMsg("Odaya bağlanılıyor…");
-    setReturnedToLobby(false);
     setPhase("creating");
 
     clearKorNoktaSession();
@@ -434,7 +475,6 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setErrorMsg(null);
     setStatusMsg(null);
     setStarting(false);
-    setReturnedToLobby(false);
     clearKorNoktaSession();
 
     if (!currentRoom) return;
@@ -704,10 +744,14 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
             const isMe = p.id === myIdRef.current;
             const isPlayerHost = p.id === room?.host_player_id;
             const rp = rosterProfiles.get(p.profile_id ?? "");
+            // Maç sonu (isResultLobby) + bu oyuncu henüz "Lobiye Dön" demedi →
+            // gri/pasif kart + "Sonuç ekranında" etiketi (Kuşatma paritesi).
+            const onResultScreen = isResultLobby && !returnedSet.has(p.id);
             return (
               <div
                 key={p.id}
-                className={"duel-player-chip" + (isMe ? " mine" : "")}
+                className={"duel-player-chip" + (isMe ? " mine" : "") + (onResultScreen ? " kn-team-chip--idle" : "")}
+                aria-disabled={onResultScreen || undefined}
                 style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 5, paddingBottom: 5, minWidth: 0 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
@@ -726,6 +770,11 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                   {rp?.level != null && <span className="kn-team-level">Sv {rp.level}</span>}
                   {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                   {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
+                  {onResultScreen && (
+                    <span className="kn-status-tag kn-status-tag--idle" style={{ flexShrink: 0, marginLeft: 2 }}>
+                      Sonuç ekranında
+                    </span>
+                  )}
                 </div>
                 {isHost && (
                   <button
