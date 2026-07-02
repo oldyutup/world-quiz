@@ -330,12 +330,16 @@ export default function KorNoktaGame({
   const [actionError, setActionError]       = useState<string | null>(null);
   const [guessError, setGuessError]         = useState<string | null>(null);
   const [guessSubmitting, setGuessSubmitting] = useState(false);
-  // İlk geçerli pin bırakılınca latch olur → harita + buton kilitlenir.
-  const [guessLocked, setGuessLocked]       = useState(false);
-  // Sert çift-submit koruması: render'lar arası yaşar; RPC başlamadan set
-  // edilir. UI state'ine ek olarak, çift tık/çift pin/lag re-delivery'de
-  // yalnız ilk çağrının RPC'ye gitmesini garanti eder.
-  const guessSubmitGuardRef                 = useRef(false);
+  /* ── Canlı konum tahmini gönderici (latest-write-wins) ──
+   * Faz açıkken dedektif haritaya istediği kadar tıklar; her tıklama aday
+   * koordinatı günceller (harita/marker KİLİTLENMEZ). Aynı anda tek RPC uçar;
+   * uçuş biterken daha yeni bir konum kuyruğa girdiyse o gönderilir → hızlı
+   * tıklamada yalnız son konum server'a yazılır. Her gönderim monotonik `seq`
+   * taşır; server eski/geç geleni ezmez. Faz kapanınca kuyruk durur. */
+  const guessSeqRef                         = useRef(0);
+  const pendingGuessRef                     = useRef<{ lat: number; lng: number; seq: number } | null>(null);
+  const guessInFlightRef                    = useRef(false);
+  const guessPhaseActiveRef                 = useRef(false);
 
   useEffect(() => {
     setPickedLocal(null);
@@ -344,9 +348,19 @@ export default function KorNoktaGame({
     setGuess(null);
     setGuessError(null);
     setGuessSubmitting(false);
-    setGuessLocked(false);
-    guessSubmitGuardRef.current = false;
+    guessSeqRef.current = 0;
+    pendingGuessRef.current = null;
+    guessInFlightRef.current = false;
   }, [roundIndex]);
+
+  /* Konum tahmini yazımı yalnız detective_guess açıkken serbest. Faz değişince
+   * (süre doldu → round_reveal) bekleyen gönderim durdurulur; server deadline
+   * otoriter kalır (geç istek zaten reddedilir). */
+  useEffect(() => {
+    const active = phase === "detective_guess";
+    guessPhaseActiveRef.current = active;
+    if (!active) pendingGuessRef.current = null;
+  }, [phase]);
 
   /* ── Maç sonu XP (her oyuncu kendi profili, idempotent RPC) ── */
   const myProfileId = players.find(p => p.id === myId)?.profile_id ?? null;
@@ -466,7 +480,6 @@ export default function KorNoktaGame({
   // Dedektif tahmin ekranı: kendi seçtiği sorular + göreceği anonim cevaplayıcılar.
   const mySelected = myTeam ? getKnSelectedQuestions(round, myTeam) : [];
   const myReportOrder = myTeam ? round.reportOrder[myTeam] : [];
-  const myGuessSubmitted = myTeam ? !!round.guesses[myTeam] : false;
 
   /* ── Aksiyonlar ── */
   // Dedektif soru seçimi: tam listeyi gönderir (overwrite); local optimistik.
@@ -530,44 +543,79 @@ export default function KorNoktaGame({
   }
 
   /**
-   * Tahmini gönderir. `explicit` verilirse onu, yoksa mevcut `guess` state'ini
-   * kullanır — otomatik kayıt (ilk pin) taze koordinatı doğrudan geçer, çünkü
-   * setGuess henüz commit olmamış olabilir.
-   *
-   * Çift-submit koruması: guessSubmitGuardRef ilk çağrıda latch olur; ikinci
-   * çağrı (buton, çift tık, çift pin, lag) erken döner. Server ayrıca
-   * 'already_submitted' guard'ıyla ikinci yazıyı reddeder — çift skor olmaz.
-   * Phase/deadline'a DOKUNULMAZ (yalnız game_state.guesses yazılır).
+   * Monotonik seq: oturum içinde kesin artan; reconnect'te de büyür (Date.now()
+   * tabanı). Server bunu latest-write-wins için kullanır — küçük/eşit seq'li
+   * (ağdan geç gelen) istek kayıtlı konumu EZEMEZ.
    */
-  async function submitGuess(explicit?: KnLatLng) {
-    const target = explicit ?? guess;
-    if (!target) return;
-    if (guessSubmitGuardRef.current) return; // bu tur zaten gönderiliyor/gönderildi
-    guessSubmitGuardRef.current = true;
-    setGuessLocked(true);
-    playSound("click");
-    setGuessSubmitting(true);
+  function nextGuessSeq(): number {
+    guessSeqRef.current = Math.max(guessSeqRef.current + 1, Date.now());
+    return guessSeqRef.current;
+  }
+
+  /**
+   * Harita her tıklamasında çağrılır. Marker/harita KİLİTLENMEZ: en güncel
+   * konumu kuyruğa (pendingGuessRef) koyar ve göndericiyi tetikler. Süre bitene
+   * kadar dilediğin kadar çağrılabilir; final seçim yoktur — son gönderilen kalır.
+   */
+  function queueGuess(g: KnLatLng) {
+    setGuess(g);
     setGuessError(null);
+    pendingGuessRef.current = { lat: g.lat, lng: g.lng, seq: nextGuessSeq() };
+    playSound("click");
+    void flushGuess();
+  }
+
+  /**
+   * Latest-write-wins gönderici. Aynı anda tek RPC tutar (guessInFlightRef);
+   * uçuş biterken daha yeni konum kuyruğa girdiyse onu da gönderir → hızlı
+   * tıklamada yalnız SON konum server'a yazılır. Faz/deadline'a DOKUNMAZ: yalnız
+   * game_state.guesses[team] güncellenir (skor + faz geçişi süre dolunca host
+   * advance_phase → apply_round ile bir kez olur — burada değil).
+   *
+   * Hata:
+   *   • deadline geçti / faz kapandı → server otoriter; kuyruk durur, sessiz.
+   *   • geçici hata → daha yeni konum yoksa bunu geri koyup faz açıkken yeniden dener.
+   */
+  async function flushGuess() {
+    if (guessInFlightRef.current) return;      // uçuş bitince kendisi yeniden flush eder
+    if (!guessPhaseActiveRef.current) return;  // faz kapalı → yazma yok
+    const next = pendingGuessRef.current;
+    if (!next) return;
+    pendingGuessRef.current = null;            // bu konumu sahiplen
+    guessInFlightRef.current = true;
+    setGuessSubmitting(true);
     const { data, error } = await supabase.rpc("tevatur_kn_submit_guess", {
       p_room_id:     room.id,
       p_player_id:   myId,
       p_claim_token: claimToken,
-      p_lat:         target.lat,
-      p_lng:         target.lng,
+      p_lat:         next.lat,
+      p_lng:         next.lng,
+      p_seq:         next.seq,
     });
-    setGuessSubmitting(false);
+    guessInFlightRef.current = false;
     if (error) {
-      logKnRpcError("submit_guess", error, { lat: target.lat, lng: target.lng });
-      // 'already_submitted' → server tahmini zaten kaydetti (çift tık/lag);
-      // hata gösterme, kilidi koru → realtime echo bekleme ekranına geçirir.
-      if ((error.message ?? "").toLowerCase().includes("already_submitted")) return;
-      // Gerçek hata → kilidi çöz, tekrar denemeye izin ver (skorsuz kalmasın).
-      guessSubmitGuardRef.current = false;
-      setGuessLocked(false);
-      setGuessError(knActionErrorText(error, "Tahmin gönderilemedi. Tekrar dene."));
+      logKnRpcError("submit_guess", error, { lat: next.lat, lng: next.lng, seq: next.seq });
+      const msg = (error.message ?? "").toLowerCase();
+      // Süre doldu / faz round_reveal'e geçti → server kesim otoritesi; dur.
+      if (msg.includes("guess_deadline_passed") || msg.includes("wrong_phase")) {
+        guessPhaseActiveRef.current = false;
+        pendingGuessRef.current = null;
+        setGuessSubmitting(false);
+        return;
+      }
+      // Geçici hata → daha yeni tık kuyruğa girmediyse bunu geri koy, faz
+      // açıkken kısa süre sonra en güncel konumu tekrar dene (skorsuz kalmasın).
+      if (!pendingGuessRef.current) pendingGuessRef.current = next;
+      setGuessSubmitting(false);
+      setGuessError(knActionErrorText(error, "Konum kaydedilemedi. Tekrar deneniyor…"));
+      if (guessPhaseActiveRef.current) window.setTimeout(() => void flushGuess(), 600);
       return;
     }
     if (data?.id) onRoomUpdateRef.current?.(data as TevaturRoom);
+    setGuessSubmitting(false);
+    setGuessError(null); // başarı → önceki geçici hata banner'ını temizle
+    // Uçuş sırasında yeni tık geldiyse onu da gönder (yalnız son konum yazılır).
+    if (pendingGuessRef.current) void flushGuess();
   }
 
   /* ── Ortak üst şerit ── */
@@ -871,27 +919,9 @@ export default function KorNoktaGame({
 
   /* ════════ GUESS — dedektif: anonim cevaplar + harita tahmini ════════ */
   if (state.phase === "detective_guess" && myRole === "detective") {
-    if (myGuessSubmitted) {
-      return (
-        <div {...knScreen("kn-cine")}>
-          {topbar}
-          <div className="kn-center-wrap">
-            <div className="kn-briefing kn-anim-scale-in">
-              <div className="kn-radar" aria-hidden />
-              <span className="kn-briefing__eyebrow">Tahmin Kilitlendi</span>
-              <h2 className="kn-briefing__title">Süre Bekleniyor</h2>
-              <p className="kn-briefing__desc">
-                Tahminin kaydedildi. Konum tahmini süresi dolunca ortak sonuç açılacak.
-              </p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Buton kilitliyken (otomatik kayıt sonrası) devre dışı + güvenli no-op.
-    const canSubmitGuess = !!guess && !guessSubmitting && !guessLocked;
-
+    // İlk pin sonrası harita AÇIK ve etkileşimli kalır (kilit/overlay yok).
+    // Oyuncu süre bitene kadar dilediği kadar farklı noktaya tıklayabilir;
+    // son gönderilen konum server'da nihai tahmin sayılır.
     return (
       <div {...knScreen()}>
         {topbar}
@@ -901,9 +931,9 @@ export default function KorNoktaGame({
               <span className="kn-guess__eyebrow">Dosya Hazır</span>
               <h2 className="kn-guess__title">Anonim Cevaplar</h2>
               <p className="kn-guess__sub">
-                Tanıkların cevaplarını incele ve konumu işaretle. Haritaya pin
-                bıraktığın an tahminin otomatik kaydedilir; sonra değiştirilemez.
-                Hangi cevabın kimden geldiği gizlidir.
+                Tanıkların cevaplarını incele ve konumu işaretle. Haritaya her
+                dokunuşta tahminin anında kaydedilir; süre bitene kadar dilediğin
+                kadar değiştirebilirsin. Hangi cevabın kimden geldiği gizlidir.
               </p>
             </header>
 
@@ -942,10 +972,8 @@ export default function KorNoktaGame({
             })}
 
             <div className="kn-guess__checklist">
-              <span className={guessLocked || guess ? "is-done" : ""}>
-                {guessLocked
-                  ? "✅ Tahmin kaydedildi — süre sonu bekleniyor"
-                  : "📍 Haritaya pin koy"}
+              <span className={guess ? "is-done" : ""}>
+                {guess ? "✅ Konum işaretlendi" : "📍 Haritaya pin koy"}
               </span>
             </div>
           </div>
@@ -954,28 +982,15 @@ export default function KorNoktaGame({
             <KorNoktaGuessMap
               key={`pick-${state.roundIndex}`}
               mode="pick"
-              locked={guessLocked}
-              onGuessChange={g => {
-                // İlk geçerli pin → mevcut submit akışını bir kez tetikle.
-                // Sonrası kilitli; ikinci pin/olay guard'a takılır.
-                if (guessSubmitGuardRef.current) return;
-                setGuess(g);
-                void submitGuess(g);
-              }}
+              onGuessChange={queueGuess}
               className="kn-guess__map"
             />
-            <button
-              type="button"
-              className="btn btn-accent kn-wide-btn kn-submit-cta"
-              onClick={() => void submitGuess()}
-              disabled={!canSubmitGuess}
-            >
-              {guessSubmitting
-                ? "Gönderiliyor…"
-                : guessLocked
-                  ? "Tahmin Kaydedildi"
-                  : "Tahmini Gönder"}
-            </button>
+            <p className="kn-guess__livehint">
+              {guess
+                ? "Tahminini süre bitene kadar değiştirebilirsin. Süre dolduğunda son konum sayılır."
+                : "Haritaya dokunarak konumu işaretle."}
+              {guessSubmitting && guess ? " · kaydediliyor…" : ""}
+            </p>
             {guessError && <p className="kn-error">{guessError}</p>}
           </div>
         </div>

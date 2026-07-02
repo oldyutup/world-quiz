@@ -2,7 +2,9 @@
  * KorNoktaGuessMap — Kör Nokta harita bileşeni (Leaflet).
  *
  * İki mod:
- *   • "pick"   — dedektif pin bırakır/sürükler; onGuessChange ile bildirir.
+ *   • "pick"   — dedektif pin bırakır/sürükler; her tıklama/sürükleme marker'ı
+ *     taşır ve onGuessChange ile bildirir. Harita KİLİTLENMEZ: faz açık olduğu
+ *     sürece oyuncu konumu istediği kadar değiştirir (son konum nihai sayılır).
  *   • "reveal" — tahmin + gerçek konum + kesik çizgi; salt-okunur,
  *     fitBounds ile iki nokta kadrajlanır.
  *
@@ -40,10 +42,6 @@ export interface KnRevealGuess extends KnLatLng {
 interface KorNoktaGuessMapProps {
   mode: "pick" | "reveal";
   onGuessChange?: (guess: KnLatLng) => void;
-  /** pick modunda true → ilk pin bırakıldıktan sonra harita kilitlenir:
-   *  yeni tıklama marker'ı taşımaz, marker sürüklenemez → tahmin değişmez.
-   *  (Otomatik kayıt sonrası çağıran bileşen tarafından set edilir.) */
-  locked?: boolean;
   revealGuess?: KnLatLng | null;
   /** Çok tahmin (takım modu): her biri kendi renginde marker + çizgi. */
   revealGuesses?: KnRevealGuess[] | null;
@@ -57,7 +55,6 @@ const MAP_DEFAULT_ZOOM = 2;
 export default function KorNoktaGuessMap({
   mode,
   onGuessChange,
-  locked,
   revealGuess,
   revealGuesses,
   revealActual,
@@ -72,18 +69,9 @@ export default function KorNoktaGuessMap({
     onGuessChangeRef.current = onGuessChange;
   }, [onGuessChange]);
 
-  // pick marker + kilit durumu ref'te tutulur ki mount effect'i (yalnız
-  // [mode]'a bağlı) yeniden bağlanmadan kilit uygulanabilsin.
+  // pick marker'ı ref'te tutulur ki mount effect'i (yalnız [mode]'a bağlı)
+  // yeniden bağlanmadan marker'a erişilebilsin.
   const guessMarkerRef = useRef<L.Marker | null>(null);
-  const lockedRef = useRef(!!locked);
-  useEffect(() => {
-    lockedRef.current = !!locked;
-    const marker = guessMarkerRef.current;
-    if (!marker) return;
-    // Kilitliyken marker'ı sürüklenemez yap (görsel oynamayı da engeller).
-    if (locked) marker.dragging?.disable();
-    else marker.dragging?.enable();
-  }, [locked]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -130,19 +118,17 @@ export default function KorNoktaGuessMap({
       };
 
       map.on("click", (e) => {
-        // İlk pin bırakılıp kilitlendikten sonra tıklama tahmini değiştirmez.
-        if (lockedRef.current) return;
+        // Her tıklama marker'ı yeni konuma taşır (kilit yok) → tahmin güncellenir.
         const existing = guessMarkerRef.current;
         if (existing) {
           existing.setLatLng(e.latlng);
         } else {
           const marker = L.marker(e.latlng, { draggable: true }).addTo(map);
+          // Sürükleme de desteklenir: her drag/dragend güncel konumu bildirir.
           marker.on("drag", (ev) => {
-            if (lockedRef.current) return;
             emitGuess((ev.target as L.Marker).getLatLng());
           });
           marker.on("dragend", (ev) => {
-            if (lockedRef.current) return;
             emitGuess((ev.target as L.Marker).getLatLng());
           });
           guessMarkerRef.current = marker;

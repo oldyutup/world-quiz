@@ -635,6 +635,16 @@
   min-height: 220px;
 }
 
+/* Harita altı pasif bilgi metni: tahmin süre bitene kadar değişebilir. */
+.kn-guess__livehint {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--muted);
+}
+
 /* ════════════════════════════════════════════════════════════
    SORU-CEVAP AKIŞI (v3) — dedektif soru seçimi, raporcu cevap,
    dedektif anonim cevap kartları. App.css token'larını kullanır.
