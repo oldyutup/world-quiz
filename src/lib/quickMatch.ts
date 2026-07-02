@@ -50,6 +50,10 @@ export interface QuickMatchIntent {
 export interface QmOption<T = number> {
   label: string;
   value: T;
+  /** Locked "Yakında" row (e.g. non-Türkiye conquest maps): rendered but not
+   *  selectable and never handed to a queue parameter. Optional so the existing
+   *  duration/round/region arrays stay assignable unchanged. */
+  disabled?: boolean;
 }
 
 /**
@@ -141,3 +145,57 @@ export function quickMatchBracketLabel(searchSeconds: number): string {
   const b = quickMatchBracket(searchSeconds);
   return b >= 9999 ? "her seviye" : `±${b} lv`;
 }
+
+/**
+ * Shared duel matchmaking blurb (Ülke Yaz / Çark / Bayrak) — the three modes
+ * that pull from the same seviye-bracket queue.
+ */
+export const QUICK_MATCH_DUEL_DESC =
+  "Seviyene yakın bir rakiple birebir eşleş. Bekledikçe seviye penceresi genişler.";
+
+/** Canonical metadata for one mode surfaced by a Hızlı Eşleş entry. */
+export interface QuickMatchModeMeta {
+  mode: QuickMatchMode;
+  /** Display label for the mode chip. */
+  label: string;
+  /** One-line matchmaking blurb shown under the active mode. */
+  desc: string;
+  /** false → the chip is still selectable and its config visible, but the
+   *  "Eşleşme Ara" CTA stays inert (backend not live yet). */
+  enabled: boolean;
+}
+
+/**
+ * The four modes that own a real, live 1v1 quick-match queue — the single
+ * source of truth for the mode SET + enabled state shared by every Hızlı Eşleş
+ * entry surface. Only presentation (icon choice, exact wording) may vary per
+ * surface; the modes listed here and their `enabled` flags do not. Ordered so
+ * a playable duel (Ülke Yaz) leads and is the natural default selection.
+ *
+ * NOTE: MobileHome keeps its own equivalent local list for the native sheet;
+ * this export is consumed by the desktop entry (QuickMatchModal). Both derive
+ * from the same option arrays + CONQUEST_QUICK_MATCH_ENABLED above, so they
+ * cannot diverge on which modes are live.
+ */
+export const QUICK_MATCH_MODE_META: QuickMatchModeMeta[] = [
+  { mode: "country",  label: "Ülke Yaz 1v1", desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "wheel",    label: "Çark 1v1",     desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "flag",     label: "Bayrak 1v1",   desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  {
+    mode: "conquest",
+    label: "Kuşatma",
+    desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.",
+    enabled: CONQUEST_QUICK_MATCH_ENABLED,
+  },
+];
+
+/**
+ * Kuşatma harita seçenekleri — yalnız Türkiye canlı; diğerleri görünür ama
+ * kilitli "Yakında" satırları (queue parametresine asla ulaşmaz). Birebir
+ * MobileHome'daki map option listesiyle aynı değerler.
+ */
+export const QUICK_MATCH_CONQUEST_MAP_OPTIONS: QmOption<string>[] = [
+  { label: "🇹🇷 Türkiye", value: "turkey" },
+  { label: "🇪🇺 Avrupa", value: "europe", disabled: true },
+  { label: "🕌 Orta Doğu", value: "middle-east", disabled: true },
+];

@@ -136,6 +136,29 @@ body {
   color: rgba(255, 255, 255, 0.88);
 }
 
+/* Desktop hero tightening: torble-logo.png ships with ~18.5% transparent
+   padding baked into its bottom edge, so the *visible* wordmark sits well
+   above the image box bottom. That invisible band — not the 8px .home-hero
+   gap — is what makes the slogan look detached. We pull the subtitle up into
+   that band per breakpoint (whitespace scales with logo width: ~15/19/22px at
+   220/280/320px), for a ~35–45% visible-gap reduction without crowding.
+   Mobile/native (≤600px) intentionally untouched. */
+@media (min-width: 601px) {
+  .home-subtitle {
+    margin-top: -0.58rem;
+  }
+}
+@media (min-width: 640px) {
+  .home-subtitle {
+    margin-top: -0.7rem;
+  }
+}
+@media (min-width: 768px) {
+  .home-subtitle {
+    margin-top: -0.85rem;
+  }
+}
+
 /* Mode grid */
 .mode-grid {
   display: grid;
@@ -143,6 +166,135 @@ body {
   gap: 14px;
   width: 100%;
   max-width: 860px;
+}
+
+/* ── Atlas Klasmanı şeridi ───────────────────────────────────────────────
+   Mod ızgarasının altında TEK satırlık, ghost ağırlıkta klasman daveti;
+   tıklayınca LeaderboardModal açılır (components/AtlasRankStrip.tsx).
+   Sıralama'nın ana ekrandaki girişi budur (eski sağ-üst buton kaldırıldı).
+   KART/PANEL DEĞİLDİR ve öyle kalmalı: arka plansız, iki ince çizgi
+   arasında bir fısıltı; hover'da hafifçe uyanır. Kehribar yalnız anlam
+   taşıyan yerlerde (kupa hover'ı + SEN derecesi — ödül ailesi). */
+.atlas-strip {
+  position: relative;
+  z-index: 1; /* tema dekor katmanlarının üstünde (mode-grid ile aynı) */
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  max-width: 860px; /* mod ızgarasıyla aynı hat */
+  margin-top: -6px; /* ızgaraya, hero'dan daha yakın dursun (aidiyet) */
+  padding: 5px 2px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: rgba(226, 236, 252, 0.88);
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+.atlas-strip-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(168, 192, 230, 0.45));
+  transition: background 0.18s;
+}
+.atlas-strip-rule--end {
+  background: linear-gradient(90deg, rgba(168, 192, 230, 0.45), transparent);
+}
+.atlas-strip-core {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(168, 192, 230, 0.07);
+  border: 1px solid rgba(168, 192, 230, 0.16);
+  border-radius: 10px;
+}
+.atlas-strip-trophy {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: rgba(226, 236, 252, 0.82);
+  transition: color 0.18s;
+}
+.atlas-strip-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.atlas-strip-avatars {
+  display: inline-flex;
+  align-items: center;
+  animation: atlas-strip-in 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+@keyframes atlas-strip-in {
+  from { opacity: 0; }
+}
+.atlas-strip-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid rgba(10, 16, 28, 0.9);
+  background: var(--surface2);
+}
+.atlas-strip-avatar + .atlas-strip-avatar { margin-left: -7px; }
+.atlas-strip-self {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.09);
+  color: #f5b544; /* kehribar: kişisel derece = ödül anlam ailesi */
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.atlas-strip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 10px;
+  border-left: 1px solid rgba(168, 192, 230, 0.22);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: rgba(226, 236, 252, 0.92);
+  transition: color 0.18s;
+}
+.atlas-strip-open-arrow {
+  width: 13px;
+  height: 13px;
+  transition: transform 0.18s;
+}
+.atlas-strip:hover { color: rgba(240, 246, 255, 0.98); }
+.atlas-strip:hover .atlas-strip-rule {
+  background: linear-gradient(90deg, transparent, rgba(178, 202, 240, 0.65));
+}
+.atlas-strip:hover .atlas-strip-rule--end {
+  background: linear-gradient(90deg, rgba(178, 202, 240, 0.65), transparent);
+}
+.atlas-strip:hover .atlas-strip-core {
+  background: rgba(168, 192, 230, 0.12);
+  border-color: rgba(168, 192, 230, 0.26);
+}
+.atlas-strip:hover .atlas-strip-trophy { color: var(--amber); }
+.atlas-strip:hover .atlas-strip-open { color: var(--accent); }
+.atlas-strip:hover .atlas-strip-open-arrow { transform: translateX(2px); }
+.atlas-strip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.atlas-strip:active .atlas-strip-core { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) {
+  .atlas-strip-avatars { animation: none; }
+  .atlas-strip-open-arrow,
+  .atlas-strip,
+  .atlas-strip-rule,
+  .atlas-strip-trophy,
+  .atlas-strip-open { transition: none; }
 }
 
 .mode-card {
@@ -194,6 +346,207 @@ body {
   font-size: .65rem; font-weight: 800; letter-spacing: .06em;
   padding: 2px 8px; border-radius: 999px;
   text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════
+   HIZLI EŞLEŞ — masaüstü giriş kartı + seçici modal
+   Kart, .mode-grid'in 8. hücresi; bir oyun modu DEĞİL, online eşleşmeye
+   giriş. .mode-card kabuğunu (yüzey/kenar/hover) paylaşır ama dinlenmede
+   fısıltı-accent kenar ile hafifçe
+   ayrışır. Kartın tamamı bir <button>; içteki "Rakip Bul" görsel CTA.
+   ≤600px'te .mode-grid gizlendiğinden kart yalnız masaüstünde görünür.
+═══════════════════════════════════════════ */
+.qm-card {
+  /* button reset — .mode-card kabuğu flex-column + surface + border verir */
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  /* Hafif ayrışma: dinlenmede fısıltı-accent kenar (mod kartları düz --border) */
+  border-color: rgba(88, 166, 255, 0.28);
+}
+.qm-card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.qm-card:active { transform: translateY(-1px); }
+
+/* Eşleşme glyph'i bir accent-ghost tile içinde — emoji mod ikonlarından ayrı. */
+.qm-card-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px;
+  font-size: 1.6rem;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.10);
+  border: 1px solid rgba(88, 166, 255, 0.22);
+  border-radius: 15px;
+}
+.qm-card-content {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+/* Görsel CTA — kartın kendisi tıklanabilir olduğundan CTA etkileşimi yakalamaz;
+   accent halkasını kart hover'ıyla birlikte sürüyoruz. */
+.qm-card-cta { pointer-events: none; }
+.qm-card:hover .qm-card-cta { box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* ── Seçici modal ── (.overlay backdrop'unu yeniden kullanır) */
+.qm-modal {
+  position: relative;
+  width: min(94vw, 468px);
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px 22px 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  display: flex; flex-direction: column; gap: 16px;
+  text-align: left;
+  animation: qm-modal-pop .22s cubic-bezier(.2, .9, .2, 1);
+}
+@keyframes qm-modal-pop {
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.qm-head { display: flex; align-items: flex-start; gap: 12px; }
+.qm-head-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; flex-shrink: 0;
+  font-size: 1.35rem; color: var(--accent);
+  background: rgba(88, 166, 255, 0.10);
+  border: 1px solid rgba(88, 166, 255, 0.22);
+  border-radius: 12px;
+}
+.qm-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qm-title {
+  font-family: var(--font-head); font-size: 1.7rem; letter-spacing: .04em;
+  line-height: 1; color: var(--text);
+}
+.qm-sub { font-size: .82rem; color: var(--muted); line-height: 1.35; }
+.qm-close {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 50%;
+  color: var(--muted); font-size: .8rem; cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.qm-close:hover { color: var(--text); border-color: var(--muted); }
+.qm-close:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* Ayar formu — üç tekil açılır seçim alanı (Mod / Süre·Tur / Kıta·Harita),
+   eşit genişlikte, dikey istiflenmiş; chip duvarının yerini alır. */
+.qm-form { display: flex; flex-direction: column; gap: 14px; }
+
+/* Tek seçim alanı: etiket (üstte) + trigger; liste bunun içine absolute açılır. */
+.qms-field { position: relative; display: flex; flex-direction: column; gap: 7px; }
+.qms-label {
+  font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Trigger — kapalıyken yalnız seçili değeri + chevron taşıyan hafif tonal alan. */
+.qms-trigger {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 46px;
+  padding: 0 14px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border); border-radius: 11px;
+  color: var(--text); font-family: var(--font-body); font-size: .95rem; font-weight: 600;
+  text-align: left; cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.qms-trigger:hover { border-color: rgba(88, 166, 255, 0.5); }
+.qms-trigger.is-open { border-color: var(--accent); background: rgba(88, 166, 255, 0.07); }
+.qms-trigger:focus-visible {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.qms-trigger-icon { display: inline-flex; flex-shrink: 0; font-size: 1.15rem; line-height: 1; }
+.qms-trigger-val {
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.qms-caret {
+  flex-shrink: 0; font-size: .7rem; color: var(--muted);
+  transition: transform .18s cubic-bezier(.2, .9, .2, 1), color .15s;
+}
+.qms-trigger.is-open .qms-caret { transform: rotate(180deg); color: var(--accent); }
+
+/* Açılır listbox — trigger'a bağlı absolute panel. Varsayılan aşağı (--down);
+   altta yer yoksa QmSelect yukarı (--up) çevirir. max-height inline verilir ki
+   liste modal sınırında kalıp kendi içinde kaysın, dışarı taşmasın. */
+.qms-pop {
+  position: absolute;
+  left: 0; right: 0;
+  z-index: 20;
+  display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.qms-pop--down { top: calc(100% + 6px); animation: qms-pop-down .16s cubic-bezier(.2, .7, .2, 1); }
+.qms-pop--up   { bottom: calc(100% + 6px); animation: qms-pop-up .16s cubic-bezier(.2, .7, .2, 1); }
+@keyframes qms-pop-down {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes qms-pop-up {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Seçenek satırı — ikon + etiket + (seçili) tik / (kilitli) Yakında. */
+.qms-opt {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 40px;
+  padding: 8px 11px;
+  border: none; border-radius: 8px;
+  background: transparent;
+  color: var(--text); font-family: var(--font-body); font-size: .9rem; font-weight: 600;
+  text-align: left; cursor: pointer;
+  transition: background-color .12s;
+}
+.qms-opt:hover:not(.is-soon) { background: rgba(88, 166, 255, 0.1); }
+.qms-opt:focus-visible {
+  outline: none;
+  background: rgba(88, 166, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(120, 170, 255, 0.4);
+}
+/* Aktif seçenek — net ama neon olmayan tonal vurgu (yan-şerit yok, tik ile). */
+.qms-opt.is-sel { background: var(--surface3); }
+.qms-opt-icon { display: inline-flex; flex-shrink: 0; font-size: 1.1rem; line-height: 1; }
+.qms-opt-label { flex: 1; min-width: 0; line-height: 1.2; }
+.qms-opt-check { flex-shrink: 0; color: var(--accent); font-weight: 800; }
+.qms-opt-soon {
+  flex-shrink: 0;
+  font-size: .6rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); background: var(--surface3);
+  padding: 1px 6px; border-radius: 999px;
+}
+.qms-opt.is-soon { opacity: .5; cursor: not-allowed; }
+
+.qm-search { width: 100%; height: 46px; font-size: .95rem; margin-top: 2px; }
+.qm-search-glyph { font-size: 1.05rem; display: inline-flex; }
+.qm-search:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.qm-foot { font-size: .74rem; color: var(--muted); text-align: center; line-height: 1.4; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qm-modal { animation: none; }
+  .qms-pop--down,
+  .qms-pop--up { animation: none; }
+  .qm-card,
+  .qm-card-cta,
+  .qms-trigger,
+  .qms-caret,
+  .qms-opt,
+  .qm-close { transition: none; }
 }
 
 /* ═══════════════════════════════════════════
@@ -8025,32 +8378,29 @@ body {
   right: 18px;
   /* Net z-index katmanları:
        1   — ana ekran
-       5050 — sıralama butonu (dropdown KAPALIYKEN; açıkken zaten gizleniyor)
-       5100 — sağ üst stack tabanı + profil pill
-       5200 — profil dropdown paneli (lb-trigger üstünde paint olur)
+       5100 — sağ üst şerit tabanı (ikonlar + profil pill)
+       5200 — profil dropdown paneli
        6000 — sıralama modalı overlay
        6100 — username değiştirme modalı overlay (profil panelinin üstü) */
   z-index: 5100;
+  /* Barsız TEK yatay satır: [Bildirimler] [Arkadaşlar] [Profil pill].
+     Bar yüzeyi YOK — öğeler atmosferin üstünde süzülür; birleştirici şey
+     ortak yükseklik/radius/cam sözlüğü. Sağ uçtaki profil pill'i çıpadır.
+     (Sıralama girişi ana içerikteki .atlas-strip'e taşındı.) */
   display: flex;
-  flex-direction: column;
-  /* Dikey sosyal blok: profil pill / Sıralama / (Bildirimler+Arkadaşlar) hepsi
-     aynı genişlikte hizalansın diye sabit genişlik + stretch. */
-  align-items: stretch;
-  width: 232px;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
-/* Sosyal blok — 1. satır: profil pill (tüm bloğa yayılır). */
+/* Kimlik çıpası: profil pill sarmalayıcısı. */
 .social-bar {
   display: flex;
   align-items: center;
-  width: 100%;
 }
-.top-right-stack .upd-wrap { width: 100%; }
-.top-right-stack .upd-pill { width: 100%; }
-/* Pill içindeki kullanıcı adı boşluğu doldursun; Lv + chevron sağa yaslansın. */
+/* Pill içindeki kullanıcı adı uzarsa taşmasın; Lv + chevron hep görünür. */
 .top-right-stack .upd-uname {
-  flex: 1;
+  max-width: 148px;
   min-width: 0;
   text-align: left;
   overflow: hidden;
@@ -8058,14 +8408,67 @@ body {
   white-space: nowrap;
 }
 
-/* Sosyal blok — 3. satır: Bildirimler + Arkadaşlar, eşit genişlikte iki buton. */
+/* Sinyaller: Bildirimler + Arkadaşlar ikon butonları. */
 .social-row {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 8px;
-  width: 100%;
 }
-.social-row .notif-wrap { flex: 1; min-width: 0; }
+
+/* İkon butonlar (variant="icon" → .notif-bell) burada pill'le aynı cam
+   aileye çekilir: 40px yuvarlak, dinlenmede sessiz, hover/focus'ta glow. */
+.top-right-stack .notif-bell {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 160, 190, 0.28);
+  background: rgba(15, 20, 30, 0.76);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 17px;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.05s;
+}
+.top-right-stack .notif-bell:hover,
+.top-right-stack .notif-bell--open {
+  border-color: rgba(120, 170, 255, 0.7);
+  background: rgba(22, 30, 46, 0.9);
+}
+.top-right-stack .notif-bell:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.top-right-stack .notif-bell:active { transform: translateY(1px); }
+
+/* İkon-only butonların etiketi kaybolmasın: hover/klavye odağında aria-label
+   içeriği butonun altında küçük bir ipucu olarak belirir (ppc data-tip kalıbı;
+   ekstra attribute gerekmeden mevcut aria-label'dan okur). */
+.top-right-stack .notif-bell::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: rgba(10, 15, 26, 0.94);
+  border: 1px solid rgba(140, 170, 220, 0.25);
+  color: rgba(235, 242, 255, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.top-right-stack .notif-bell:hover::after,
+.top-right-stack .notif-bell:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Panel açıkken ipucu gereksiz (panel başlığı zaten söylüyor). */
+.top-right-stack .notif-bell--open::after { display: none; }
 
 /* Etiketli sosyal buton (Bildirimler / Arkadaşlar) — pill ile aynı aile. */
 .social-btn {
@@ -8122,14 +8525,8 @@ body {
   position: relative;
   top: auto;
   right: auto;
-  /* Dropdown panelinin sıralama butonunun üstünde paint edilmesini garanti et.
-     (Aynı zamanda lb-trigger zaten profileMenuOpen iken hide ediliyor.) */
+  /* Dropdown paneli şeritteki diğer öğelerin üstünde paint edilsin. */
   z-index: 5200;
-}
-
-.top-right-stack .lb-trigger {
-  position: relative;
-  z-index: 5050;
 }
 
 .upd-wrap {
@@ -8575,7 +8972,11 @@ body {
 /* Mobile */
 @media (max-width: 520px) {
   .upd-wrap { top: 10px; right: 10px; }
-  .top-right-stack { top: 10px; right: 10px; gap: 6px; width: min(208px, calc(100vw - 20px)); }
+  /* Yatay şerit dar ekranda sıkışır: ikonlar 36px, ad kısalır, taşma yok. */
+  .top-right-stack { top: 10px; right: 10px; gap: 6px; max-width: calc(100vw - 20px); }
+  .social-row { gap: 6px; }
+  .top-right-stack .notif-bell { width: 36px; height: 36px; font-size: 15px; }
+  .top-right-stack .upd-uname { max-width: 92px; }
   .social-btn { font-size: 11.5px; padding: 6px 8px; gap: 4px; }
   .social-btn-icon { font-size: 13px; }
   .upd-pill { font-size: 12px; padding: 6px 10px; gap: 6px; }
@@ -8592,6 +8993,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .upd-dropdown { animation: none; }
   .upd-head::after { animation: none; opacity: 0.09; }
+  .top-right-stack .notif-bell::after { transition: none; }
 }
 
 /* ─── "Gece Atlası Cüzdanı" — mavi/lacivert profil skin'i ────────────────────
@@ -8686,9 +9088,6 @@ body {
   transition: border-color 0.15s, background 0.15s, transform 0.05s;
   white-space: nowrap;
   letter-spacing: 0.2px;
-}
-.top-right-stack .lb-trigger {
-  width: 100%;
 }
 .lb-trigger:hover {
   border-color: rgba(255, 215, 120, 0.85);
@@ -19409,6 +19808,9 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .home-screen.home-screen--dark-space::after { opacity: 0; }
 
   .home-screen .mode-grid { display: none; }
+  /* Atlas Klasmanı şeridi de masaüstü ızgarasıyla birlikte gizlenir; mobil
+     ana sayfanın alt-nav'ında kendi Sıralama girişi var. */
+  .home-screen .atlas-strip { display: none; }
 
   /* ── App-home vertical rhythm (mobile only) ──
      Desktop keeps its own .home-screen padding; here the hero (logo +

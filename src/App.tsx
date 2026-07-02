@@ -17,6 +17,7 @@ import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
 import MobileHome from "./components/MobileHome";
+import { QuickMatchModal } from "./components/QuickMatchModal";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -70,6 +71,7 @@ import { isGameplayActive, type AppScreen as ScreenPolicyAppScreen } from "./lib
 import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
+import { AtlasRankStrip } from "./components/AtlasRankStrip";
 import { EmojiIcon, type EmojiIconName } from "./components/EmojiIcon";
 import GoldIcon from "./components/GoldIcon";
 import { AccountSettingsModal } from "./components/AccountSettingsModal";
@@ -456,6 +458,9 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
+// Hızlı Eşleş (desktop) — 8. ızgara kartı bu modalı açar; modal intent'i
+// onStartQuickMatch ile App'e taşır (mevcut auth gate + queue akışı).
+const [showQuickMatch, setShowQuickMatch] = useState(false);
   const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean }[] = [
   { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
   { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Bilmece", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
@@ -520,7 +525,38 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
             >{m.available ? "Oyna" : "Yakında"}</button>
           </div>
         ))}
+        {/* 8. hücre — Hızlı Eşleş girişi (Rota Modu'nun altı). Bir oyun modu
+            DEĞİL, online eşleşmeye giriş kartı: mod kartlarıyla aynı grid
+            ölçüsünde ama fısıltı-accent kenarla hafifçe
+            ayrışır. Kartın tamamı tıklanabilir (buton); içteki "Rakip Bul"
+            görsel bir CTA ve aynı aksiyonu tetikler. ≤600px'te .mode-grid
+            gizlendiğinden yalnız masaüstünde görünür (mobilde MobileHome'un
+            kendi ⚡ girişi var). */}
+        <button
+          type="button"
+          className="mode-card qm-card"
+          aria-label="Hızlı Eşleş: bir mod seç, rakip bul, hemen başla"
+          onClick={() => { playSound("click"); setShowQuickMatch(true); }}
+        >
+          <span className="mode-card-icon" aria-hidden="true">
+            <img
+              src="/assets/icons/home/quick-match-lightning.png"
+              alt=""
+              aria-hidden="true"
+              className="mode-card-asset-icon"
+            />
+          </span>
+          <span className="qm-card-content">
+            <span className="mode-card-title">HIZLI EŞLEŞ</span>
+            <span className="mode-card-desc">Bir mod seç, rakip bul, hemen başla.</span>
+          </span>
+          <span className="btn btn-accent mode-card-btn qm-card-cta">Rakip Bul</span>
+        </button>
       </div>
+      {/* Atlas Klasmanı daveti — mod ızgarasının altında tek sessiz satır;
+          LeaderboardModal'ı açar. ≤600px'te CSS gizler (MobileHome alt-nav'ında
+          kendi Sıralama girişi var). */}
+      <AtlasRankStrip onOpen={onOpenRanking} />
       {/* Mobile-only app-style home (≤600px) — hidden on desktop via CSS.
           Routes through the same onSelect / select-modal flows as the
           desktop mode cards above; see components/MobileHome.tsx.
@@ -749,6 +785,16 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
     onClose={() => {
       playSound("click");
       setShowConquestMenu(false);
+    }}
+  />
+)}
+
+{showQuickMatch && (
+  <QuickMatchModal
+    onStartQuickMatch={onStartQuickMatch}
+    onClose={() => {
+      playSound("click");
+      setShowQuickMatch(false);
     }}
   />
 )}
@@ -2526,7 +2572,6 @@ export default function App() {
   const canBonus = dailyReward.available;
   const [authOpen, setAuthOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   // Native app only: the bottom-nav Profil tab drives the (otherwise
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
@@ -3008,12 +3053,20 @@ useEffect(() => {
   return (
     <>
       <div className="top-right-stack">
-        {/* Sağ üst sosyal blok (desktop + mobil web). Dikey ve hizalı:
-              1. Profil pill
-              2. Sıralama
-              3. Bildirimler + Arkadaşlar (eşit genişlikte iki buton)
-            Native app'te bu blok gizlenir (pointer-events:none + display:none
+        {/* Sağ üst kimlik şeridi (desktop + mobil web) — barsız TEK yatay satır:
+              [Bildirimler] [Arkadaşlar] [Profil pill]
+            Bar yüzeyi yok; öğeleri ortak yükseklik/radius/cam dili birleştirir,
+            sağ uçtaki profil pill'i çıpadır. Sıralama artık burada DEĞİL: ana
+            içerikteki Atlas Klasmanı şeridi (AtlasRankStrip) açıyor. Dropdown
+            pill'in altına açıldığı için ikonların gizlenmesi de gerekmiyor.
+            Native app'te blok gizlenir (pointer-events:none + display:none
             kuralları); sosyal erişim alt-nav'daki Arkadaşlar sekmesindedir. */}
+        {profile && (
+          <div className="social-row">
+            <NotificationCenter variant="icon" />
+            <FriendsButton variant="icon" />
+          </div>
+        )}
         <div className="social-bar">
           <UserProfileDropdown
             homeTheme={homeTheme}
@@ -3029,39 +3082,12 @@ useEffect(() => {
             onLogout={handleLogout}
             onLogin={() => setAuthOpen(true)}
             controlledOpen={IS_NATIVE_APP ? profileNavOpen : undefined}
-            onOpenChange={(o) => { setProfileMenuOpen(o); setProfileNavOpen(o); }}
+            onOpenChange={(o) => setProfileNavOpen(o)}
             onRequestEditProfile={
               profile ? () => setProfileEditOpen(true) : undefined
             }
           />
         </div>
-
-        {/* Profil dropdown açıkken alttaki Sıralama + sosyal satır görsel
-            olarak panelle çakışmasın diye gizlenir; kapanınca geri gelir.
-            Native app'te tüm blok zaten alt-nav lehine gizli. */}
-        {!profileMenuOpen && (
-          <>
-            <button
-              type="button"
-              className="lb-trigger"
-              onClick={() => setLeaderboardOpen(true)}
-              aria-label="Sıralamayı aç"
-            >
-              <span className="lb-trigger-icon"><EmojiIcon name="trophy" /></span>
-              <span className="lb-trigger-label">Sıralama</span>
-            </button>
-
-            {/* Bildirimler + Arkadaşlar — eşit genişlikte ikinci satır.
-                İkisi de oturum yoksa null döndürür; satırı yine de profile
-                gate'liyoruz ki misafirde boş flex kalmasın. */}
-            {profile && (
-              <div className="social-row">
-                <NotificationCenter />
-                <FriendsButton />
-              </div>
-            )}
-          </>
-        )}
       </div>
 
       <HomeScreen
