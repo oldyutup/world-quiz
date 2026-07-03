@@ -149,6 +149,9 @@ export function ConquestMapBonusGlyph({
     );
   }
 
+  // Emoji fallback boyutu istenen kutuyu izler (sınıftaki sabit px yerine) —
+  // büyük bölge-içi emblem de, küçük marker da aynı bileşenden doğru ölçekte
+  // çıkar.
   return (
     <text
       x={cx}
@@ -156,6 +159,7 @@ export function ConquestMapBonusGlyph({
       textAnchor="middle"
       dominantBaseline="middle"
       className="cq-map-bonus-icon"
+      style={{ fontSize: size * 0.72 }}
     >
       {fallbackChar}
     </text>

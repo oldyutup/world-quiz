@@ -40,7 +40,15 @@ const KorNoktaRealTestPage =
     ? lazy(() => import("./dev/KorNoktaRealTestPage"))
     : null;
 
-const DevPage = History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage;
+// Dev-only Çizim Test prova sayfası (login'siz sahte profil; iki context ile
+// gerçek realtime 1v1 akışı denenebilir). Aynı koruma: prod'a girmez.
+const CizimTestDevPage =
+  import.meta.env.DEV && window.location.pathname === "/cizim-test-dev"
+    ? lazy(() => import("./dev/CizimTestDevPage"))
+    : null;
+
+const DevPage =
+  History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage ?? CizimTestDevPage;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

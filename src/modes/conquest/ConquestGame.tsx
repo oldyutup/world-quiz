@@ -170,6 +170,7 @@ import { useConquestSignals } from "./useConquestSignals";
 import ConquestBonusGuide, {
   type ConquestBonusGuideEntry,
 } from "./ConquestBonusGuide";
+import ConquestBonusBriefing, { briefingTotalMs } from "./ConquestBonusBriefing";
 import XpGainBar from "../../components/XpGainBar";
 import { EmojiIcon } from "../../components/EmojiIcon";
 import GoldIcon from "../../components/GoldIcon";
@@ -3717,6 +3718,35 @@ export default function ConquestGame({
   const [bonusGuideOpen, setBonusGuideOpen] = useState(false);
   const [desktopVolumeCloseKey, setDesktopVolumeCloseKey] = useState(0);
   const bonusGuideAutoShownRef = useRef(false);
+
+  // ── Round-1 bonus briefing (desktop) ─────────────────────────────────
+  // Plays inside the TAIL of the existing 9s game-intro window: rules card
+  // first, then per-bonus beats (region spotlight + mini card), ending
+  // exactly when the 3-2-1 countdown begins.  Server timing untouched, so
+  // the first question is never delayed.  Mobile keeps its MobileBonusStrip
+  // flow unchanged.
+  const [briefingFocusRegionId, setBriefingFocusRegionId] =
+    useState<ConquestRegionId | null>(null);
+  const introBriefingMs      = briefingTotalMs(bonusGuideEntries.length);
+  const introCountdownAt     = gameIntroEndsAt - GAME_INTRO_COUNTDOWN_MS;
+  const introBriefingStartAt = introCountdownAt - introBriefingMs;
+  const showGameIntroBriefing =
+    !isMobile
+    && introBriefingMs > 0
+    && showGameIntro
+    && safeNow >= introBriefingStartAt
+    && safeNow < introCountdownAt;
+  // Rules card owns the intro window up to the briefing slot.
+  const showGameIntroInfoCard = showGameIntroText && !showGameIntroBriefing;
+  // True while the briefing still has (or is using) airtime this match —
+  // used below to skip the guide auto-open, which would double-teach the
+  // same content on top of the briefing.
+  const introBriefingScheduled =
+    !isMobile
+    && introBriefingMs > 0
+    && gameIntroEndsAt > 0
+    && safeNow < introCountdownAt;
+
   useEffect(() => {
     if (bonusGuideAutoShownRef.current) return;
     if (!hasBonusGuide) return;
@@ -3730,10 +3760,16 @@ export default function ConquestGame({
     // Round 1 is the only auto-open moment.  Players joining mid-match see
     // the "?" button but no pop-up — the active question must stay readable.
     if (gameState?.round?.roundNumber === 1) {
+      // The intro briefing already walks the bonuses one by one; opening the
+      // guide on top of it would restate the same content.  "?" stays.
+      if (introBriefingScheduled) {
+        bonusGuideAutoShownRef.current = true;
+        return;
+      }
       setBonusGuideOpen(true);
       bonusGuideAutoShownRef.current = true;
     }
-  }, [hasBonusGuide, gameState?.round?.roundNumber, isMobile]);
+  }, [hasBonusGuide, gameState?.round?.roundNumber, isMobile, introBriefingScheduled]);
   const handleToggleBonusGuide = useCallback(() => {
     setBonusGuideOpen(v => !v);
   }, []);
@@ -4242,6 +4278,7 @@ export default function ConquestGame({
         legalTargetIds={mapLegalTargets}
         flashRegionId={flashRegionId}
         attackTargetRegionId={attackTargetRegionId}
+        briefingFocusRegionId={briefingFocusRegionId}
         disabled={mapBoardDisabled}
         viewerIsHolder={mapViewerIsHolder}
         roundBonuses={gameState.roundBonuses}
@@ -4423,7 +4460,7 @@ export default function ConquestGame({
        *  Only fires at the very start of a fresh match; never repeats.
        *  Challenge panel and 20-second timer are suppressed until the
        *  countdown ends (first challenge startedAt === gameIntroEndsAt). */}
-      {showGameIntroText && (
+      {showGameIntroInfoCard && (
         <div
           className="cq-duel-overlay-toast cq-game-intro-overlay"
           role="status"
@@ -4439,6 +4476,15 @@ export default function ConquestGame({
             </div>
           </div>
         </div>
+      )}
+      {/* Round-1 bonus briefing: plays in the intro window's tail, right
+       *  before the countdown.  Spotlights each top bonus region on the map
+       *  while its mini card is up; extras collapse into one summary beat. */}
+      {showGameIntroBriefing && (
+        <ConquestBonusBriefing
+          entries={bonusGuideEntries}
+          onFocusRegion={setBriefingFocusRegionId}
+        />
       )}
       {showGameIntroCountdown && (
         <div

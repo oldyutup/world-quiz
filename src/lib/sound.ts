@@ -112,7 +112,10 @@ export function preloadSounds() {
   });
 }
 
-export function playSound(name: SoundName, options?: { restart?: boolean }) {
+export function playSound(
+  name: SoundName,
+  options?: { restart?: boolean; seekSeconds?: number },
+) {
   if (!isSoundEnabled()) return;
 
   try {
@@ -136,7 +139,9 @@ export function playSound(name: SoundName, options?: { restart?: boolean }) {
       const audio = getAudio(name);
 
       if (options?.restart !== false) {
-        audio.currentTime = 0;
+        // seekSeconds: parça 20 sn'lik geri sayım için tasarlandı; daha kısa
+        // turlarda (ör. Çizim Test 10 sn) sondan hizalamak için ileri sarılır.
+        audio.currentTime = options?.seekSeconds ?? 0;
       }
 
       audio.volume = SOUND_VOLUME[name];

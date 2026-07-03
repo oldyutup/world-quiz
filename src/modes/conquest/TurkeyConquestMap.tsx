@@ -24,6 +24,8 @@ import type {
   ConquestRoundBonusAssignment,
 } from "./types";
 import { ConquestMapBonusGlyph } from "./ConquestAssetIcon";
+import { getBonusPoolEntry } from "./bonusPool";
+import { BonusMotifPatternDefs, bonusMotifPatternId } from "./bonusMotifs";
 import { TURKEY_CONQUEST_REGION_PATHS } from "./maps/turkey-regions";
 import { getRegionPoints } from "./regionPoints";
 import { resolveActiveBonus } from "./conquestRoundBonuses";
@@ -62,6 +64,46 @@ const REGION_BADGE_OFFSET: Record<string, { dx: number; dy: number }> = {
   malatya_elazig: { dx: 0, dy: -21 },
 };
 const DEFAULT_BADGE_OFFSET = { dx: 0, dy: -14 };
+
+// ─── Bonus emblem sizing ──────────────────────────────────────────────────────
+// The in-region bonus emblem (large type icon clipped by the region path)
+// scales with the region's footprint so big plains get a proper watermark
+// while narrow strips stay contained.  Sizes derive from a conservative
+// per-path bounding box parsed once at module load: every coordinate in the
+// path stream (curve control points included) bounds the true shape, so the
+// estimate can only overshoot — and any overshoot is cut by the clipPath.
+const REGION_EMBLEM_SIZE: Record<string, number> = (() => {
+  const sizes: Record<string, number> = {};
+  for (const { id, d } of TURKEY_CONQUEST_REGION_PATHS) {
+    const nums = d.match(/-?\d+(?:\.\d+)?/g) ?? [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = Number(nums[i]);
+      const y = Number(nums[i + 1]);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const minDim = Math.min(maxX - minX, maxY - minY);
+    sizes[id] = Math.round(Math.min(92, Math.max(30, minDim * 0.56)));
+  }
+  return sizes;
+})();
+const DEFAULT_EMBLEM_SIZE = 56;
+
+// Emblem ince-ayarı — yalnız etiket çıpasının ya da ayak-izi boyutunun
+// bölgenin GÖRSEL kütlesini yanlış okuduğu yerlerde (SVG unit, labelPos'a
+// göre).  İstanbul'un etiketi iki kara parçası arasındaki boğazın üstünde
+// durur → emblem büyük Anadolu/Kocaeli parçasının merkezine alınır ve o
+// parçanın ayak izine göre küçültülür; ince şeritlerde emblem şeridin
+// omurgasına kaldırılır; Çukurova'da güney kıyı yerine iç ovaya çekilir.
+const REGION_EMBLEM_TUNE: Record<string, { dx?: number; dy?: number; size?: number }> = {
+  istanbul_kocaeli: { dx: 32, dy: 18, size: 38 },
+  mardin_sirnak:    { dy: -10 },
+  kars:             { dy: -8 },
+  cukurova:         { dy: -26 },
+};
 
 // ─── Terrain texture underlay ─────────────────────────────────────────────────
 // One bitmap stamped through every region path via an SVG <pattern>. The
@@ -185,6 +227,14 @@ interface Props {
    */
   attackTargetRegionId?: ConquestRegionId | null;
   /**
+   * Round-1 bonus briefing spotlight — the region currently being
+   * introduced by ConquestBonusBriefing.  While set, a region-shaped
+   * warm-gold focus ring + soft wash renders on that region so the
+   * briefing card and the map read as one beat.  Pure presentation;
+   * never intercepts pointer events or alters gameplay affordances.
+   */
+  briefingFocusRegionId?: ConquestRegionId | null;
+  /**
    * True when the local viewer is the current action holder. Drives the
    * "viewer-acting" vs "spectator-turn" data attributes on the wrap so
    * non-holders see a quieter map (faint pulses, no hover, not-allowed
@@ -296,6 +346,7 @@ export default function TurkeyConquestMap({
   onRegionClick,
   flashRegionId,
   attackTargetRegionId = null,
+  briefingFocusRegionId = null,
   viewerIsHolder = true,
   roundBonuses,
   myAmbushRegionIds,
@@ -603,6 +654,9 @@ export default function TurkeyConquestMap({
     const label     = REGION_LABELS[id]    ?? id;
     const points    = getRegionPoints(rid);
     const bonus     = resolveActiveBonus(roundBonuses, rid);
+    // Bonus category (savunma/saldiri/bilgi/ekonomi) tints the persistent
+    // region aura + chip rim so the *kind* of advantage reads at map scale.
+    const bonusCat  = bonus ? (getBonusPoolEntry(bonus.type)?.category ?? null) : null;
     // Liman ⚓: surface the per-tenure income counter (N/10) on the badge so
     // every viewer sees the region producing value.  null when this region
     // doesn't carry Liman, so the badge stays off.
@@ -638,8 +692,14 @@ export default function TurkeyConquestMap({
     // intact (V1 scope obscures points only).
     const tooltipPoints = obscureRegionPoints ? "?" : points;
     const tooltip   = `${label}${ownerSuffix} — ${tooltipPoints} puan${bonusSuffix}`;
-    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, limanTicks, bereketTurns, bereketHarvested, tooltip };
+    return { rid, id, d, owner, c, isLegal, isFlash, isDimmed, isShielded, fill, stroke, labelPos, label, points, bonus, bonusCat, limanTicks, bereketTurns, bereketHarvested, tooltip };
   });
+
+  // Bu maçta haritada görünen bonus türleri — filigran pattern def'leri yalnız
+  // bunlar için mount edilir (tür başına bir bölge olduğundan küçük bir set).
+  const motifTypes = Array.from(new Set(
+    regionEntries.flatMap(e => (e.bonus ? [e.bonus.type] : [])),
+  ));
 
   return (
     <div
@@ -675,6 +735,24 @@ export default function TurkeyConquestMap({
               preserveAspectRatio="xMidYMid slice"
             />
           </pattern>
+          {/* Bonus filigran motifleri — tür-özel, bölge path'ine dolgu
+              olarak basıldığı için bölge shape'ine doğal clip'lenir. */}
+          <BonusMotifPatternDefs types={motifTypes} />
+          {/* Bonus emblem clip'leri — büyük tür ikonu bölgenin DIŞINA asla
+              taşmasın diye bölge path'inin kendisiyle kırpılır (evenodd,
+              İstanbul gibi çok-parçalı bölgeler dahil).  Yalnız bonuslu
+              bölgeler için mount edilir. */}
+          {regionEntries
+            .filter(e => e.bonus)
+            .map(({ id, d }) => (
+              <clipPath
+                key={`bonus-emblem-clip-${id}`}
+                id={`cqBonusEmblemClip-${id}`}
+                clipPathUnits="userSpaceOnUse"
+              >
+                <path d={d} clipRule="evenodd" />
+              </clipPath>
+            ))}
         </defs>
 
         {/* ── Layer 0: terrain image underlay (purely visual; never intercepts clicks) ── */}
@@ -819,6 +897,67 @@ export default function TurkeyConquestMap({
           </g>
         )}
 
+        {/* ── Layer 3.8: persistent bonus aura + type watermark + emblem ──
+             Bonus regions read entirely from the REGION itself (the old
+             round badge is gone):
+               · wash — faint warm tint over the owner fill (never recolors
+                 ownership, just lifts the tile as "worth something");
+               · motif — type-specific low-opacity line-art watermark
+                 (hourglass / anchor / parapet / web / rune / …) tiled
+                 across the region and clipped by the region path itself
+                 (pattern fill on the path);
+               · emblem — the PRIMARY type signal: the bonus icon painted
+                 LARGE inside the region, sized from the region's own
+                 footprint (REGION_EMBLEM_SIZE) and clipped by the region
+                 path so it never bleeds past the border — a heraldic
+                 stamp, not a floating sticker.  Shield/intro states that
+                 used to live on the chip now pulse the emblem;
+               · line — thin dashed inner border tinted by the bonus
+                 CATEGORY (savunma/saldiri/bilgi/ekonomi).
+             Dashed + low opacity so it never competes with the solid
+             player-coloured borders; category also appears on the briefing
+             card label, so meaning never relies on the tint alone.
+             Below labels/badges, above capture glow. */}
+        <g className="cq-map-bonus-aura-layer" pointerEvents="none" aria-hidden="true">
+          {regionEntries
+            .filter(e => e.bonus)
+            .map(({ id, d, bonus, bonusCat, isShielded, labelPos }) => (
+              <g
+                key={`bonus-aura-${id}`}
+                className="cq-map-bonus-aura"
+                data-cat={bonusCat ?? undefined}
+              >
+                <path d={d} className="cq-map-bonus-aura-wash" fillRule="evenodd" />
+                <path
+                  d={d}
+                  className="cq-map-bonus-motif"
+                  fill={`url(#${bonusMotifPatternId(bonus!.type)})`}
+                  fillRule="evenodd"
+                />
+                <g
+                  className="cq-map-bonus-emblem"
+                  data-cat={bonusCat ?? undefined}
+                  data-shielded={isShielded ? "" : undefined}
+                  data-intro={bonusIntroFx.includes(id as ConquestRegionId) ? "" : undefined}
+                  clipPath={`url(#cqBonusEmblemClip-${id})`}
+                >
+                  <ConquestMapBonusGlyph
+                    type={bonus!.type}
+                    fallbackChar={bonus!.icon}
+                    cx={labelPos.x + (REGION_EMBLEM_TUNE[id]?.dx ?? 0)}
+                    cy={labelPos.y + 4 + (REGION_EMBLEM_TUNE[id]?.dy ?? 0)}
+                    size={
+                      REGION_EMBLEM_TUNE[id]?.size ??
+                      REGION_EMBLEM_SIZE[id] ??
+                      DEFAULT_EMBLEM_SIZE
+                    }
+                  />
+                </g>
+                <path d={d} className="cq-map-bonus-aura-line" fillRule="evenodd" fill="none" />
+              </g>
+            ))}
+        </g>
+
         {/* ── Layer 4: region labels (always on top) ─────────────────── */}
         {regionEntries.map(({ id, owner, c, labelPos, label }) => {
           const labelY = owner ? labelPos.y - 7 : labelPos.y;
@@ -866,42 +1005,29 @@ export default function TurkeyConquestMap({
             ))}
         </g>
 
-        {/* ── Layer 4b: bonus region badges (decorative; never intercepts clicks) ──
-             Reads as a small strategic marker rather than a stray emoji:
-             dark disc + thin gold rim + inner ring for depth, with the
-             bonus glyph centered.  Sized so it lands clear of the value
-             badge to its left (see `+ 26` offset below).  Hover on the
-             host region path still surfaces the bonus label via the
-             native <title> on the path — no extra pointer target is
-             added here, so gameplay clicks stay untouched. */}
+        {/* ── Layer 4b: liman/bereket counters (decorative; never intercepts clicks) ──
+             The round bonus badge is GONE — the in-region emblem + watermark
+             (Layer 3.8) carry the type signal now.  What remains here are
+             the small counter pills (Liman income N/10, Bereket harvest
+             N/3) that must stay above labels for legibility.  They keep the
+             old chip anchor (`+ 26` right of the value badge) so they stay
+             clear of the point badge and of neighbouring labels.  Hover on
+             the host region path still surfaces the bonus label via the
+             native <title> on the path — no extra pointer target is added
+             here, so gameplay clicks stay untouched. */}
         <g className="cq-map-bonus-layer" pointerEvents="none" aria-hidden="true">
-          {regionEntries.map(({ id, labelPos, bonus, isShielded, limanTicks, bereketTurns, bereketHarvested }) => {
-            if (!bonus) return null;
+          {regionEntries.map(({ id, labelPos, bonus, limanTicks, bereketTurns, bereketHarvested }) => {
+            if (!bonus || (limanTicks === null && bereketTurns === null)) return null;
             const off = REGION_BADGE_OFFSET[id] ?? DEFAULT_BADGE_OFFSET;
             const cx  = labelPos.x + off.dx + 26;
             const cy  = labelPos.y + off.dy;
-            const isIntro = bonusIntroFx.includes(id as ConquestRegionId);
             return (
-              <g
-                key={`bonus-${id}`}
-                className="cq-map-bonus-chip"
-                data-shielded={isShielded ? "" : undefined}
-                data-intro={isIntro ? "" : undefined}
-              >
-                <circle cx={cx} cy={cy} r={10} className="cq-map-bonus-chip-bg" />
-                <circle cx={cx} cy={cy} r={6.5} className="cq-map-bonus-chip-inner" />
-                <ConquestMapBonusGlyph
-                  type={bonus.type}
-                  fallbackChar={bonus.icon}
-                  cx={cx}
-                  cy={cy}
-                  size={16}
-                />
+              <g key={`bonus-${id}`} className="cq-map-bonus-counter-anchor">
                 {limanTicks !== null && (
                   <g className="cq-map-liman-counter">
                     <rect
                       x={cx - 11}
-                      y={cy + 8}
+                      y={cy - 4.5}
                       width={22}
                       height={9}
                       rx={4.5}
@@ -910,7 +1036,7 @@ export default function TurkeyConquestMap({
                     />
                     <text
                       x={cx}
-                      y={cy + 12.6}
+                      y={cy + 0.1}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       className="cq-map-liman-counter-text"
@@ -926,7 +1052,7 @@ export default function TurkeyConquestMap({
                   >
                     <rect
                       x={cx - 11}
-                      y={cy + 8}
+                      y={cy - 4.5}
                       width={22}
                       height={9}
                       rx={4.5}
@@ -935,7 +1061,7 @@ export default function TurkeyConquestMap({
                     />
                     <text
                       x={cx}
-                      y={cy + 12.6}
+                      y={cy + 0.1}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       className="cq-map-liman-counter-text"
@@ -1094,6 +1220,37 @@ export default function TurkeyConquestMap({
     </text>
   </g>
 </g>
+            </g>
+          );
+        })()}
+
+        {/* ── Layer 5.6: bonus briefing spotlight ──────────────────────
+             Region-shaped warm-gold focus ring + soft wash on the region
+             the round-1 briefing card is currently introducing.  Parent
+             owns lifetime via `briefingFocusRegionId`; unmounts cleanly
+             between beats so each region gets its own draw-in.  Never
+             intercepts pointer events. */}
+        {briefingFocusRegionId && (() => {
+          const entry = regionEntries.find(e => e.id === briefingFocusRegionId);
+          if (!entry) return null;
+          return (
+            <g
+              key={`briefing-focus-${entry.id}`}
+              className="cq-map-briefing-focus-layer"
+              pointerEvents="none"
+              aria-hidden="true"
+            >
+              <path
+                d={entry.d}
+                className="cq-map-briefing-focus-wash"
+                fillRule="evenodd"
+              />
+              <path
+                d={entry.d}
+                className="cq-map-briefing-focus-ring"
+                fillRule="evenodd"
+                fill="none"
+              />
             </g>
           );
         })()}

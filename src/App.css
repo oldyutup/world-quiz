@@ -13959,6 +13959,80 @@ body {
   margin-top: 4px;
 }
 
+/* ── Bonus brifingi (round-1 intro kuyruğu) ──────────────────────
+ * Maç başındaki intro penceresinin SON diliminde oynar; server
+ * timing'e dokunmaz, ilk soruyu geciktirmez.  Her beat: haritada
+ * bölge vurgusu + bu mini kart.  Altın aksan game-intro kartıyla
+ * aynı dil — oyuncu ikisini tek akış olarak okur. */
+.cq-bonus-briefing-overlay {
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(0,0,0,0.4),
+    0 0 24px rgba(251, 191, 36, 0.18);
+  padding: 12px 18px;
+  max-width: min(460px, 92vw);
+}
+.cq-bonus-briefing-beat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  animation: cq-bonus-toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cq-bonus-briefing-icon {
+  flex: none;
+  display: inline-flex;
+  margin-top: 2px;
+}
+.cq-bonus-briefing-text {
+  min-width: 0;
+}
+.cq-bonus-briefing-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(253, 230, 138, 0.85);
+}
+.cq-bonus-briefing-title {
+  margin-top: 2px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fef3c7;
+}
+.cq-bonus-briefing-region {
+  color: rgba(226, 232, 240, 0.78);
+  font-weight: 600;
+}
+.cq-bonus-briefing-effect {
+  margin-top: 3px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: rgba(226, 232, 240, 0.88);
+}
+.cq-bonus-briefing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cq-bonus-briefing-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.08);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(241, 245, 249, 0.92);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cq-bonus-briefing-beat { animation: none; }
+}
+
 /* ── Major bonus notice ──────────────────────────────────────────
  * Premium first-capture banner.  Wired today for Liman ⚓ only;
  * other bonuses can graduate to the same banner by adding a branch
@@ -15806,7 +15880,10 @@ body {
   user-select: none;
 }
 
-/* ── Bonus region chip (badge: dark disc + thin gold rim + inner ring + glyph) ── */
+/* ── Harita marker chip taban stilleri (koyu disk + ince altın rim) ──
+ * Yuvarlak BONUS rozeti kaldırıldı; bu sınıfları bugün yalnız Sınır
+ * Karakolu (outpost) chip'i kullanıyor.  .cq-map-bonus-icon ayrıca
+ * bölge-içi emblemin emoji fallback'inde ortak. */
 .cq-map-bonus-chip-bg {
   fill: rgba(8, 12, 20, 0.78);
   stroke: rgba(255, 215, 120, 0.82);
@@ -15956,19 +16033,34 @@ body {
     r: 12 !important;
     stroke-width: 1.8px !important;
   }
-  /* Bonus chip scales alongside the value badge on mobile so the special
-     marker stays paired with the number it sits next to. Slightly larger
-     so the bonus reads as a distinct strategic objective at thumb scale. */
+  /* Marker chip (bugün yalnız Sınır Karakolu) telefonda değer rozetiyle
+     birlikte hafifçe büyür ki başparmak ölçeğinde okunur kalsın. */
   .cq-game-screen .cq-map-bonus-icon {
-    font-size: 18px;
+    font-size: 15px;
   }
   .cq-game-screen .cq-map-bonus-chip-bg {
-    r: 14 !important;
-    stroke-width: 1.8px !important;
+    r: 11.5 !important;
+    stroke-width: 1.5px !important;
   }
   .cq-game-screen .cq-map-bonus-chip-inner {
-    r: 9.5 !important;
-    stroke-width: 1.1px !important;
+    r: 7.6 !important;
+    stroke-width: 0.9px !important;
+  }
+  /* Filigran motifi: harita küçüldükçe çizgi alt-piksele düşer;
+     kalınlık + opaklık hafif artırılır ki doku hissi telefonda da kalsın. */
+  .cq-game-screen .cq-map-bonus-motif {
+    opacity: 0.66;
+  }
+  .cq-game-screen .cq-map-bonus-motif-glyph {
+    stroke-width: 2.1;
+  }
+  /* Bölge-içi emblem telefonda fiziksel olarak küçülür; okunurluk için
+     opaklık bir tık artar (etiket konturları yine üstte ve koyu). */
+  .cq-game-screen .cq-map-bonus-emblem .cq-map-bonus-img {
+    opacity: 0.74;
+  }
+  .cq-game-screen .cq-map-bonus-emblem .cq-map-bonus-icon {
+    opacity: 0.7;
   }
 }
 
@@ -16194,27 +16286,25 @@ body {
   letter-spacing: 0 !important;
 }
 
-/* Bonus chip — strategic badge that reads as "objective marker", not a
- * stray emoji.  Dark disc + warm amber rim + faint inner ring give it
- * a layered, minted feel that pairs cleanly with the gold value badge
- * sitting to its left without doubling as the same shape. */
+/* Marker chip görünümü — bugün yalnız Sınır Karakolu (outpost) chip'i bu
+ * sınıflarla çizilir (bonus rozeti kaldırıldı, görünüm outpost için aynen
+ * korunur).  Küçük disk, sakin rim, kor dış parıltı YOK — yalnız
+ * okunabilirlik için koyu kontur gölgesi. */
 .cq-map-bonus-chip-bg {
-  fill: rgba(20, 14, 8, 0.90) !important;
-  stroke: rgba(255, 196, 100, 0.98) !important;
-  stroke-width: 1.5px !important;
-  filter:
-    drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
-    drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)) !important;
-  r: 10.5;
+  fill: rgba(20, 14, 8, 0.88) !important;
+  stroke: rgba(255, 196, 100, 0.78) !important;
+  stroke-width: 1.2px !important;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) !important;
+  r: 9.5;
 }
 .cq-map-bonus-chip-inner {
   fill: none !important;
-  stroke: rgba(255, 210, 120, 0.42) !important;
-  stroke-width: 0.9px !important;
-  r: 7;
+  stroke: rgba(255, 210, 120, 0.34) !important;
+  stroke-width: 0.8px !important;
+  r: 6.3;
 }
 .cq-map-bonus-icon {
-  font-size: 13px;
+  font-size: 12px;
   user-select: none;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75)) !important;
 }
@@ -16224,6 +16314,88 @@ body {
   pointer-events: none;
   user-select: none;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.75));
+}
+
+/* ── Kalıcı bonus aurası ─────────────────────────────────────────
+ * Bonus taşıyan bölge chip'e ek olarak bölgenin KENDİSİNDEN okunur:
+ *   · wash — owner dolgusunun üstünde çok hafif sıcak ton (sahiplik
+ *     rengini değiştirmez, kaplamaz; yalnızca "değerli bölge" hissi);
+ *   · line — bonus KATEGORİSİNE göre tonlanan ince KESİKLİ iç sınır.
+ * Kesikli çizgi + düşük opaklık oyuncu renkli katı sınırlarla asla
+ * yarışmaz; kategori ayrımı ayrıca chip rim'inde ve brifing kartı
+ * etiketinde de verilir (anlam yalnız renge dayanmaz). */
+.cq-map-bonus-aura {
+  --cq-cat-line: rgba(252, 211, 77, 0.62);
+  --cq-cat-wash: rgba(252, 211, 77, 0.05);
+}
+.cq-map-bonus-aura[data-cat="savunma"] { --cq-cat-line: rgba(214, 226, 242, 0.62); --cq-cat-wash: rgba(203, 213, 225, 0.045); }
+.cq-map-bonus-aura[data-cat="saldiri"] { --cq-cat-line: rgba(253, 186, 116, 0.65); --cq-cat-wash: rgba(253, 186, 116, 0.05); }
+.cq-map-bonus-aura[data-cat="bilgi"]   { --cq-cat-line: rgba(199, 185, 255, 0.75); --cq-cat-wash: rgba(196, 181, 253, 0.06); }
+.cq-map-bonus-aura[data-cat="ekonomi"] { --cq-cat-line: rgba(252, 211, 77, 0.62);  --cq-cat-wash: rgba(252, 211, 77, 0.05); }
+.cq-map-bonus-aura-wash {
+  fill: var(--cq-cat-wash);
+  pointer-events: none;
+}
+/* Bölge-içi bonus filigranı — emblemin arkasındaki doku katmanı.  Bonus
+ * TÜRÜNE özel çizgi-sanat motif (kum saati / çapa / sur mazgalı / ağ /
+ * rün / …) bölge path'ine pattern dolgusu olarak basılır, yani bölge
+ * shape'ine doğal clip'lenir (bkz. bonusMotifs.tsx).  Orta katman
+ * opaklığı × ölçülü stroke alfası: doku net okunur ama owner rengini
+ * boğmaz, etiketler/rozetler üstte net kalır.  Statik — reduced-motion
+ * için ek kural gerekmez. */
+.cq-map-bonus-motif {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.cq-map-bonus-motif-glyph {
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.cq-map-bonus-motif-dot {
+  fill: currentColor;
+  stroke: none;
+}
+@keyframes cqMapBonusAuraBreath {
+  0%, 100% { stroke-opacity: 0.6; }
+  50%      { stroke-opacity: 1; }
+}
+.cq-map-bonus-aura-line {
+  stroke: var(--cq-cat-line);
+  stroke-width: 2;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: cqMapBonusAuraBreath 4.6s ease-in-out infinite;
+}
+
+/* ── Bölge-içi bonus emblemi — ANA tür göstergesi ─────────────────
+ * Eski yuvarlak rozetin yerini alan büyük tür ikonu: bölge path'ine
+ * clip'li (asla taşmaz), bölge ayak izinden boyutlanır
+ * (REGION_EMBLEM_SIZE, TurkeyConquestMap) ve orta opaklıkta basılır —
+ * haritaya vurulmuş arma/damga hissi, yüzen sticker değil.  Filigran
+ * motifle birlikte çalışır: motif zemini dokur, emblem türü tek bakışta
+ * söyler; bölge adı / oyuncu adı / puan rozetleri üstteki katmanlarda
+ * koyu konturlarıyla net kalır. */
+.cq-map-bonus-emblem .cq-map-bonus-img {
+  opacity: 0.68;
+  /* İnce sıcak kenar ışığı + geniş yumuşak hale: koyu ikonlar (kuzgun,
+   * kale, koçbaşı) koyu owner dolgularında da okunur; alfa düşük tutulur
+   * ki açık ikonlar "yaldızlı damga"dan öteye, sticker'a kaymasın. */
+  /* Sıkı rim iki kez üst üste basılır: tek geçişte 0.5 alfa pixel-art
+   * kenarında görünmez kalıyor; iki kat, kazınmış açık kontur etkisi verir. */
+  filter:
+    saturate(0.92)
+    drop-shadow(0 0 1px rgba(255, 240, 205, 0.55))
+    drop-shadow(0 0 1.5px rgba(255, 240, 205, 0.5))
+    drop-shadow(0 0 10px rgba(255, 234, 190, 0.34))
+    drop-shadow(0 1px 2px rgba(6, 6, 10, 0.5));
+}
+.cq-map-bonus-emblem .cq-map-bonus-icon {
+  opacity: 0.62;
+  filter: drop-shadow(0 1px 2px rgba(6, 6, 10, 0.5)) !important;
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -16313,24 +16485,27 @@ body {
 .cq-icon-select-option--disabled:hover { background: transparent; }
 
 /* When a bonus region currently has its shield active (İstanbul today),
- * pulse the bonus chip so the player can see the buff is live without
+ * pulse the region emblem so the player can see the buff is live without
  * adding a separate icon. Slow + small so it never feels noisy. */
-@keyframes cqMapBonusChipShieldPulse {
+@keyframes cqMapBonusEmblemShieldPulse {
   0%, 100% {
+    opacity: 0.72;
     filter:
-      drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
-      drop-shadow(0 0 4px rgba(255, 215, 90, 0.7));
+      saturate(0.95)
+      drop-shadow(0 0 1px rgba(255, 240, 205, 0.55))
+      drop-shadow(0 0 4px rgba(255, 215, 90, 0.55));
   }
   50% {
+    opacity: 0.88;
     filter:
-      drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85))
-      drop-shadow(0 0 9px rgba(255, 235, 130, 1));
+      saturate(1)
+      drop-shadow(0 0 1px rgba(255, 240, 205, 0.6))
+      drop-shadow(0 0 10px rgba(255, 235, 130, 0.95));
   }
 }
-.cq-map-bonus-chip[data-shielded] .cq-map-bonus-chip-bg {
-  stroke: rgba(254, 240, 138, 1) !important;
-  stroke-width: 1.8px !important;
-  animation: cqMapBonusChipShieldPulse 1.8s ease-in-out infinite;
+.cq-map-bonus-emblem[data-shielded] .cq-map-bonus-img,
+.cq-map-bonus-emblem[data-shielded] .cq-map-bonus-icon {
+  animation: cqMapBonusEmblemShieldPulse 1.8s ease-in-out infinite;
 }
 
 /* ── Bonus intro pulse ─────────────────────────────────────────
@@ -16340,12 +16515,12 @@ body {
  *   · `.cq-map-bonus-intro-halo` — region-shaped gold halo that
  *     traces the bonus tile's border, so players see *which*
  *     region(s) got the bonus from a glance.
- *   · `.cq-map-bonus-chip[data-intro]` — a brief brightening of
- *     the chip itself so the badge and the region read as one
+ *   · `.cq-map-bonus-emblem[data-intro]` — a brief brightening of
+ *     the in-region emblem so the icon and the region read as one
  *     beat instead of two competing flashes.
- * Length matches `BONUS_INTRO_FX_MS` in TurkeyConquestMap.tsx
- * (2500 ms); React unmounts both nodes after that window so the
- * idle map stays calm. */
+ * Length matches `BONUS_INTRO_FX_MS` in TurkeyConquestMap.tsx;
+ * React unmounts both nodes after that window so the idle map
+ * stays calm. */
 @keyframes cqMapBonusIntroHalo {
   0%   { stroke-opacity: 0;    stroke-width: 1; filter: drop-shadow(0 0 0 rgba(255, 200, 90, 0)); }
   8%   { stroke-opacity: 0.95; stroke-width: 4; filter: drop-shadow(0 0 14px rgba(255, 210, 100, 0.85)); }
@@ -16359,14 +16534,43 @@ body {
   animation: cqMapBonusIntroHalo 4900ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes cqMapBonusChipIntro {
-  0%   { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)); }
-  12%  { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 12px rgba(255, 220, 130, 1)); }
-  70%  { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 8px rgba(255, 205, 110, 0.85)); }
-  100% { filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)); }
+@keyframes cqMapBonusEmblemIntro {
+  0%   { opacity: 0.68; filter: saturate(0.92) drop-shadow(0 0 1px rgba(255, 240, 205, 0.55)) drop-shadow(0 0 2px rgba(255, 200, 90, 0)); }
+  12%  { opacity: 1;    filter: saturate(1.05) drop-shadow(0 0 1px rgba(255, 240, 205, 0.6))  drop-shadow(0 0 10px rgba(255, 220, 130, 0.9)); }
+  70%  { opacity: 0.9;  filter: saturate(1)    drop-shadow(0 0 1px rgba(255, 240, 205, 0.6))  drop-shadow(0 0 7px rgba(255, 205, 110, 0.7)); }
+  100% { opacity: 0.68; filter: saturate(0.92) drop-shadow(0 0 1px rgba(255, 240, 205, 0.55)) drop-shadow(0 0 2px rgba(255, 200, 90, 0)); }
 }
-.cq-map-bonus-chip[data-intro] .cq-map-bonus-chip-bg {
-  animation: cqMapBonusChipIntro 4900ms ease-out both;
+/* Kaynak sırası gereği intro, kalkan pulse'ından SONRA gelir: İstanbul
+ * kalkanlı + intro ise 4.9sn'lik intro parlaması kazanır, bitince kalıcı
+ * kalkan pulse'ı devam eder (eski chip davranışıyla birebir). */
+.cq-map-bonus-emblem[data-intro] .cq-map-bonus-img,
+.cq-map-bonus-emblem[data-intro] .cq-map-bonus-icon {
+  animation: cqMapBonusEmblemIntro 4900ms ease-out both;
+}
+
+/* ── Brifing bölge vurgusu ───────────────────────────────────────
+ * Round-1 bonus brifingi sırasında sıradaki bonusun bölgesi kısa
+ * süreliğine sahnelenir: bölge-şekilli sıcak halka + hafif dolgu.
+ * Yalnız aktif beat boyunca mount edilir; hızlı ease-out girişten
+ * sonra beat sonuna dek sabit tutar (yanıp sönme yok). */
+@keyframes cqMapBriefingFocusRing {
+  0%   { stroke-opacity: 0;    stroke-width: 1.5; filter: none; }
+  22%  { stroke-opacity: 0.95; stroke-width: 4.5; filter: drop-shadow(0 0 12px rgba(253, 230, 138, 0.85)); }
+  100% { stroke-opacity: 0.80; stroke-width: 3;   filter: drop-shadow(0 0 8px rgba(253, 230, 138, 0.55)); }
+}
+@keyframes cqMapBriefingFocusWash {
+  from { fill-opacity: 0; }
+  to   { fill-opacity: 1; }
+}
+.cq-map-briefing-focus-ring {
+  stroke: rgba(254, 243, 199, 0.95);
+  pointer-events: none;
+  animation: cqMapBriefingFocusRing 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cq-map-briefing-focus-wash {
+  fill: rgba(253, 230, 138, 0.10);
+  pointer-events: none;
+  animation: cqMapBriefingFocusWash 240ms ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -16378,10 +16582,35 @@ body {
     stroke-width: 2.2;
     filter: none;
   }
-  .cq-map-bonus-chip[data-intro] .cq-map-bonus-chip-bg {
+  .cq-map-bonus-emblem[data-intro] .cq-map-bonus-img,
+  .cq-map-bonus-emblem[data-intro] .cq-map-bonus-icon {
     animation: none;
   }
-  .cq-map-bonus-chip[data-shielded] .cq-map-bonus-chip-bg {
+  /* Kalkan durumu hareketsiz kullanıcıda da okunsun: pulse yerine sabit,
+   * hafif parlak altın hale. */
+  .cq-map-bonus-emblem[data-shielded] .cq-map-bonus-img,
+  .cq-map-bonus-emblem[data-shielded] .cq-map-bonus-icon {
+    animation: none;
+    opacity: 0.8;
+    /* !important: emoji fallback'in tabanındaki !important'lı filtreyi de
+     * ezmek için (PNG varyantında zaten spesifiklikle kazanır). */
+    filter:
+      saturate(1)
+      drop-shadow(0 0 1px rgba(255, 240, 205, 0.55))
+      drop-shadow(0 0 6px rgba(255, 225, 110, 0.75)) !important;
+  }
+  /* Aura breathes → static; briefing spotlight draws in → static hold. */
+  .cq-map-bonus-aura-line {
+    animation: none;
+    stroke-opacity: 0.7;
+  }
+  .cq-map-briefing-focus-ring {
+    animation: none;
+    stroke-opacity: 0.8;
+    stroke-width: 3;
+    filter: none;
+  }
+  .cq-map-briefing-focus-wash {
     animation: none;
   }
 }
@@ -25019,6 +25248,12 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 
 .mode-card-asset-icon--blind-spot {
   transform: scale(1.65);
+}
+
+/* Çizim Test: Fluent palette SVG'si viewbox'ını PNG setinden daha dolu
+   kullanır — büyütmeden bas (scale 1) ki optik boy komşularıyla eşleşsin. */
+.mode-card-asset-icon--cizim {
+  transform: scale(1.05);
 }
 
 /* Full HD-like desktop: lower locked conquest scene slightly */

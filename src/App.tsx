@@ -16,6 +16,10 @@ import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
 import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
+import CizimTestMode from "./modes/cizimTest/CizimTestMode";
+// Çizim Test kartı ikonu: home PNG seti yerine mevcut Fluent palette SVG'si
+// (prototip; kalıcı PNG art üretilirse iconPath'i değiştirmek yeterli).
+import cizimTestIconUrl from "./assets/icons/palette.svg";
 import MobileHome from "./components/MobileHome";
 import { QuickMatchModal } from "./components/QuickMatchModal";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
@@ -132,6 +136,7 @@ const ONLINE_GATED_SCREENS: Partial<Record<AppScreen, AuthPromptReason>> = {
   "conquest-game":    "kusatma-gate",
   "conquest-join":    "kusatma-gate",
   "conquest-rooms":   "kusatma-gate",
+  "cizim-test":       "multi-gate",
 };
 
 /** Düello / Çok Oyunculu davet linkleri. Hepsi login gerektirir. OAuth redirect
@@ -262,6 +267,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "harita-duel-game": 0,
   "kornokta-create": 0,
   "kornokta-join": 0,
+  "cizim-test": 0, // prototip: gold/XP entegrasyonu yok
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -559,6 +565,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
   { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
   { id: "kornokta-create", icon: "detective", iconPath: "/assets/icons/home/blind-spot.png", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
+  { id: "cizim-test", icon: "palette", iconPath: cizimTestIconUrl, title: "ÇİZİM TEST", desc: "Aynı kelimeleri çiz, sonra eşleştir.", available: true },
 ];
   return (
     <div className={"home-screen" + (homeTheme === "turkiye" ? " home-screen--turkiye" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : " home-screen--default")}>
@@ -583,6 +590,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
                   "mode-card-asset-icon"
                   + (m.id === "conquest-game" ? " mode-card-asset-icon--conquest" : "")
                   + (m.id === "kornokta-create" ? " mode-card-asset-icon--blind-spot" : "")
+                  + (m.id === "cizim-test" ? " mode-card-asset-icon--cizim" : "")
                 }
               />
             </div>
@@ -617,8 +625,8 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
         ))}
         {/* Hızlı Eşleş girişi artık ÜST BAR'daki birincil CTA (bkz.
             HomeTopBarActions → homeQuickMatchOpen → QuickMatchModal). Eski 8.
-            ızgara kartı KALDIRILDI; 7 gerçek mod kartı auto-fit 4 sütunda aynı
-            ölçüde kalır, ikinci satırın 4. hücresi boş bırakılır. */}
+            ızgara kartı KALDIRILDI; 8 gerçek mod kartı (8.si Çizim Test
+            prototipi) auto-fit 4 sütunda aynı ölçüde iki tam satır doldurur. */}
       </div>
       {/* Atlas Klasmanı daveti — mod ızgarasının altında tek sessiz satır;
           LeaderboardModal'ı açar. ≤600px'te CSS gizler (MobileHome alt-nav'ında
@@ -3367,6 +3375,12 @@ useEffect(() => {
   if (screen === "kornokta-join") return (
     <KorNoktaMode
       initialAction="join"
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
+  if (screen === "cizim-test") return (
+    <CizimTestMode
       onHome={() => setScreen("home")}
       profile={profile}
     />

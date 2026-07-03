@@ -100,6 +100,16 @@ const BONUS_TYPE_META: Record<
   return out as Record<ConquestRegionBonusType, { icon: string; label: string; description: string }>;
 })();
 
+/** Açık bonus spawn havuzundan çıkarılan bölgeler — Antep ve Kilis/Hatay
+ *  haritada bölge-içi bonus filigranını okutamayacak kadar küçük.  Yalnız
+ *  bu modüldeki otomatik atamayı etkiler; oyuncu eylemleri (ör. Gizli
+ *  Operasyon hedefi) ve gizli bonus sistemi bağımsızdır.  Atama host'ta maç
+ *  başında hesaplanıp yüklendiği için değişiklik yalnız yeni maçlara işler. */
+const BONUS_EXCLUDED_REGION_IDS: ReadonlySet<string> = new Set([
+  "antep_kilis",
+  "hatay_osmaniye",
+]);
+
 /** mulberry32 — deterministic 32-bit PRNG.  Local copy so this module stays
  *  decoupled from `conquestState.ts`. */
 function mulberry32(seed: number): () => number {
@@ -160,8 +170,11 @@ export function buildRoundBonusAssignment(
   for (const r of regions) regionById.set(r.id, r);
 
   // Pool: every region *except* the capital region(s) — capital cinematic
-  // owns Ankara; mixing it into the rotation undermines that channel.
-  const pool: ConquestRegion[] = regions.filter(r => !CAPITAL_REGION_IDS.has(r.id));
+  // owns Ankara; mixing it into the rotation undermines that channel — and
+  // the too-small-to-read exclusions (Antep, Hatay).
+  const pool: ConquestRegion[] = regions.filter(
+    r => !CAPITAL_REGION_IDS.has(r.id) && !BONUS_EXCLUDED_REGION_IDS.has(r.id),
+  );
   if (pool.length === 0) return {};
 
   // Tally how many tiles each owner currently controls, used for the anti-
