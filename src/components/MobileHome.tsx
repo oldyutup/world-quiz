@@ -53,7 +53,8 @@ export type MobileHomeTarget =
   | "flag-duel-game"
   | "wheel-duel-game"
   | "duel-group-game"
-  | "wheel-group-game";
+  | "wheel-group-game"
+  | "cizim-test";
 
 /** One home background theme — mirrors App's HOME_THEMES entries without
  *  importing the HomeTheme union, so the bottom-nav theme sheet stays a dumb
@@ -679,6 +680,7 @@ export default function MobileHome({
         { icon: "🕵️", title: "Kör Nokta",     desc: "Raporlara güven, gizli konumu bul.", onTap: onOpenKorNokta },
         { icon: "🌍", title: "Ülke Yaz Grup", desc: "Arkadaşlarınla aynı odada yarış.", onTap: () => onPlay("duel-group-game") },
         { icon: "🎯", title: "Çark Grup",     desc: "Grup halinde çark yarışı.",        onTap: () => onPlay("wheel-group-game") },
+        { icon: "🎨", title: "Çizim Modu",    desc: "Aynı kelimeleri çiz, çiftleri eşleştir.", onTap: () => onPlay("cizim-test") },
       ],
     },
   ];

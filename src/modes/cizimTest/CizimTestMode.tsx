@@ -1158,7 +1158,7 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
         </ol>
       </div>
       <p className="ct-note">
-        Prototip: masaüstü + mouse için tasarlandı. Sayfayı yenilersen oyundan düşersin.
+        Prototip: sayfayı yenilersen oyundan düşersin.
       </p>
     </section>
   );

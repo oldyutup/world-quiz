@@ -488,6 +488,10 @@
     rgba(96, 78, 44, 0.14) 100%
   );
 }
+/* touch-action:none — kanvasa başlayan dokunuş sayfayı KAYDIRMAZ /
+   zoom'lamaz; kanvas dışındaki alanlarda normal kaydırma sürer.
+   user-select/touch-callout — çizim sırasında long-press metin seçimi ve
+   iOS büyüteç/callout stroke'u kesmesin. */
 .ct-canvas {
   display: block;
   width: 100%;
@@ -495,6 +499,10 @@
   aspect-ratio: 4 / 3;
   cursor: crosshair;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .ct-paper-wrap.is-locked .ct-canvas { cursor: default; }
 .ct-gap-overlay {
@@ -776,7 +784,13 @@
 
 /* ── Dar ekran (tam polish değil; kırılmasın yeter) ── */
 @media (max-width: 900px) {
-  .ct-match-body { flex-direction: column; }
+  /* Sütun yönünde base align-items:flex-start cross-axis'i shrink-to-fit
+     yapar ve board (içeriği tamamen absolute kartlar) sıfıra çöker —
+     stretch ile board/rail tam genişlik alır. */
+  .ct-match-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
   .ct-matched-rail {
     width: 100%;
     max-height: 220px;
@@ -789,6 +803,38 @@
   .ct-team-cols { grid-template-columns: 1fr; }
   .ct-header-code,
   .ct-back-btn { min-width: 0; }
+
+  /* Mobil (portrait öncelikli): kağıt olabildiğince geniş — yatay padding
+     daralır, üst bilgi kompaktlaşır ama tur/kelime/süre hep görünür kalır. */
+  .ct-header { padding: 10px 12px; gap: 10px; }
+  .ct-header-title { font-size: 1.05rem; letter-spacing: 0.07em; gap: 6px; }
+  .ct-main { padding: 14px 12px 28px; }
+  .ct-draw { gap: 12px; }
+  .ct-draw-top { gap: 8px; }
+  .ct-round-pill { padding: 5px 10px; font-size: 0.8rem; }
+  .ct-timer { width: 44px; font-size: 2rem; }
+
+  /* Dokunma hedefleri: Temizle parmak boyunda; hızlı ardışık dokunuşta
+     double-tap zoom tetiklenmesin. */
+  .ct-clear-btn {
+    min-height: 44px;
+    padding: 10px 24px;
+    touch-action: manipulation;
+  }
+  .ct-team-toggle,
+  .ct-assign-btn { min-height: 32px; }
+
+  /* Eşleştirme tahtası: 5 sütun 375px'te kartları okunmaz küçültüyor;
+     4 sütun (20 kart = 5 satır) dokunmatikte rahat hedef verir. */
+  .ct-board { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ── Native app (Capacitor) safe-area ──
+   Üst inset html.is-native-app .app kuralından gelir (App.css). Alt kontroller
+   (Temizle / lobi butonları) iPhone home indicator altında kalmasın diye
+   ct-main'in alt padding'ine bottom inset eklenir. Web'de env() 0 çözülür. */
+html.is-native-app .ct-main {
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Hareket azaltma ── */
