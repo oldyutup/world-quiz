@@ -10,17 +10,22 @@
 import CizimTestMode from "../modes/cizimTest/CizimTestMode";
 import type { Profile } from "../lib/auth";
 
+/* Kimlik URL'den (?pid=&name=) sabitlenebilir — böylece sayfa yenilemesi AYNI
+ * oyuncu olarak döner (reconnect E2E) ve çok-client testlerde deterministiktir.
+ * Verilmezse rastgele üretilir (eski davranış). Yalnız DEV sayfası. */
+const params = new URLSearchParams(window.location.search);
 const suffix = Math.floor(Math.random() * 900 + 100);
+const randomId =
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `dev-${Math.random().toString(36).slice(2)}`;
 const fakeProfile: Profile = {
-  id:
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `dev-${Math.random().toString(36).slice(2)}`,
-  username: `Test${suffix}`,
+  id: params.get("pid") || randomId,
+  username: params.get("name") || `Test${suffix}`,
   xp: 0,
   level: 1,
   gold: 0,
-  avatar_id: null,
+  avatar_id: params.get("avatar") || null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };

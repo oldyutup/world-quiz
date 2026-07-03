@@ -304,7 +304,49 @@
   padding: 3px 10px;
   cursor: pointer;
 }
-.ct-team-toggle:hover { background: rgba(88, 166, 255, 0.12); }
+.ct-team-toggle:hover:not(:disabled) { background: rgba(88, 166, 255, 0.12); }
+.ct-team-toggle:disabled { opacity: 0.45; cursor: default; }
+.ct-self-team {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.ct-team-note {
+  font-size: 0.68rem;
+  color: var(--muted);
+  max-width: 150px;
+  text-align: right;
+  line-height: 1.25;
+}
+/* Host: her satırda takım atama kontrolü. */
+.ct-host-assign {
+  display: flex;
+  gap: 4px;
+}
+.ct-assign-btn {
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.ct-assign-btn:disabled { cursor: default; }
+.ct-assign-btn--blue.is-active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.15);
+}
+.ct-assign-btn--red.is-active {
+  border-color: var(--red);
+  color: var(--text);
+  background: rgba(248, 81, 73, 0.15);
+}
 .ct-empty {
   color: var(--muted);
   font-size: 0.82rem;

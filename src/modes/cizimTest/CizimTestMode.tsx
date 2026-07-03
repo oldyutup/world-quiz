@@ -90,11 +90,28 @@ interface PresenceInfo {
   playerId: string;
   name: string;
   avatarId: string | null;
-  team: CtTeam;
   joinedAt: number;
   host: boolean;
-  /** Yalnız host'un değeri anlamlıdır — lobide mod seçimini taşır. */
+}
+
+/**
+ * Host-otoriter lobi durumu: oyun FORMATI ve TAKIM dağılımı.
+ *
+ * Neden presence'tan AYRI: presence yalnız "kim bağlı" bilgisidir ve
+ * güvenilmez otoritedir (auto-rejoin başlangıç değerini yeniden track eder,
+ * flap anlık eksik görünüm yaratır). Format ve takım bunun yerine burada,
+ * stable `playerId` anahtarıyla tutulur; YALNIZ host yazar ve `lobby_state`
+ * broadcast'iyle senkronlanır. Böylece:
+ *   - Takım değiştirmek formatı ASLA resetlemez (ayrı alanlar, tek yazar).
+ *   - Presence flap / reconnect / geç gelen client formatı 1v1'e düşürmez.
+ *   - Takım stable playerId'ye bağlı — presence sırasından türetilmez.
+ */
+interface LobbyState {
   mode: GameMode;
+  /** playerId → takım. Yalnız 2v2'de anlamlı; 1v1'de yok sayılır. */
+  teams: Record<string, CtTeam>;
+  /** Monotonik artan revizyon; misafirde bayat broadcast guard'ı. */
+  rev: number;
 }
 
 interface RosterPlayer {
@@ -145,6 +162,44 @@ function shuffled<T>(arr: readonly T[]): T[] {
 
 const TEAM_LABEL: Record<CtTeam, string> = { blue: "Mavi", red: "Kırmızı" };
 
+/**
+ * Host: aktif oyunculara eksik takımları DENGELI ata. Mevcut atamaları korur
+ * (flap/reconnect takımı silmez), yalnız takımsız oyuncuyu daha az üyeli
+ * takıma koyar (eşitlikte Mavi). Kimseyi silmez; sırayla 4 katılan → 2-2.
+ */
+function reconcileTeams(
+  activeIds: string[],
+  prev: Record<string, CtTeam>,
+): { teams: Record<string, CtTeam>; changed: boolean } {
+  const teams = { ...prev };
+  let changed = false;
+  const count: Record<CtTeam, number> = { blue: 0, red: 0 };
+  for (const id of activeIds) {
+    const t = teams[id];
+    if (t === "blue" || t === "red") count[t] += 1;
+  }
+  for (const id of activeIds) {
+    if (teams[id] !== "blue" && teams[id] !== "red") {
+      const team: CtTeam = count.blue <= count.red ? "blue" : "red";
+      teams[id] = team;
+      count[team] += 1;
+      changed = true;
+    }
+  }
+  return { teams, changed };
+}
+
+/** Aktif oyuncular arasında bir takımın üye sayısı (kapasite kontrolü). */
+function activeTeamCount(
+  team: CtTeam,
+  teams: Record<string, CtTeam>,
+  activeIds: Set<string>,
+): number {
+  let n = 0;
+  for (const id of activeIds) if (teams[id] === team) n += 1;
+  return n;
+}
+
 interface CizimTestModeProps {
   onHome: () => void;
   profile: Profile | null;
@@ -162,8 +217,12 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
   const [menuNotice, setMenuNotice] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [lobbyPlayers, setLobbyPlayers] = useState<PresenceInfo[]>([]);
-  const [myTeam, setMyTeam] = useState<CtTeam>("blue");
-  const [hostMode, setHostMode] = useState<GameMode>("1v1");
+  /* Format + takım: host-otoriter, broadcast-senkron (bkz. LobbyState). */
+  const [lobbyState, setLobbyState] = useState<LobbyState>({
+    mode: "1v1",
+    teams: {},
+    rev: 0,
+  });
   const [game, setGame] = useState<GameInfo | null>(null);
   const [drawView, setDrawView] = useState<DrawView>({ stage: "intro", round: 0, secLeft: 4 });
   const [collectedCount, setCollectedCount] = useState(0);
@@ -182,13 +241,17 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
   boardsRef.current = boards;
   const isHostRef = useRef(isHost);
   isHostRef.current = isHost;
-  const myTeamRef = useRef(myTeam);
-  myTeamRef.current = myTeam;
+  const lobbyStateRef = useRef(lobbyState);
+  lobbyStateRef.current = lobbyState;
   const lobbyPlayersRef = useRef(lobbyPlayers);
   lobbyPlayersRef.current = lobbyPlayers;
 
   const chanRef = useRef<RealtimeChannel | null>(null);
-  const presenceRef = useRef<Omit<PresenceInfo, "joinedAt"> & { joinedAt: number } | null>(null);
+  /** Bu bağlantıda SUBSCRIBED en az bir kez işlendi mi? Auto-rejoin ikinci
+   *  SUBSCRIBED'ta faz/lobi state SIFIRLANMASIN (reconnect korunumu). */
+  const subscribedRef = useRef(false);
+  /** Host ilk lobi durumunu yayınladı mı? Re-SUBSCRIBED takım/rev'i ezmesin. */
+  const lobbyInitedRef = useRef(false);
   const canvasRef = useRef<DrawingCanvasHandle>(null);
   const drawingsRef = useRef<Map<string, string>>(new Map());
   const submittedRef = useRef<Set<number>>(new Set());
@@ -260,6 +323,8 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
         haltCheckTimerRef.current = null;
       }
       hostSeenRef.current = false;
+      subscribedRef.current = false;
+      lobbyInitedRef.current = false;
       if (chanRef.current) {
         void supabase.removeChannel(chanRef.current);
         chanRef.current = null;
@@ -268,8 +333,7 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
       setLobbyPlayers([]);
       setRoomCode("");
       setIsHost(false);
-      setMyTeam("blue");
-      setHostMode("1v1");
+      setLobbyState({ mode: "1v1", teams: {}, rev: 0 });
       setConnecting(false);
       setMenuNotice(notice ?? null);
       setPhase("menu");
@@ -295,6 +359,59 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
   const send = useCallback((event: string, payload: unknown) => {
     void chanRef.current?.send({ type: "broadcast", event, payload });
   }, []);
+
+  /* ── Lobi durumu (format + takım): host tek yazar, broadcast senkron ── */
+  const broadcastLobby = useCallback(
+    (next: LobbyState) => {
+      lobbyStateRef.current = next;
+      setLobbyState(next);
+      send("lobby_state", next);
+    },
+    [send],
+  );
+
+  /** Misafir: host'un yolladığı lobi durumunu al (bayat rev'i ele). Host
+   *  kendi echo'sunu yok sayar (tek yazar). */
+  const handleLobbyState = useCallback((p: LobbyState) => {
+    if (isHostRef.current) return;
+    if (!p || typeof p.rev !== "number") return;
+    if (p.rev < lobbyStateRef.current.rev) return;
+    const next: LobbyState = {
+      mode: p.mode === "2v2" ? "2v2" : "1v1",
+      teams: p.teams ?? {},
+      rev: p.rev,
+    };
+    lobbyStateRef.current = next;
+    setLobbyState(next);
+  }, []);
+
+  /** Host: geç gelen client'ın "merhaba"sına güncel durumu geri yolla. */
+  const handleLobbyHello = useCallback(() => {
+    if (!isHostRef.current) return;
+    send("lobby_state", lobbyStateRef.current);
+  }, [send]);
+
+  /** Host: takım değişim isteğini işle. Kendi kontrolüyle (bySelf) geçiş
+   *  hedef takım doluysa reddedilir; host ataması serbesttir (geçici 3-1 ile
+   *  yeniden düzenlemeye izin verir). */
+  const handleTeamRequest = useCallback(
+    (p: { playerId: string; team: CtTeam; bySelf: boolean }) => {
+      if (!isHostRef.current) return;
+      const base = lobbyStateRef.current;
+      if (base.mode !== "2v2") return;
+      const team: CtTeam = p.team === "red" ? "red" : "blue";
+      const activeIds = new Set(lobbyPlayersRef.current.map((pl) => pl.playerId));
+      if (!activeIds.has(p.playerId)) return;
+      if (base.teams[p.playerId] === team) return;
+      if (p.bySelf && activeTeamCount(team, base.teams, activeIds) >= 2) return;
+      broadcastLobby({
+        mode: base.mode,
+        teams: { ...base.teams, [p.playerId]: team },
+        rev: base.rev + 1,
+      });
+    },
+    [broadcastLobby],
+  );
 
   /* ── game_start (host + self-broadcast ile herkes aynı yoldan) ── */
   const handleGameStart = useCallback((p: GameInfo) => {
@@ -395,15 +512,17 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
      yan etki yok — StrictMode double-invoke'ta da tek ses). */
   useEffect(() => {
     if (phase !== "match") return;
+    const g = gameRef.current;
+    const myTeamInGame = g?.roster.find((r) => r.playerId === myId)?.team ?? "blue";
     (Object.keys(boards) as CtTeam[]).forEach((team) => {
       const board = boards[team];
       if (!board?.resolving) return;
       if (soundSeqRef.current[team] === board.turnSeq) return;
       soundSeqRef.current[team] = board.turnSeq;
-      const visible = gameRef.current?.mode === "1v1" || team === myTeamRef.current;
+      const visible = g?.mode === "1v1" || team === myTeamInGame;
       if (visible) playSound(board.resolving.correct ? "correct" : "wrong");
     });
-  }, [phase, boards]);
+  }, [phase, boards, myId]);
 
   /* Bitiş kontrolü: her tahta değişiminde (resolve dahil) effect'ten. */
   useEffect(() => {
@@ -433,19 +552,14 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
           playerId: p.playerId,
           name: p.name,
           avatarId: p.avatarId ?? null,
-          team: p.team === "red" ? "red" : "blue",
           joinedAt: p.joinedAt,
           host: !!p.host,
-          mode: p.mode === "2v2" ? "2v2" : "1v1",
         });
       });
     setLobbyPlayers(players);
 
     const hostEntry = players.find((p) => p.host);
-    if (hostEntry) {
-      hostSeenRef.current = true;
-      setHostMode(hostEntry.mode);
-    }
+    if (hostEntry) hostSeenRef.current = true;
 
     const ph = phaseRef.current;
 
@@ -463,6 +577,21 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
       if (newest.playerId === myId) {
         leaveRoom("Oda dolu (en fazla 4 oyuncu).");
         return;
+      }
+    }
+
+    // Host: 2v2'de yeni katılanları dengeli takımlara ata (mevcutları koru).
+    // Yalnız gerçekten değiştiyse yayınla — kararlı, gereksiz broadcast yok.
+    if (isHostRef.current && ph === "lobby" && players.length <= 4) {
+      const base = lobbyStateRef.current;
+      if (base.mode === "2v2") {
+        const { teams, changed } = reconcileTeams(
+          players.map((p) => p.playerId),
+          base.teams,
+        );
+        if (changed) {
+          broadcastLobby({ mode: base.mode, teams, rev: base.rev + 1 });
+        }
       }
     }
 
@@ -499,7 +628,7 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
         haltCheckTimerRef.current = null;
       }
     }
-  }, [clearGameTimers, leaveRoom, myId]);
+  }, [broadcastLobby, clearGameTimers, leaveRoom, myId]);
 
   /* ── Kanal kurulumu (oda kur / katıl ortak) ── */
   const connect = useCallback(
@@ -507,6 +636,10 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
       setConnecting(true);
       setMenuNotice(null);
       hostSeenRef.current = false;
+      subscribedRef.current = false;
+      lobbyInitedRef.current = false;
+      // joinedAt bağlantı başına SABIT — auto-rejoin sıralamayı bozmasın.
+      const joinedAt = Date.now();
       const presenceKey = `${myId}:${Math.random().toString(36).slice(2, 8)}`;
       const chan = supabase.channel(`cizim-test:${code}`, {
         config: {
@@ -549,25 +682,53 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
           handleGameOver(payload as { gameSeq: number; winnerTeam: CtTeam }),
         )
         .on("broadcast", { event: "return_lobby" }, handleReturnLobby)
+        .on("broadcast", { event: "lobby_state" }, ({ payload }) =>
+          handleLobbyState(payload as LobbyState),
+        )
+        .on("broadcast", { event: "lobby_hello" }, handleLobbyHello)
+        .on("broadcast", { event: "team_request" }, ({ payload }) =>
+          handleTeamRequest(payload as { playerId: string; team: CtTeam; bySelf: boolean }),
+        )
         .subscribe(async (status) => {
           if (status === "SUBSCRIBED") {
-            const info = {
+            // Presence yalnız üyelik taşır (isim/avatar/host) — format ve takım
+            // LobbyState'te (host-otoriter broadcast) yaşar.
+            const info: PresenceInfo = {
               playerId: myId,
               name: myName,
               avatarId: myAvatar,
-              team: "blue" as CtTeam,
-              joinedAt: Date.now(),
+              joinedAt,
               host: asHost,
-              mode: "1v1" as GameMode,
             };
-            presenceRef.current = info;
+
+            if (subscribedRef.current) {
+              // Auto-rejoin (geçici kopma): presence'ı yeniden izle ama faz/lobi
+              // state'i SIFIRLAMA. Host durumunu tekrar yayınlar; misafir yeniden
+              // "merhaba" ile ister → format + takım korunur.
+              await chan.track(info);
+              if (isHostRef.current) send("lobby_state", lobbyStateRef.current);
+              else send("lobby_hello", { playerId: myId });
+              return;
+            }
+            subscribedRef.current = true;
+            // isHostRef'i broadcast echo'sundan ÖNCE senkronla (self:true).
+            isHostRef.current = asHost;
+
             await chan.track(info);
             setConnecting(false);
             setRoomCode(code);
             setIsHost(asHost);
-            setMyTeam("blue");
             setPhase("lobby");
-            if (!asHost) {
+
+            if (asHost) {
+              // Host ilk lobi durumunu kurar (kendini de dengeler); tek sefer.
+              if (!lobbyInitedRef.current) {
+                lobbyInitedRef.current = true;
+                const { teams } = reconcileTeams([myId], {});
+                broadcastLobby({ mode: "1v1", teams, rev: 1 });
+              }
+            } else {
+              send("lobby_hello", { playerId: myId });
               // Kanal her kodda "var" — host presence yoksa oda yok demektir.
               joinProbeRef.current = window.setTimeout(() => {
                 joinProbeRef.current = null;
@@ -583,16 +744,21 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
         });
     },
     [
+      broadcastLobby,
       handleBoardEvent,
       handleGameOver,
       handleGameStart,
+      handleLobbyHello,
+      handleLobbyState,
       handleMatchStart,
       handlePresenceSync,
       handleReturnLobby,
+      handleTeamRequest,
       leaveRoom,
       myAvatar,
       myId,
       myName,
+      send,
     ],
   );
 
@@ -611,64 +777,94 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
     connect(code, false);
   }, [connect, joinInput]);
 
-  /* ── Presence güncelleme (takım / mod) ── */
-  const retrack = useCallback((patch: Partial<Omit<PresenceInfo, "playerId">>) => {
-    const cur = presenceRef.current;
-    const chan = chanRef.current;
-    if (!cur || !chan) return;
-    const next = { ...cur, ...patch };
-    presenceRef.current = next;
-    void chan.track(next);
-  }, []);
+  /* ── Format / takım eylemleri (host-otoriter LobbyState) ── */
 
-  const toggleMyTeam = useCallback(() => {
-    playSound("click");
-    const next: CtTeam = myTeamRef.current === "blue" ? "red" : "blue";
-    setMyTeam(next);
-    retrack({ team: next });
-  }, [retrack]);
-
+  /** Host: oyun formatını değiştir. 2v2'ye geçişte aktif oyuncuları dengele.
+   *  Takımlar KORUNUR — format değişimi takımı, takım değişimi formatı ezmez. */
   const selectMode = useCallback(
     (mode: GameMode) => {
+      if (!isHostRef.current) return;
+      const base = lobbyStateRef.current;
+      if (base.mode === mode) return;
       playSound("click");
-      setHostMode(mode);
-      retrack({ mode });
+      const teams =
+        mode === "2v2"
+          ? reconcileTeams(
+              lobbyPlayersRef.current.map((p) => p.playerId),
+              base.teams,
+            ).teams
+          : base.teams;
+      broadcastLobby({ mode, teams, rev: base.rev + 1 });
     },
-    [retrack],
+    [broadcastLobby],
+  );
+
+  /** Host: herhangi bir oyuncuyu bir takıma ata (serbest — geçici 3-1 mümkün,
+   *  önce birini taşıyıp sonra ikinciyi taşımaya izin verir). */
+  const hostAssign = useCallback(
+    (playerId: string, team: CtTeam) => {
+      if (!isHostRef.current) return;
+      const base = lobbyStateRef.current;
+      if (base.mode !== "2v2") return;
+      if (base.teams[playerId] === team) return;
+      playSound("click");
+      broadcastLobby({
+        mode: base.mode,
+        teams: { ...base.teams, [playerId]: team },
+        rev: base.rev + 1,
+      });
+    },
+    [broadcastLobby],
+  );
+
+  /** Misafir: yalnız KENDI takımını değiştir (host'a istek). Host serbest
+   *  olduğu için kendi satırında doğrudan atar. */
+  const requestOwnTeam = useCallback(
+    (team: CtTeam) => {
+      if (isHostRef.current) {
+        hostAssign(myId, team);
+        return;
+      }
+      playSound("click");
+      send("team_request", { playerId: myId, team, bySelf: true });
+    },
+    [hostAssign, myId, send],
   );
 
   /* ── Host: oyunu başlat ── */
   const startValidation = useMemo(() => {
-    if (hostMode === "1v1") {
+    if (lobbyState.mode === "1v1") {
       if (lobbyPlayers.length !== 2) return "1v1 için tam 2 oyuncu gerekli.";
       return null;
     }
     if (lobbyPlayers.length !== 4) return "2v2 için tam 4 oyuncu gerekli.";
-    const blue = lobbyPlayers.filter((p) => p.team === "blue").length;
-    if (blue !== 2) return "Takımlar 2'ye 2 olmalı.";
+    const blue = lobbyPlayers.filter((p) => lobbyState.teams[p.playerId] === "blue").length;
+    const red = lobbyPlayers.filter((p) => lobbyState.teams[p.playerId] === "red").length;
+    if (blue !== 2 || red !== 2) return "Takımlar 2'ye 2 olmalı.";
     return null;
-  }, [hostMode, lobbyPlayers]);
+  }, [lobbyState, lobbyPlayers]);
 
   const startGame = useCallback(() => {
     if (!isHostRef.current || startValidation) return;
     playSound("click");
     const players = lobbyPlayersRef.current;
+    const { mode, teams } = lobbyStateRef.current;
     const roster: RosterPlayer[] = players.map((p) => ({
       playerId: p.playerId,
       name: p.name,
       avatarId: p.avatarId,
       // 1v1 tek ortak tahta "blue" anahtarında yaşar.
-      team: hostMode === "1v1" ? "blue" : p.team,
+      team: mode === "1v1" ? "blue" : teams[p.playerId] ?? "blue",
     }));
     const payload: GameInfo = {
       gameSeq: gameSeqRef.current + 1,
-      mode: hostMode,
+      mode,
       words: pickCizimWords(WORD_COUNT),
       roster,
       t0: getSyncedNowMs() + INTRO_MS,
     };
     send("game_start", payload);
-  }, [hostMode, send, startValidation]);
+  }, [send, startValidation]);
 
   /* ── Çizim fazı ticker'ı (t0 takvimi, rAF) ── */
   useEffect(() => {
@@ -968,23 +1164,66 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
   );
 
   const renderLobby = () => {
-    const blues = lobbyPlayers.filter((p) => p.team === "blue");
-    const reds = lobbyPlayers.filter((p) => p.team === "red");
-    const playerChip = (p: PresenceInfo) => (
-      <div key={p.playerId} className="ct-player-chip">
-        <PlayerAvatar avatarId={p.avatarId} username={p.name} size="sm" highlight={p.host} />
-        <span className="ct-player-name">
-          {p.name}
-          {p.playerId === myId && <em> (sen)</em>}
-        </span>
-        {p.host && <span className="ct-host-tag">Kurucu</span>}
-        {hostMode === "2v2" && p.playerId === myId && (
-          <button className="ct-team-toggle" onClick={toggleMyTeam}>
-            Takım Değiştir
-          </button>
-        )}
-      </div>
-    );
+    const mode = lobbyState.mode;
+    const teamOf = (id: string): CtTeam | null => {
+      const t = lobbyState.teams[id];
+      return t === "blue" || t === "red" ? t : null;
+    };
+    const blues = lobbyPlayers.filter((p) => teamOf(p.playerId) === "blue");
+    const reds = lobbyPlayers.filter((p) => teamOf(p.playerId) === "red");
+    const unassigned = lobbyPlayers.filter((p) => teamOf(p.playerId) === null);
+    const teamCount = (team: CtTeam) =>
+      lobbyPlayers.filter((p) => teamOf(p.playerId) === team).length;
+
+    const playerChip = (p: PresenceInfo) => {
+      const myRow = p.playerId === myId;
+      const cur = teamOf(p.playerId);
+      const target: CtTeam = cur === "blue" ? "red" : "blue";
+      const targetFull = teamCount(target) >= 2;
+      return (
+        <div key={p.playerId} className="ct-player-chip">
+          <PlayerAvatar avatarId={p.avatarId} username={p.name} size="sm" highlight={p.host} />
+          <span className="ct-player-name">
+            {p.name}
+            {myRow && <em> (sen)</em>}
+          </span>
+          {p.host && <span className="ct-host-tag">Kurucu</span>}
+          {mode === "2v2" && isHost && (
+            <div className="ct-host-assign" role="group" aria-label={`${p.name} takımı`}>
+              {(["blue", "red"] as CtTeam[]).map((t) => (
+                <button
+                  key={t}
+                  className={
+                    "ct-assign-btn ct-assign-btn--" + t + (cur === t ? " is-active" : "")
+                  }
+                  onClick={() => hostAssign(p.playerId, t)}
+                  disabled={cur === t}
+                  aria-pressed={cur === t}
+                >
+                  {TEAM_LABEL[t]}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === "2v2" && !isHost && myRow && (
+            <div className="ct-self-team">
+              <button
+                className="ct-team-toggle"
+                onClick={() => requestOwnTeam(target)}
+                disabled={targetFull}
+              >
+                Takım Değiştir
+              </button>
+              {targetFull && (
+                <span className="ct-team-note">
+                  Karşı takım dolu; host takım düzenleyebilir.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
 
     return (
       <section className="ct-lobby">
@@ -1004,8 +1243,8 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
             <button
               key={m}
               role="radio"
-              aria-checked={hostMode === m}
-              className={"ct-mode-btn" + (hostMode === m ? " is-active" : "")}
+              aria-checked={mode === m}
+              className={"ct-mode-btn" + (mode === m ? " is-active" : "")}
               onClick={() => isHost && selectMode(m)}
               disabled={!isHost}
             >
@@ -1015,21 +1254,29 @@ export default function CizimTestMode({ onHome, profile }: CizimTestModeProps) {
           {!isHost && <span className="ct-mode-note">Oyun tipini kurucu seçer.</span>}
         </div>
 
-        {hostMode === "1v1" ? (
+        {mode === "1v1" ? (
           <div className="ct-player-list">{lobbyPlayers.map(playerChip)}</div>
         ) : (
-          <div className="ct-team-cols">
-            <div className="ct-team-col ct-team-col--blue">
-              <h4>Mavi Takım</h4>
-              {blues.map(playerChip)}
-              {blues.length === 0 && <p className="ct-empty">Boş</p>}
+          <>
+            <div className="ct-team-cols">
+              <div className="ct-team-col ct-team-col--blue">
+                <h4>Mavi Takım</h4>
+                {blues.map(playerChip)}
+                {blues.length === 0 && <p className="ct-empty">Boş</p>}
+              </div>
+              <div className="ct-team-col ct-team-col--red">
+                <h4>Kırmızı Takım</h4>
+                {reds.map(playerChip)}
+                {reds.length === 0 && <p className="ct-empty">Boş</p>}
+              </div>
             </div>
-            <div className="ct-team-col ct-team-col--red">
-              <h4>Kırmızı Takım</h4>
-              {reds.map(playerChip)}
-              {reds.length === 0 && <p className="ct-empty">Boş</p>}
-            </div>
-          </div>
+            {unassigned.length > 0 && (
+              <div className="ct-player-list">
+                <p className="ct-empty">Takıma atanıyor…</p>
+                {unassigned.map(playerChip)}
+              </div>
+            )}
+          </>
         )}
 
         {isHost ? (
