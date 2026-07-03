@@ -23,6 +23,7 @@ import { EmojiIcon, type EmojiIconName } from "./EmojiIcon";
 import { useIsMobile } from "../lib/useIsMobile";
 import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useNotificationActions } from "../lib/notificationActions";
+import { resolveNotificationAction } from "../lib/notificationStatus";
 import type { PublicProfileLite } from "../lib/social";
 import { useSocial, type ActiveToast, type DmToast, type NotifToast } from "./SocialContext";
 
@@ -96,6 +97,7 @@ interface ToastCardProps {
 
 function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps) {
   const actions = useNotificationActions();
+  const social = useSocial();
   const [leaving, setLeaving] = useState(false);
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -237,7 +239,11 @@ function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps
     );
   }
 
-  const n = (toast as NotifToast).notification;
+  // Toast oluşturulurken alınan anlık kopya yerine context'teki CANLI satırı
+  // kullan → davet "geçersiz" damgalanınca (markInviteInvalid) veya okundu olunca
+  // kart aksiyonları bu anda pasif duruma geçer (bayat buton kalmaz).
+  const snapshot = (toast as NotifToast).notification;
+  const n = social.notifications.find((x) => x.id === snapshot.id) ?? snapshot;
   const meta = metaForType(n.type);
   const resolved = n.actor_profile_id ? actorMap.get(n.actor_profile_id) : undefined;
   const actorAvatar = resolved?.avatarId ?? null;
@@ -246,6 +252,10 @@ function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps
   const isFriendReq = n.type === "friend_request";
   const isInvite = n.type === "room_invite" || n.type === "game_invite";
   const isReward = n.type === "reward_ready" || n.type === "achievement_unlocked";
+  // Aksiyon durumu, bildirim merkeziyle AYNI kaynaktan türetilir (kaynak kayıt
+  // durumu). Toast'lar yalnız taze/geçerli event'lerden doğar ama savunma amaçlı
+  // gate ederiz: çözülmüş/bayat bir kart aksiyon butonu göstermez.
+  const actionState = resolveNotificationAction(n, social.friendRequestStatuses);
 
   return (
     <div
@@ -278,47 +288,53 @@ function ToastCard({ toast, actorMap, onDismiss, reducedMotion }: ToastCardProps
         <span className="app-toast-title">{meta.title ?? n.title}</span>
         {n.body && <span className="app-toast-text">{n.body}</span>}
 
-        {isFriendReq && (
-          <div className="app-toast-actions">
-            <button
-              type="button"
-              className="app-toast-btn app-toast-btn--accept"
-              disabled={busy}
-              onClick={() => void runAction(() => actions.respondFriend(n, "accepted"))}
-            >
-              Kabul Et
-            </button>
-            <button
-              type="button"
-              className="app-toast-btn app-toast-btn--ghost"
-              disabled={busy}
-              onClick={() => void runAction(() => actions.respondFriend(n, "rejected"))}
-            >
-              Reddet
-            </button>
-          </div>
-        )}
+        {isFriendReq &&
+          (actionState.actionable ? (
+            <div className="app-toast-actions">
+              <button
+                type="button"
+                className="app-toast-btn app-toast-btn--accept"
+                disabled={busy}
+                onClick={() => void runAction(() => actions.respondFriend(n, "accepted"))}
+              >
+                Kabul Et
+              </button>
+              <button
+                type="button"
+                className="app-toast-btn app-toast-btn--ghost"
+                disabled={busy}
+                onClick={() => void runAction(() => actions.respondFriend(n, "rejected"))}
+              >
+                Reddet
+              </button>
+            </div>
+          ) : (
+            <div className="app-toast-resolved">{actionState.passiveText}</div>
+          ))}
 
-        {isInvite && (
-          <div className="app-toast-actions">
-            <button
-              type="button"
-              className="app-toast-btn app-toast-btn--accept"
-              disabled={busy}
-              onClick={() => void runAction(() => actions.joinRoom(n))}
-            >
-              Katıl
-            </button>
-            <button
-              type="button"
-              className="app-toast-btn app-toast-btn--ghost"
-              disabled={busy}
-              onClick={() => void runAction(() => actions.declineInvite(n))}
-            >
-              Reddet
-            </button>
-          </div>
-        )}
+        {isInvite &&
+          (actionState.actionable ? (
+            <div className="app-toast-actions">
+              <button
+                type="button"
+                className="app-toast-btn app-toast-btn--accept"
+                disabled={busy}
+                onClick={() => void runAction(() => actions.joinRoom(n))}
+              >
+                Katıl
+              </button>
+              <button
+                type="button"
+                className="app-toast-btn app-toast-btn--ghost"
+                disabled={busy}
+                onClick={() => void runAction(() => actions.declineInvite(n))}
+              >
+                Reddet
+              </button>
+            </div>
+          ) : (
+            <div className="app-toast-resolved">{actionState.passiveText}</div>
+          ))}
 
         {isReward && (
           <div className="app-toast-actions">

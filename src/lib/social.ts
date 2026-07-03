@@ -41,6 +41,11 @@ export interface NotificationRow {
   created_at: string;
 }
 
+/** friend_requests.status — kaynak arkadaşlık isteğinin CANONICAL durumu
+ *  (bkz. 20260715121000_social_core.sql). Bildirim kartının bayat "Kabul/Reddet"
+ *  butonu göstermemesi için tek doğruluk kaynağı budur (notification payload'ı değil). */
+export type FriendRequestStatus = "pending" | "accepted" | "rejected" | "cancelled";
+
 export type RelationshipStatus =
   | "self"
   | "friends"
@@ -171,6 +176,96 @@ export async function fetchNotifications(limit = 50): Promise<NotificationRow[]>
 
 export async function markNotificationRead(id: string): Promise<void> {
   await supabase.rpc("mark_notification_read", { p_id: id });
+}
+
+/**
+ * Bir oda/oyun davetini KALICI olarak "geçersiz" işaretler (read_at +
+ * payload.inviteState='invalid'). Oda kapanmış/başlamış/silinmiş ya da davet
+ * bağlantısı geçersizse çağrılır → kart "Davet artık geçerli değil" pasif
+ * durumuna geçer ve sayfa yenilense de geri gelmez (bkz. 20260727120000).
+ *
+ * RPC henüz deploy edilmemişse (ör. istemci migration'dan önce) false döner;
+ * çağıran en azından markNotificationRead ile read_at'i kalıcı yapar (butonlar
+ * yine kalkar, yalnız pasif metin genel "yanıt verildi" olur).
+ */
+export async function resolveRoomInviteInvalid(id: string): Promise<boolean> {
+  const { error } = await supabase.rpc("resolve_room_invite", { p_id: id });
+  if (error) {
+    console.error("resolve_room_invite failed", error);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Bir oda davetinin KESİN olarak ölü (katılınamaz) olup olmadığına dair HAFİF,
+ * güvenli bir canonical kontrol. "Katıl" tıklandığında, gereksiz tam-sayfa
+ * yönlendirme + geri sekme yaşatmadan önce çalışır.
+ *
+ * Tasarım — asla YANLIŞ POZİTİF verme (geçerli daveti öldürme): yalnız
+ * KESİN ölü durumda true döner. Erişilemezlik, hata, bilinmeyen mod ya da
+ * belirsiz durum → false (davet açılır; mod kendi join akışında son doğrulamayı
+ * yapar). Her davet için değil, yalnız tıklama anında bir kez çalışır.
+ *
+ * Şimdilik yalnız Kuşatma (conquest) için: conquest_rooms SELECT RLS herkese
+ * açıktır (using true) → koda göre okuma güvenlidir, RLS kaynaklı yanlış "yok"
+ * riski YOKTUR. Kapasite (dolu) KESİN ölü sayılmaz (biri çıkabilir) — yalnız
+ * satır yoksa veya durum terminal (playing/finished/closed) ise ölü kabul edilir.
+ */
+export async function isRoomInviteDead(mode: unknown, roomCode: unknown): Promise<boolean> {
+  if (typeof mode !== "string" || typeof roomCode !== "string") return false;
+  try {
+    if (mode === "conquest") {
+      const code = roomCode.trim().toUpperCase().replace(/\s+/g, "");
+      if (code.length !== 6) return false;
+      const { data, error } = await supabase
+        .from("conquest_rooms")
+        .select("status")
+        .eq("room_code", code)
+        .maybeSingle();
+      if (error) return false; // erişilemezlik → daveti öldürme
+      if (!data) return true; // oda yok → ölü
+      const status = (data as { status?: string }).status;
+      return status === "playing" || status === "finished" || status === "closed";
+    }
+  } catch {
+    return false;
+  }
+  // Diğer modlar: güvenli/hafif bir pre-check yok → davet açılsın (join akışı
+  // başarısız olursa notificationActions kalıcı resolve fallback'ini uygular).
+  return false;
+}
+
+/**
+ * Verilen friend_request id'lerinin CANONICAL durumunu çeker (id → status).
+ *
+ * RLS (friend_requests_select_party) yalnız taraf olduğum istekleri döndürür; bir
+ * friend_request bildiriminin alıcısı BEN olduğum için kendi gelen isteğimin
+ * durumunu güvenle okurum. Kart aksiyon butonunu buradan gelen duruma göre
+ * gösterir → sayfa yenilense de payload'a değil kaynak kayda dayanır, bayat
+ * "Kabul/Reddet" kalmaz.
+ *
+ * Bulunamayan id (istek silinmiş / erişilemez) haritaya EKLENMEZ; çağıran bunu
+ * "artık aksiyon alınamaz" kabul eder.
+ */
+export async function fetchFriendRequestStatuses(
+  ids: string[]
+): Promise<Map<string, FriendRequestStatus>> {
+  const out = new Map<string, FriendRequestStatus>();
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  if (unique.length === 0) return out;
+  const { data, error } = await supabase
+    .from("friend_requests")
+    .select("id, status")
+    .in("id", unique);
+  if (error || !Array.isArray(data)) {
+    if (error) console.error("fetchFriendRequestStatuses failed", error);
+    return out;
+  }
+  for (const row of data as Record<string, unknown>[]) {
+    out.set(row.id as string, row.status as FriendRequestStatus);
+  }
+  return out;
 }
 
 export async function markAllNotificationsRead(): Promise<void> {

@@ -11,7 +11,12 @@
  * inbox ise "✓ Kabul edildi" gibi yerel durumunu işaretler.
  */
 import { useCallback } from "react";
-import { respondFriendRequest, isSafeInternalRoomPath, type NotificationRow } from "./social";
+import {
+  respondFriendRequest,
+  isSafeInternalRoomPath,
+  isRoomInviteDead,
+  type NotificationRow,
+} from "./social";
 import { useSocial } from "../components/SocialContext";
 
 export interface ActionResult {
@@ -46,6 +51,9 @@ export function useNotificationActions(): NotificationActions {
         return { ok: false };
       }
       await social.markRead(n.id);
+      // Kaynak isteğin durumunu anlık güncelle → kart bu anda "Kabul/Reddet"
+      // yerine pasif durumu gösterir (refreshNotifications DB'den teyit eder).
+      social.setFriendRequestStatus(reqId, response);
       if (response === "accepted") social.bumpFriends();
       social.toast(
         response === "accepted"
@@ -61,22 +69,35 @@ export function useNotificationActions(): NotificationActions {
   const joinRoom = useCallback<NotificationActions["joinRoom"]>(
     async (n) => {
       const url = n.payload?.roomUrl as unknown;
-      await social.markRead(n.id);
-      // Ham URL'yi doğrudan navigation'a vermeyiz: yalnız same-origin, göreceli
-      // oda yolları açılabilir (open-redirect / phishing koruması). Bu kontrol
-      // eski veritabanında kalmış kötü davetleri de güvenle engeller.
+
+      // 1) Ham URL'yi doğrudan navigation'a vermeyiz: yalnız same-origin, göreceli
+      //    oda yolları açılabilir (open-redirect / phishing koruması). Geçersiz
+      //    bağlantı = ölü davet → KALICI olarak "geçersiz" işaretle, gezinme yok.
       if (!isSafeInternalRoomPath(url)) {
-        social.toast("Geçersiz davet bağlantısı.");
+        await social.markInviteInvalid(n.id);
+        social.toast("Davet artık geçerli değil.");
         return { ok: false };
       }
+
+      // 2) HAFİF canonical geçerlilik kontrolü (yalnız tıklama anında bir kez):
+      //    oda kapanmış / oyun başlamış / oda silinmişse gereksiz tam-sayfa
+      //    yönlendirme + geri sekme yaşatmadan daveti çöz. isRoomInviteDead asla
+      //    yanlış pozitif vermez (belirsizlik → false), böylece geçerli davet ölmez.
+      if (await isRoomInviteDead(n.payload?.mode, n.payload?.roomCode)) {
+        await social.markInviteInvalid(n.id);
+        social.toast("Davet artık geçerli değil.");
+        return { ok: false };
+      }
+
+      // 3) Geçerli/bilinmeyen → gezinme (hedef mod son doğrulamayı kendi auto-join
+      //    akışında yapar; başarısız olursa davet zaten okundu → butonlar geri gelmez).
       if (social.onJoinRoom) {
-        // Davetin hâlâ geçerli olduğu / odada yer olduğu, hedef modun mevcut
-        // auto-join akışında (useInviteJoin / conquest join) doğrulanır; geçersizse
-        // kullanıcı orada kısa hata görür. Burada ikinci bir doğrulama sistemi kurmayız.
+        await social.markRead(n.id);
         social.onJoinRoom(url);
         return { ok: true };
       }
-      social.toast("Bu davet artık geçerli değil.");
+      await social.markInviteInvalid(n.id);
+      social.toast("Davet artık geçerli değil.");
       return { ok: false };
     },
     [social]

@@ -10,9 +10,15 @@
  *   - room_invite/game_invite → Katıl / Reddet
  *   - reward_ready            → Ödülleri Topla
  *   - diğer                   → tıklayınca okundu
+ *
+ * ÖNEMLİ: friend_request ve davet aksiyonları YALNIZCA kaynak kayıt hâlâ aksiyon
+ * alınabilir durumdaysa gösterilir (resolveNotificationAction — server-otoriteli
+ * friend_requests.status + read_at). Çözülmüş/bayat kartlarda buton yerine küçük,
+ * sakin bir pasif durum metni çıkar; sayfa yenilense de doğru kalır.
  */
 import { useState } from "react";
 import { type NotificationRow } from "../lib/social";
+import { resolveNotificationAction } from "../lib/notificationStatus";
 import { useNotificationActions } from "../lib/notificationActions";
 import { useSocial } from "./SocialContext";
 
@@ -89,20 +95,21 @@ export function NotificationList({
   const social = useSocial();
   // Toast'larla ORTAK aksiyon akışı (tek doğruluk kaynağı, kopya sistem yok).
   const actions = useNotificationActions();
-  // Bu oturumda yanıtlanan arkadaşlık istekleri → aksiyon butonları gizlenir.
-  const [resolved, setResolved] = useState<Record<string, "accepted" | "rejected">>({});
 
-  const { notifications, markRead } = social;
+  const { notifications, markRead, friendRequestStatuses } = social;
   const rows = filter ? notifications.filter(filter) : notifications;
 
+  // Kabul/Reddet respondFriend içinde kaynak istek durumunu (context) anlık
+  // günceller → buton bu anda pasif duruma döner; ayrı yerel state gerekmez.
   const handleFriendResponse = async (n: NotificationRow, response: "accepted" | "rejected") => {
-    const res = await actions.respondFriend(n, response);
-    if (res.ok) setResolved((m) => ({ ...m, [n.id]: response }));
+    await actions.respondFriend(n, response);
   };
 
   const handleJoin = async (n: NotificationRow) => {
-    await actions.joinRoom(n);
-    onNavigate?.();
+    const res = await actions.joinRoom(n);
+    // Yalnız gerçekten gezinildiyse paneli kapat. Davet ölüyse (ok:false) panel
+    // açık kalır ve kart yerinde "Davet artık geçerli değil"e döner.
+    if (res.ok) onNavigate?.();
   };
 
   const handleReward = async (n: NotificationRow) => {
@@ -121,12 +128,20 @@ export function NotificationList({
   return (
     <div className="notif-list">
       {showDaily && <DailyRewardCard />}
-      {rows.map((n) => (
+      {rows.map((n) => {
+        // Kaynak kaydın canonical durumundan türetilen aksiyon durumu (payload
+        // değil): çözülmüş/bayat kartta buton yerine pasif metin çıkar.
+        const action = resolveNotificationAction(n, friendRequestStatuses);
+        const isInvite = n.type === "room_invite" || n.type === "game_invite";
+        return (
         <div
           key={n.id}
           className={`notif-item${n.read_at ? "" : " notif-item--unread"}`}
           onClick={() => {
-            if (!n.read_at) void markRead(n.id);
+            // Davet kartları YALNIZCA Katıl/Reddet ile "yanıtlanmış" (okundu)
+            // sayılır; kart gövdesine tıklamak daveti tüketmemeli (aksi halde
+            // read_at kalıcı yanıt sinyalini kirletir, butonlar haksız yere kalkar).
+            if (!isInvite && !n.read_at) void markRead(n.id);
           }}
         >
           <div className="notif-item-main">
@@ -136,11 +151,7 @@ export function NotificationList({
           </div>
 
           {n.type === "friend_request" &&
-            (resolved[n.id] ? (
-              <div className="notif-item-resolved">
-                {resolved[n.id] === "accepted" ? "✓ Kabul edildi" : "Reddedildi"}
-              </div>
-            ) : (
+            (action.actionable ? (
               <div className="notif-item-actions">
                 <button
                   type="button"
@@ -163,32 +174,37 @@ export function NotificationList({
                   Reddet
                 </button>
               </div>
+            ) : (
+              <div className="notif-item-resolved">{action.passiveText}</div>
             ))}
 
-          {(n.type === "room_invite" || n.type === "game_invite") && (
-            <div className="notif-item-actions">
-              <button
-                type="button"
-                className="notif-act notif-act--accept"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleJoin(n);
-                }}
-              >
-                Katıl
-              </button>
-              <button
-                type="button"
-                className="notif-act notif-act--reject"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void markRead(n.id);
-                }}
-              >
-                Reddet
-              </button>
-            </div>
-          )}
+          {isInvite &&
+            (action.actionable ? (
+              <div className="notif-item-actions">
+                <button
+                  type="button"
+                  className="notif-act notif-act--accept"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleJoin(n);
+                  }}
+                >
+                  Katıl
+                </button>
+                <button
+                  type="button"
+                  className="notif-act notif-act--reject"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void markRead(n.id);
+                  }}
+                >
+                  Reddet
+                </button>
+              </div>
+            ) : (
+              <div className="notif-item-resolved">{action.passiveText}</div>
+            ))}
 
           {n.type === "reward_ready" && (
             <div className="notif-item-actions">
@@ -205,7 +221,8 @@ export function NotificationList({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

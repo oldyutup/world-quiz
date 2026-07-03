@@ -23423,6 +23423,14 @@ html:not(.is-native-app) .apk-photo-card {
 }
 .app-toast--dm:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-glow); }
 
+/* Çözülmüş/bayat toast durumu (aksiyon butonları yerine): küçük, sakin metin. */
+.app-toast-resolved {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(196, 210, 235, 0.6);
+}
+
 .app-toast-actions { display: flex; gap: 8px; margin-top: 10px; }
 .app-toast-btn {
   height: 34px;
@@ -23538,12 +23546,13 @@ html:not(.is-native-app) .apk-photo-card {
   font-weight: 800;
 }
 
-/* Yanıtlanmış arkadaşlık isteği etiketi (butonlar yerine) */
+/* Çözülmüş/bayat bildirim durumu (butonlar yerine): küçük, sakin, ikincil metin.
+   Kabul/Reddet/geçersiz davet vb. hepsinde ortak nötr ton — kart soluk görünmez. */
 .notif-item-resolved {
   margin-top: 8px;
   font-size: 12px;
-  font-weight: 700;
-  color: rgba(120, 210, 150, 0.95);
+  font-weight: 600;
+  color: rgba(196, 210, 235, 0.6);
 }
 
 /* ── Arkadaşlar paneli ── */
