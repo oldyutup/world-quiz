@@ -652,11 +652,11 @@ export default function MobileHome({
       title: "Tek Oyunculu",
       tagline: "İnternetsiz oyna, kendini geliştir.",
       modes: [
-        { icon: "🌍", title: "Ülke Yaz",    desc: "Haritadaki ülkeleri yaz.",     onTap: () => onPlay("map-game") },
-        { icon: "🚩", title: "Bayrak Bilmece", desc: "Bayrağı tanı, ülkeyi yaz.",    onTap: () => onPlay("flag-game") },
-        { icon: "🗺️", title: "Silüet Modu", desc: "Silüetten ülkeyi tahmin et.",  onTap: () => onPlay("silhouette-game") },
-        { icon: "🧭", title: "Rota Modu",   desc: "Komşu ülkelerle hedefe ulaş.", onTap: () => onPlay("route-game") },
-        { icon: "🎯", title: "Çark Modu",   desc: "Çarkın seçtiği ülkeyi bul.",   onTap: () => onPlay("wheel-game") },
+        { icon: "🌍", title: "Ülke Yaz",    desc: "Sınırlı sürede kaç ülke yazabilirsin?",     onTap: () => onPlay("map-game") },
+        { icon: "🚩", title: "Bayrak Bilmece", desc: "Bayrakları ne kadar iyi tanıyorsun? Test et!",    onTap: () => onPlay("flag-game") },
+        { icon: "🗺️", title: "Silüet Modu", desc: "Ülkeleri şekillerinden tanıyabilir misin?",  onTap: () => onPlay("silhouette-game") },
+        { icon: "🧭", title: "Rota Modu",   desc: "Hedef ülkeye en kısa rotadan ulaş!", onTap: () => onPlay("route-game") },
+        { icon: "🎯", title: "Çark Modu",   desc: "Çarkın seçtiği ülkeyi herkesten önce bul!",   onTap: () => onPlay("wheel-game") },
       ],
     },
     {
@@ -676,11 +676,13 @@ export default function MobileHome({
       title: "Çok Oyunculu",
       tagline: "Oda kur, arkadaşlarınla oyna.",
       modes: [
-        { icon: "🛡️", title: "Kuşatma", desc: "Bölgeleri kuşat, haritayı ele geçir.", featured: true, onTap: onOpenConquest },
-        { icon: "🕵️", title: "Kör Nokta",     desc: "Raporlara güven, gizli konumu bul.", onTap: onOpenKorNokta },
+        { icon: "🛡️", title: "Kuşatma", desc: "Doğru bil, hamle yap, ele geçir!", featured: true, onTap: onOpenConquest },
+        { icon: "🕵️", title: "Kör Nokta",     desc: "Takımına güven, raporları çöz, konumu bul.", onTap: onOpenKorNokta },
         { icon: "🌍", title: "Ülke Yaz Grup", desc: "Arkadaşlarınla aynı odada yarış.", onTap: () => onPlay("duel-group-game") },
         { icon: "🎯", title: "Çark Grup",     desc: "Grup halinde çark yarışı.",        onTap: () => onPlay("wheel-group-game") },
-        { icon: "🎨", title: "Çizim Modu",    desc: "Aynı kelimeleri çiz, çiftleri eşleştir.", onTap: () => onPlay("cizim-test") },
+        /* Eshle — bağımsız oyunumuz; Torble içi ekran DEĞİL, harici link.
+           ↗ dışarı çıkışı işaretler; window.open noopener/noreferrer ile güvenli. */
+        { icon: "🎨", title: "Eshle ↗",       desc: "Çiz, hatırla, eşle!", onTap: () => window.open("https://eshle.io", "_blank", "noopener,noreferrer") },
       ],
     },
   ];

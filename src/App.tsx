@@ -16,10 +16,9 @@ import HaritaDedektifiGame from "./modes/cagDedektifi/HaritaDedektifiGame";
 import HaritaDuelGame from "./modes/cagDedektifi/HaritaDuelGame";
 import KorNoktaMode from "./modes/korNokta/KorNoktaMode";
 import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
-import CizimTestMode from "./modes/cizimTest/CizimTestMode";
-// Çizim Test kartı ikonu: home PNG seti yerine mevcut Fluent palette SVG'si
-// (prototip; kalıcı PNG art üretilirse iconPath'i değiştirmek yeterli).
-import cizimTestIconUrl from "./assets/icons/palette.svg";
+// Eski CizimTestMode importu bilinçli KALDIRILDI: Eshle kartı artık
+// https://eshle.io adresine (bağımsız oyun) gider; mod kodu repoda durur ama
+// bundle'a girmez. Kart ikonu doğrudan home PNG setinden (eshle-icon.png).
 import MobileHome from "./components/MobileHome";
 import { QuickMatchModal } from "./components/QuickMatchModal";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
@@ -136,7 +135,6 @@ const ONLINE_GATED_SCREENS: Partial<Record<AppScreen, AuthPromptReason>> = {
   "conquest-game":    "kusatma-gate",
   "conquest-join":    "kusatma-gate",
   "conquest-rooms":   "kusatma-gate",
-  "cizim-test":       "multi-gate",
 };
 
 /** Düello / Çok Oyunculu davet linkleri. Hepsi login gerektirir. OAuth redirect
@@ -557,15 +555,18 @@ const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
-  const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean }[] = [
-  { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Tek oyuncu veya online oyna.", available: true },
-  { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Bilmece", desc: "Bayrakları tanı! Her bayrak için ülke adını yaz.", available: true },
-  { id: "silhouette-game", icon: "map", iconPath: "/assets/icons/home/silhouette-mode.png", title: "Silüet Modu", desc: "Ülke şekillerini tanı! Silüetten tahmin et.", available: true },
-  { id: "route-game", icon: "compass", iconPath: "/assets/icons/home/route-mode.png", title: "Rota Modu", desc: "Komşu ülkelerle hedefe ulaş.", available: true },
-  { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi haritada bul.", available: true },
-  { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Bölgeleri kuşat, haritayı ele geçir.", available: true },
-  { id: "kornokta-create", icon: "detective", iconPath: "/assets/icons/home/blind-spot.png", title: "KÖR NOKTA", desc: "Raporlara güven, konumu bul.", available: true },
-  { id: "cizim-test", icon: "palette", iconPath: cizimTestIconUrl, title: "ÇİZİM TEST", desc: "Aynı kelimeleri çiz, sonra eşleştir.", available: true },
+  /* `external` taşıyan kart Torble içi bir ekrana DEĞİL, harici bir oyuna
+     gider: buton <a target="_blank" rel="noopener noreferrer"> olarak render
+     edilir ve onSelect hiç çağrılmaz (bkz. Eshle kartı). */
+  const modes: { id: AppScreen; icon: EmojiIconName; iconPath: string; title: string; desc: string; available: boolean; external?: { href: string; cta: string } }[] = [
+  { id: "map-game", icon: "globe", iconPath: "/assets/icons/home/country-write.png", title: "Ülke Yaz", desc: "Sınırlı sürede kaç ülke yazabilirsin?", available: true },
+  { id: "flag-game", icon: "flag", iconPath: "/assets/icons/home/flag-mode.png", title: "Bayrak Bilmece", desc: "Bayrakları ne kadar iyi tanıyorsun? Test et!", available: true },
+  { id: "silhouette-game", icon: "map", iconPath: "/assets/icons/home/silhouette-mode.png", title: "Silüet Modu", desc: "Ülkeleri şekillerinden tanıyabilir misin?", available: true },
+  { id: "route-game", icon: "compass", iconPath: "/assets/icons/home/route-mode.png", title: "Rota Modu", desc: "Hedef ülkeye en kısa rotadan ulaş!", available: true },
+  { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi herkesten önce bul!", available: true },
+  { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Doğru bil, hamle yap, ele geçir!", available: true },
+  { id: "kornokta-create", icon: "detective", iconPath: "/assets/icons/home/blind-spot.png", title: "KÖR NOKTA", desc: "Takımına güven, raporları çöz, konumu bul.", available: true },
+  { id: "cizim-test", icon: "palette", iconPath: "/assets/icons/home/eshle-icon.png", title: "ESHLE", desc: "Çiz, hatırla, arkadaşının çizimleriyle eşleştir!", available: true, external: { href: "https://eshle.io", cta: "Eshle’yi Oyna" } },
 ];
   return (
     <div className={"home-screen" + (homeTheme === "turkiye" ? " home-screen--turkiye" : homeTheme === "adventure" ? " home-screen--adventure" : homeTheme === "dark-space" ? " home-screen--dark-space" : " home-screen--default")}>
@@ -581,6 +582,17 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
         {modes.map((m, i) => (
           <div key={i} className={"mode-card" + (m.available ? "" : " mode-card--soon")}>
             {!m.available && <span className="soon-badge">Yakında</span>}
+            {/* "Yeni Oyunumuz" vurgu rozeti — YALNIZ Eshle (cizim-test) kartında.
+                Eshle ikonundaki turkuaz kıvılcımla uyumlu; sağ-üst köşeye perçinlenir.
+                Kıvılcım SVG'si dekoratif (aria-hidden), metin okuyucuya bilgi verir. */}
+            {m.id === "cizim-test" && (
+              <span className="new-badge">
+                <svg className="new-badge-spark" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 1 Q12.8 11.2 23 12 Q12.8 12.8 12 23 Q11.2 12.8 1 12 Q11.2 11.2 12 1 Z" />
+                </svg>
+                Yeni Oyunumuz
+              </span>
+            )}
             <div className="mode-card-icon">
               <img
                 src={m.iconPath}
@@ -596,8 +608,18 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
             </div>
             <div className="mode-card-content">
               <h2 className="mode-card-title">{m.title}</h2>
-              <p className="mode-card-desc">{m.desc}</p>
+              <p className={"mode-card-desc" + (m.id === "cizim-test" ? " mode-card-desc--reserve-2l" : "")}>{m.desc}</p>
             </div>
+            {m.external ? (
+              /* Bağımsız oyuna güvenli harici link: yeni sekme + noopener. */
+              <a
+                className="btn btn-accent mode-card-btn"
+                href={m.external.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => playSound("click")}
+              >{m.external.cta}</a>
+            ) : (
             <button
               className={"btn btn-accent mode-card-btn" + (m.available ? "" : " disabled")}
               disabled={!m.available}
@@ -621,12 +643,13 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   }
 }}
             >{m.available ? "Oyna" : "Yakında"}</button>
+            )}
           </div>
         ))}
         {/* Hızlı Eşleş girişi artık ÜST BAR'daki birincil CTA (bkz.
             HomeTopBarActions → homeQuickMatchOpen → QuickMatchModal). Eski 8.
-            ızgara kartı KALDIRILDI; 8 gerçek mod kartı (8.si Çizim Test
-            prototipi) auto-fit 4 sütunda aynı ölçüde iki tam satır doldurur. */}
+            ızgara kartı KALDIRILDI; 8 kart (8.si bağımsız oyunumuz Eshle'nin
+            harici tanıtım kartı) auto-fit 4 sütunda iki tam satır doldurur. */}
       </div>
       {/* Atlas Klasmanı daveti — mod ızgarasının altında tek sessiz satır;
           LeaderboardModal'ı açar. ≤600px'te CSS gizler (MobileHome alt-nav'ında
@@ -3127,7 +3150,7 @@ useEffect(() => {
           mobil web + native'de bar CSS ile ÇÖZÜLÜR (display:contents): marka
           ve eylemler gizlenir, sağ küme bugünkü fixed sağ-üst konumunu birebir
           korur. */}
-      <header className="home-topbar">
+      <header className={"home-topbar" + (homeTheme === "dark-space" ? " home-topbar--dark-space" : "")}>
         <HomeTopBarBrand />
         <HomeTopBarActions
           onQuickMatch={() => setHomeQuickMatchOpen(true)}
@@ -3379,12 +3402,9 @@ useEffect(() => {
       profile={profile}
     />
   );
-  if (screen === "cizim-test") return (
-    <CizimTestMode
-      onHome={() => setScreen("home")}
-      profile={profile}
-    />
-  );
+  /* "cizim-test" ekran dalı KALDIRILDI: ana sayfadaki kart artık https://eshle.io
+     adresine giden harici bir link; bu ekrana ulaşan hiçbir UI yolu kalmadı.
+     Mod kodu src/modes/cizimTest/ altında duruyor (dev sayfası: /cizim-test-dev). */
   if (screen === "cag-dedektifi") return <CagDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "harita-dedektifi") return <HaritaDedektifiGame onHome={() => setScreen("home")} />;
   if (screen === "harita-duel-game") return (
