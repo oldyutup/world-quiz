@@ -3,6 +3,7 @@ import WorldMap, { SilhouetteView } from "./components/WorldMap";
 import RouteGame from "./components/RouteGame";
 import DuelGame from "./components/DuelGame";
 import FlagDuelGame from "./components/FlagDuelGame";
+import FlagGroupGame from "./components/FlagGroupGame";
 import DuelGroupGame from "./components/DuelGroupGame";
 import WheelGame from "./components/WheelGame";
 import WheelDuelGame from "./components/WheelDuelGame";
@@ -148,6 +149,7 @@ const ONLINE_INVITE_LINKS: {
 }[] = [
   { param: "duel",       storageKey: "pending_invite_duel",       screen: "duel-game",        reason: "duel-gate" },
   { param: "flagDuel",   storageKey: "pending_invite_flagDuel",   screen: "flag-duel-game",   reason: "duel-gate" },
+  { param: "flagGroup",  storageKey: "pending_invite_flagGroup",  screen: "flag-group-game",  reason: "multi-gate" },
   { param: "wheelDuel",  storageKey: "pending_invite_wheelDuel",  screen: "wheel-duel-game",  reason: "duel-gate" },
   { param: "duelGroup",  storageKey: "pending_invite_duelGroup",  screen: "duel-group-game",  reason: "multi-gate" },
   { param: "wheelGroup", storageKey: "pending_invite_wheelGroup", screen: "wheel-group-game", reason: "multi-gate" },
@@ -254,6 +256,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "duel-game": 0,
   "duel-group-game": 0,
   "flag-duel-game": 0,
+  "flag-group-game": 0,
   "wheel-game": 0,
   "wheel-duel-game": 0,
   "wheel-group-game": 0,
@@ -765,6 +768,17 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
         }}
       >
         <EmojiIcon name="swords" /> Online 1v1
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowFlagMenu(false);
+          onSelect("flag-group-game");
+        }}
+      >
+        <EmojiIcon name="trophy" /> Çok Oyunculu
       </button>
 
       <button
@@ -3388,6 +3402,12 @@ useEffect(() => {
   onQuickMatchConsumed={clearQuickMatchIntent}
 />
 );
+  if (screen === "flag-group-game") return (
+    <FlagGroupGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+    />
+  );
   if (screen === "kornokta-create") return (
     <KorNoktaMode
       initialAction="create"

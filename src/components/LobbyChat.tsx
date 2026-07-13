@@ -51,7 +51,7 @@ interface Props {
    * Tüm RPC modlarında: player_name CLIENT'TAN GÖNDERİLMEZ — server-side
    * <mode>_players.name resolve edilir. playerId + claimToken zorunlu.
    */
-  sendMode?:   "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "tevatur" | "direct";
+  sendMode?:   "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "flag_group" | "duel_group" | "conquest" | "tevatur" | "direct";
   /** RPC modları için zorunlu — <mode>_players.id */
   playerId?:   string;
   /** RPC modları için zorunlu — <mode>_player_claims.claim_token */
@@ -73,13 +73,14 @@ interface Props {
 
 /** sendMode → RPC adı eşlemesi. "direct" buraya düşmez. */
 const SEND_RPC: Record<
-  "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "duel_group" | "conquest" | "tevatur",
+  "duel" | "flag_duel" | "wheel_duel" | "wheel_group" | "flag_group" | "duel_group" | "conquest" | "tevatur",
   string
 > = {
   duel:        "duel_send_message",
   flag_duel:   "flag_duel_send_message",
   wheel_duel:  "wheel_duel_send_message",
   wheel_group: "wheel_group_send_message",
+  flag_group:  "flag_group_send_message",
   duel_group:  "duel_group_send_message",
   conquest:    "conquest_send_message",
   tevatur:     "tevatur_send_message",

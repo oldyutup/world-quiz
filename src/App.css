@@ -2660,6 +2660,268 @@ a.mode-card-btn { text-decoration: none; }
   .pas-gec-hint { display: none; }  /* save space on small screens */
 }
 
+/* ── Bayrak Grup (Çok Oyunculu) Pas Geç oylama şeridi ──
+   Scoped .fgg-pass-* (Bayrak 1v1 .pas-gec-bar görünümünü taklit eder). Ayrı,
+   tam-genişlik aksiyon şeridi: control-bar'ın (ipucu/durum satırı) altında,
+   bayrak sahnesinin üstünde. Buton solda; oy sayısı butonda görünür kalır. */
+.fgg-pass-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.fgg-pass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s, transform .1s;
+  white-space: nowrap;
+}
+.fgg-pass-btn:hover:not(:disabled) {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(245,158,11,.07);
+}
+.fgg-pass-btn:active:not(:disabled) { transform: scale(.97); }
+.fgg-pass-btn:disabled { cursor: default; opacity: .8; }
+/* Kullanıcı oy verdiyse: seçili/aktif görünüm (tekrar tıklama = geri çek). */
+.fgg-pass-btn--voted {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(245,158,11,.14);
+}
+.fgg-pass-note {
+  font-size: .72rem;
+  color: var(--muted);
+  opacity: .7;
+  white-space: nowrap;
+}
+/* ESC klavye ipucu (Bayrak 1v1 .pas-gec-hint paritesi) — butonun sağında. */
+.fgg-pass-hint {
+  font-size: .65rem;
+  color: var(--muted);
+  opacity: .55;
+  letter-spacing: .05em;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .fgg-pass-bar { padding: 5px 10px; gap: 8px; }
+  .fgg-pass-btn { height: 28px; font-size: .74rem; padding: 0 12px; }  /* oy sayısı görünür kalır */
+  .fgg-pass-note { display: none; }  /* dar ekranda gizle; sayı butonda kalır */
+  .fgg-pass-hint { display: none; }  /* dokunmatik ekranda ESC ipucu gereksiz */
+}
+
+/* ═══════════════════════════════════════════
+   FLAG GROUP — oyun ekranı düzeni (YALNIZ Çok Oyunculu)
+   Bayrak Bilmece 1v1/solo `.flag-area`/`.flag-stage`'i PAYLAŞIR; buradaki
+   kurallar yalnızca grup oyununa eklenen `.fgg-*` sınıflarına scope'ludur, bu
+   yüzden 1v1 / solo / diğer modlar ETKİLENMEZ. Hedef: bayrağı GERÇEK viewport
+   merkezinde tutmak + skor panelini merkezi bozmadan sağda dengelemek.
+═══════════════════════════════════════════ */
+
+/* Tam-yükseklik dikey sahne. 1v1'in `.app` (100dvh flex kolon) davranışını
+   taklit eder — ama `.duel-app`'e DOKUNMADAN, çünkü Ülke Yaz grup aynı
+   `.duel-app` kökünü paylaşır. Şerit sırası: üst bar → kontrol (input/sayaç/
+   durum) → Pas Geç → bayrak sahnesi (kalan alanı doldurur). */
+.fgg-play-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+.fgg-play-shell > .duel-header,
+.fgg-play-shell > .control-bar,
+.fgg-play-shell > .fgg-pass-bar { flex: 0 0 auto; }
+
+/* Simetrik 3-kolon: [boş denge] · [bayrak sahnesi] · [skor paneli].
+   Yan kolonlar minmax(0,1fr) → HER ZAMAN birbirine eşit → orta (auto) kolon
+   içeriğin doğal genişliği ve gerçek YATAY MERKEZDE. Skor paneli sağ kolonda;
+   bayrağın konumu yalnız simetrik yan kolonlarca belirlendiği için paneli
+   büyüse bile bayrağı sola İTEMEZ. */
+.flag-area.fgg-play-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-content: center;   /* tek satır bloğunu dikeyde ortala (dengeli sahne) */
+  align-items: start;      /* bayrak + panel üstten hizalı */
+  gap: clamp(12px, 2.4vw, 28px);
+  padding: clamp(10px, 2vh, 22px) 24px;
+  min-height: 0;
+  /* ── Neden SABİT dikey rezerv (layout'tan türetilmiyor)? ──
+     Kart 3/2 oranını KORUYARAK hem genişlik hem yükseklik bütçesine sığmalı;
+     boyut GENİŞLİKTEN sürülür (bkz .fgg-play-area .flag-img-wrap): genişlik =
+     clamp(min, min(52vw-tavanı, dvh-yükseklik-bütçesi'nin genişlik eşdeğeri), max),
+     yükseklik aspect-ratio 3/2'den türetilir. dvh-bütçesinin genişlik eşdeğeri
+     150dvh − 678px'tir; buradaki 678 = (kart dışı dikey rezerv 452px) × 1.5, yani
+     eski yükseklik-clamp'inin (100dvh − 452) genişliğe 3/2 ile ölçeklenmiş hâli.
+
+     Kart-dışı dikey rezerv (≈452px) KONSERVATİF: gerçek ≈ 305–330px (header 50 +
+     control 104 + pass 43 + padding ~40 + sahne-içi ~68–92) → ≥120px no-scroll
+     marjini yazı-tipi/engine farkını yutar; overflow:hidden desktop scroll'u keser.
+     GÜVENLİ ÇÜNKÜ kart boyutu SAF viewport matematiği (vw + dvh + aspect-ratio) →
+     parent-genişlik / SVG intrinsic / grid auto-track'e DEĞİL bağlı; Safari ve
+     Chrome aynı viewport'ta AYNI kartı üretir. */
+}
+.fgg-play-area > .flag-stage      { grid-column: 2; justify-self: center; min-width: 0; }
+/* Panel, satır izinin (= .flag-stage yüksekliği) dikey MERKEZİNE hizalanır.
+   .flag-stage üstte bir meta satırı (.flag-meta-row) taşıdığı için `start`
+   hizasında panel bayrak KARTININ üstünde "havada" kalıyordu; merkeze alınca
+   panelin dikey ekseni bayrak kartının eksenine oturur (dolu odada üst/alt
+   kenarlar da kartla örtüşür). .flag-stage'in kendi konumu (align-content:
+   center) DEĞİŞMEZ → bayrak gerçek merkezde kalır. */
+.fgg-play-area > .fgg-score-panel { grid-column: 3; justify-self: start; align-self: center; }
+
+/* Sahne kabuğu — dikeyde kompakt (kart odak). Sabit 520px max-width KALDIRILDI;
+   genişlik karttan (aspect-ratio türevi) gelir. gap küçültüldü → kısa ekranda
+   kart daha büyük, meta/prompt/reveal hep görünür. */
+.fgg-play-area .flag-stage {
+  gap: clamp(8px, 1.5vh, 16px);
+  width: auto;
+  max-width: none;
+}
+.fgg-play-area .flag-meta-row { flex: 0 0 auto; }
+
+/* ── BAYRAK KARTI — kararlı dış kutu (Safari/Chrome birebir aynı) ──
+   Boyut bağımlılığı GENİŞLİK-tabanlı (Safari fix — canlı Safari testiyle doğrulandı):
+   • Genişlik TEK KAYNAK: clamp(min, min(vw-tavanı, dvh-bütçesi), max) — SAF
+     viewport matematiği (vw + dvh), parent-genişlik / SVG intrinsic / grid
+     auto-track'e DEĞİL bağlı → definite.
+       - vw-tavanı   = 52vw → geniş-kısa ekranda yatay taşmayı + skor paneliyle
+                       çakışmayı önler (kart ≤ 52vw → yan kolonlar panele yer bırakır).
+       - dvh-bütçesi = 150dvh − 678px → kısa ekranda kart küçülür (scroll YOK).
+     Değerler eski yükseklik-clamp'inin birebir ×1.5 (3/2) eşdeğeri:
+       H=clamp(150, min(100dvh−452, 52vw*2/3), 540) ⇒ W=clamp(225, min(52vw, 150dvh−678), 810).
+   • Yükseklik aspect-ratio 3/2'den TÜRETİLİR (height:auto). Genişlik definite
+     olduğu için Chrome+Safari AYNI yüksekliği üretir — aspect-ratio'nun güvenilir
+     yönü genişlik→yükseklik'tir.
+   • NEDEN width:auto TERK EDİLDİ: eski kural explicit height + width:auto idi;
+     Safari, orta `auto` grid kolonundaki width:auto'yu min-content'e çözüp
+     height→width oran aktarımını yapmıyordu → kutu 3:2 yerine portre'ye çöküyordu.
+     Explicit width + height:auto bu ters bağımlılığı ortadan kaldırır.
+   • min-width/min-height:0 → intrinsic min-content taşması yok; max-width:100%
+     yalnız güvenlik (indefinite track'te intrinsic hesapta `none` sayılır, çökmez).
+   • object-fit contain → Nepal gibi dikdörtgen-olmayan bayrak kırpılmadan görünür.
+   100vh fallback önce; dvh destekleniyorsa ikinci satır ezer. */
+.fgg-play-area .flag-img-wrap {
+  width: clamp(225px, min(52vw, calc(150vh  - 678px)), 810px);
+  width: clamp(225px, min(52vw, calc(150dvh - 678px)), 810px);
+  height: auto;
+  aspect-ratio: 3 / 2;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+.fgg-play-area .flag-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Skor paneli — JSX'te veri/sıralama mantığı DEĞİŞMEDİ; yalnız görsel kabuk.
+   Genişlik sınırlı → geniş ekranda bile sağda derli toplu; 3–10 oyuncuda
+   kontrollü iç scroll. */
+.fgg-score-panel {
+  width: 100%;
+  max-width: 260px;
+  align-self: start;
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  background: rgba(10, 18, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.fgg-score-panel::-webkit-scrollbar { width: 5px; }
+.fgg-score-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.fgg-score-head {
+  font-size: 12px; font-weight: 800; opacity: .7;
+  letter-spacing: .06em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.fgg-score-list { display: flex; flex-direction: column; gap: 2px; }
+.fgg-score-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 7px; border-radius: 7px;
+}
+.fgg-score-row--me { background: rgba(79, 139, 255, 0.12); }
+.fgg-score-rank { width: 18px; flex-shrink: 0; text-align: right; font-size: 12px; opacity: .6; }
+.fgg-score-name {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fgg-score-row--me .fgg-score-name { font-weight: 800; }
+.fgg-score-val { font-size: 14px; font-weight: 800; color: var(--accent); flex-shrink: 0; }
+
+/* Sonuç ekranı aksiyonları — "Lobiye Dön" + "Ana Menü" masaüstünde YAN YANA,
+   eşit (flex:1) genişlikte; kart daralınca (dar mobil) mantıklı biçimde alt
+   alta sarar. Yalnız Bayrak Grup sonuç kartına scope'lu (.fgg-result-*). */
+.fgg-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fgg-result-btn {
+  flex: 1 1 0;
+  min-width: 130px;
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 800;
+}
+/* "Lobiye dönüldü…" bildirimi → tek satırı tam kaplar, altındaki tek buton
+   (Ana Menü) doğal olarak tam genişlik olur. */
+.fgg-result-note { flex: 1 1 100%; margin: 0; text-align: center; }
+
+/* ── Responsive: dar masaüstü/tablet/mobil → tek kolon, skor paneli ALTA ──
+   Simetrik 3-kolon yalnız geniş masaüstünde (≥1200px) tutulur; daha darda
+   (1199px altı) bayrak + skor paneli bir eksende, panel bayrağın ALTINA iner
+   (task: "belirli dar masaüstü breakpoint'inde skor paneli alta geçebilir" —
+   tarayıcıya göre DEĞİL kullanılabilir ALANA göre). Bu aralıkta kart WIDTH ile
+   sürülür (tek kolonda kısıt genişlik) ve içerik akışı + sayfa scroll'una izin
+   verilir. Mobil (≤600 dahil) bu tek-kolon stack'i korur — içerik kırpılmaz. */
+@media (max-width: 1199px) {
+  .fgg-play-shell { height: auto; min-height: 100dvh; overflow: visible; }
+  .flag-area.fgg-play-area {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    justify-items: center;
+    gap: 16px;
+  }
+  .fgg-play-area > .flag-stage,
+  .fgg-play-area > .fgg-score-panel { grid-column: 1; justify-self: center; }
+  .fgg-score-panel { max-width: 420px; }
+  /* Tek kolonda kartı genişlikten sür (yükseklik-bütçesi yerine) → dikey akış +
+     scroll serbest; kırpma yok (object-fit contain). */
+  .fgg-play-area .flag-img-wrap {
+    height: auto;
+    width: min(78vw, 520px);
+    max-width: 100%;
+  }
+}
+
 /* ═══════════════════════════════════════════
    DUEL MAP — country colour roles
 ═══════════════════════════════════════════ */

@@ -20,6 +20,7 @@ export type AppScreen =
   | "duel-game"
   | "duel-group-game"
   | "flag-duel-game"
+  | "flag-group-game"
   | "wheel-game"
   | "wheel-duel-game"
   | "wheel-group-game"
@@ -54,6 +55,7 @@ const GAMEPLAY_SCREENS: ReadonlySet<AppScreen> = new Set<AppScreen>([
   "duel-game", // Ülke Yaz 1v1
   "duel-group-game", // Ülke Yaz grup
   "flag-duel-game", // Bayrak Bilmece
+  "flag-group-game", // Bayrak Bilmece grup
   "wheel-game", // Çark (solo)
   "wheel-duel-game", // Çark 1v1
   "wheel-group-game", // Çark grup

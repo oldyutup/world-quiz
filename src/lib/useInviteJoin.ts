@@ -6,6 +6,7 @@ export type InviteParamKey =
   | "duel"
   | "duelGroup"
   | "flagDuel"
+  | "flagGroup"
   | "wheelDuel"
   | "wheelGroup"
   | "korNokta";

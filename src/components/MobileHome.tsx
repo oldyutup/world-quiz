@@ -53,6 +53,7 @@ export type MobileHomeTarget =
   | "flag-duel-game"
   | "wheel-duel-game"
   | "duel-group-game"
+  | "flag-group-game"
   | "wheel-group-game"
   | "cizim-test";
 
@@ -679,6 +680,7 @@ export default function MobileHome({
         { icon: "🛡️", title: "Kuşatma", desc: "Doğru bil, hamle yap, ele geçir!", featured: true, onTap: onOpenConquest },
         { icon: "🕵️", title: "Kör Nokta",     desc: "Takımına güven, raporları çöz, konumu bul.", onTap: onOpenKorNokta },
         { icon: "🌍", title: "Ülke Yaz Grup", desc: "Arkadaşlarınla aynı odada yarış.", onTap: () => onPlay("duel-group-game") },
+        { icon: "🚩", title: "Bayrak Grup",   desc: "Aynı bayrağı gör, ilk bilen kazanır.", onTap: () => onPlay("flag-group-game") },
         { icon: "🎯", title: "Çark Grup",     desc: "Grup halinde çark yarışı.",        onTap: () => onPlay("wheel-group-game") },
         /* Eshle — bağımsız oyunumuz; Torble içi ekran DEĞİL, harici link.
            ↗ dışarı çıkışı işaretler; window.open noopener/noreferrer ile güvenli. */
