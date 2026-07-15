@@ -22,6 +22,19 @@ import KorNoktaSelectModal from "./modes/korNokta/KorNoktaSelectModal";
 // bundle'a girmez. Kart ikonu doğrudan home PNG setinden (eshle-icon.png).
 import MobileHome from "./components/MobileHome";
 import { QuickMatchModal } from "./components/QuickMatchModal";
+import {
+  RoomCodeBar,
+  RoomCodeResultModal,
+  type RoomCodeSubmitOutcome,
+  type RoomCodeResultData,
+} from "./components/RoomCodeJoin";
+import {
+  resolveRoomCode,
+  roomCodeErrorMessage,
+  normalizeRoomCode,
+  isProbablyValidRoomCode,
+  type RoomCodeModeKey,
+} from "./lib/roomCode";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -194,6 +207,18 @@ const PENDING_QUICK_MATCH_KEY = "pending_quick_match_intent";
 
 function clearPendingQuickMatch() {
   try { sessionStorage.removeItem(PENDING_QUICK_MATCH_KEY); }
+  catch { /* sessionStorage disabled — best effort */ }
+}
+
+/** Üst bar / mobil "Oda Kodu" alanından giriş yapmamış kullanıcı bir kod
+ *  gönderdiğinde: resolver authenticated-only olduğu için kod ÇÖZÜLMEDEN
+ *  saklanır, login istenir ve login sonrası (in-page veya OAuth round-trip)
+ *  çözülüp yönlendirilir. sessionStorage OAuth redirect'inde aynı sekmede
+ *  hayatta kaldığı için kullanılır; kısa ömürlü, tek seferlik tüketilir. */
+const PENDING_ROOM_CODE_KEY = "pending_room_code_join";
+
+function clearPendingRoomCode() {
+  try { sessionStorage.removeItem(PENDING_ROOM_CODE_KEY); }
   catch { /* sessionStorage disabled — best effort */ }
 }
 
@@ -466,12 +491,18 @@ function HomeTopBarBrand() {
 function HomeTopBarActions({
   onQuickMatch,
   onOpenRanking,
+  onSubmitRoomCode,
 }: {
   onQuickMatch: () => void;
   onOpenRanking: () => void;
+  /** Üst bar "Oda Kodu" alanı submit'i — App merkezî resolver+yönlendirme
+   *  akışını çalıştırır (kullanıcı modu bilmeden koddan lobiye gider). */
+  onSubmitRoomCode: (rawCode: string) => Promise<RoomCodeSubmitOutcome>;
 }) {
   return (
     <nav className="home-topbar-actions" aria-label="Ana eylemler">
+      {/* Oda Kodu alanı — Hızlı Eşleş'in SOLUNDA, birincil CTA'dan daha sakin. */}
+      <RoomCodeBar onSubmit={onSubmitRoomCode} />
       <button
         type="button"
         className="htb-btn htb-btn--qm"
@@ -523,6 +554,21 @@ function HomeTopBarActions({
         <span className="htb-btn-label">Günün Görevi</span>
         <span className="htb-quest-tag">Yakında</span>
       </button>
+      {/* Rekorlar — GELECEK, AYRI özellik (Sıralama'nın başka adı DEĞİL). Pasif
+          bir container: <button>/<a> değil → tıklanamaz, route/modal açmaz,
+          klavye durağı harcamaz, hover'da aktif izlenim vermez. aria-disabled
+          ekran okuyucuya "yakında" bilgisini taşır. Günün Görevi ile aynı
+          görsel aile; ikon mevcut madalya asset'i (yeni asset üretilmedi). */}
+      <div
+        className="htb-btn htb-btn--quest htb-static"
+        role="group"
+        aria-disabled="true"
+        aria-label="Rekorlar — Yakında"
+      >
+        <EmojiIcon name="medal-gold" className="htb-btn-emoji" />
+        <span className="htb-btn-label">Rekorlar</span>
+        <span className="htb-quest-tag">Yakında</span>
+      </div>
     </nav>
   );
 }
@@ -537,6 +583,9 @@ interface HomeProps {
   /** Hızlı Eşleş (native + narrow/mobil-web): MobileHome sheet'i intent'i App'e
    *  taşır; App auth gate + queue/oyun yönlendirmesini yapar. */
   onStartQuickMatch: (intent: QuickMatchIntent) => void;
+  /** Mobil/dar ekran "Oda Kodu ile Katıl" sheet submit'i → App merkezî
+   *  resolver+yönlendirme (üst bar RoomCodeBar ile AYNI akış). */
+  onSubmitRoomCode: (rawCode: string) => Promise<RoomCodeSubmitOutcome>;
   /** Kör Nokta login-only: guest bir aksiyon seçince App auth modal'ı açar
    *  ve login sonrası ilgili ekrana yönlendirir. */
   onKorNoktaAuthRequired: (action: "create" | "join") => void;
@@ -552,7 +601,7 @@ interface HomeProps {
   homeTheme: HomeTheme;
   onThemeChange: (t: HomeTheme) => void;
 }
-function HomeScreen({ onSelect, profile, onStartQuickMatch, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
+function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
@@ -667,6 +716,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
       <MobileHome
         onPlay={onSelect}
         onStartQuickMatch={onStartQuickMatch}
+        onSubmitRoomCode={onSubmitRoomCode}
         onOpenConquest={() => setShowConquestMenu(true)}
         onOpenKorNokta={() => setShowKorNoktaMenu(true)}
         onOpenRanking={onOpenRanking}
@@ -2678,6 +2728,10 @@ export default function App() {
   // çünkü bar App chrome'unda (HomeScreen dışında) yaşıyor. Modal handleSearch
   // içinde onClose'u kendisi çağırdığından ekran değişse de state kapanır.
   const [homeQuickMatchOpen, setHomeQuickMatchOpen] = useState(false);
+  // Üst bar / mobil "Oda Kodu" alanı: aynı kod birden fazla aktif modda
+  // bulunursa seçim, ya da (login sonrası devam akışında) hata bildirimi için
+  // tek üst-seviye modal. null iken hiçbir şey render edilmez.
+  const [roomCodeResult, setRoomCodeResult] = useState<RoomCodeResultData | null>(null);
   // Native app only: the bottom-nav Profil tab drives the (otherwise
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
@@ -2754,6 +2808,111 @@ export default function App() {
     setScreen(target);
   };
 
+  /* ── Oda Kodu ile Katıl (üst bar + mobil sheet) ──────────────────────────
+   * Merkezî çözümleyici (resolve_torble_room_code) kodun MODUNU bulur; sonra
+   * MEVCUT davet/katılma akışı yeniden kullanılır — yeni bir join sistemi YOK:
+   *   • conquest / korNokta → ?param=KOD + ilgili invite ekranı (mod kendi
+   *     auto-join'ini yapar: ConquestMode / KorNoktaMode useInviteJoin).
+   *   • diğer 6 mod → ONLINE_INVITE_LINKS eşleşmesi (?param=KOD + link.screen);
+   *     modun useInviteJoin'i auto-join tetikler.
+   * routeToResolvedRoom YALNIZ giriş yapmış kullanıcı için çağrılır (resolver
+   * authenticated). Kullanıcı kodu tekrar yazmaz. */
+  const routeToResolvedRoom = (mode: RoomCodeModeKey, code: string) => {
+    // Mode ekranı yüzeyi devralsın: açık home modallarını kapat.
+    setRoomCodeResult(null);
+    setLeaderboardOpen(false);
+    setHomeQuickMatchOpen(false);
+    clearPendingRoomCode();
+
+    const setParam = (param: string) => {
+      if (typeof window === "undefined") return;
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set(param, code);
+        window.history.replaceState({}, "", url.toString());
+      } catch { /* history API yok — sessiz geç */ }
+    };
+
+    if (mode === "conquest") {
+      // Conquest kendi invite path'ini kullanır: ?conquest=KOD → conquest-join
+      // ekranındaki ConquestMode mount effect'i kodu okuyup auto-join eder.
+      setParam("conquest");
+      if (screen !== "conquest-join") setScreen("conquest-join");
+      return;
+    }
+    if (mode === "korNokta") {
+      setParam("korNokta");
+      if (screen !== "kornokta-join") setScreen("kornokta-join");
+      return;
+    }
+    const link = ONLINE_INVITE_LINKS.find((l) => l.param === mode);
+    if (!link) return;
+    setParam(link.param);
+    if (screen !== link.screen) setScreen(link.screen);
+  };
+
+  /* Çözümleme sonucunu ele al: found → yönlendir; ambiguous → seçim modalı;
+   * hata → çağırana (bar/sheet inline) mesaj. Yalnız giriş yapmış kullanıcı. */
+  const applyRoomCodeResolution = (
+    res: Awaited<ReturnType<typeof resolveRoomCode>>,
+  ): RoomCodeSubmitOutcome => {
+    if (res.result === "found") {
+      routeToResolvedRoom(res.match.mode, res.code);
+      return { kind: "done" };
+    }
+    if (res.result === "ambiguous") {
+      setRoomCodeResult({ kind: "ambiguous", code: res.code, matches: res.matches });
+      return { kind: "done" };
+    }
+    return {
+      kind: "error",
+      message: roomCodeErrorMessage(res) ?? "Bu kodla aktif bir oda bulunamadı.",
+    };
+  };
+
+  /* Üst bar/mobil sheet submit. Giriş yapmamışsa: kod SAKLANIR + login istenir
+   * (resolver authenticated; guest çözümleme yapmayız → enumeration yüzeyi yok).
+   * Login sonrası completeAuthRouting / boot effect devam ettirir. */
+  const handleRoomCodeSubmit = async (
+    rawCode: string,
+  ): Promise<RoomCodeSubmitOutcome> => {
+    if (!isProbablyValidRoomCode(rawCode)) {
+      return { kind: "error", message: "Geçersiz oda kodu." };
+    }
+    if (!profile?.username) {
+      try { sessionStorage.setItem(PENDING_ROOM_CODE_KEY, normalizeRoomCode(rawCode)); }
+      catch { /* sessionStorage yok — best effort */ }
+      setPendingOnlineTarget(null);
+      setAuthPromptReason("multi-gate");
+      setAuthOpen(true);
+      return { kind: "done" };
+    }
+    const res = await resolveRoomCode(rawCode);
+    return applyRoomCodeResolution(res);
+  };
+
+  /* Ambiguous modalında bir mod seçilince: doğrudan o modun mevcut katılma
+   * akışına yönlendir (kullanıcı kodu tekrar yazmaz). */
+  const handleRoomCodePick = (mode: RoomCodeModeKey, code: string) => {
+    routeToResolvedRoom(mode, code);
+  };
+
+  /* Guest → login sonrası devam: saklanan kodu çöz + yönlendir. found/ambiguous
+   * doğal akışına gider; hata bu bağlamda inline gösterilemez (yüzey kapandı) →
+   * üst-seviye bildirim modalı. */
+  const continueRoomCodeAfterAuth = async (rawCode: string) => {
+    const res = await resolveRoomCode(rawCode);
+    if (res.result === "found") { routeToResolvedRoom(res.match.mode, res.code); return; }
+    if (res.result === "ambiguous") {
+      setRoomCodeResult({ kind: "ambiguous", code: res.code, matches: res.matches });
+      return;
+    }
+    setRoomCodeResult({
+      kind: "error",
+      message: roomCodeErrorMessage(res) ?? "Bu kodla aktif bir oda bulunamadı.",
+    });
+  };
+
   /* Hızlı Eşleş entry (native bottom-nav ⚡ tab + narrow/mobil-web card). Sets
    * the intent (mirrored to sessionStorage for the OAuth round-trip) and routes
    * through the EXISTING navigateOnline gate — so the duel-gate / kusatma-gate
@@ -2791,6 +2950,20 @@ export default function App() {
     setPendingOnlineTarget(null);
     setAuthPromptReason(null);
     localStorage.setItem("torble_welcome_seen", "true");
+
+    // Üst bar/mobil "Oda Kodu" guest akışının devamı: saklanan kodu çöz +
+    // yönlendir. In-page login bu yolu kullanır; OAuth round-trip'te ise page
+    // reload olduğu için boot effect'i (aşağıda) tüketir — clear-on-consume
+    // ile yalnız biri işler.
+    if (nextProfile?.username) {
+      let pendingCode: string | null = null;
+      try { pendingCode = sessionStorage.getItem(PENDING_ROOM_CODE_KEY); }
+      catch { /* sessionStorage yok */ }
+      if (pendingCode) {
+        clearPendingRoomCode();
+        void continueRoomCodeAfterAuth(pendingCode);
+      }
+    }
   };
 
   const handleAppClaimBonus = () => {
@@ -3061,6 +3234,19 @@ function clearPendingKorNoktaInvite() {
       return;
     }
 
+    // Üst bar/mobil "Oda Kodu" guest akışı OAuth round-trip'ten döndüyse:
+    // saklanan ham kodu (login sonrası artık authenticated) çöz + yönlendir.
+    // In-page login yolunu completeAuthRouting tüketir; clear-on-consume ile
+    // yalnız biri işler. Davet linkleri yukarıda önceliklidir.
+    let pendingRoomCode: string | null = null;
+    try { pendingRoomCode = sessionStorage.getItem(PENDING_ROOM_CODE_KEY); }
+    catch { /* sessionStorage disabled — best effort */ }
+    if (pendingRoomCode && profile?.username) {
+      clearPendingRoomCode();
+      void continueRoomCodeAfterAuth(pendingRoomCode);
+      return;
+    }
+
     // Normal menu tap on a gated online mode (no invite link in the URL): the
     // in-memory pendingOnlineTarget is wiped by a Google OAuth redirect, so
     // navigateOnline() mirrors it into sessionStorage. Consume it once here —
@@ -3169,6 +3355,7 @@ useEffect(() => {
         <HomeTopBarActions
           onQuickMatch={() => setHomeQuickMatchOpen(true)}
           onOpenRanking={() => setLeaderboardOpen(true)}
+          onSubmitRoomCode={handleRoomCodeSubmit}
         />
         <div className="top-right-stack top-right-stack--inbar">
           {/* Sağ kimlik kümesi: [Bildirimler] [Arkadaşlar] [Profil pill].
@@ -3211,6 +3398,7 @@ useEffect(() => {
       <HomeScreen
         onSelect={navigateOnline}
         onStartQuickMatch={startQuickMatch}
+        onSubmitRoomCode={handleRoomCodeSubmit}
         profile={profile}
         onKorNoktaAuthRequired={(action) => {
           setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
@@ -3232,11 +3420,23 @@ useEffect(() => {
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
       )}
 
+      {/* Oda Kodu: aynı kod birden fazla aktif modda → seçim; ya da (guest
+          login-devam akışında) hata bildirimi. Seçilince o modun MEVCUT katılma
+          akışına gider. */}
+      {roomCodeResult && (
+        <RoomCodeResultModal
+          data={roomCodeResult}
+          onPick={handleRoomCodePick}
+          onClose={() => setRoomCodeResult(null)}
+        />
+      )}
+
       {/* Üst bar Hızlı Eşleş girişi — HomeScreen'deki QM kartıyla AYNI modal ve
           AYNI startQuickMatch akışı (auth gate + intent + yönlendirme). Yeni
           matchmaking mantığı YOK; yalnızca ikinci bir giriş yüzeyi. */}
       {homeQuickMatchOpen && (
         <QuickMatchModal
+          themeAttr={getThemeDataAttr(homeTheme)}
           onStartQuickMatch={startQuickMatch}
           onClose={() => {
             playSound("click");
@@ -3305,6 +3505,8 @@ useEffect(() => {
         // Dismissing the gate also drops any Hızlı Eşleş intent, so a later
         // manual entry to the same mode doesn't suddenly auto-search.
         clearQuickMatchIntent();
+        // …ve varsa üst bar/mobil "Oda Kodu" bekleyen kodunu (guest akışı).
+        clearPendingRoomCode();
       }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);
@@ -3328,6 +3530,7 @@ useEffect(() => {
         clearPendingOnlineInvites();
         clearPendingOnlineTarget();
         clearQuickMatchIntent();
+        clearPendingRoomCode();
       }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);

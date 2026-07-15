@@ -294,9 +294,14 @@ function getFocusable(root: HTMLElement | null): HTMLElement[] {
 export function QuickMatchModal({
   onClose,
   onStartQuickMatch,
+  themeAttr,
 }: {
   onClose: () => void;
   onStartQuickMatch: (intent: QuickMatchIntent) => void;
+  /** Aktif ana ekran temasının data-theme değeri (ConquestModeSelectModal
+   *  deseni): "dark-space" (Zümrüt Vadi) gelirse panel/CTA'lar CSS'te zümrüt
+   *  aileye döner. Eşleşme mantığına dokunmaz — yalnız görsel kanca. */
+  themeAttr?: string;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -400,6 +405,7 @@ export function QuickMatchModal({
   return (
     <div
       className="overlay qm-overlay"
+      data-theme={themeAttr}
       onClick={() => { playSound("click"); onClose(); }}
     >
       <div

@@ -693,6 +693,109 @@ a.mode-card-btn { text-decoration: none; }
   .qm-close { transition: none; }
 }
 
+/* ── Zümrüt Vadi (dark-space) — Hızlı Eşleş paneli ──
+   data-theme App'ten qm-overlay'e gelir (yalnız görsel kanca). Mavi-lacivert
+   cam yüzeyler koyu petrol-zümrüt aileye, seçiciler jade kenar/vurguya,
+   "Eşleşme Ara" ana ekran "Oyna" CTA'sıyla aynı turkuaz gradyana döner.
+   Tokenlar --zv-* (bkz. ZÜMRÜT VADİ ORTAK TOKENLARI). İşlev değişmez. */
+.qm-overlay[data-theme="dark-space"] .qm-modal {
+  background:
+    radial-gradient(130% 90% at 50% -8%, rgba(58, 210, 193, 0.14) 0%, rgba(58, 210, 193, 0) 58%),
+    linear-gradient(180deg, rgba(13, 42, 36, 0.93) 0%, rgba(7, 24, 21, 0.95) 100%);
+  border-color: rgba(120, 232, 218, 0.30);
+  box-shadow:
+    0 24px 60px rgba(2, 16, 13, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 44px rgba(58, 210, 193, 0.06);
+}
+.qm-overlay[data-theme="dark-space"] .qm-head-glyph {
+  color: var(--zv-accent);
+  background: rgba(58, 210, 193, 0.10);
+  border-color: rgba(58, 210, 193, 0.24);
+}
+.qm-overlay[data-theme="dark-space"] .qm-sub,
+.qm-overlay[data-theme="dark-space"] .qms-label,
+.qm-overlay[data-theme="dark-space"] .qm-foot {
+  color: var(--zv-text-dim);
+}
+.qm-overlay[data-theme="dark-space"] .qm-close {
+  background: rgba(13, 42, 36, 0.7);
+  border-color: rgba(90, 200, 175, 0.25);
+}
+.qm-overlay[data-theme="dark-space"] .qm-close:hover {
+  color: #eafaf5;
+  border-color: var(--zv-border-strong);
+}
+.qm-overlay[data-theme="dark-space"] .qm-close:focus-visible {
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+.qm-overlay[data-theme="dark-space"] .qms-trigger {
+  background: rgba(10, 35, 30, 0.58);
+  border-color: rgba(120, 232, 218, 0.24);
+}
+.qm-overlay[data-theme="dark-space"] .qms-trigger:hover {
+  border-color: rgba(120, 232, 218, 0.5);
+  background: rgba(15, 48, 41, 0.65);
+}
+.qm-overlay[data-theme="dark-space"] .qms-trigger.is-open {
+  border-color: var(--zv-accent);
+  background: var(--zv-sel);
+}
+.qm-overlay[data-theme="dark-space"] .qms-trigger:focus-visible {
+  border-color: var(--zv-accent);
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+.qm-overlay[data-theme="dark-space"] .qms-trigger.is-open .qms-caret {
+  color: var(--zv-accent);
+}
+.qm-overlay[data-theme="dark-space"] .qms-pop {
+  background: linear-gradient(180deg, rgba(16, 52, 45, 0.98) 0%, rgba(9, 30, 26, 0.98) 100%);
+  border-color: rgba(120, 232, 218, 0.28);
+  box-shadow: 0 12px 32px rgba(2, 16, 13, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.qm-overlay[data-theme="dark-space"] .qms-opt:hover:not(.is-soon) {
+  background: var(--zv-hover);
+}
+.qm-overlay[data-theme="dark-space"] .qms-opt:focus-visible {
+  background: rgba(58, 210, 193, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(120, 232, 218, 0.4);
+}
+.qm-overlay[data-theme="dark-space"] .qms-opt.is-sel {
+  background: var(--zv-sel);
+}
+.qm-overlay[data-theme="dark-space"] .qms-opt-check {
+  color: var(--zv-accent);
+}
+/* "Eşleşme Ara" — altın-outline'lı mavi yerine tam zümrüt CTA; şimşek glyph'i
+   koyu metinle aynı aileye iner (parlak turkuaz zeminde altın okumuyor). */
+.qm-overlay[data-theme="dark-space"] .btn-accent.qm-search {
+  color: var(--zv-on-accent);
+  background: linear-gradient(135deg, #46d8c8 0%, #2cb8a8 52%, #1f9e8f 100%);
+  border-color: rgba(120, 232, 218, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.qm-overlay[data-theme="dark-space"] .btn-accent.qm-search:hover:not(:disabled) {
+  background: linear-gradient(135deg, #55e2d2 0%, #38c5b5 52%, #26ab9b 100%);
+  border-color: rgba(160, 240, 228, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(79, 209, 197, 0.20);
+}
+.qm-overlay[data-theme="dark-space"] .btn-accent.qm-search:focus-visible {
+  border-color: rgba(189, 245, 236, 0.95);
+  box-shadow:
+    0 0 0 3px var(--zv-ring-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.qm-overlay[data-theme="dark-space"] .btn-accent.qm-search:disabled {
+  background: linear-gradient(135deg, #46d8c8 0%, #2cb8a8 52%, #1f9e8f 100%);
+  border-color: rgba(120, 232, 218, 0.4);
+  box-shadow: none;
+}
+.qm-overlay[data-theme="dark-space"] .qm-search-glyph {
+  color: rgba(4, 45, 38, 0.92);
+}
+
 /* ═══════════════════════════════════════════
    CONTROL BAR
 ═══════════════════════════════════════════ */
@@ -10906,6 +11009,33 @@ a.mode-card-btn { text-decoration: none; }
    root. Default theme has no attribute → no overrides → existing look stays.
 ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── ZÜMRÜT VADİ ORTAK TOKENLARI (--zv-*) ──
+   Tek kaynak: Zümrüt Vadi (dark-space) temasındaki TÜM home-modal /
+   pre-lobby yüzeyleri bu değişkenlerden içer. Palet ana ekran kartlarından
+   türetildi (.home-screen--dark-space .mode-card + turkuaz "Oyna" CTA'sı):
+   koyu petrol-zümrüt yüzeyler, jade kenarlar, #3ad2c1→#1f9e8f CTA gradyanı.
+   Kapsam data-theme="dark-space" taşıyan köklerle sınırlı (home modalları,
+   pre-game duel ekranları, qm-overlay) + .home-topbar--dark-space şeridi;
+   diğer temalar ve MobileHome bu bloktan hiç etkilenmez. */
+[data-theme="dark-space"],
+.home-topbar--dark-space {
+  --zv-accent: #3ad2c1;                 /* kimlik/turkuaz vurgu (tema registry accent'i) */
+  --zv-on-accent: #04231f;              /* CTA üstü koyu metin (Oyna butonuyla aynı) */
+  --zv-cta: linear-gradient(180deg, #3ad2c1 0%, #1f9e8f 100%);
+  --zv-cta-hover: linear-gradient(180deg, #4fdccb 0%, #26ab9b 100%);
+  --zv-panel: rgba(7, 26, 22, 0.82);    /* birincil panel/modal zemini */
+  --zv-panel-2: rgba(13, 42, 36, 0.55); /* iç blok / nested panel */
+  --zv-input: rgba(9, 32, 27, 0.72);    /* girdi/select zemini */
+  --zv-border: rgba(90, 200, 175, 0.22);
+  --zv-border-soft: rgba(90, 200, 175, 0.13);
+  --zv-border-strong: rgba(120, 232, 218, 0.48);
+  --zv-ring: rgba(79, 209, 197, 0.18);        /* sakin focus/hover halkası */
+  --zv-ring-strong: rgba(79, 209, 197, 0.45); /* erişilebilir focus-visible halkası */
+  --zv-hover: rgba(58, 210, 193, 0.10);       /* satır/opsiyon hover zemini */
+  --zv-sel: rgba(58, 210, 193, 0.16);         /* seçili opsiyon zemini */
+  --zv-text-dim: rgba(190, 218, 208, 0.75);   /* ikincil metin (yeşile ısıtılmış) */
+}
+
 /* ── Primary card: Online setup, waiting room, group lobby ── */
 [data-theme="turkiye"] .duel-lobby-card {
   background: rgba(8, 31, 74, 0.70);
@@ -10926,11 +11056,11 @@ a.mode-card-btn { text-decoration: none; }
   -webkit-backdrop-filter: blur(16px);
 }
 [data-theme="dark-space"] .duel-lobby-card {
-  background: rgba(5, 8, 14, 0.78);
-  border-color: rgba(148, 163, 184, 0.16);
+  background: var(--zv-panel);
+  border-color: var(--zv-border);
   box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 24px 70px rgba(2, 20, 16, 0.42),
+    inset 0 1px 0 rgba(180, 255, 235, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -10960,14 +11090,52 @@ a.mode-card-btn { text-decoration: none; }
 }
 .overlay[data-theme="dark-space"] .modal {
   background:
+    linear-gradient(122deg, transparent 26%, rgba(140, 240, 220, 0.05) 47%, rgba(140, 240, 220, 0.02) 55%, transparent 72%),
     linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01)),
-    rgba(5, 8, 14, 0.80);
-  border-color: rgba(148, 163, 184, 0.18);
+    rgba(8, 29, 25, 0.84);
+  border-color: var(--zv-border);
   box-shadow:
-    0 26px 80px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 26px 80px rgba(2, 20, 16, 0.55),
+    inset 0 1px 0 rgba(180, 255, 235, 0.05);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+/* Zümrüt seçim modalı butonları: mavi gradyan yerine ana ekran "Oyna"
+   CTA'sıyla aynı zümrüt/turkuaz dolgu + koyu okunaklı metin. Yerleşim,
+   boyut ve davranış base .modal-btn'den aynen gelir. */
+.overlay[data-theme="dark-space"] .modal-btn {
+  background: var(--zv-cta);
+  color: var(--zv-on-accent);
+  border-color: rgba(120, 232, 218, 0.45);
+  box-shadow: 0 10px 24px rgba(31, 158, 143, 0.22);
+}
+.overlay[data-theme="dark-space"] .modal-btn:hover {
+  box-shadow: 0 12px 28px rgba(31, 158, 143, 0.32);
+}
+.overlay[data-theme="dark-space"] .modal-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 10px 24px rgba(31, 158, 143, 0.22),
+    0 0 0 3px var(--zv-ring-strong);
+}
+/* "Yakında"/disabled varyantı sessiz zümrüt yüzeyde kalır (parlak CTA değil). */
+.overlay[data-theme="dark-space"] .modal-btn:disabled,
+.overlay[data-theme="dark-space"] .modal-btn-soon {
+  background: var(--zv-panel-2);
+  color: var(--zv-text-dim);
+  border-color: var(--zv-border-soft);
+  box-shadow: none;
+}
+/* İkincil geri adımı (nested modal step) — nötr gri yerine iç panel tonu. */
+.overlay[data-theme="dark-space"] .modal-back {
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border-soft);
+  color: var(--zv-text-dim);
+}
+.overlay[data-theme="dark-space"] .modal-back:hover {
+  color: #eafaf5;
+  border-color: var(--zv-border-strong);
 }
 
 /* ── Nested panels inside primary card (settings, join, room code) ── */
@@ -10977,8 +11145,8 @@ a.mode-card-btn { text-decoration: none; }
   border-color: rgba(147, 197, 253, 0.16);
 }
 [data-theme="dark-space"] .duel-settings-block {
-  background: rgba(15, 23, 42, 0.50);
-  border-color: rgba(255, 255, 255, 0.10);
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border-soft);
 }
 
 /* ── Player chips (waiting room) — non-mine only ── */
@@ -10988,8 +11156,8 @@ a.mode-card-btn { text-decoration: none; }
   border-color: rgba(147, 197, 253, 0.18);
 }
 [data-theme="dark-space"] .duel-player-chip:not(.mine) {
-  background: rgba(15, 23, 42, 0.48);
-  border-color: rgba(255, 255, 255, 0.09);
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border-soft);
 }
 
 /* ── Chat panel (desktop) ── */
@@ -11004,11 +11172,11 @@ a.mode-card-btn { text-decoration: none; }
   -webkit-backdrop-filter: blur(14px);
 }
 [data-theme="dark-space"] .lc-panel {
-  background: rgba(5, 8, 14, 0.76);
-  border-color: rgba(148, 163, 184, 0.14);
+  background: rgba(6, 23, 20, 0.78);
+  border-color: var(--zv-border);
   box-shadow:
-    0 18px 50px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 18px 50px rgba(2, 20, 16, 0.44),
+    inset 0 1px 0 rgba(180, 255, 235, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -11024,11 +11192,11 @@ a.mode-card-btn { text-decoration: none; }
   background: linear-gradient(180deg, rgba(20, 48, 90, 0.62), rgba(12, 36, 80, 0.48));
 }
 [data-theme="dark-space"] .lc-header {
-  background: linear-gradient(180deg, rgba(20, 24, 32, 0.55), rgba(12, 16, 22, 0.40));
-  border-bottom-color: rgba(148, 163, 184, 0.12);
+  background: linear-gradient(180deg, rgba(16, 46, 40, 0.55), rgba(9, 30, 26, 0.40));
+  border-bottom-color: var(--zv-border-soft);
 }
 [data-theme="dark-space"] .lc-header:hover {
-  background: linear-gradient(180deg, rgba(28, 32, 42, 0.62), rgba(18, 22, 30, 0.48));
+  background: linear-gradient(180deg, rgba(21, 58, 50, 0.62), rgba(13, 40, 34, 0.48));
 }
 
 /* Chat mobile bottom sheet */
@@ -11040,8 +11208,8 @@ a.mode-card-btn { text-decoration: none; }
   -webkit-backdrop-filter: blur(16px);
 }
 [data-theme="dark-space"] .lc-sheet {
-  background: rgba(5, 8, 14, 0.82);
-  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(6, 23, 20, 0.84);
+  border-color: var(--zv-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -11060,11 +11228,11 @@ a.mode-card-btn { text-decoration: none; }
 }
 [data-theme="dark-space"] .dgg-wait-main {
   background:
-    linear-gradient(180deg, rgba(18, 22, 30, 0.86), rgba(8, 11, 16, 0.92));
-  border-color: rgba(148, 163, 184, 0.16);
+    linear-gradient(180deg, rgba(13, 40, 34, 0.86), rgba(6, 22, 19, 0.92));
+  border-color: var(--zv-border);
   box-shadow:
-    0 22px 60px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 22px 60px rgba(2, 20, 16, 0.46),
+    inset 0 1px 0 rgba(180, 255, 235, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -11078,8 +11246,8 @@ a.mode-card-btn { text-decoration: none; }
 }
 [data-theme="dark-space"] .dgg-wait-players,
 [data-theme="dark-space"] .dgg-wait-side {
-  background: rgba(15, 23, 42, 0.52);
-  border-color: rgba(255, 255, 255, 0.10);
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border-soft);
 }
 
 /* Nested room-settings panel inside group wait side */
@@ -11089,8 +11257,8 @@ a.mode-card-btn { text-decoration: none; }
   border: 1px solid rgba(147, 197, 253, 0.16);
 }
 [data-theme="dark-space"] .dgg-room-settings {
-  background: rgba(12, 18, 28, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(10, 33, 28, 0.62);
+  border: 1px solid var(--zv-border-soft);
 }
 
 /* ── Subtle hover lift on selectable cards in themed pre-game screens ── */
@@ -11103,11 +11271,11 @@ a.mode-card-btn { text-decoration: none; }
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 [data-theme="dark-space"] .duel-lobby-card.duel-1v1-room-card:hover {
-  border-color: rgba(148, 163, 184, 0.26);
+  border-color: rgba(120, 232, 218, 0.34);
   box-shadow:
-    0 26px 70px rgba(0, 0, 0, 0.46),
-    0 0 0 3px rgba(148, 163, 184, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 26px 70px rgba(2, 20, 16, 0.50),
+    0 0 0 3px rgba(79, 209, 197, 0.10),
+    inset 0 1px 0 rgba(180, 255, 235, 0.06);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11124,8 +11292,8 @@ a.mode-card-btn { text-decoration: none; }
 }
 [data-theme="dark-space"] .lc-messages {
   background:
-    radial-gradient(1200px 400px at 50% -10%, rgba(148, 163, 184, 0.04), transparent 60%),
-    rgba(5, 8, 14, 0.52);
+    radial-gradient(1200px 400px at 50% -10%, rgba(58, 210, 193, 0.05), transparent 60%),
+    rgba(6, 22, 19, 0.52);
 }
 
 [data-theme="turkiye"] .lc-messages::-webkit-scrollbar-thumb,
@@ -11133,7 +11301,7 @@ a.mode-card-btn { text-decoration: none; }
   background: rgba(147, 197, 253, 0.22);
 }
 [data-theme="dark-space"] .lc-messages::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.20);
+  background: rgba(90, 200, 175, 0.28);
 }
 
 [data-theme="turkiye"] .lc-empty,
@@ -11142,7 +11310,7 @@ a.mode-card-btn { text-decoration: none; }
   opacity: 1;
 }
 [data-theme="dark-space"] .lc-empty {
-  color: rgba(186, 197, 217, 0.74);
+  color: var(--zv-text-dim);
   opacity: 1;
 }
 
@@ -11151,7 +11319,7 @@ a.mode-card-btn { text-decoration: none; }
   color: rgba(186, 211, 255, 0.78);
 }
 [data-theme="dark-space"] .lc-sender {
-  color: rgba(186, 197, 217, 0.72);
+  color: var(--zv-text-dim);
 }
 
 /* Opponent bubble — themed glass; "me" bubble stays accent-blue (button-like) */
@@ -11162,9 +11330,9 @@ a.mode-card-btn { text-decoration: none; }
   color: rgba(232, 240, 255, 0.96);
 }
 [data-theme="dark-space"] .lc-msg-opp .lc-bubble {
-  background: rgba(20, 27, 40, 0.62);
-  border-color: rgba(255, 255, 255, 0.10);
-  color: rgba(225, 230, 240, 0.96);
+  background: rgba(15, 46, 40, 0.58);
+  border-color: var(--zv-border-soft);
+  color: rgba(228, 244, 238, 0.96);
 }
 
 /* Input row + input field */
@@ -11174,8 +11342,8 @@ a.mode-card-btn { text-decoration: none; }
   border-top-color: rgba(147, 197, 253, 0.16);
 }
 [data-theme="dark-space"] .lc-input-row {
-  background: rgba(10, 14, 22, 0.62);
-  border-top-color: rgba(255, 255, 255, 0.08);
+  background: rgba(8, 28, 24, 0.62);
+  border-top-color: var(--zv-border-soft);
 }
 
 [data-theme="turkiye"] .lc-input,
@@ -11189,12 +11357,12 @@ a.mode-card-btn { text-decoration: none; }
   color: rgba(186, 211, 255, 0.55);
 }
 [data-theme="dark-space"] .lc-input {
-  background: rgba(8, 11, 17, 0.68);
-  border-color: rgba(148, 163, 184, 0.18);
-  color: rgba(225, 230, 240, 0.98);
+  background: rgba(7, 24, 21, 0.68);
+  border-color: var(--zv-border);
+  color: rgba(228, 244, 238, 0.98);
 }
 [data-theme="dark-space"] .lc-input::placeholder {
-  color: rgba(186, 197, 217, 0.50);
+  color: rgba(178, 212, 202, 0.52);
 }
 
 /* Mobile chat sheet — extend the same internals */
@@ -11204,8 +11372,8 @@ a.mode-card-btn { text-decoration: none; }
   border-bottom-color: rgba(147, 197, 253, 0.16);
 }
 [data-theme="dark-space"] .lc-sheet-header {
-  background: linear-gradient(180deg, rgba(20, 24, 32, 0.55), rgba(12, 16, 22, 0.40));
-  border-bottom-color: rgba(148, 163, 184, 0.14);
+  background: linear-gradient(180deg, rgba(16, 46, 40, 0.55), rgba(9, 30, 26, 0.40));
+  border-bottom-color: var(--zv-border-soft);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11222,8 +11390,8 @@ a.mode-card-btn { text-decoration: none; }
   -webkit-backdrop-filter: blur(14px);
 }
 [data-theme="dark-space"] .duel-header {
-  background: rgba(8, 11, 17, 0.62);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(7, 24, 21, 0.62);
+  border-bottom: 1px solid rgba(90, 200, 175, 0.16);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -11234,7 +11402,7 @@ a.mode-card-btn { text-decoration: none; }
   color: rgba(186, 211, 255, 0.86);
 }
 [data-theme="dark-space"] .duel-mode-label {
-  color: rgba(186, 197, 217, 0.80);
+  color: rgba(184, 216, 206, 0.82);
 }
 
 /* Room code chip — prominent (active state) */
@@ -11246,9 +11414,9 @@ a.mode-card-btn { text-decoration: none; }
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 [data-theme="dark-space"] .duel-code-badge {
-  color: rgba(225, 230, 240, 0.96);
-  background: rgba(60, 78, 110, 0.28);
-  border-color: rgba(148, 163, 184, 0.32);
+  color: rgba(232, 250, 245, 0.96);
+  background: rgba(31, 158, 143, 0.26);
+  border-color: rgba(120, 232, 218, 0.42);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
@@ -11260,9 +11428,9 @@ a.mode-card-btn { text-decoration: none; }
   border-color: rgba(147, 197, 253, 0.20);
 }
 [data-theme="dark-space"] .duel-region-badge {
-  color: rgba(186, 197, 217, 0.80);
-  background: rgba(20, 27, 40, 0.55);
-  border-color: rgba(148, 163, 184, 0.18);
+  color: rgba(184, 216, 206, 0.82);
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border);
 }
 
 /* Back button — sits in the themed header, must match the glass feel */
@@ -11278,13 +11446,13 @@ a.mode-card-btn { text-decoration: none; }
   color: rgba(232, 240, 255, 0.98);
 }
 [data-theme="dark-space"] .duel-header .back-btn {
-  background: rgba(20, 27, 40, 0.55);
-  border-color: rgba(148, 163, 184, 0.20);
-  color: rgba(225, 230, 240, 0.90);
+  background: var(--zv-panel-2);
+  border-color: var(--zv-border);
+  color: rgba(228, 244, 238, 0.90);
 }
 [data-theme="dark-space"] .duel-header .back-btn:hover {
-  border-color: rgba(148, 163, 184, 0.40);
-  color: rgba(240, 244, 252, 0.98);
+  border-color: rgba(120, 232, 218, 0.45);
+  color: rgba(240, 252, 248, 0.98);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11315,23 +11483,23 @@ a.mode-card-btn { text-decoration: none; }
 }
 
 [data-theme="dark-space"] .duel-invite-btn {
-  background: rgba(18, 23, 32, 0.70);
-  border: 1px solid rgba(148, 163, 184, 0.30);
-  color: rgba(225, 230, 240, 0.96);
+  background: rgba(10, 35, 30, 0.70);
+  border: 1px solid rgba(90, 200, 175, 0.38);
+  color: rgba(228, 244, 238, 0.96);
   box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.30),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 12px 30px rgba(2, 20, 16, 0.32),
+    inset 0 1px 0 rgba(180, 255, 235, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
 [data-theme="dark-space"] .duel-invite-btn:hover:not(.invited) {
-  background: rgba(28, 34, 46, 0.78);
-  border-color: rgba(148, 163, 184, 0.48);
-  color: rgba(240, 244, 252, 1);
+  background: rgba(15, 50, 43, 0.78);
+  border-color: rgba(120, 232, 218, 0.55);
+  color: rgba(240, 252, 248, 1);
   box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.36),
-    0 0 0 3px rgba(148, 163, 184, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 14px 36px rgba(2, 20, 16, 0.38),
+    0 0 0 3px rgba(79, 209, 197, 0.12),
+    inset 0 1px 0 rgba(180, 255, 235, 0.06);
 }
 
 /* Read-only invite-link field beneath the button */
@@ -11353,17 +11521,17 @@ a.mode-card-btn { text-decoration: none; }
 }
 
 [data-theme="dark-space"] .duel-link-input {
-  background: rgba(15, 23, 42, 0.55);
-  border-color: rgba(148, 163, 184, 0.18);
-  color: rgba(186, 197, 217, 0.72);
+  background: rgba(9, 32, 27, 0.55);
+  border-color: var(--zv-border);
+  color: rgba(178, 212, 202, 0.75);
 }
 [data-theme="dark-space"] .duel-link-preview .duel-link-input {
-  color: rgba(186, 197, 217, 0.70);
+  color: rgba(178, 212, 202, 0.72);
   opacity: 1;
 }
 [data-theme="dark-space"] .duel-link-input:focus {
-  border-color: rgba(148, 163, 184, 0.42);
-  color: rgba(232, 236, 244, 0.98);
+  border-color: var(--zv-border-strong);
+  color: rgba(236, 250, 246, 0.98);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11406,29 +11574,29 @@ a.mode-card-btn { text-decoration: none; }
 }
 
 [data-theme="dark-space"] .duel-select {
-  background: rgba(15, 20, 28, 0.78);
-  border-color: rgba(148, 163, 184, 0.22);
-  color: rgba(232, 236, 244, 0.96);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: var(--zv-input);
+  border-color: var(--zv-border);
+  color: rgba(236, 250, 246, 0.96);
+  box-shadow: inset 0 1px 0 rgba(180, 255, 235, 0.03);
 }
 [data-theme="dark-space"] .duel-select:hover:not(:focus) {
-  border-color: rgba(148, 163, 184, 0.36);
+  border-color: rgba(120, 232, 218, 0.38);
 }
 [data-theme="dark-space"] .duel-select:focus {
-  border-color: rgba(148, 163, 184, 0.48);
+  border-color: var(--zv-border-strong);
   box-shadow:
-    0 0 0 3px rgba(148, 163, 184, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 0 0 3px var(--zv-ring),
+    inset 0 1px 0 rgba(180, 255, 235, 0.03);
 }
 [data-theme="dark-space"] .duel-select-label {
-  color: rgba(186, 197, 217, 0.74);
+  color: var(--zv-text-dim);
 }
 [data-theme="dark-space"] .duel-select-caret {
-  color: rgba(186, 197, 217, 0.74);
+  color: var(--zv-text-dim);
 }
 [data-theme="dark-space"] .duel-select option {
-  background: #10141c;
-  color: #e8ecf4;
+  background: #0a2620;
+  color: #e8f6f0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -11467,23 +11635,42 @@ a.mode-card-btn { text-decoration: none; }
 
 [data-theme="dark-space"] .duel-name-input,
 [data-theme="dark-space"] .duel-code-input {
-  background: rgba(15, 20, 28, 0.78);
-  border-color: rgba(148, 163, 184, 0.22);
-  color: rgba(232, 236, 244, 0.96);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: var(--zv-input);
+  border-color: var(--zv-border);
+  color: rgba(236, 250, 246, 0.96);
+  box-shadow: inset 0 1px 0 rgba(180, 255, 235, 0.03);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
 [data-theme="dark-space"] .duel-name-input::placeholder,
 [data-theme="dark-space"] .duel-code-input::placeholder {
-  color: rgba(186, 197, 217, 0.48);
+  color: rgba(178, 212, 202, 0.50);
 }
 [data-theme="dark-space"] .duel-name-input:focus,
 [data-theme="dark-space"] .duel-code-input:focus {
-  border-color: rgba(148, 163, 184, 0.48);
+  border-color: var(--zv-border-strong);
   box-shadow:
-    0 0 0 3px rgba(148, 163, 184, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 0 3px var(--zv-ring),
+    inset 0 1px 0 rgba(180, 255, 235, 0.04);
+}
+
+/* ── Zümrüt birincil CTA — pre-lobby ekranlarındaki .btn-accent'ler ──
+   ("Oda Kur", grup "Oda Oluştur", lobi "Başlat" vb.) Gökyüzü Mavisi yerine
+   ana ekran "Oyna" butonuyla aynı zümrüt gradyan + koyu metin. data-theme
+   yalnız oyun ÖNCESİ fazlarda kökte durduğundan oyun içi yüzeylere sızmaz.
+   İstisna: .duel-quickmatch-btn'in altın-glass kimliği aşağıdaki daha
+   sonraki kuralla korunur (kaynak sırası kazanır). */
+[data-theme="dark-space"] .btn-accent {
+  background: var(--zv-cta);
+  color: var(--zv-on-accent);
+  border-color: rgba(120, 232, 218, 0.5);
+}
+[data-theme="dark-space"] .btn-accent:hover {
+  box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.32);
+}
+[data-theme="dark-space"] .btn-accent:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
 }
 
 /* Hızlı Eşleş — amber-glass treatment. Keeps the orange identity but reads
@@ -25625,14 +25812,26 @@ html.is-native-app .social-bar .notif-bell { display: none; }
     inset: 0 0 auto 0;
     z-index: 5100; /* sağ-üst şerit katmanı; modal overlay'ler (6000+) üstte kalır */
     display: grid;
-    grid-template-columns: 1fr auto 1fr; /* marka | eylemler (ortalı) | kimlik */
+    /* marka | eylemler | kimlik. Marka `auto` (DOĞAL genişlik → asla sıkışıp
+       taşmaz); orta `minmax(0,1fr)` tüm boşluğu yutar ve eylemleri içinde
+       ortalar; kimlik `auto` sağa yaslanır. Eski `1fr auto 1fr`, orta eylem
+       grubu (Oda Kodu eklenince) genişleyince marka track'ini min-content'in
+       altına sıkıştırıp slogan'ın Oda Kodu alanına taşmasına yol açıyordu. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 14px;
+    /* Kolon boşluğu = marka ile Oda Kodu arasındaki GARANTİLİ minimum aralık.
+       Orta eylem grubu artık track'ini taşamadığı için (aşağıda overflow:clip)
+       bu 18px her genişlikte korunur — slogan Oda Kodu'na giremez. */
+    gap: 18px;
     min-height: 58px;
     /* Full-width koyu chrome KORUNUR (zemin bu elemanda, padding kutunun içinde
        → padding alanı da boyanır). Yatay padding calc'i içeriği ortalanmış dar
-       bir max-width bandına toplar; şerit tam-genişlik, içerik derli toplu. */
-    padding: 0 max(22px, calc((100% - 1160px) / 2));
+       bir max-width bandına toplar; şerit tam-genişlik, içerik derli toplu.
+       Bant 1260→1460 genişletildi: marka bloğu bar'ın sol kenarına düzgün
+       yaslanır (1512'de 26px, ≤1492'de 16px) ve girişli sağ kimlik kümesi +
+       Oda Kodu birlikteyken orta gruba gerçek yer açılır. Simetrik kalır →
+       yükseklik/scroll davranışı değişmez. */
+    padding: 0 max(16px, calc((100% - 1460px) / 2));
     /* Opak, koyu navy / gece-atlası chrome; sahnenin derin lacivertiyle
        (home-screen #070b14 + gece-atlası gradyanı) birebir uyumlu — açık/parlak
        mavi DEĞİL. Yazı/ikon kontrastı rahat okunur kalır. Cam/blur YOK. */
@@ -25664,12 +25863,30 @@ html.is-native-app .social-bar .notif-bell { display: none; }
     min-width: 0;
   }
 
-  /* ORTA eylemler — gerçek merkeze hizalı; kopuk sol grup DEĞİL. */
+  /* ORTA eylemler — track'i doldurur (stretch) ve içeriğini kendi içinde
+     ortalar; görünüm eski justify-self:center ile birebir aynı. Fark taşma
+     davranışında: eskiden grup track'ten büyüyünce İKİ yana taşıp hem
+     slogana hem sağ kimlik kümesine biniyordu (girişli kullanıcıda 1512'de
+     bile). Şimdi min-width:0 + overflow-x:clip taşmayı track sınırında
+     keser (overlap İMKÂNSIZ), `safe center` destekleyen tarayıcıda taşma
+     tek yöne (sağa) düşer. Dikey eksen visible kalır ki Oda Kodu hata
+     popover'ı (absolute, alanın altına açılır) kesilmesin. Pratikte
+     breakpoint merdiveni (aşağıda) taşmayı zaten hiç oluşturmaz. */
   html:not(.is-native-app) .home-topbar-actions {
     display: flex;
     align-items: center;
     gap: 8px;
-    justify-self: center;
+    justify-content: center;
+    justify-content: safe center;
+    min-width: 0;
+    overflow: clip visible;
+    /* Grup bir inline-size container'dır: aşağıdaki @container kuralları
+       "Yakında" placeholder'larını viewport tahminine değil, kimlik kümesi
+       (kullanıcı adına göre değişken!) düşüldükten sonra kalan GERÇEK alana
+       göre çeker. Genişlik track'ten gelir (stretch) → içerikten bağımsız,
+       döngü riski yok. rcj hata popover'ı .rcj-bar'a (position:relative)
+       çıpalı olduğundan containment'tan etkilenmez. */
+    container-type: inline-size;
   }
 
   /* Sağ kimlik kümesi bar içinde akar: fixed köşe konumundan çıkar, sağa
@@ -25812,6 +26029,48 @@ html.is-native-app .social-bar .notif-bell { display: none; }
     0 0 0 3px rgba(240, 190, 90, 0.30);
 }
 
+/* ── Zümrüt Vadi: Hızlı Eşleş CTA'sı ── navy dolgu yerine ana ekran "Oyna"
+   butonlarıyla aynı turkuaz gradyan + koyu metin; sarı şimşek ikonu kalır
+   (kendi drop-shadow'u koyu metinle dengeyi kurar). Boyut/yerleşim aynı. */
+.home-topbar--dark-space .htb-btn--qm {
+  background: var(--zv-cta);
+  border-color: rgba(120, 232, 218, 0.55);
+  color: var(--zv-on-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(58, 210, 193, 0.10);
+}
+.home-topbar--dark-space .htb-btn--qm .htb-btn-label {
+  color: var(--zv-on-accent);
+  text-shadow: none;
+}
+.home-topbar--dark-space .htb-btn.htb-btn--qm:not(:disabled):hover {
+  background: var(--zv-cta-hover);
+  border-color: rgba(160, 240, 228, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 3px rgba(79, 209, 197, 0.28);
+  transform: translateY(-1px);
+}
+.home-topbar--dark-space .htb-btn.htb-btn--qm:not(:disabled):hover .htb-btn-label {
+  color: var(--zv-on-accent);
+}
+.home-topbar--dark-space .htb-btn.htb-btn--qm:focus-visible {
+  border-color: #bdf5ec;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 0 0 3px var(--zv-ring-strong);
+}
+/* Bar'ın öteki düğmelerinde mavi focus halkası → zümrüt (erişilebilirlik
+   halkası korunur, yalnız renk ailesi temaya döner). */
+.home-topbar--dark-space .htb-btn:focus-visible {
+  border-color: var(--zv-accent);
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+.home-topbar--dark-space .htb-btn--rank:not(:disabled):hover {
+  border-color: rgba(120, 232, 218, 0.26);
+}
+
 /* Sıralama — sakin ghost: dinlenmede zeminsiz, hover'da hafif yüzey. */
 .htb-btn--rank:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.05);
@@ -25865,11 +26124,37 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 
 /* Dar desktop pencereleri: önce slogan gizlenir, sonra Günün Görevi çekilir,
    en sonda Sıralama ikon-only'ye düşer (aria-label korunur) — bar tek satır. */
-@media (min-width: 601px) and (max-width: 1119px) {
+@media (min-width: 601px) and (max-width: 1399px) {
+  /* Slogan, overlap oluşmadan ÖNCE çekilir. Eşik girişli (worst-case) sağ
+     kimlik kümesiyle hesaplandı: marka(233) + 2×18 boşluk + eylemler(~807)
+     + kimlik(~280) + 2×16 padding ≈ 1388 → ≥1400'de rahat sığar, altında
+     slogan gizlenir ve marka ~70px'e iner. (Eski eşik 1199 girişli
+     kullanıcıda 1200–1400 bandında taşmaya yol açıyordu.) */
   html:not(.is-native-app) .htb-brand-slogan { display: none; }
 }
-@media (min-width: 601px) and (max-width: 899px) {
+@media (min-width: 601px) and (max-width: 1259px) {
+  /* İki "Yakında" placeholder'ı (Günün Görevi + Rekorlar) birlikte gizlenir
+     — ikisi de .htb-btn--quest. Girişli kimlik kümesi + Oda Kodu + Hızlı
+     Eşleş + Sıralama bu bantta ancak böyle tek satırda rahat kalır (eski
+     ≤999 eşiği girişli kullanıcıda 1000–1259'da sıkışma bırakıyordu). */
   html:not(.is-native-app) .htb-btn--quest { display: none; }
+}
+
+/* Container-tabanlı emniyet: uzun kullanıcı adı / kalabalık kimlik kümesi
+   orta track'i medya eşiklerinin öngördüğünden daha çok daraltırsa,
+   placeholder'lar ve Sıralama etiketi GERÇEK kalan alana göre çekilir —
+   kırpılma yerine sessiz sadeleşme. Medya merdiveni (yukarıda) desteklemeyen
+   eski tarayıcılarda taban davranış olarak kalır. */
+@container (max-width: 812px) {
+  html:not(.is-native-app) .htb-btn--quest { display: none; }
+}
+@container (max-width: 372px) {
+  html:not(.is-native-app) .htb-btn--rank {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  html:not(.is-native-app) .htb-btn--rank .htb-btn-label { display: none; }
 }
 @media (min-width: 601px) and (max-width: 739px) {
   html:not(.is-native-app) .htb-btn--rank {
@@ -25882,6 +26167,414 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .htb-btn { transition: none; }
+}
+
+/* ── Rekorlar (pasif) — Günün Görevi ile aynı sessiz aile; madalya emoji
+      ikonu (mevcut asset). .htb-static: <div> olduğu için zaten tıklanamaz;
+      cursor default + hover'da yüzey/borç değişimi YOK → aktif buton izlenimi
+      vermez. .htb-btn--quest'ten display/gizlenme davranışını miras alır. */
+.htb-btn.htb-static {
+  cursor: default;
+  user-select: none;
+  /* Tamamen edilgen: pointer olaylarını yut → :hover/:active hiç oluşmaz,
+     tıklama imkânsız. Ekran okuyucu aria-label'ı yine de okur (SR pointer-
+     events'ten etkilenmez), yani "Rekorlar — Yakında" keşfedilebilir kalır. */
+  pointer-events: none;
+}
+.htb-btn-emoji {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ODA KODU İLE KATIL — üst bar kompakt kontrolü (RoomCodeBar).
+   Yalnız desktop web'de görünür: kapsayıcı .home-topbar-actions ≤600px
+   ve native'de display:none → bar da gizli. Hızlı Eşleş'in SOLUNDA,
+   ondan daha SAKİN (accent değil, Tek Ses Kuralı korunur). Cam/neon YOK;
+   navbar yüksekliğini (36px pill) büyütmez — hata mesajı absolute popover.
+═══════════════════════════════════════════════════════════════ */
+.rcj-bar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.rcj-bar-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 4px 0 10px;
+  border: 1px solid rgba(140, 165, 205, 0.24);
+  border-radius: 10px;
+  background: rgba(9, 15, 28, 0.55);
+  box-shadow: inset 0 1px 0 rgba(180, 205, 250, 0.05);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.rcj-bar-field:focus-within {
+  border-color: rgba(120, 160, 220, 0.6);
+  background: rgba(12, 20, 36, 0.75);
+  box-shadow:
+    inset 0 1px 0 rgba(180, 205, 250, 0.07),
+    0 0 0 3px rgba(90, 130, 200, 0.14);
+}
+.rcj-bar-field--busy { opacity: 0.85; }
+.rcj-bar-input {
+  width: 108px;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #eaf1fc;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.rcj-bar-input::placeholder {
+  color: rgba(176, 194, 224, 0.55);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+.rcj-bar-input:disabled { cursor: default; }
+/* Katıl oku — küçük, sakin; Hızlı Eşleş'in altın CTA'sıyla yarışmaz. */
+.rcj-bar-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid rgba(120, 155, 215, 0.30);
+  border-radius: 8px;
+  background: #23375d;
+  color: #dbe6fb;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s, opacity 0.15s;
+}
+.rcj-bar-go:not(:disabled):hover {
+  background: #2c4675;
+  border-color: rgba(150, 180, 230, 0.5);
+}
+.rcj-bar-go:not(:disabled):active { transform: translateY(1px); }
+.rcj-bar-go:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.rcj-bar-go:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rcj-bar-go-icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Küçük yükleme dönergeci (submit sırasında ikinci submit engellenir). */
+.rcj-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(219, 230, 251, 0.35);
+  border-top-color: #dbe6fb;
+  animation: rcj-spin 0.7s linear infinite;
+}
+@keyframes rcj-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rcj-spinner { animation-duration: 1.6s; }
+  .rcj-bar-field, .rcj-bar-go { transition: none; }
+}
+/* Hata: navbar yüksekliğini BÜYÜTMEDEN alanın altında yüzen küçük popover. */
+.rcj-bar-error {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  max-width: 240px;
+  padding: 6px 10px;
+  border: 1px solid rgba(244, 118, 118, 0.4);
+  border-radius: 8px;
+  background: #2a1518;
+  color: #ffc9c9;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Zümrüt Vadi: Oda Kodu alanı ── navy-mavi pill/ok yerine bar'ın koyu
+   petrol-zümrüt ailesi. Hızlı Eşleş'in parlak turkuaz CTA'sından bilinçli
+   daha sakin (dolgusuz koyu alan); işlev ve yerleşim değişmez. */
+.home-topbar--dark-space .rcj-bar-field {
+  border-color: rgba(120, 232, 218, 0.26);
+  background: rgba(6, 22, 19, 0.58);
+  box-shadow: inset 0 1px 0 rgba(180, 255, 235, 0.06);
+}
+.home-topbar--dark-space .rcj-bar-field:focus-within {
+  border-color: rgba(120, 232, 218, 0.6);
+  background: rgba(9, 30, 26, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(180, 255, 235, 0.07),
+    0 0 0 3px var(--zv-ring);
+}
+.home-topbar--dark-space .rcj-bar-input { color: #ecfaf6; }
+.home-topbar--dark-space .rcj-bar-input::placeholder { color: rgba(178, 212, 202, 0.6); }
+.home-topbar--dark-space .rcj-bar-go {
+  border-color: rgba(120, 232, 218, 0.32);
+  background: #14443c;
+  color: #d9f4ee;
+}
+.home-topbar--dark-space .rcj-bar-go:not(:disabled):hover {
+  background: #1a574c;
+  border-color: rgba(160, 240, 228, 0.55);
+}
+.home-topbar--dark-space .rcj-bar-go:focus-visible {
+  border-color: var(--zv-accent);
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+
+/* Dar desktop: input kademeli daralır. Yatay taşmayı önlemek için asıl yeri
+   iki "Yakında" placeholder'ı (Günün Görevi + Rekorlar) ≤1259px'te birlikte
+   gizleyerek açarız (bkz. .htb-btn--quest breakpoint'i aşağıda güncellendi). */
+@media (min-width: 601px) and (max-width: 1199px) {
+  html:not(.is-native-app) .rcj-bar-input { width: 88px; }
+}
+@media (min-width: 601px) and (max-width: 899px) {
+  html:not(.is-native-app) .rcj-bar-input { width: 80px; }
+}
+@media (min-width: 601px) and (max-width: 739px) {
+  html:not(.is-native-app) .rcj-bar-input { width: 70px; }
+}
+
+/* ── Mobil "Oda Kodu ile Katıl" giriş kartı (MobileHome) — Hızlı Eşleş
+      girişiyle (mh-qm-entry) aynı aile, biraz daha sakin. Yalnız ≤600px web +
+      native'de görünür (mobile-home kapsayıcısı zaten öyle). */
+.mh-code-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(140, 165, 205, 0.20);
+  border-radius: 14px;
+  background: rgba(12, 20, 36, 0.55);
+  color: #eaf1fc;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mh-code-entry:active { transform: translateY(1px); }
+.mh-code-entry-icon {
+  flex: 0 0 auto;
+  font-size: 22px;
+  line-height: 1;
+}
+.mh-code-entry-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.mh-code-entry-title {
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.mh-code-entry-desc {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(184, 200, 226, 0.7);
+}
+
+/* ── Mobil Oda Kodu sheet gövdesi (mh-sheet cam tabanını miras alır) ── */
+.rcj-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px 2px;
+}
+.rcj-sheet-label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(196, 210, 234, 0.85);
+}
+.rcj-sheet-input {
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: 1px solid rgba(140, 165, 205, 0.3);
+  border-radius: 12px;
+  background: rgba(9, 15, 28, 0.6);
+  color: #eaf1fc;
+  font-family: var(--font-body);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.rcj-sheet-input::placeholder {
+  color: rgba(176, 194, 224, 0.4);
+  letter-spacing: 0.14em;
+  font-size: 16px;
+}
+.rcj-sheet-input:focus-visible {
+  outline: none;
+  border-color: rgba(120, 160, 220, 0.7);
+  box-shadow: 0 0 0 3px rgba(90, 130, 200, 0.18);
+}
+.rcj-sheet-error {
+  padding: 8px 12px;
+  border: 1px solid rgba(244, 118, 118, 0.4);
+  border-radius: 10px;
+  background: rgba(42, 21, 24, 0.8);
+  color: #ffc9c9;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.rcj-sheet-submit {
+  height: 50px;
+  margin-top: 2px;
+  border: 1px solid rgba(240, 190, 90, 0.5);
+  border-radius: 12px;
+  background: #1e3a63;
+  color: #f7d488;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.rcj-sheet-submit:disabled { opacity: 0.45; cursor: default; }
+.rcj-sheet-submit:not(:disabled):active { transform: translateY(1px); }
+
+/* ── Ambiguous seçim / (login sonrası) hata modalı ── üst-seviye, portalli. */
+.rcj-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 8, 18, 0.62);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.rcj-modal {
+  position: relative;
+  width: min(400px, 100%);
+  padding: 24px 22px 22px;
+  border: 1px solid rgba(150, 175, 220, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #131f36 0%, #0b1120 100%);
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
+  color: #eaf1fc;
+}
+.rcj-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(200, 214, 238, 0.7);
+  font-size: 15px;
+  cursor: pointer;
+}
+.rcj-modal-close:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.rcj-modal-title {
+  margin: 0 26px 8px 0;
+  font-family: var(--font-heading, var(--font-body));
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.rcj-modal-sub {
+  margin: 0 0 16px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(190, 206, 232, 0.82);
+  line-height: 1.45;
+}
+.rcj-modal-code {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #f7d488;
+}
+.rcj-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rcj-modal-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(140, 165, 205, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #eaf1fc;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.rcj-modal-opt:hover {
+  background: rgba(90, 130, 200, 0.14);
+  border-color: rgba(150, 180, 230, 0.5);
+}
+.rcj-modal-opt:active { transform: translateY(1px); }
+.rcj-modal-opt-chevron { color: rgba(190, 206, 232, 0.6); font-size: 20px; }
+.rcj-modal-ok {
+  width: 100%;
+  height: 46px;
+  border: 1px solid rgba(140, 165, 205, 0.3);
+  border-radius: 12px;
+  background: #23375d;
+  color: #eaf1fc;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.rcj-modal-ok:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) {
+  .rcj-modal-opt, .mh-code-entry, .rcj-sheet-submit, .rcj-modal-ok { transition: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════

@@ -30,6 +30,7 @@ import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
 import { useToastSurfaceOffset } from "../lib/useToastOffset";
+import { RoomCodeSheet, type RoomCodeSubmitOutcome } from "./RoomCodeJoin";
 import {
   CONQUEST_QUICK_MATCH_ENABLED,
   QUICK_MATCH_CONQUEST_ROUNDS,
@@ -71,6 +72,10 @@ interface MobileHomeProps {
   /** Hızlı Eşleş: the sheet hands its intent up; App applies the existing auth
    *  gate then routes into the matching game's quick-match flow. */
   onStartQuickMatch: (intent: QuickMatchIntent) => void;
+  /** "Oda Kodu ile Katıl" sheet submit → App merkezî resolver+yönlendirme
+   *  (üst bar RoomCodeBar ile AYNI akış). Kullanıcı modu bilmeden koddan
+   *  doğrudan ilgili lobiye gider. */
+  onSubmitRoomCode: (rawCode: string) => Promise<RoomCodeSubmitOutcome>;
   /** Opens the existing ConquestModeSelectModal (create / join / browse + auth). */
   onOpenConquest: () => void;
   /** Opens the existing KorNoktaSelectModal (create / join + login gate). Same
@@ -615,6 +620,7 @@ function MobileQuickMatchSheet({
 export default function MobileHome({
   onPlay,
   onStartQuickMatch,
+  onSubmitRoomCode,
   onOpenConquest,
   onOpenKorNokta,
   onOpenRanking,
@@ -630,6 +636,7 @@ export default function MobileHome({
   const [openId, setOpenId] = useState<Category["id"] | null>(null);
   const [socialOpen, setSocialOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
+  const [roomCodeOpen, setRoomCodeOpen] = useState(false);
 
   // Arkadaşlar alt-nav badge'i: okunmamış bildirim (arkadaşlık isteği, davet,
   // ödül vs. hepsi bildirim olarak gelir) + okunmamış DM toplamı. Desktop'taki
@@ -710,6 +717,21 @@ export default function MobileHome({
         <span className="mh-cat-chevron" aria-hidden="true">›</span>
       </button>
 
+      {/* Oda Kodu ile Katıl — kompakt aksiyon; dokununca alt sheet açılır.
+          Tüm input'u üst bara sıkıştırmak yerine (mobil) sheet kullanılır. */}
+      <button
+        type="button"
+        className="mh-code-entry"
+        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(false); setRoomCodeOpen(true); }}
+      >
+        <span className="mh-code-entry-icon" aria-hidden="true">🔑</span>
+        <span className="mh-code-entry-text">
+          <span className="mh-code-entry-title">Oda Kodu ile Katıl</span>
+          <span className="mh-code-entry-desc">Arkadaşının odasına kodla gir.</span>
+        </span>
+        <span className="mh-cat-chevron" aria-hidden="true">›</span>
+      </button>
+
       {categories.map(c => (
         <button
           key={c.id}
@@ -750,6 +772,13 @@ export default function MobileHome({
         <MobileQuickMatchSheet
           onClose={() => setMatchOpen(false)}
           onStartQuickMatch={(intent) => { setMatchOpen(false); onStartQuickMatch(intent); }}
+        />
+      )}
+
+      {roomCodeOpen && (
+        <RoomCodeSheet
+          onSubmit={onSubmitRoomCode}
+          onClose={() => setRoomCodeOpen(false)}
         />
       )}
 
