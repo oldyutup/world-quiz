@@ -9,6 +9,7 @@ export type InviteParamKey =
   | "flagGroup"
   | "wheelDuel"
   | "wheelGroup"
+  | "routeDuel"
   | "korNokta";
 
 /** Davet linkinden gelen kodu standartlaştırır. Tüm modlarda oda kodu

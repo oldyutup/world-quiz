@@ -34,6 +34,8 @@ import {
   QUICK_MATCH_COUNTRY_DURATIONS,
   QUICK_MATCH_WHEEL_DURATIONS,
   QUICK_MATCH_FLAG_ROUNDS,
+  QUICK_MATCH_ROUTE_ROUNDS,
+  QUICK_MATCH_ROUTE_LENGTHS,
   QUICK_MATCH_CONQUEST_ROUNDS,
   QUICK_MATCH_CONQUEST_MAP_OPTIONS,
   QUICK_MATCH_REGIONS,
@@ -51,6 +53,7 @@ const MODE_ICON: Record<QuickMatchMode, string> = {
   country: "/assets/icons/home/country-write.png",
   wheel: "/assets/icons/home/wheel-mode.png",
   flag: "/assets/icons/home/flag-mode.png",
+  route: "/assets/icons/home/route-mode.png",
   conquest: "/assets/icons/home/conquest-mode.png",
 };
 
@@ -311,6 +314,8 @@ export function QuickMatchModal({
   const [countryDuration, setCountryDuration] = useState(60); // Ülke Yaz varsayılan 1 dk
   const [wheelDuration, setWheelDuration] = useState(60);     // Çark varsayılan 1 dk
   const [flagRounds, setFlagRounds] = useState(10);           // Bayrak varsayılan 10 Tur
+  const [routeRounds, setRouteRounds] = useState(5);          // Rota varsayılan 5 Tur
+  const [routeLength, setRouteLength] = useState("7");        // Rota varsayılan 7 ara ülke
   const [siegeRounds, setSiegeRounds] = useState(6);          // Kuşatma varsayılan 6 Tur
   const [region, setRegion] = useState<string>(QUICK_MATCH_DEFAULT_REGION);
   // Aynı anda tek açılır liste: hangi alanın (mode | duration | rounds | region |
@@ -375,19 +380,25 @@ export function QuickMatchModal({
           { id: "rounds", label: "Tur", options: QUICK_MATCH_FLAG_ROUNDS as QmOption[], value: flagRounds, onSelect: (v: string | number) => setFlagRounds(v as number) },
           { id: "region", label: "Kıta", options: QUICK_MATCH_REGIONS, value: region, onSelect: (v: string | number) => setRegion(v as string) },
         ];
+      case "route":
+        return [
+          { id: "rounds", label: "Tur", options: QUICK_MATCH_ROUTE_ROUNDS as QmOption[], value: routeRounds, onSelect: (v: string | number) => setRouteRounds(v as number) },
+          { id: "routeLength", label: "Rota Uzunluğu", options: QUICK_MATCH_ROUTE_LENGTHS, value: routeLength, onSelect: (v: string | number) => setRouteLength(v as string) },
+        ];
       case "conquest":
         return [
           { id: "rounds", label: "Tur", options: QUICK_MATCH_CONQUEST_ROUNDS as QmOption[], value: siegeRounds, onSelect: (v: string | number) => setSiegeRounds(v as number) },
           { id: "map", label: "Harita", options: QUICK_MATCH_CONQUEST_MAP_OPTIONS, value: "turkey", onSelect: () => { /* Türkiye tek canlı harita */ } },
         ];
     }
-  }, [mode, countryDuration, wheelDuration, flagRounds, siegeRounds, region]);
+  }, [mode, countryDuration, wheelDuration, flagRounds, routeRounds, routeLength, siegeRounds, region]);
 
   function buildIntent(): QuickMatchIntent {
     switch (mode) {
       case "country": return { mode, duration: countryDuration, region };
       case "wheel":   return { mode, duration: wheelDuration, region };
       case "flag":    return { mode, rounds: flagRounds, region };
+      case "route":   return { mode, rounds: routeRounds, routeLength };
       case "conquest": return { mode, rounds: siegeRounds, map: "turkey" };
     }
   }

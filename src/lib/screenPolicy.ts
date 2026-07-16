@@ -17,6 +17,7 @@ export type AppScreen =
   | "flag-game"
   | "silhouette-game"
   | "route-game"
+  | "route-duel-game"
   | "duel-game"
   | "duel-group-game"
   | "flag-duel-game"
@@ -52,6 +53,7 @@ const GAMEPLAY_SCREENS: ReadonlySet<AppScreen> = new Set<AppScreen>([
   "flag-game", // Bayrak (solo)
   "silhouette-game", // Silüet
   "route-game", // Rota
+  "route-duel-game", // Rota 1v1 (lobi + oyun tek ekranda; oyun fazı baskın)
   "duel-game", // Ülke Yaz 1v1
   "duel-group-game", // Ülke Yaz grup
   "flag-duel-game", // Bayrak Bilmece

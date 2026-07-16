@@ -30,20 +30,22 @@
  * duel modes carry region; conquest carries map (region is irrelevant there).
  */
 
-/** The four modes surfaced by the Quick Match sheet. */
-export type QuickMatchMode = "country" | "wheel" | "flag" | "conquest";
+/** The five modes surfaced by the Quick Match sheet. */
+export type QuickMatchMode = "country" | "wheel" | "flag" | "route" | "conquest";
 
 /** What the sheet hands up to App when the player taps the primary CTA. */
 export interface QuickMatchIntent {
   mode: QuickMatchMode;
   /** country | wheel → seconds, mapped to the RPC's p_duration. */
   duration?: number;
-  /** flag → p_total_rounds; conquest → round_count. */
+  /** flag | route → p_total_rounds; conquest → round_count. */
   rounds?: number;
   /** Duel modes → p_region (continent value chosen in the Kıta picker). */
   region?: string;
   /** Conquest only — Türkiye is the single live map. */
   map?: "turkey";
+  /** Route duel only → p_route_length ('5' | '7' | '7plus'). */
+  routeLength?: string;
 }
 
 /** A label/value pair the sheet's selector popover renders. */
@@ -92,6 +94,23 @@ export const QUICK_MATCH_CONQUEST_ROUNDS: QmOption[] = [
   { label: "6 Tur", value: 6 },
   { label: "8 Tur", value: 8 },
   { label: "10 Tur", value: 10 },
+];
+
+/** Tur seçenekleri — Rota 1v1. Birebir ROUTE_DUEL_ROUND_OPTIONS
+ *  (routeDuelShared.ts) + route_duel_quick_match RPC check'i (3/5/10/15). */
+export const QUICK_MATCH_ROUTE_ROUNDS: QmOption[] = [
+  { label: "3 Tur", value: 3 },
+  { label: "5 Tur", value: 5 },
+  { label: "10 Tur", value: 10 },
+  { label: "15 Tur", value: 15 },
+];
+
+/** Rota uzunluğu seçenekleri — Rota 1v1. Birebir ROUTE_DUEL_LENGTH_OPTIONS
+ *  + RPC check'i ('5'/'7'/'7plus'). Eşleşme AYNI uzunluk tercihini ister. */
+export const QUICK_MATCH_ROUTE_LENGTHS: QmOption<string>[] = [
+  { label: "5 ara ülke", value: "5" },
+  { label: "7 ara ülke", value: "7" },
+  { label: "7+ ara ülke", value: "7plus" },
 ];
 
 /**
@@ -178,9 +197,10 @@ export interface QuickMatchModeMeta {
  * cannot diverge on which modes are live.
  */
 export const QUICK_MATCH_MODE_META: QuickMatchModeMeta[] = [
-  { mode: "country",  label: "Ülke Yaz 1v1", desc: QUICK_MATCH_DUEL_DESC, enabled: true },
-  { mode: "wheel",    label: "Çark 1v1",     desc: QUICK_MATCH_DUEL_DESC, enabled: true },
-  { mode: "flag",     label: "Bayrak 1v1",   desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "country",  label: "Ülke Yaz 1v1",  desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "wheel",    label: "Çark 1v1",      desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "flag",     label: "Bayrak 1v1",    desc: QUICK_MATCH_DUEL_DESC, enabled: true },
+  { mode: "route",    label: "Rota Modu 1v1", desc: QUICK_MATCH_DUEL_DESC, enabled: true },
   {
     mode: "conquest",
     label: "Kuşatma",

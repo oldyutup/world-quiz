@@ -38,6 +38,8 @@ import {
   QUICK_MATCH_DEFAULT_REGION,
   QUICK_MATCH_FLAG_ROUNDS,
   QUICK_MATCH_REGIONS,
+  QUICK_MATCH_ROUTE_LENGTHS,
+  QUICK_MATCH_ROUTE_ROUNDS,
   QUICK_MATCH_WHEEL_DURATIONS,
   type QuickMatchIntent,
   type QuickMatchMode,
@@ -53,6 +55,7 @@ export type MobileHomeTarget =
   | "duel-game"
   | "flag-duel-game"
   | "wheel-duel-game"
+  | "route-duel-game"
   | "duel-group-game"
   | "flag-group-game"
   | "wheel-group-game"
@@ -238,7 +241,7 @@ interface QmSelectOption {
 /** A live selector field for the active mode: its label, the option list, the
  *  current value and how to set it. Each mode contributes exactly two. */
 interface QmActiveField {
-  id:       "duration" | "rounds" | "region" | "map";
+  id:       "duration" | "rounds" | "region" | "map" | "routeLength";
   label:    string;
   options:  QmSelectOption[];
   value:    string | number;
@@ -263,10 +266,11 @@ const DUEL_DESC = "Seviyene yakın bir rakiple birebir eşleş. Bekledikçe sevi
  *  still OPENS with Ülke Yaz selected (a playable mode) — see the sheet's
  *  initial `mode` state and the auto-center effect that scrolls it into view. */
 const QM_MODES: QmModeDef[] = [
-  { mode: "conquest", icon: "🛡️", label: "Kuşatma",      desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED },
-  { mode: "wheel",    icon: "🎯", label: "Çark 1v1",     desc: DUEL_DESC, enabled: true },
-  { mode: "country",  icon: "🌍", label: "Ülke Yaz 1v1", desc: DUEL_DESC, enabled: true },
-  { mode: "flag",     icon: "🚩", label: "Bayrak 1v1",   desc: DUEL_DESC, enabled: true },
+  { mode: "conquest", icon: "🛡️", label: "Kuşatma",       desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED },
+  { mode: "wheel",    icon: "🎯", label: "Çark 1v1",      desc: DUEL_DESC, enabled: true },
+  { mode: "country",  icon: "🌍", label: "Ülke Yaz 1v1",  desc: DUEL_DESC, enabled: true },
+  { mode: "flag",     icon: "🚩", label: "Bayrak 1v1",    desc: DUEL_DESC, enabled: true },
+  { mode: "route",    icon: "🧭", label: "Rota Modu 1v1", desc: DUEL_DESC, enabled: true },
 ];
 
 /** Conquest maps: only Türkiye is live; the rest stay visible-but-locked
@@ -443,6 +447,8 @@ function MobileQuickMatchSheet({
   const [countryDuration, setCountryDuration] = useState(60);   // Ülke Yaz default 1 dk
   const [wheelDuration,   setWheelDuration]   = useState(60);   // Çark default 1 dk
   const [flagRounds,      setFlagRounds]      = useState(10);   // Bayrak default 10 Tur
+  const [routeRounds,     setRouteRounds]     = useState(5);    // Rota default 5 Tur
+  const [routeLength,     setRouteLength]     = useState("7");  // Rota default 7 ara ülke
   const [siegeRounds,     setSiegeRounds]     = useState(6);    // Kuşatma default 6 Tur
   const [region,          setRegion]          = useState<string>(QUICK_MATCH_DEFAULT_REGION);
   const [openField,       setOpenField]       = useState<string | null>(null);
@@ -510,6 +516,11 @@ function MobileQuickMatchSheet({
           { id: "rounds", label: "Tur",  options: QUICK_MATCH_FLAG_ROUNDS, value: flagRounds, onSelect: v => setFlagRounds(v as number) },
           { id: "region", label: "Kıta", options: QUICK_MATCH_REGIONS,     value: region,     onSelect: v => setRegion(v as string) },
         ];
+      case "route":
+        return [
+          { id: "rounds",      label: "Tur",           options: QUICK_MATCH_ROUTE_ROUNDS,  value: routeRounds, onSelect: v => setRouteRounds(v as number) },
+          { id: "routeLength", label: "Rota Uzunluğu", options: QUICK_MATCH_ROUTE_LENGTHS, value: routeLength, onSelect: v => setRouteLength(v as string) },
+        ];
       case "conquest":
         return [
           { id: "rounds", label: "Tur",    options: QUICK_MATCH_CONQUEST_ROUNDS, value: siegeRounds, onSelect: v => setSiegeRounds(v as number) },
@@ -523,6 +534,7 @@ function MobileQuickMatchSheet({
       case "country": return { mode, duration: countryDuration, region };
       case "wheel":   return { mode, duration: wheelDuration,   region };
       case "flag":    return { mode, rounds: flagRounds,        region };
+      case "route":   return { mode, rounds: routeRounds, routeLength };
       case "conquest":return { mode, rounds: siegeRounds, map: "turkey" };
     }
   }
@@ -676,6 +688,7 @@ export default function MobileHome({
         { icon: "🌍", title: "Ülke Yaz 1v1", desc: "Rakibine karşı ülke yaz.",  onTap: () => onPlay("duel-game") },
         { icon: "🚩", title: "Bayrak 1v1",   desc: "Bayrak bilgisinde düello.", onTap: () => onPlay("flag-duel-game") },
         { icon: "🎯", title: "Çark 1v1",     desc: "Çark düellosunda yarış.",   onTap: () => onPlay("wheel-duel-game") },
+        { icon: "🧭", title: "Rota 1v1",     desc: "Aynı rotada hedefe ilk ulaşan kazanır.", onTap: () => onPlay("route-duel-game") },
       ],
     },
     {

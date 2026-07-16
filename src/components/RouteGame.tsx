@@ -44,8 +44,10 @@ const DIFF_LABELS: Record<RouteDifficulty, string> = {
 
 type RoutePhase = "setup" | "playing" | "won";
 
-/* ─── Build key→topoId lookup (once) ─── */
-function buildKeyToTopoId(): Record<string, string> {
+/* ─── Build key→topoId lookup (once) ───
+   Rota Duel (online 1v1) da aynı haritayı kullandığı için export edilir;
+   offline davranış DEĞİŞMEZ (yalnız görünürlük eklendi). */
+export function buildKeyToTopoId(): Record<string, string> {
   const map: Record<string, string> = {};
   COUNTRIES.forEach(entry => {
     for (const [norm, routeKey] of Object.entries(NORM_TO_ROUTE_KEY)) {

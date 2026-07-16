@@ -26620,3 +26620,252 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   .atlas-strip { margin-top: -2px; padding: 3px 2px; }
   .atlas-strip-core { padding: 5px 12px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ROTA DUEL (Online 1v1 Rota Modu) — .rd-*
+   Oyun ekranı offline Rota Modu'nun .route-* iskeletini AYNEN kullanır;
+   buradaki kurallar yalnız online HUD / geri sayım / tur sonucu / sonuç
+   overlay eklerini tanımlar. Lobi + setup zümrüt aile ([data-theme=
+   "dark-space"] .duel-* kuralları) üzerinden gelir — yeni palet İCAT EDİLMEZ.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Play ekranı parent .duel-screen (100dvh flex column, üstte .duel-header)
+   içinde yaşar → kendi 100vh'ini bırakıp kalan alanı doldurur. */
+.duel-screen .rd-play-screen {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+/* ── Online HUD (tur · rota görevi · süre · skor · bağlantı) ── */
+.rd-hud {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  z-index: 15;
+  flex-wrap: wrap;
+}
+.rd-hud-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.rd-goal { min-width: 0; }
+
+.rd-round-chip {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.35);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.rd-round-chip--ot {
+  color: var(--amber);
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.45);
+  animation: targetPulse 2s ease-in-out infinite;
+}
+
+.rd-timer {
+  font-family: var(--font-head);
+  font-size: 1.3rem;
+  min-width: 56px;
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rd-timer.danger {
+  color: var(--amber);
+  animation: targetPulse 1s ease-in-out infinite;
+}
+
+.rd-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.rd-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  max-width: 46vw;
+  overflow: hidden;
+}
+.rd-score-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 9ch;
+}
+.rd-score-val {
+  font-family: var(--font-head);
+  font-size: 1.05rem;
+  color: var(--text);
+}
+.rd-score-sep { color: var(--muted); opacity: 0.6; }
+
+.rd-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rd-conn .rd-conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.rd-conn.ok { color: var(--green, #22c55e); }
+.rd-conn.ok .rd-conn-dot { background: var(--green, #22c55e); }
+/* Heartbeat ≥12 sn gecikti ama sunucu kopuşu ONAYLAMADI — amber erken uyarı. */
+.rd-conn.reconnecting { color: var(--amber, #f59e0b); }
+.rd-conn.reconnecting .rd-conn-dot {
+  background: var(--amber, #f59e0b);
+  animation: targetPulse 1.4s ease-in-out infinite;
+}
+/* Kırmızı yalnız sunucu-onaylı kopuşta (finished_reason='disconnect'). */
+.rd-conn.lost { color: var(--red, #ef4444); }
+.rd-conn.lost .rd-conn-dot {
+  background: var(--red, #ef4444);
+  animation: targetPulse 1s ease-in-out infinite;
+}
+/* İlk heartbeat verisi gelene kadar nötr durum — kırmızı "koptu" DEĞİL. */
+.rd-conn.connecting { color: var(--muted, #94a3b8); }
+.rd-conn.connecting .rd-conn-dot {
+  background: var(--muted, #94a3b8);
+  opacity: 0.7;
+}
+
+/* ── 3sn ortak geri sayım overlay'i (round_started_at'e sunucu-senkron) ── */
+.rd-countdown-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 22, 0.62);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+.rd-play-screen { position: relative; }
+.rd-countdown-panel {
+  text-align: center;
+  padding: 26px 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  max-width: min(90vw, 420px);
+}
+.rd-countdown-label {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.rd-countdown-route {
+  margin: 0 0 10px;
+  font-family: var(--font-head);
+  font-size: 1.15rem;
+  color: var(--text);
+}
+.rd-countdown-num {
+  font-family: var(--font-head);
+  font-size: 3.2rem;
+  line-height: 1;
+  color: var(--accent);
+}
+
+/* ── Tur sonucu banner'ı (sunucu kararı; advance beklenirken) ── */
+.rd-roundend-banner {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% * 0.34);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 16, 28, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 22px;
+  z-index: 35;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  max-width: min(92vw, 480px);
+  text-align: center;
+}
+.rd-roundend { font-size: 0.98rem; font-weight: 700; }
+.rd-roundend.win { color: var(--green, #22c55e); }
+.rd-roundend.lose { color: var(--red, #ef4444); }
+.rd-roundend.draw { color: var(--amber); }
+.rd-roundend-next {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+/* ── Sonuç overlay buton düzeni: üstte TAM genişlik Rövanş, altta yan yana ── */
+.rd-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+.rd-result-actions .rd-result-rematch {
+  width: 100%;
+}
+.rd-result-actions .rd-result-rematch.is-waiting {
+  opacity: 0.75;
+}
+.rd-result-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+.rd-result-actions-row .wheel-ghost-btn {
+  width: 100%;
+}
+
+/* ── Dar ekran (390/430px) — HUD sarar, taşma yok ── */
+@media (max-width: 600px) {
+  .rd-hud {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .rd-hud-left { gap: 6px; }
+  .rd-goal { font-size: 0.82rem; }
+  .rd-timer {
+    font-size: 1.1rem;
+    min-width: 44px;
+    order: 0;
+  }
+  .rd-score-pill { max-width: 60vw; }
+  .rd-score-name { max-width: 6ch; }
+  .rd-roundend-banner { padding: 10px 14px; }
+}

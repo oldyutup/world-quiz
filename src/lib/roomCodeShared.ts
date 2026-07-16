@@ -16,7 +16,8 @@
 
 /** Çözümlenebilen AKTİF Torble oda-kodlu modlar. Değerler mevcut davet linki
  *  query-param anahtarlarıyla birebir aynıdır (?duel/?flagDuel/?flagGroup/
- *  ?wheelDuel/?duelGroup/?wheelGroup/?conquest/?korNokta). Eshle DAHİL DEĞİL. */
+ *  ?wheelDuel/?duelGroup/?wheelGroup/?routeDuel/?conquest/?korNokta).
+ *  Eshle DAHİL DEĞİL. */
 export type RoomCodeModeKey =
   | "duel"
   | "flagDuel"
@@ -24,6 +25,7 @@ export type RoomCodeModeKey =
   | "duelGroup"
   | "wheelGroup"
   | "flagGroup"
+  | "routeDuel"
   | "korNokta"
   | "conquest";
 
@@ -35,6 +37,7 @@ export const ROOM_CODE_MODE_LABELS: Record<RoomCodeModeKey, string> = {
   duelGroup:  "Ülke Yaz Grup",
   wheelGroup: "Çark Grup",
   flagGroup:  "Bayrak Bilmece",
+  routeDuel:  "Rota 1v1",
   korNokta:   "Kör Nokta",
   conquest:   "Kuşatma",
 };

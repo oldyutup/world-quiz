@@ -40,6 +40,7 @@ type RoomTable =
   | "duel_group_rooms"
   | "wheel_group_rooms"
   | "flag_group_rooms"
+  | "route_duel_rooms"
   | "tevatur_rooms"
   | "conquest_rooms";
 
@@ -82,6 +83,7 @@ function roomModes(r: FixtureRoom): RoomCodeModeKey[] {
     case "duel_group_rooms":  return ["duelGroup"];
     case "wheel_group_rooms": return ["wheelGroup"];
     case "flag_group_rooms":  return ["flagGroup"];
+    case "route_duel_rooms":  return ["routeDuel"];
     case "tevatur_rooms":     return ["korNokta"];
     case "conquest_rooms":    return ["conquest"];
   }
@@ -132,6 +134,7 @@ const ROUTE: Record<RoomCodeModeKey, { param: string; screen: string }> = {
   duelGroup:  { param: "duelGroup",  screen: "duel-group-game" },
   wheelGroup: { param: "wheelGroup", screen: "wheel-group-game" },
   flagGroup:  { param: "flagGroup",  screen: "flag-group-game" },
+  routeDuel:  { param: "routeDuel",  screen: "route-duel-game" },
   korNokta:   { param: "korNokta",   screen: "kornokta-join" },
   conquest:   { param: "conquest",   screen: "conquest-join" },
 };
@@ -148,6 +151,10 @@ const F: Record<string, FixtureRoom> = {
   flagGroup:   { table: "flag_group_rooms",  code: "FFF666", status: "waiting" },
   korNokta:    { table: "tevatur_rooms",     code: "GGG777", status: "waiting" },
   conquest:    { table: "conquest_rooms",    code: "HHH888", status: "waiting" },
+  routeDuel:   { table: "route_duel_rooms",  code: "RRR999", status: "waiting" },
+  // Rota 1v1: 'playing' oda da eşleşir; 'finished' eşleşmez (aşağıda).
+  playingRouteDuel:  { table: "route_duel_rooms", code: "RPL111", status: "playing" },
+  finishedRouteDuel: { table: "route_duel_rooms", code: "RFN000", status: "finished" },
   // 'playing' odalar da eşleşir (kapasite/başladı kararı join RPC'nin işi):
   playingCountryDuel: { table: "duel_rooms", code: "PLY333", status: "playing", roomKind: "country", totalRounds: 10 },
   playingFlagDuel:    { table: "duel_rooms", code: "PLY444", status: "playing", roomKind: "flag",    totalRounds: 5 },
@@ -180,6 +187,16 @@ eq(simulateResolve("DDD444", ALL), { result: "found", code: "DDD444", mode: "due
 eq(simulateResolve("EEE555", ALL), { result: "found", code: "EEE555", mode: "wheelGroup" }, "wheel_group_rooms → wheelGroup");
 eq(simulateResolve("GGG777", ALL), { result: "found", code: "GGG777", mode: "korNokta" }, "tevatur_rooms → korNokta");
 eq(simulateResolve("HHH888", ALL), { result: "found", code: "HHH888", mode: "conquest" }, "conquest_rooms → conquest");
+eq(simulateResolve("RRR999", ALL), { result: "found", code: "RRR999", mode: "routeDuel" }, "route_duel_rooms → routeDuel");
+
+/* 1b) Rota 1v1 yaşam döngüsü: playing yine found, finished eşleşmez. */
+console.log("· 1b. Rota 1v1 (routeDuel) yaşam döngüsü");
+eq(simulateResolve("RPL111", ALL), { result: "found", code: "RPL111", mode: "routeDuel" },
+  "playing Rota 1v1 odası → found (join RPC 'room_in_progress' der)");
+eq(simulateResolve("RFN000", ALL), { result: "not_found", code: "RFN000" },
+  "finished Rota 1v1 odası → not_found");
+ok(ROUTE.routeDuel.param === "routeDuel" && ROUTE.routeDuel.screen === "route-duel-game",
+  "routeDuel → ?routeDuel= / route-duel-game");
 
 /* 2) Geçerli Bayrak Bilmece (flag group) kodu → doğru join akışına gider. */
 console.log("· 2. Bayrak Bilmece (flagGroup) → flag-group join akışı");
@@ -348,7 +365,7 @@ console.log("· 13-14. busy-guard: tek submit / çift-submit engeli");
 console.log("· 15-18. Yapısal sözleşmeler (kayıt defteri / yönlendirme bütünlüğü)");
 {
   const keys = Object.keys(ROOM_CODE_MODE_LABELS) as RoomCodeModeKey[];
-  eq(keys.length, 8, "8 aktif oda-kodlu mod (Eshle hariç)");
+  eq(keys.length, 9, "9 aktif oda-kodlu mod (Eshle hariç)");
   ok(keys.every(k => typeof ROOM_CODE_MODE_LABELS[k] === "string" && ROOM_CODE_MODE_LABELS[k].length > 0),
     "her modun kullanıcıya gösterilecek adı var");
   ok(keys.every(k => !!ROUTE[k]), "her mod anahtarı için yönlendirme tanımlı (koddan lobiye)");
@@ -363,7 +380,7 @@ console.log("· 15-18. Yapısal sözleşmeler (kayıt defteri / yönlendirme bü
 /* 19) Mevcut invite linkleri bozulmuyor: mod anahtarları = davet param adları. */
 console.log("· 19. Davet linki param'ları ile mod anahtarları birebir");
 {
-  const inviteParams = ["duel", "flagDuel", "wheelDuel", "duelGroup", "wheelGroup", "flagGroup", "korNokta", "conquest"];
+  const inviteParams = ["duel", "flagDuel", "wheelDuel", "duelGroup", "wheelGroup", "flagGroup", "routeDuel", "korNokta", "conquest"];
   const keys = Object.keys(ROOM_CODE_MODE_LABELS).sort();
   eq(keys, [...inviteParams].sort(), "mod anahtarları = mevcut invite param kümesi");
   ok((Object.keys(ROUTE) as RoomCodeModeKey[]).every(k => ROUTE[k].param === k),

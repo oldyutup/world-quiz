@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import WorldMap, { SilhouetteView } from "./components/WorldMap";
 import RouteGame from "./components/RouteGame";
+import RouteDuelGame from "./components/routeDuel/RouteDuelGame";
 import DuelGame from "./components/DuelGame";
 import FlagDuelGame from "./components/FlagDuelGame";
 import FlagGroupGame from "./components/FlagGroupGame";
@@ -144,6 +145,7 @@ const ONLINE_GATED_SCREENS: Partial<Record<AppScreen, AuthPromptReason>> = {
   "duel-game":        "duel-gate",
   "flag-duel-game":   "duel-gate",
   "wheel-duel-game":  "duel-gate",
+  "route-duel-game":  "duel-gate",
   "duel-group-game":  "multi-gate",
   "wheel-group-game": "multi-gate",
   "conquest-game":    "kusatma-gate",
@@ -166,6 +168,7 @@ const ONLINE_INVITE_LINKS: {
   { param: "wheelDuel",  storageKey: "pending_invite_wheelDuel",  screen: "wheel-duel-game",  reason: "duel-gate" },
   { param: "duelGroup",  storageKey: "pending_invite_duelGroup",  screen: "duel-group-game",  reason: "multi-gate" },
   { param: "wheelGroup", storageKey: "pending_invite_wheelGroup", screen: "wheel-group-game", reason: "multi-gate" },
+  { param: "routeDuel",  storageKey: "pending_invite_routeDuel",  screen: "route-duel-game",  reason: "duel-gate" },
 ];
 
 /** Drops every Düello/Çok Oyunculu pending-invite anchor so a dismissed login
@@ -196,6 +199,7 @@ const QUICK_MATCH_SCREEN: Record<QuickMatchMode, AppScreen> = {
   country:  "duel-game",
   wheel:    "wheel-duel-game",
   flag:     "flag-duel-game",
+  route:    "route-duel-game",
   conquest: "conquest-game",
 };
 
@@ -278,6 +282,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "flag-game": 1,       // counts correct answers; banded reward applied at end
   "silhouette-game": 8,
   "route-game": 0,
+  "route-duel-game": 0,
   "duel-game": 0,
   "duel-group-game": 0,
   "flag-duel-game": 0,
@@ -604,6 +609,7 @@ interface HomeProps {
 function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
+const [showRouteMenu, setShowRouteMenu] = useState(false);
 const [showWheelMenu, setShowWheelMenu] = useState(false);
 const [showConquestMenu, setShowConquestMenu] = useState(false);
 const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
@@ -684,6 +690,8 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
     setShowCountryMenu(true);
   } else if (m.id === "flag-game") {
     setShowFlagMenu(true);
+  } else if (m.id === "route-game") {
+    setShowRouteMenu(true);
   } else if (m.id === "wheel-game") {
     setShowWheelMenu(true);
   } else if (m.id === "conquest-game") {
@@ -837,6 +845,53 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   playSound("click");
   setShowFlagMenu(false);
 }}
+      >
+        ✕
+      </button>
+
+    </div>
+  </div>
+)}
+
+{showRouteMenu && (
+  <div
+    className="overlay"
+    style={homeTheme !== "default" ? getThemeBackgroundStyle(homeTheme) : undefined}
+    data-theme={getThemeDataAttr(homeTheme)}
+    onClick={() => setShowRouteMenu(false)}
+  >
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+
+      <h2><EmojiIcon name="compass" /> Rota Modu</h2>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowRouteMenu(false);
+          onSelect("route-game");
+        }}
+      >
+        <EmojiIcon name="gamepad" /> Tek Oyuncu
+      </button>
+
+      <button
+        className="modal-btn"
+        onClick={() => {
+          playSound("click");
+          setShowRouteMenu(false);
+          onSelect("route-duel-game");
+        }}
+      >
+        <EmojiIcon name="swords" /> Online 1v1
+      </button>
+
+      <button
+        className="modal-close"
+        onClick={() => {
+          playSound("click");
+          setShowRouteMenu(false);
+        }}
       >
         ✕
       </button>
@@ -3288,7 +3343,7 @@ useEffect(() => {
   // Conquest davetinde de modal'ı atla; conquest-invite effect kendi auth
   // promptunu açıyor (farklı header mesajıyla).
   const params = new URLSearchParams(window.location.search);
-  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("conquest") || params.get("korNokta")) {
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("routeDuel") || params.get("conquest") || params.get("korNokta")) {
     return;
   }
   let pendingConquest: string | null = null;
@@ -3637,6 +3692,16 @@ useEffect(() => {
     />
   );
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
+  if (screen === "route-duel-game") return (
+    <RouteDuelGame
+      onHome={() => setScreen("home")}
+      profile={profile}
+      autoQuickMatch={quickMatchIntent?.mode === "route"
+        ? { rounds: quickMatchIntent.rounds, routeLength: quickMatchIntent.routeLength }
+        : null}
+      onQuickMatchConsumed={clearQuickMatchIntent}
+    />
+  );
   if (screen === "wheel-game") return <WheelGame onHome={() => setScreen("home")} />;
   if (screen === "wheel-duel-game") return (
     <WheelDuelGame
