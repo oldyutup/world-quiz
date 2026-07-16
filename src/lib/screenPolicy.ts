@@ -33,7 +33,8 @@ export type AppScreen =
   | "harita-duel-game"
   | "kornokta-create"
   | "kornokta-join"
-  | "cizim-test";
+  | "cizim-test"
+  | "daily-quest-game";
 
 /**
  * Aktif oyun/round ekranları. Bu ekranlarda sosyal DM toast'ı bastırılır.
@@ -66,6 +67,7 @@ const GAMEPLAY_SCREENS: ReadonlySet<AppScreen> = new Set<AppScreen>([
   "harita-dedektifi", // Harita Dedektifi (solo)
   "harita-duel-game", // Kör Nokta (multiplayer)
   "cizim-test", // Çizim Test (prototip; lobi + oyun tek ekranda)
+  "daily-quest-game", // Günün Görevi oturumu (4 mod tek yüzeyde)
 ]);
 
 /** Şu an aktif bir oyun/round ekranında mıyız? Lobiler aktif oyun sayılmaz. */

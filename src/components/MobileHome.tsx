@@ -106,6 +106,9 @@ interface MobileHomeProps {
   themes: ThemeOption[];
   activeTheme: string;
   onSelectTheme: (id: string) => void;
+  /** Günün Görevi girişi — App'in desktop üst bar butonuyla AYNI handler'ı:
+   *  auth gate + aynı DailyQuestModal (sunucu durumu tek kaynak). */
+  onOpenDailyQuest: () => void;
 }
 
 /** Shared bottom-sheet chrome: lock background scroll while the sheet is up,
@@ -644,6 +647,7 @@ export default function MobileHome({
   themes,
   activeTheme,
   onSelectTheme,
+  onOpenDailyQuest,
 }: MobileHomeProps) {
   const [openId, setOpenId] = useState<Category["id"] | null>(null);
   const [socialOpen, setSocialOpen] = useState(false);
@@ -726,6 +730,27 @@ export default function MobileHome({
         <span className="mh-qm-entry-text">
           <span className="mh-qm-entry-title">Hızlı Eşleş</span>
           <span className="mh-qm-entry-desc">Seviyene yakın rakiple birebir yarış.</span>
+        </span>
+        <span className="mh-cat-chevron" aria-hidden="true">›</span>
+      </button>
+
+      {/* Günün Görevi — desktop üst bar butonunun mobil karşılığı. Aynı App
+          handler'ı: guest'te auth gate, girişte AYNI DailyQuestModal (≤600px'te
+          CSS ile alt-sheet düzenine döner). Ayrı mobil görev mantığı YOK. */}
+      <button
+        type="button"
+        className="mh-dq-entry"
+        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(false); onOpenDailyQuest(); }}
+      >
+        <img
+          className="mh-dq-entry-icon"
+          src="/assets/icons/home/daily-quest-scroll.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="mh-dq-entry-text">
+          <span className="mh-dq-entry-title">Günün Görevi</span>
+          <span className="mh-dq-entry-desc">Bugünün görevini bitir, 50 Gold kazan.</span>
         </span>
         <span className="mh-cat-chevron" aria-hidden="true">›</span>
       </button>

@@ -121,6 +121,14 @@ import {
   recordGameComplete,
   recordCorrectFlag,
 } from "./lib/achievementStats";
+import { DailyQuestModal } from "./components/DailyQuestModal";
+import DailyQuestGame from "./components/DailyQuestGame";
+import {
+  refreshDailyQuestStatus,
+  setDailyQuestStatus,
+  useDailyQuestStatus,
+  type DailyQuestSession,
+} from "./lib/dailyQuest";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -135,7 +143,8 @@ type AuthPromptReason =
   | "welcome"
   | "conquest-invite"
   | "kornokta-invite" | "kornokta-create" | "kornokta-join"
-  | "duel-gate" | "multi-gate" | "kusatma-gate";
+  | "duel-gate" | "multi-gate" | "kusatma-gate"
+  | "daily-quest";
 
 /** Online modes that require login (Düello + Çok Oyunculu). Maps each gated
  *  AppScreen to the auth-prompt reason driving the modal copy. Single-player
@@ -189,6 +198,16 @@ const PENDING_ONLINE_TARGET_KEY = "pending_online_target";
  *  once it has been consumed — so a later reload doesn't re-route the user. */
 function clearPendingOnlineTarget() {
   try { sessionStorage.removeItem(PENDING_ONLINE_TARGET_KEY); }
+  catch { /* sessionStorage disabled — best effort */ }
+}
+
+/** Guest, üst bar/mobil "Günün Görevi"ne bastı → login istenir. Niyet burada
+ *  saklanır (OAuth round-trip page reload'ında hayatta kalır) ve login
+ *  tamamlanınca görev modalı OTOMATİK yeniden açılır. Auth iptalinde temizlenir. */
+const PENDING_DAILY_QUEST_KEY = "pending_daily_quest_intent";
+
+function clearPendingDailyQuest() {
+  try { sessionStorage.removeItem(PENDING_DAILY_QUEST_KEY); }
   catch { /* sessionStorage disabled — best effort */ }
 }
 
@@ -299,6 +318,7 @@ const GOLD_RATES: Record<AppScreen, number> = {
   "kornokta-create": 0,
   "kornokta-join": 0,
   "cizim-test": 0, // prototip: gold/XP entegrasyonu yok
+  "daily-quest-game": 0, // görev oturumu: solo gold AKMAZ; ödül yalnız claim RPC'sinden
 };
 
 /** Band + duration-cap based gold for solo Flag Game. */
@@ -497,13 +517,19 @@ function HomeTopBarActions({
   onQuickMatch,
   onOpenRanking,
   onSubmitRoomCode,
+  onOpenDailyQuest,
 }: {
   onQuickMatch: () => void;
   onOpenRanking: () => void;
   /** Üst bar "Oda Kodu" alanı submit'i — App merkezî resolver+yönlendirme
    *  akışını çalıştırır (kullanıcı modu bilmeden koddan lobiye gider). */
   onSubmitRoomCode: (rawCode: string) => Promise<RoomCodeSubmitOutcome>;
+  /** Günün Görevi modalını açar (guest ise App önce auth gate uygular). */
+  onOpenDailyQuest: () => void;
 }) {
+  // Kompakt durum göstergesi: aktif görevde küçük nokta, ödül hazırsa
+  // belirgin rozet, alındıysa ✓. Tek kaynak: dailyQuest gözlemlenebiliri.
+  const dqStatus = useDailyQuestStatus();
   return (
     <nav className="home-topbar-actions" aria-label="Ana eylemler">
       {/* Oda Kodu alanı — Hızlı Eşleş'in SOLUNDA, birincil CTA'dan daha sakin. */}
@@ -541,14 +567,23 @@ function HomeTopBarActions({
         />
         <span className="htb-btn-label">Sıralama</span>
       </button>
-      {/* Günün Görevi — henüz işlevsiz; amber "Yakında" etiketi mevcut
-          soon-badge / atlas-strip-self ödül-ailesi diliyle konuşur. disabled:
-          tab durağı harcamaz, ekran okuyucu gezinirken adıyla keşfeder. */}
+      {/* Günün Görevi — AKTİF: sunucu-otoriter günlük görev modalını açar.
+          Kompakt durum göstergesi metin eklemez (navbar kalabalıklaşmaz):
+          aktif görev = sakin nokta, ödül hazır = altın rozet, alındı = ✓. */}
       <button
         type="button"
-        className="htb-btn htb-btn--quest"
-        disabled
-        aria-label="Günün Görevi — Yakında"
+        className="htb-btn htb-btn--quest htb-btn--quest-live"
+        aria-label={
+          dqStatus === "reward_ready"
+            ? "Günün Görevi — ödülün hazır"
+            : dqStatus === "claimed"
+            ? "Günün Görevi — bugünkü ödül alındı"
+            : "Günün Görevi"
+        }
+        onClick={() => {
+          playSound("click");
+          onOpenDailyQuest();
+        }}
       >
         <img
           className="htb-btn-img-icon"
@@ -557,7 +592,13 @@ function HomeTopBarActions({
           aria-hidden="true"
         />
         <span className="htb-btn-label">Günün Görevi</span>
-        <span className="htb-quest-tag">Yakında</span>
+        {dqStatus === "active" && <span className="htb-quest-dot" aria-hidden="true" />}
+        {dqStatus === "reward_ready" && (
+          <span className="htb-quest-ready" aria-hidden="true">!</span>
+        )}
+        {dqStatus === "claimed" && (
+          <span className="htb-quest-done" aria-hidden="true">✓</span>
+        )}
       </button>
       {/* Rekorlar — GELECEK, AYRI özellik (Sıralama'nın başka adı DEĞİL). Pasif
           bir container: <button>/<a> değil → tıklanamaz, route/modal açmaz,
@@ -605,8 +646,10 @@ interface HomeProps {
    *  aynı temayı okuyabilsin diye, bkz. UserProfileDropdown homeTheme prop'u). */
   homeTheme: HomeTheme;
   onThemeChange: (t: HomeTheme) => void;
+  /** Günün Görevi girişi (mobil kart) — App auth gate + modal açılışını yapar. */
+  onOpenDailyQuest: () => void;
 }
-function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange }: HomeProps) {
+function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange, onOpenDailyQuest }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showRouteMenu, setShowRouteMenu] = useState(false);
@@ -736,6 +779,7 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
         themes={HOME_THEMES}
         activeTheme={homeTheme}
         onSelectTheme={(id) => onThemeChange(id as HomeTheme)}
+        onOpenDailyQuest={onOpenDailyQuest}
       />
       {showCountryMenu && (
   <div
@@ -2823,6 +2867,12 @@ export default function App() {
     setQuickMatchIntent(null);
     clearPendingQuickMatch();
   }, []);
+  /* Günün Görevi: modal açık mı + aktif görev oturumu (daily-quest-game ekranı
+   * bu oturum üzerinden render edilir). Oturum yalnız "Göreve Başla / Devam Et"
+   * ile, sunucunun attempt yanıtından kurulur — normal mod ekranlarına
+   * DOKUNULMAZ, normal oyunlar göreve sayılmaz. */
+  const [dailyQuestOpen, setDailyQuestOpen] = useState(false);
+  const [dailyQuestSession, setDailyQuestSession] = useState<DailyQuestSession | null>(null);
   /* Auth Phase 3 (native only): a freshly signed-in social user (Apple/Google)
    * who has no valid Torble username yet. When set, the NicknameModal blocks
    * routing until the player picks a handle. Never set on web (gated on
@@ -2980,6 +3030,21 @@ export default function App() {
     navigateOnline(QUICK_MATCH_SCREEN[intent.mode]);
   };
 
+  /* ── Günün Görevi girişi (üst bar + mobil kart) ──────────────────────────
+   * Ödüllü olduğu için login zorunlu: guest'te niyet saklanır + auth modal
+   * açılır; login (in-page veya OAuth round-trip) tamamlanınca görev modalı
+   * OTOMATİK yeniden açılır — kullanıcı butonu tekrar aramaz. */
+  const handleOpenDailyQuest = () => {
+    if (!profile?.username) {
+      try { sessionStorage.setItem(PENDING_DAILY_QUEST_KEY, "1"); }
+      catch { /* sessionStorage disabled — best effort */ }
+      setAuthPromptReason("daily-quest");
+      setAuthOpen(true);
+      return;
+    }
+    setDailyQuestOpen(true);
+  };
+
   /* Shared post-auth routing for both the AuthModal success handler and the
    * NicknameModal success handler (native first-login). Once the user has a
    * valid username, routes them to the online target / Kör Nokta action they
@@ -3017,6 +3082,17 @@ export default function App() {
       if (pendingCode) {
         clearPendingRoomCode();
         void continueRoomCodeAfterAuth(pendingCode);
+      }
+
+      // Günün Görevi niyeti: guest "Günün Görevi"ne basıp login olduysa
+      // modal otomatik yeniden açılır (in-page login yolu; OAuth round-trip'i
+      // aşağıdaki boot effect'i tüketir — clear-on-consume ile yalnız biri).
+      let pendingDq: string | null = null;
+      try { pendingDq = sessionStorage.getItem(PENDING_DAILY_QUEST_KEY); }
+      catch { /* sessionStorage yok */ }
+      if (pendingDq) {
+        clearPendingDailyQuest();
+        setDailyQuestOpen(true);
       }
     }
   };
@@ -3065,6 +3141,22 @@ useEffect(() => {
 useEffect(() => {
   if (screen === "home") void refreshDailyReward();
 }, [screen]);
+
+// Günün Görevi rozet durumu: home'a dönüşte + login değişiminde sunucudan
+// tazele (UTC gün dönmüş veya başka sekmede claim edilmiş olabilir). Misafirde
+// sorgu atılmaz; rozet "unknown" kalır (buton yine tıklanabilir → auth gate).
+useEffect(() => {
+  if (authLoading) return;
+  if (screen !== "home") return;
+  if (profile?.username) void refreshDailyQuestStatus();
+  else setDailyQuestStatus("unknown");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [screen, profile?.id, authLoading]);
+
+// Savunmacı kurtarma: görev ekranı oturumsuz kalırsa (beklenmez) home'a dön.
+useEffect(() => {
+  if (screen === "daily-quest-game" && !dailyQuestSession) setScreen("home");
+}, [screen, dailyQuestSession]);
 
 // Tell the gold module who the active user is. Triggered only when profile.id changes
 // (login/logout) so a stale profile.gold cannot overwrite a live cached value mid-session.
@@ -3302,6 +3394,17 @@ function clearPendingKorNoktaInvite() {
       return;
     }
 
+    // Günün Görevi niyeti OAuth round-trip'ten döndüyse (page reload in-memory
+    // state'i sildi): login oturduğunda görev modalını otomatik aç.
+    let pendingDailyQuest: string | null = null;
+    try { pendingDailyQuest = sessionStorage.getItem(PENDING_DAILY_QUEST_KEY); }
+    catch { /* sessionStorage disabled — best effort */ }
+    if (pendingDailyQuest && profile?.username) {
+      clearPendingDailyQuest();
+      setDailyQuestOpen(true);
+      return;
+    }
+
     // Normal menu tap on a gated online mode (no invite link in the URL): the
     // in-memory pendingOnlineTarget is wiped by a Google OAuth redirect, so
     // navigateOnline() mirrors it into sessionStorage. Consume it once here —
@@ -3411,6 +3514,7 @@ useEffect(() => {
           onQuickMatch={() => setHomeQuickMatchOpen(true)}
           onOpenRanking={() => setLeaderboardOpen(true)}
           onSubmitRoomCode={handleRoomCodeSubmit}
+          onOpenDailyQuest={handleOpenDailyQuest}
         />
         <div className="top-right-stack top-right-stack--inbar">
           {/* Sağ kimlik kümesi: [Bildirimler] [Arkadaşlar] [Profil pill].
@@ -3469,10 +3573,25 @@ useEffect(() => {
         profileOpen={IS_NATIVE_APP ? profileNavOpen : false}
         homeTheme={homeTheme}
         onThemeChange={setHomeTheme}
+        onOpenDailyQuest={handleOpenDailyQuest}
       />
 
       {leaderboardOpen && (
         <LeaderboardModal onClose={() => setLeaderboardOpen(false)} />
+      )}
+
+      {/* Günün Görevi — desktop modal + (≤600px) alt-sheet aynı bileşen/aynı
+          sunucu durumu. "Göreve Başla / Devam Et / Tekrar Dene" sunucu attempt
+          yanıtından oturum kurar ve daily-quest-game ekranına geçer. */}
+      {dailyQuestOpen && (
+        <DailyQuestModal
+          onClose={() => setDailyQuestOpen(false)}
+          onStartSession={(session) => {
+            setDailyQuestOpen(false);
+            setDailyQuestSession(session);
+            setScreen("daily-quest-game");
+          }}
+        />
       )}
 
       {/* Oda Kodu: aynı kod birden fazla aktif modda → seçim; ya da (guest
@@ -3529,6 +3648,8 @@ useEffect(() => {
         ? "Çok oyunculu modlara katılmak için giriş yapmalısın."
         : authPromptReason === "kusatma-gate"
         ? "Kuşatma oynamak için giriş yapmalısın."
+        : authPromptReason === "daily-quest"
+        ? "Günün Görevi'ni oynamak ve ödülünü almak için giriş yapmalısın."
         : undefined
     }
     hideGuest={
@@ -3537,7 +3658,8 @@ useEffect(() => {
       authPromptReason === "kornokta-join" ||
       authPromptReason === "duel-gate" ||
       authPromptReason === "multi-gate" ||
-      authPromptReason === "kusatma-gate"
+      authPromptReason === "kusatma-gate" ||
+      authPromptReason === "daily-quest"
     }
     onClose={() => {
       setAuthOpen(false);
@@ -3563,6 +3685,11 @@ useEffect(() => {
         // …ve varsa üst bar/mobil "Oda Kodu" bekleyen kodunu (guest akışı).
         clearPendingRoomCode();
       }
+      // Auth iptal edildi → bekleyen Günün Görevi niyeti temizlenir (reload
+      // aynı modalı tekrar açmasın).
+      if (authPromptReason === "daily-quest") {
+        clearPendingDailyQuest();
+      }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
@@ -3586,6 +3713,9 @@ useEffect(() => {
         clearPendingOnlineTarget();
         clearQuickMatchIntent();
         clearPendingRoomCode();
+      }
+      if (authPromptReason === "daily-quest") {
+        clearPendingDailyQuest();
       }
       setPendingOnlineTarget(null);
       setAuthPromptReason(null);
@@ -3692,6 +3822,23 @@ useEffect(() => {
     />
   );
   if (screen === "route-game") return <RouteGame onHome={() => setScreen("home")} />;
+  if (screen === "daily-quest-game") {
+    // Oturum yoksa (savunmacı: ekran ve oturum hep birlikte set edilir) boş
+    // render; render sırasında setState çağrılmaz.
+    if (!dailyQuestSession) return null;
+    return (
+      <DailyQuestGame
+        session={dailyQuestSession}
+        onExit={() => {
+          // Görevden ana menüye dönüş: oturum düşer, modal otomatik yeniden
+          // açılır ve güncel durum (Devam Et / Ödülü Al / Ödül Alındı) görünür.
+          setDailyQuestSession(null);
+          setScreen("home");
+          setDailyQuestOpen(true);
+        }}
+      />
+    );
+  }
   if (screen === "route-duel-game") return (
     <RouteDuelGame
       onHome={() => setScreen("home")}

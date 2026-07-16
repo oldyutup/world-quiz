@@ -11016,9 +11016,14 @@ a.mode-card-btn { text-decoration: none; }
    koyu petrol-zümrüt yüzeyler, jade kenarlar, #3ad2c1→#1f9e8f CTA gradyanı.
    Kapsam data-theme="dark-space" taşıyan köklerle sınırlı (home modalları,
    pre-game duel ekranları, qm-overlay) + .home-topbar--dark-space şeridi;
-   diğer temalar ve MobileHome bu bloktan hiç etkilenmez. */
+   diğer temalar ve MobileHome bu bloktan hiç etkilenmez.
+   İSTİSNA: Günün Görevi yüzeyleri (.dq-overlay modal + .dq-game-root oyun
+   ekranı) aktif temadan BAĞIMSIZ olarak zümrüt ailededir — tokenlar bu iki
+   köke de bağlanır (yalnız değişken tanımı; başka tema kuralı etkilenmez). */
 [data-theme="dark-space"],
-.home-topbar--dark-space {
+.home-topbar--dark-space,
+.dq-overlay,
+.dq-game-root {
   --zv-accent: #3ad2c1;                 /* kimlik/turkuaz vurgu (tema registry accent'i) */
   --zv-on-accent: #04231f;              /* CTA üstü koyu metin (Oyna butonuyla aynı) */
   --zv-cta: linear-gradient(180deg, #3ad2c1 0%, #1f9e8f 100%);
@@ -26078,13 +26083,57 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   color: #fff;
 }
 
-/* Günün Görevi — en sessiz öğe: işlevsiz placeholder, amber "Yakında".
-   Sıralama'dan da düşük ağırlık taşır ki Hızlı Eşleş ile yarışmasın. */
+/* Günün Görevi ailesi (canlı buton + pasif Rekorlar) ortak yerleşim. Pasif
+   Rekorlar sessiz/soluk kalır; CANLI buton aşağıdaki --quest-live kurallarıyla
+   Sıralama ghost ağırlığına çıkar (Hızlı Eşleş CTA'sıyla yine yarışmaz). */
 .htb-btn--quest {
   gap: 7px;
   color: rgba(228, 238, 252, 0.5);
 }
 .htb-btn--quest:disabled { cursor: default; }
+
+/* Günün Görevi — AKTİF buton: Sıralama ile aynı sakin ghost dili. Kompakt
+   durum göstergeleri metin eklemez (bar kalabalıklaşmaz): aktif görev = sakin
+   turkuaz nokta, ödül hazır = küçük altın rozet, alındı = yeşil ✓. */
+.htb-btn--quest-live {
+  color: #e4eefc;
+  cursor: pointer;
+}
+.htb-btn--quest-live:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(140, 165, 205, 0.22);
+  color: #fff;
+}
+.htb-quest-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ad2c1;
+  box-shadow: 0 0 6px rgba(58, 210, 193, 0.55);
+}
+.htb-quest-ready {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(245, 181, 68, 0.18);
+  border: 1px solid rgba(245, 181, 68, 0.55);
+  color: #f5b544;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+.htb-quest-done {
+  flex: 0 0 auto;
+  color: #4ade80;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
 .htb-quest-tag {
   padding: 2px 6px;
   border: 1px solid rgba(245, 158, 11, 0.42);
@@ -26133,11 +26182,28 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   html:not(.is-native-app) .htb-brand-slogan { display: none; }
 }
 @media (min-width: 601px) and (max-width: 1259px) {
-  /* İki "Yakında" placeholder'ı (Günün Görevi + Rekorlar) birlikte gizlenir
-     — ikisi de .htb-btn--quest. Girişli kimlik kümesi + Oda Kodu + Hızlı
-     Eşleş + Sıralama bu bantta ancak böyle tek satırda rahat kalır (eski
-     ≤999 eşiği girişli kullanıcıda 1000–1259'da sıkışma bırakıyordu). */
-  html:not(.is-native-app) .htb-btn--quest { display: none; }
+  /* Pasif "Rekorlar — Yakında" placeholder'ı bu bantta gizlenir (eski
+     davranış). CANLI Günün Görevi butonu ise kaybolmak yerine ikon-only'ye
+     düşer (36px, Sıralama'nın dar-bant deseniyle aynı; aria-label korunur)
+     — girişli kimlik kümesi + Oda Kodu + Hızlı Eşleş + Sıralama ile tek
+     satırda overlap oluşturmaz. */
+  html:not(.is-native-app) .htb-btn--quest.htb-static { display: none; }
+  html:not(.is-native-app) .htb-btn--quest-live {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  html:not(.is-native-app) .htb-btn--quest-live .htb-btn-label,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-dot,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-ready,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-done { display: none; }
+}
+@media (min-width: 601px) and (max-width: 739px) {
+  /* En dar desktop bandı: Sıralama zaten ikon-only; Günün Görevi de çekilir
+     (eski placeholder davranışıyla aynı) — bar tek satır kalır. Mobil ≤600px
+     zaten MobileHome kartından erişir. */
+  html:not(.is-native-app) .htb-btn--quest-live { display: none; }
 }
 
 /* Container-tabanlı emniyet: uzun kullanıcı adı / kalabalık kimlik kümesi
@@ -26146,7 +26212,22 @@ html.is-native-app .social-bar .notif-bell { display: none; }
    kırpılma yerine sessiz sadeleşme. Medya merdiveni (yukarıda) desteklemeyen
    eski tarayıcılarda taban davranış olarak kalır. */
 @container (max-width: 812px) {
-  html:not(.is-native-app) .htb-btn--quest { display: none; }
+  html:not(.is-native-app) .htb-btn--quest.htb-static { display: none; }
+  html:not(.is-native-app) .htb-btn--quest-live {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  html:not(.is-native-app) .htb-btn--quest-live .htb-btn-label,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-dot,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-ready,
+  html:not(.is-native-app) .htb-btn--quest-live .htb-quest-done { display: none; }
+}
+@container (max-width: 560px) {
+  /* Gerçek kalan alan aşırı daraldıysa (çok uzun kullanıcı adı vb.) canlı
+     buton da sessizce çekilir — kırpılma/overlap yerine sadeleşme. */
+  html:not(.is-native-app) .htb-btn--quest-live { display: none; }
 }
 @container (max-width: 372px) {
   html:not(.is-native-app) .htb-btn--rank {
@@ -26868,4 +26949,515 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   .rd-score-pill { max-width: 60vw; }
   .rd-score-name { max-width: 6ch; }
   .rd-roundend-banner { padding: 10px 14px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GÜNÜN GÖREVİ (Daily Quest) — modal + mobil sheet + görev oyun ekranı.
+   Görsel dil: Zümrüt Vadi --zv-* tokenları (.dq-overlay / .dq-game-root
+   köklerine tema-bağımsız bağlanır; bkz. ZV token bloğu). Gold için mevcut
+   GoldIcon (gold-coin.png); yeni asset yok, neon/glow yok.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Modal (desktop merkez panel) ── */
+.dq-overlay { z-index: 1200; }
+.dq-modal {
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(86dvh, 640px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--zv-border);
+  border-radius: 18px;
+  background:
+    linear-gradient(122deg, transparent 26%, rgba(140, 240, 220, 0.05) 47%, rgba(140, 240, 220, 0.02) 55%, transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
+    rgba(8, 29, 25, 0.92);
+  box-shadow:
+    0 26px 80px rgba(2, 20, 16, 0.55),
+    inset 0 1px 0 rgba(180, 255, 235, 0.05);
+  color: #eafaf5;
+}
+.dq-grab { display: none; }
+.dq-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dq-head-icon {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+.dq-head-text { flex: 1 1 auto; min-width: 0; }
+.dq-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+.dq-countdown {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--zv-text-dim);
+}
+.dq-close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--zv-border-soft);
+  border-radius: 10px;
+  background: var(--zv-panel-2);
+  color: var(--zv-text-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+.dq-close:hover { color: #eafaf5; border-color: var(--zv-border-strong); }
+.dq-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+
+.dq-body { display: flex; flex-direction: column; gap: 14px; }
+.dq-body--center {
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0 6px;
+  text-align: center;
+}
+.dq-muted { margin: 0; color: var(--zv-text-dim); font-size: 0.88rem; }
+.dq-error { margin: 0; color: #fca5a5; font-size: 0.88rem; font-weight: 600; }
+.dq-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--zv-border);
+  border-top-color: var(--zv-accent);
+  animation: dq-spin 0.9s linear infinite;
+}
+@keyframes dq-spin { to { transform: rotate(360deg); } }
+
+.dq-quest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--zv-border-soft);
+  border-radius: 14px;
+  background: var(--zv-panel-2);
+}
+.dq-quest-mode { display: flex; align-items: center; gap: 9px; }
+.dq-mode-icon { width: 30px; height: 30px; object-fit: contain; flex: 0 0 auto; }
+.dq-mode-label { font-size: 0.95rem; font-weight: 800; flex: 1 1 auto; }
+.dq-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(245, 181, 68, 0.4);
+  border-radius: 999px;
+  background: rgba(245, 181, 68, 0.10);
+  color: #f5d488;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.dq-desc { margin: 0; font-size: 0.92rem; line-height: 1.45; }
+.dq-settings { display: flex; flex-wrap: wrap; gap: 6px; }
+.dq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--zv-border-soft);
+  border-radius: 999px;
+  background: var(--zv-input);
+  font-size: 0.76rem;
+}
+.dq-chip-label { color: var(--zv-text-dim); font-weight: 600; }
+.dq-chip-value { font-weight: 800; }
+.dq-progress { margin: 0; font-size: 0.84rem; font-weight: 700; color: var(--zv-accent); }
+.dq-progress--done { color: #7ce8b8; }
+
+.dq-actions { display: flex; flex-direction: column; gap: 8px; }
+.dq-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--zv-border);
+  border-radius: 12px;
+  background: var(--zv-panel-2);
+  color: #eafaf5;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.05s;
+}
+.dq-btn:not(:disabled):active { transform: translateY(1px); }
+.dq-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--zv-ring-strong);
+}
+.dq-btn:disabled { opacity: 0.65; cursor: default; }
+.dq-btn--cta {
+  background: var(--zv-cta);
+  border-color: rgba(120, 232, 218, 0.45);
+  color: var(--zv-on-accent);
+  box-shadow: 0 10px 24px rgba(31, 158, 143, 0.22);
+}
+.dq-btn--cta:not(:disabled):hover {
+  background: var(--zv-cta-hover);
+  box-shadow: 0 12px 28px rgba(31, 158, 143, 0.32);
+}
+.dq-btn--claim .gold-coin-icon { width: 18px; height: 18px; }
+.dq-btn--ghost { background: var(--zv-panel-2); color: var(--zv-text-dim); }
+.dq-btn--ghost:not(:disabled):hover { color: #eafaf5; border-color: var(--zv-border-strong); }
+.dq-btn--done {
+  background: rgba(74, 222, 128, 0.10);
+  border-color: rgba(74, 222, 128, 0.35);
+  color: #7ce8b8;
+}
+.dq-btn--inline { min-height: 40px; padding: 0 14px; flex: 0 0 auto; }
+
+/* ── ≤600px: modal alt-sheet düzenine döner (mh-sheet dili: safe-area, grab,
+      kendi içinde scroll; scroll kilidi bileşende) ── */
+@media (max-width: 600px) {
+  .dq-overlay {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+  }
+  .dq-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88dvh;
+    border-radius: 18px 18px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .dq-grab {
+    display: block;
+    width: 44px;
+    height: 4px;
+    margin: 0 auto 4px;
+    border-radius: 999px;
+    background: rgba(190, 218, 208, 0.35);
+  }
+}
+
+/* ── Mobil "Günün Görevi" giriş kartı (MobileHome) — Oda Kodu kartıyla aynı
+      aile; zümrüt kenar vurgusu görev kimliğini verir. Yalnız ≤600px web +
+      native'de görünür (mobile-home kapsayıcısı zaten öyle). ── */
+.mh-dq-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(90, 200, 175, 0.32);
+  border-radius: 14px;
+  background: rgba(9, 30, 25, 0.6);
+  color: #eaf1fc;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mh-dq-entry:active { transform: translateY(1px); }
+.mh-dq-entry-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.mh-dq-entry-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.mh-dq-entry-title {
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.mh-dq-entry-desc {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(184, 214, 202, 0.75);
+}
+
+/* ── Görev oyun ekranı ── */
+.dq-game-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(23, 66, 56, 0.55) 0%, transparent 60%),
+    linear-gradient(180deg, #071a16 0%, #05130f 100%);
+  color: #eafaf5;
+}
+.dq-game-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+  border-bottom: 1px solid var(--zv-border-soft);
+  background: rgba(7, 26, 22, 0.6);
+}
+.dq-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--zv-border-soft);
+  border-radius: 10px;
+  background: var(--zv-panel-2);
+  color: var(--zv-text-dim);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dq-back:hover { color: #eafaf5; border-color: var(--zv-border-strong); }
+.dq-back:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--zv-ring-strong); }
+.dq-game-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+.dq-game-title img { width: 24px; height: 24px; object-fit: contain; }
+.dq-game-reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #f5d488;
+}
+.dq-game-reward .gold-coin-icon { width: 16px; height: 16px; }
+
+/* Küçük, sakin görev HUD'u — rozet + hedef + ilerleme + kalan süre. */
+.dq-hud {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--zv-border-soft);
+  background: rgba(9, 32, 27, 0.5);
+  font-size: 0.82rem;
+}
+.dq-hud-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--zv-border);
+  border-radius: 999px;
+  background: var(--zv-sel);
+  color: var(--zv-accent);
+  font-weight: 800;
+  font-size: 0.76rem;
+}
+.dq-hud-badge img { width: 15px; height: 15px; object-fit: contain; }
+.dq-hud-goal { font-weight: 700; color: var(--zv-text-dim); }
+.dq-hud-progress { font-weight: 800; color: var(--zv-accent); }
+.dq-hud-timer {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  font-size: 0.95rem;
+  color: #7ce8b8;
+}
+.dq-hud-timer--warn { color: #f5b544; }
+.dq-hud-timer--low { color: #f87171; }
+
+/* Ortak input satırı (Ülke Yaz / Bayrak / Rota) */
+.dq-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.dq-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--zv-border);
+  border-radius: 12px;
+  background: var(--zv-input);
+  color: #eafaf5;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.dq-input::placeholder { color: rgba(190, 218, 208, 0.5); }
+.dq-input:focus {
+  outline: none;
+  border-color: var(--zv-border-strong);
+  box-shadow: 0 0 0 3px var(--zv-ring);
+}
+.dq-feedback { min-width: 0; font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+.dq-fb-ok { color: #7ce8b8; }
+.dq-fb-no { color: #f87171; }
+.dq-fb-dup { color: #f5b544; }
+
+/* Harita alanı — kalan tüm yüksekliği doldurur (WorldMap kabı ölçer). */
+.dq-map-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Bayrak sahnesi */
+.dq-flag-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 12px 16px;
+}
+.dq-flag-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(480px, 86vw);
+  width: 100%;
+}
+.dq-flag-img {
+  width: 100%;
+  max-height: min(38dvh, 300px);
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+.dq-flag-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 220px;
+  height: 140px;
+  border: 1px dashed var(--zv-border);
+  border-radius: 10px;
+  color: var(--zv-text-dim);
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
+.dq-flag-prompt {
+  min-height: 1.4em;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--zv-text-dim);
+  text-align: center;
+}
+
+/* Çark hedef bandı */
+.dq-wheel-target {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--zv-border-soft);
+  background: rgba(9, 32, 27, 0.5);
+}
+.dq-wheel-label { font-size: 0.85rem; font-weight: 700; color: var(--zv-text-dim); }
+.dq-wheel-name { font-size: 1.05rem; font-weight: 900; color: #eafaf5; }
+.dq-wheel-name--cycle { color: var(--zv-accent); }
+.dq-wheel-hint { font-size: 0.78rem; font-weight: 600; color: rgba(190, 218, 208, 0.55); }
+
+/* Rota path şeridi (route-step chip dilini yeniden kullanır) */
+.dq-route-path {
+  padding: 8px 14px 0;
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+/* Sonuç katmanı */
+.dq-result-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(3, 12, 10, 0.72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+.dq-result-panel {
+  width: min(400px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 22px;
+  border: 1px solid var(--zv-border);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01)),
+    rgba(8, 29, 25, 0.96);
+  box-shadow: 0 26px 80px rgba(2, 20, 16, 0.6);
+  text-align: center;
+}
+.dq-result-emoji { font-size: 2.4rem; line-height: 1; }
+.dq-result-title { margin: 0; font-size: 1.25rem; font-weight: 900; }
+.dq-result-sub { margin: 0; font-size: 0.9rem; color: var(--zv-text-dim); }
+.dq-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+.dq-result-claimed {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: #7ce8b8;
+  font-weight: 800;
+}
+
+/* Dar ekran ince ayar: HUD sıkışırsa hedef metni kısalır, input satırı nefes alır. */
+@media (max-width: 430px) {
+  .dq-hud { gap: 6px 10px; padding: 7px 10px; }
+  .dq-hud-goal { flex-basis: 100%; order: 4; }
+  .dq-input-row { padding: 8px 10px; }
+  .dq-feedback { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dq-spinner { animation: none; }
+  .dq-btn, .dq-back, .mh-dq-entry { transition: none; }
 }
