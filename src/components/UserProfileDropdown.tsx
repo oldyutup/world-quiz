@@ -5,6 +5,7 @@ import type { CountdownSoundMode } from "../lib/sound";
 import type { HomeTheme } from "../lib/themeBackgrounds";
 import { Avatar } from "./Avatar";
 import GoldIcon from "./GoldIcon";
+import { AppLegalLink, AppContactLink } from "../legal/AppLegalLinks";
 
 interface Props {
   /** Aktif ana ekran teması. `.upd-wrap`'a data-theme olarak yansıtılır:
@@ -276,6 +277,20 @@ export function UserProfileDropdown({
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* — Yasal & Destek (Gizlilik / Destek / İletişim) — */}
+          <div className="upd-section upd-legal">
+            <p className="upd-section-label">Yasal & Destek</p>
+            <div className="upd-legal-links">
+              <AppLegalLink kind="privacy" className="upd-legal-link">
+                Gizlilik Politikası
+              </AppLegalLink>
+              <AppLegalLink kind="support" className="upd-legal-link">
+                Destek
+              </AppLegalLink>
+              <AppContactLink className="upd-legal-link">İletişim</AppContactLink>
             </div>
           </div>
 

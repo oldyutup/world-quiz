@@ -27488,3 +27488,34 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   .dq-spinner { animation: none; }
   .dq-btn, .dq-back, .mh-dq-entry { transition: none; }
 }
+
+/* ── Profil menüsü: Yasal & Destek bağlantıları (Gizlilik / Destek / İletişim)
+   UserProfileDropdown alt bölümü. Cüzdan/atlas skin'iyle uyumlu, sade metin
+   bağlantıları; mevcut .upd-* düzenini bozmaz. ── */
+.upd-legal {
+  position: relative;
+}
+.upd-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 2px;
+}
+.upd-legal-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(216, 165, 102, 0.82);
+  text-decoration: none;
+  padding: 4px 2px;
+  border-radius: 6px;
+  transition: color 0.14s;
+}
+.upd-legal-link:hover {
+  color: var(--wallet-gilt, #f2c879);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.upd-legal-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(242, 200, 121, 0.4);
+}

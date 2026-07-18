@@ -1,7 +1,14 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
-import App from "./App";
+import { matchLegalRoute } from "./legal/router";
+
+// App'i LAZY yükle. Böylece App.tsx (ve devasa App.css) YALNIZ gerçek uygulama
+// açıldığında yüklenir; herkese açık hukuki/destek sayfaları (aşağıda) kendi
+// izole stiliyle, App.css'in global body/#root kurallarından etkilenmeden
+// render olur. Native + normal web akışında App yine anında yüklenir (Suspense
+// fallback null; dev sayfalarıyla aynı desen).
+const App = lazy(() => import("./App"));
 
 // Native-shell detection (Capacitor iOS / Android). When — and only when — the
 // app runs inside the native webview, tag <html> so CSS can opt safe-area rules
@@ -50,14 +57,21 @@ const CizimTestDevPage =
 const DevPage =
   History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage ?? CizimTestDevPage;
 
+// Herkese açık hukuki/destek sayfaları (/tr/privacy, /en/support, /privacy …).
+// Üretimde de çalışır (dev sayfalarının aksine env-gate YOK). Eşleşme yoksa
+// null → uygulama normal açılır. Ağır içerik + stil yalnız bu chunk'ta yüklenir.
+const isLegalRoute = matchLegalRoute(window.location.pathname) !== null;
+const LegalRoot = isLegalRoute
+  ? lazy(() => import("./legal/LegalRoot"))
+  : null;
+
+// Öncelik: dev test sayfası (yalnız dev) → hukuki sayfa → uygulama.
+const RootComponent = DevPage ?? LegalRoot ?? App;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {DevPage ? (
-      <Suspense fallback={null}>
-        <DevPage />
-      </Suspense>
-    ) : (
-      <App />
-    )}
+    <Suspense fallback={null}>
+      <RootComponent />
+    </Suspense>
   </StrictMode>
 );

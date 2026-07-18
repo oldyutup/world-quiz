@@ -1,0 +1,538 @@
+/* ==========================================================================
+   legal.css — Torble hukuki/destek sayfaları (Gizlilik, Destek, 404)
+
+   KENDİ KENDİNE YETER: App.css bu sayfalarda YÜKLENMEZ (LegalRoot ayrı chunk).
+   Bu dosya kendi reset'ini, tipografisini ve renk sistemini taşır. Yazı
+   tipleri index.html'de yüklenir (Bebas Neue başlıklar, DM Sans gövde).
+
+   Yön: sakin, premium, "atlas / not defteri" hissi. Sıcak kâğıt zemin, koyu
+   lacivert mürekkep, mavi vurgular. Soğuk-kurumsal-tam-mavi / neon / metalik
+   YOK; boğucu koyu zemin YOK (koyu mod bile sıcak "gece atlası" lacivertidir).
+   ========================================================================== */
+
+:root {
+  --tp-blue: #035dda;
+  --tp-blue-2: #335dda;
+  --tp-navy: #002c48;
+
+  /* Açık "kâğıt" tema (birincil görünüm) */
+  --tp-paper: #f6f2e9;
+  --tp-surface: #fffdf7;
+  --tp-ink: #21303d;
+  --tp-ink-soft: #556575;
+  --tp-heading: var(--tp-navy);
+  --tp-line: rgba(0, 44, 72, 0.14);
+  --tp-line-soft: rgba(0, 44, 72, 0.08);
+  --tp-note-bg: rgba(3, 93, 218, 0.06);
+  --tp-note-border: rgba(3, 93, 218, 0.28);
+  --tp-shadow: 0 1px 2px rgba(0, 44, 72, 0.05), 0 12px 32px rgba(0, 44, 72, 0.08);
+  --tp-selection: rgba(3, 93, 218, 0.18);
+
+  --tp-font-display: "Bebas Neue", "DM Sans", system-ui, sans-serif;
+  --tp-font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --tp-maxw: 1080px;
+  --tp-topbar-h: 60px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Koyu "gece atlası" — pür siyah DEĞİL, sıcak derin lacivert. */
+    --tp-paper: #0b1c2b;
+    --tp-surface: #10273a;
+    --tp-ink: #e7eef6;
+    --tp-ink-soft: #a7bcce;
+    --tp-heading: #dce8f6;
+    --tp-blue: #6aa2f5;
+    --tp-blue-2: #8ab4f8;
+    --tp-line: rgba(255, 255, 255, 0.14);
+    --tp-line-soft: rgba(255, 255, 255, 0.07);
+    --tp-note-bg: rgba(106, 162, 245, 0.1);
+    --tp-note-border: rgba(106, 162, 245, 0.34);
+    --tp-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 34px rgba(0, 0, 0, 0.32);
+    --tp-selection: rgba(106, 162, 245, 0.28);
+  }
+}
+
+/* ── Reset (yalnız bu sayfa yüklüyken etkin) ───────────────────────────── */
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  background: var(--tp-paper);
+}
+.tp-root,
+.tp-root *,
+.tp-root *::before,
+.tp-root *::after {
+  box-sizing: border-box;
+}
+.tp-root ::selection {
+  background: var(--tp-selection);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Kök ───────────────────────────────────────────────────────────────── */
+.tp-root {
+  min-height: 100vh;
+  background: var(--tp-paper);
+  /* Çok hafif "not defteri" yatay çizgileri — atlas kâğıdı dokusu. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    var(--tp-line-soft) 31px,
+    var(--tp-line-soft) 32px
+  );
+  color: var(--tp-ink);
+  font-family: var(--tp-font-body);
+  font-size: 17px;
+  line-height: 1.72;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Atlama bağlantısı ─────────────────────────────────────────────────── */
+.tp-skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 20;
+  background: var(--tp-blue);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.tp-skip:focus {
+  top: 12px;
+}
+
+/* ── Üst bar ───────────────────────────────────────────────────────────── */
+.tp-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--tp-topbar-h);
+  background: color-mix(in srgb, var(--tp-paper) 88%, transparent);
+  -webkit-backdrop-filter: saturate(1.4) blur(8px);
+  backdrop-filter: saturate(1.4) blur(8px);
+  border-bottom: 1px solid var(--tp-line);
+}
+.tp-topbar-inner {
+  max-width: var(--tp-maxw);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.tp-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--tp-heading);
+}
+.tp-brand-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  object-position: left center;
+}
+.tp-brand-name {
+  font-family: var(--tp-font-display);
+  font-size: 27px;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--tp-heading);
+}
+
+/* Dil değiştirici */
+.tp-lang {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--tp-line);
+  border-radius: 999px;
+  background: var(--tp-surface);
+}
+.tp-lang-btn {
+  min-width: 44px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-family: var(--tp-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-decoration: none;
+  color: var(--tp-ink-soft);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tp-lang-btn:hover {
+  color: var(--tp-heading);
+}
+.tp-lang-btn.is-active {
+  background: var(--tp-blue);
+  color: #fff;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.tp-hero {
+  position: relative;
+  max-width: var(--tp-maxw);
+  margin: 0 auto;
+  padding: clamp(36px, 6vw, 72px) clamp(16px, 4vw, 40px) clamp(20px, 3vw, 32px);
+  overflow: hidden;
+}
+.tp-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+}
+.tp-eyebrow {
+  margin: 0 0 6px;
+  font-family: var(--tp-font-display);
+  font-size: 18px;
+  letter-spacing: 0.24em;
+  color: var(--tp-blue);
+  text-transform: uppercase;
+}
+.tp-title {
+  margin: 0;
+  font-family: var(--tp-font-display);
+  font-weight: 400;
+  font-size: clamp(44px, 8vw, 76px);
+  line-height: 0.98;
+  letter-spacing: 0.01em;
+  color: var(--tp-heading);
+}
+.tp-tagline {
+  margin: 16px 0 0;
+  max-width: 60ch;
+  font-size: clamp(16px, 2.2vw, 19px);
+  line-height: 1.6;
+  color: var(--tp-ink-soft);
+}
+.tp-updated {
+  margin: 20px 0 0;
+  display: inline-block;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--tp-ink-soft);
+  padding: 6px 14px;
+  border: 1px solid var(--tp-line);
+  border-radius: 999px;
+  background: var(--tp-surface);
+}
+.tp-hero-art {
+  position: absolute;
+  right: clamp(-60px, -4vw, -20px);
+  bottom: -30px;
+  width: clamp(220px, 34vw, 420px);
+  height: auto;
+  opacity: 0.5;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+@media (max-width: 780px) {
+  .tp-hero-art {
+    display: none;
+  }
+}
+
+/* ── Gövde: içindekiler + ana içerik ───────────────────────────────────── */
+.tp-body {
+  max-width: var(--tp-maxw);
+  margin: 0 auto;
+  padding: clamp(8px, 2vw, 24px) clamp(16px, 4vw, 40px) 0;
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .tp-body {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+/* İçindekiler */
+.tp-toc {
+  position: sticky;
+  top: calc(var(--tp-topbar-h) + 16px);
+  align-self: start;
+  padding: 18px 18px 20px;
+  border: 1px solid var(--tp-line);
+  border-radius: 14px;
+  background: var(--tp-surface);
+  box-shadow: var(--tp-shadow);
+  /* Kutu görünür alanı asla aşmaz: yüksekliği viewport'a kilitlenir ve
+     içerik sığmadığında YALNIZ kutunun kendi içinde dikey kaydırma açılır
+     (klavye/mouse/trackpad ile çalışır; scroll dışarı zincirlenmez). */
+  max-height: calc(100vh - var(--tp-topbar-h) - 40px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* Sade, tasarımla uyumlu kaydırma çubuğu (Firefox). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--tp-line) transparent;
+}
+/* Sade, tasarımla uyumlu kaydırma çubuğu (WebKit/Blink). */
+.tp-toc::-webkit-scrollbar {
+  width: 8px;
+}
+.tp-toc::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tp-toc::-webkit-scrollbar-thumb {
+  background: var(--tp-line);
+  border-radius: 999px;
+}
+.tp-toc::-webkit-scrollbar-thumb:hover {
+  background: var(--tp-ink-soft);
+}
+@media (max-width: 900px) {
+  .tp-toc {
+    /* Mobilde içindekiler in-flow: iç scroll/yükseklik sınırı yok. */
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+.tp-toc-title {
+  margin: 0 0 10px;
+  font-family: var(--tp-font-display);
+  font-size: 20px;
+  letter-spacing: 0.1em;
+  color: var(--tp-heading);
+  text-transform: uppercase;
+}
+.tp-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: toc;
+}
+.tp-toc-list li {
+  margin: 0;
+}
+.tp-toc-link {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  text-decoration: none;
+  color: var(--tp-ink-soft);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tp-toc-link:hover {
+  background: var(--tp-note-bg);
+  color: var(--tp-blue);
+}
+
+/* Ana içerik */
+.tp-main {
+  min-width: 0;
+  padding-bottom: 48px;
+}
+.tp-intro {
+  margin-bottom: 8px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--tp-line);
+}
+.tp-intro .tp-p {
+  font-size: 18.5px;
+  color: var(--tp-ink);
+}
+
+.tp-section {
+  scroll-margin-top: calc(var(--tp-topbar-h) + 20px);
+  padding: 26px 0 6px;
+  border-top: 1px solid var(--tp-line-soft);
+}
+.tp-section:first-of-type {
+  border-top: none;
+}
+.tp-heading {
+  margin: 0 0 12px;
+  font-family: var(--tp-font-display);
+  font-weight: 400;
+  font-size: clamp(25px, 3.4vw, 32px);
+  line-height: 1.08;
+  letter-spacing: 0.02em;
+  color: var(--tp-heading);
+}
+.tp-subheading {
+  margin: 22px 0 8px;
+  font-family: var(--tp-font-body);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--tp-heading);
+}
+.tp-p {
+  margin: 0 0 14px;
+  max-width: 72ch;
+}
+.tp-list {
+  margin: 0 0 16px;
+  padding-left: 0;
+  max-width: 72ch;
+  list-style: none;
+}
+.tp-list li {
+  position: relative;
+  padding-left: 26px;
+  margin-bottom: 9px;
+}
+.tp-list li::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 0.68em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tp-blue);
+}
+.tp-list--ordered {
+  counter-reset: tp-ol;
+}
+.tp-list--ordered li {
+  padding-left: 34px;
+  counter-increment: tp-ol;
+}
+.tp-list--ordered li::before {
+  content: counter(tp-ol);
+  top: 0.1em;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--tp-blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+.tp-note {
+  margin: 4px 0 16px;
+  max-width: 72ch;
+  padding: 14px 16px 14px 18px;
+  border-left: 3px solid var(--tp-note-border);
+  border-radius: 8px;
+  background: var(--tp-note-bg);
+  color: var(--tp-ink);
+  font-size: 15.5px;
+}
+.tp-contact {
+  margin: 0 0 14px;
+  font-size: 17px;
+}
+.tp-contact-label {
+  font-weight: 700;
+  color: var(--tp-heading);
+}
+.tp-link,
+.tp-p a,
+.tp-list a {
+  color: var(--tp-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.tp-link:hover {
+  color: var(--tp-blue-2);
+}
+
+/* ── Alt bilgi ─────────────────────────────────────────────────────────── */
+.tp-footer {
+  max-width: var(--tp-maxw);
+  margin: 0 auto;
+  padding: 28px clamp(16px, 4vw, 40px) 56px;
+  border-top: 1px solid var(--tp-line);
+  text-align: left;
+}
+.tp-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin-bottom: 16px;
+}
+.tp-footer-link {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tp-blue);
+  text-decoration: none;
+}
+.tp-footer-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tp-footer-meta {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  color: var(--tp-ink-soft);
+}
+.tp-footer-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tp-ink-soft);
+  opacity: 0.85;
+}
+
+/* ── 404 ───────────────────────────────────────────────────────────────── */
+.tp-notfound {
+  max-width: var(--tp-maxw);
+  margin: 0 auto;
+  padding: clamp(48px, 12vh, 120px) clamp(16px, 4vw, 40px);
+}
+.tp-notfound-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 24px;
+}
+
+/* ── Odak görünürlüğü (klavye) ─────────────────────────────────────────── */
+.tp-root a:focus-visible,
+.tp-skip:focus-visible {
+  outline: 3px solid var(--tp-blue-2);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Küçük ekran ince ayarları ─────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .tp-root {
+    font-size: 16px;
+  }
+  .tp-brand-name {
+    font-size: 24px;
+  }
+  .tp-lang-btn {
+    min-width: 40px;
+    padding: 6px 10px;
+  }
+  .tp-note,
+  .tp-contact {
+    font-size: 15px;
+  }
+}
