@@ -25425,7 +25425,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 /* AccountSettingsModal — kullanıcı adı / şifre segment (tab) çubuğu. */
 .acc-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   padding: 4px;
   border: 1px solid rgba(140, 170, 220, 0.18);
@@ -25448,6 +25448,33 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 .acc-tab.active {
   background: rgba(90, 165, 255, 0.18);
   color: #fff;
+}
+/* Hesap silme sekmesi — aktifken kırmızı tonda ayrışır. */
+.acc-tab--danger:hover { color: rgba(255, 190, 190, 0.95); }
+.acc-tab--danger.active {
+  background: rgba(230, 80, 80, 0.18);
+  color: #ffd9d9;
+}
+
+/* Hesap silme bölümü (.uc bağlamı) */
+.acc-danger-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(210, 220, 240, 0.85);
+}
+.uc-btn--danger {
+  background: linear-gradient(135deg, rgba(215, 70, 70, 0.9), rgba(170, 45, 90, 0.9));
+  border-color: rgba(255, 140, 140, 0.5);
+  color: #fff;
+}
+.uc-btn--danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(235, 90, 90, 0.95), rgba(190, 60, 105, 0.95));
+  border-color: rgba(255, 170, 170, 0.7);
 }
 
 /* Şifre alanında göster/gizle ikonu (.uc-input bağlamı). */

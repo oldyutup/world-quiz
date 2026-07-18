@@ -108,3 +108,52 @@ export async function signInWithApple(): Promise<AppleSignInResult> {
 
   return { status: "success", user: data.user, session: data.session };
 }
+
+/* ── Hesap silme: taze authorizationCode ─────────────────────────────────
+ * Apple'ın hesap silme beklentisi (5.1.1(v)): silme anında token revocation
+ * denenmeli. Revocation, Apple sheet'ten alınan TAZE authorizationCode'un
+ * sunucuda (delete-account Edge Function) token'a çevrilip revoke
+ * edilmesiyle yapılır. Bu fonksiyon YALNIZ code toplar — Supabase oturumuna
+ * dokunmaz (signInWithIdToken ÇAĞRILMAZ; kullanıcı zaten oturumda).
+ * Kullanıcının sheet'i iptal etmesi "cancelled" döner ve silme akışı hiç
+ * başlatılmaz; teknik hata ise "error" döner — silme hakkını engellemez,
+ * revocation sunucu tarafında atlanmış olur. */
+
+export type AppleDeletionAuthResult =
+  | { status: "success"; authorizationCode: string }
+  | { status: "cancelled" }
+  | { status: "error"; message: string };
+
+export async function requestAppleAuthorizationForDeletion(): Promise<AppleDeletionAuthResult> {
+  if (Capacitor.getPlatform() !== "ios") {
+    return {
+      status: "error",
+      message: "Apple yetkilendirmesi yalnızca iOS uygulamasında alınabilir.",
+    };
+  }
+
+  try {
+    const { SignInWithApple } = await import(
+      "@capacitor-community/apple-sign-in"
+    );
+
+    const rawNonce = generateRawNonce();
+    const hashedNonce = await sha256Hex(rawNonce);
+
+    const result = await SignInWithApple.authorize({
+      clientId: APPLE_CLIENT_ID,
+      redirectURI: "https://torble.app/auth/callback",
+      scopes: "name email",
+      nonce: hashedNonce,
+    });
+
+    const authorizationCode = result.response?.authorizationCode ?? "";
+    if (!authorizationCode) {
+      return { status: "error", message: "Apple yetkilendirme kodu alınamadı." };
+    }
+    return { status: "success", authorizationCode };
+  } catch (err) {
+    if (isUserCancellation(err)) return { status: "cancelled" };
+    return { status: "error", message: "Apple yetkilendirmesi tamamlanamadı." };
+  }
+}

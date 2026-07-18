@@ -227,7 +227,9 @@ export interface TevaturRoom {
 export interface TevaturPlayer {
   id:           string;
   room_id:      string;
-  profile_id:   string;
+  /** Login-only mod her zaman dolu yazar; NULL yalnız hesap silme
+   *  anonimleştirmesinden sonra görülür (trg_account_deletion_cleanup). */
+  profile_id:   string | null;
   name:         string;
   score:        number;
   /** Kör Nokta takım modu: "blue" | "red" (lobide atanır). */

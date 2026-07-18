@@ -17,8 +17,19 @@
  *          updateUser({ password }). Şifre hiçbir yerde saklanmaz.
  *
  *   Bu kapsamda e-posta değiştirme YOKTUR.
+ *
+ *   3) Hesap — kalıcı hesap silme (App Store hesap silme gereksinimi):
+ *        • Silinecek veri kategorileri açıkça listelenir, geri alınamazlık
+ *          belirtilir; iki aşamalı onay (buton + "SİL" yazma) istenir.
+ *        • E-posta+şifre hesabında önce mevcut şifre doğrulanır.
+ *        • Apple hesabında (yalnız iOS native) silme anında Apple sheet
+ *          açılır → taze authorizationCode alınır (token revocation için).
+ *          Sheet iptal edilirse HİÇBİR şey silinmez.
+ *        • delete-account Edge Function çağrılır (hedef = JWT sahibi);
+ *          başarıda local purge + yerel signOut + köke dönüş.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import {
   callChangeUsername,
   getAccountAuthInfo,
@@ -36,6 +47,13 @@ import {
   USERNAME_MAX_LENGTH,
 } from "../lib/username";
 import { syncGoldFromServer } from "../lib/gold";
+import {
+  currentUserHasAppleIdentity,
+  deleteAccount,
+  finalizeAccountDeletion,
+  SESSION_LOST_MESSAGE,
+} from "../lib/accountDeletion";
+import { requestAppleAuthorizationForDeletion } from "../lib/appleAuth";
 
 interface Props {
   profile: Profile;
@@ -45,8 +63,15 @@ interface Props {
   onUsernameSuccess: (next: { username: string; gold: number }) => void;
 }
 
-type Tab = "username" | "password";
+type Tab = "username" | "password" | "delete";
 type PwMode = "loading" | "set" | "change";
+
+/** "SİL" onayı — Türkçe locale büyütmesiyle karşılaştırılır ki hem "sil"
+ *  hem "SİL" hem "SIL" kabul edilsin (i/İ dönüşümü JS default'unda bozuk). */
+function isDeleteConfirmText(value: string): boolean {
+  const up = value.trim().toLocaleUpperCase("tr-TR");
+  return up === "SİL" || up === "SIL";
+}
 
 function computeCooldownDaysLeft(
   isFirst: boolean,
@@ -70,9 +95,13 @@ export function AccountSettingsModal({
 }: Props) {
   const [tab, setTab] = useState<Tab>("username");
 
+  // Escape kapaması, overlay/çarpı butonlarındaki "işlem sürerken kapatma"
+  // guard'ıyla aynı davranmalı (özellikle hesap silme sürerken).
+  const busyRef = useRef(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !busyRef.current) onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -230,19 +259,111 @@ export function AccountSettingsModal({
     }
   }
 
+  /* ── Hesap silme bölümü ── */
+  const [delArmed, setDelArmed] = useState(false); // ilk onay verildi mi
+  const [delPw, setDelPw] = useState("");
+  const [delConfirm, setDelConfirm] = useState("");
+  const [delSubmitting, setDelSubmitting] = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
+  // Hesap silindi ama Apple revocation teknik nedenle yapılamadı → kullanıcıya
+  // manuel kaldırma bilgisini gösterip ondan sonra çıkış yap.
+  const [delAppleHint, setDelAppleHint] = useState(false);
+  // 401/kayıp-yanıt: oturum kurtarılamadı — hesap silinmiş OLABİLİR ama kesin
+  // değil (yerel temizlik lib'de yapıldı). Tarafsız bilgi ekranı gösterilir.
+  const [delSessionLost, setDelSessionLost] = useState(false);
+  const [hasApple, setHasApple] = useState(false);
+  const isNativeIos = Capacitor.getPlatform() === "ios";
+
+  useEffect(() => {
+    let alive = true;
+    currentUserHasAppleIdentity().then((v) => {
+      if (alive) setHasApple(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  busyRef.current = uSubmitting || pwSubmitting || delSubmitting;
+
+  const delCanSubmit =
+    !delSubmitting &&
+    pwMode !== "loading" &&
+    isDeleteConfirmText(delConfirm) &&
+    (pwMode !== "change" || delPw.length > 0);
+
+  async function handleDeleteAccount() {
+    if (!delCanSubmit) return;
+    setDelError(null);
+    setDelSubmitting(true);
+    try {
+      // 1) E-posta+şifre hesabı: silmeden önce mevcut şifre doğrulanır.
+      if (pwMode === "change") {
+        if (!email) {
+          setDelError("Hesap bilgisi alınamadı, tekrar dene.");
+          return;
+        }
+        const { ok } = await verifyCurrentPassword(email, delPw);
+        if (!ok) {
+          setDelError("Mevcut şifre doğrulanamadı.");
+          return;
+        }
+      }
+
+      // 2) Apple hesabı (yalnız iOS native): taze authorizationCode al.
+      //    İptal → HİÇBİR şey silinmeden akış durur. Teknik sheet hatası →
+      //    silme hakkı engellenmez; revocation sunucuda atlanır ve sonda
+      //    manuel kaldırma bilgisi gösterilir.
+      let appleCode: string | undefined;
+      if (hasApple && isNativeIos) {
+        const auth = await requestAppleAuthorizationForDeletion();
+        if (auth.status === "cancelled") {
+          setDelError("Apple onayı iptal edildi. Hesabın silinmedi.");
+          return;
+        }
+        if (auth.status === "success") appleCode = auth.authorizationCode;
+      }
+
+      // 3) Sunucu tarafı silme (hedef her zaman JWT sahibi).
+      const res = await deleteAccount(appleCode);
+      if (!res.ok) {
+        if (res.sessionLost) {
+          // Kesin "silindi" DEĞİL — tarafsız bilgi ekranı (lib yerel
+          // auth/cache/claim temizliğini zaten yaptı).
+          setDelSessionLost(true);
+          return;
+        }
+        setDelError(res.message);
+        return;
+      }
+
+      // 4) Başarı: Apple revocation yapılamadıysa önce bilgi ekranı, aksi
+      //    hâlde doğrudan yerel temizlik + çıkış.
+      if (hasApple && res.appleRevocation !== "revoked") {
+        setDelAppleHint(true);
+        return;
+      }
+      await finalizeAccountDeletion();
+    } catch {
+      setDelError("Bağlantı hatası, tekrar dene.");
+    } finally {
+      setDelSubmitting(false);
+    }
+  }
+
   return (
     <div
       className="uc-overlay"
       role="dialog"
       aria-modal="true"
       aria-label="Kullanıcı adı ve şifre"
-      onClick={() => !uSubmitting && !pwSubmitting && onClose()}
+      onClick={() => !uSubmitting && !pwSubmitting && !delSubmitting && onClose()}
     >
       <div className="uc-modal acc-modal" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           className="uc-close"
-          onClick={() => !uSubmitting && !pwSubmitting && onClose()}
+          onClick={() => !uSubmitting && !pwSubmitting && !delSubmitting && onClose()}
           aria-label="Kapat"
         >
           ×
@@ -268,6 +389,15 @@ export function AccountSettingsModal({
             onClick={() => setTab("password")}
           >
             Şifre
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "delete"}
+            className={`acc-tab acc-tab--danger${tab === "delete" ? " active" : ""}`}
+            onClick={() => setTab("delete")}
+          >
+            Hesap
           </button>
         </div>
 
@@ -347,7 +477,7 @@ export function AccountSettingsModal({
               </button>
             </div>
           </>
-        ) : (
+        ) : tab === "password" ? (
           <>
             {pwMode === "loading" ? (
               <div className="uc-info">
@@ -472,6 +602,168 @@ export function AccountSettingsModal({
                       : pwMode === "set"
                       ? "Şifre belirle"
                       : "Şifreyi değiştir"}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {delSessionLost ? (
+              /* Oturum kurtarılamadı — hesap silinmiş OLABİLİR, kesin değil. */
+              <>
+                <div className="uc-info">
+                  <p>{SESSION_LOST_MESSAGE}</p>
+                </div>
+                <div className="uc-actions">
+                  <button
+                    type="button"
+                    className="uc-btn uc-btn--primary"
+                    onClick={() => window.location.replace("/")}
+                  >
+                    Tamam
+                  </button>
+                </div>
+              </>
+            ) : delAppleHint ? (
+              /* Hesap silindi; Apple revocation teknik nedenle yapılamadı. */
+              <>
+                <div className="uc-info">
+                  <p>Hesabın ve verilerin silindi.</p>
+                  <p>
+                    Apple ile Giriş bağlantısı teknik bir nedenle otomatik
+                    kaldırılamadı. İstersen iPhone'da{" "}
+                    <strong>
+                      Ayarlar → Apple Hesabı → Oturum Açma ve Güvenlik → Apple
+                      ile Oturum Aç
+                    </strong>{" "}
+                    bölümünden Torble erişimini elle kaldırabilirsin.
+                  </p>
+                </div>
+                <div className="uc-actions">
+                  <button
+                    type="button"
+                    className="uc-btn uc-btn--primary"
+                    onClick={() => void finalizeAccountDeletion()}
+                  >
+                    Tamam
+                  </button>
+                </div>
+              </>
+            ) : !delArmed ? (
+              /* Adım 1 — bilgi + ilk onay */
+              <>
+                <div className="uc-info">
+                  <p>Hesabını sildiğinde şunlar kalıcı olarak silinir:</p>
+                </div>
+                <ul className="acc-danger-list">
+                  <li>Profilin ve kullanıcı adın</li>
+                  <li>Arkadaşların, isteklerin ve engel listen</li>
+                  <li>Tüm özel mesajların (DM)</li>
+                  <li>Gold, XP, seviye ve başarımların</li>
+                  <li>Günlük görev ilerlemen ve bildirimlerin</li>
+                </ul>
+                <div className="uc-info">
+                  <p>
+                    Çok oyunculu maç kayıtlarındaki adın anonimleştirilir ve
+                    hesabınla bağı kalmaz.
+                  </p>
+                </div>
+                <div className="uc-warn">
+                  Bu işlem geri alınamaz. Silinen hesap ve veriler kurtarılamaz.
+                </div>
+                <div className="uc-actions">
+                  <button
+                    type="button"
+                    className="uc-btn uc-btn--danger"
+                    onClick={() => {
+                      setDelError(null);
+                      setDelArmed(true);
+                    }}
+                  >
+                    Hesabımı silmek istiyorum
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Adım 2 — açık onay (+ şifre doğrulaması) */
+              <>
+                <div className="uc-info">
+                  <p>
+                    Son adım: aşağıya <strong>SİL</strong> yaz
+                    {pwMode === "change" ? " ve mevcut şifreni doğrula" : ""}.
+                    {hasApple && isNativeIos
+                      ? " Devam ettiğinde Apple onay penceresi açılır."
+                      : ""}
+                  </p>
+                </div>
+
+                {pwMode === "change" && (
+                  <>
+                    <label className="uc-label" htmlFor="acc-del-pw">
+                      Mevcut şifre
+                    </label>
+                    <div className="uc-input-wrap">
+                      <input
+                        id="acc-del-pw"
+                        type="password"
+                        className="uc-input uc-input--pw"
+                        value={delPw}
+                        placeholder="Mevcut şifren"
+                        disabled={delSubmitting}
+                        onChange={(e) => {
+                          setDelError(null);
+                          setDelPw(e.target.value);
+                        }}
+                        autoComplete="current-password"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <label className="uc-label" htmlFor="acc-del-confirm">
+                  Onay metni
+                </label>
+                <div className="uc-input-wrap">
+                  <input
+                    id="acc-del-confirm"
+                    type="text"
+                    className="uc-input"
+                    value={delConfirm}
+                    placeholder="SİL"
+                    disabled={delSubmitting}
+                    onChange={(e) => {
+                      setDelError(null);
+                      setDelConfirm(e.target.value);
+                    }}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+
+                {delError && <div className="uc-error">{delError}</div>}
+
+                <div className="uc-actions">
+                  <button
+                    type="button"
+                    className="uc-btn"
+                    onClick={() => {
+                      setDelArmed(false);
+                      setDelError(null);
+                      setDelPw("");
+                      setDelConfirm("");
+                    }}
+                    disabled={delSubmitting}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="uc-btn uc-btn--danger"
+                    onClick={handleDeleteAccount}
+                    disabled={!delCanSubmit}
+                  >
+                    {delSubmitting ? "Siliniyor…" : "Hesabı Kalıcı Olarak Sil"}
                   </button>
                 </div>
               </>
