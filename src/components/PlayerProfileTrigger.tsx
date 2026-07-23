@@ -23,10 +23,12 @@ import {
   unblockUser,
   type PublicProfile,
 } from "../lib/social";
+import { reportProfile, type ReportReason } from "../lib/moderation";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
 import { PlayerProfileCard } from "./PlayerProfileCard";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ReportModal, type ReportSubmitResult } from "./ReportModal";
 
 interface PlayerProfileTriggerProps {
   /** Hedef oyuncunun profil id'si. null/undefined → guest, tıklama no-op. */
@@ -51,12 +53,15 @@ export function PlayerProfileTrigger({
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   /** Onay diyaloğu: arkadaşlıktan çıkar veya engelle. */
   const [confirmKind, setConfirmKind] = useState<null | "remove" | "block">(null);
+  /** Bildir modalı: sadece bildir veya bildir+engelle. */
+  const [reportKind, setReportKind] = useState<null | "report" | "reportBlock">(null);
   const [busy, setBusy] = useState(false);
 
   const close = useCallback(() => {
     setOpen(false);
     setProfile(null);
     setConfirmKind(null);
+    setReportKind(null);
     setBusy(false);
   }, []);
 
@@ -74,12 +79,15 @@ export function PlayerProfileTrigger({
   // kapatsın, kartı değil. Ref ile canlı okuruz (dinleyiciyi yeniden kurmadan).
   const editorOpenRef = useRef(false);
   editorOpenRef.current = !!social?.profileEditorOpen;
+  // Bildir modalı açıkken ESC önce onu kapatsın (kart değil).
+  const reportOpenRef = useRef(false);
+  reportOpenRef.current = reportKind !== null;
 
-  // ESC kapatma (üstte editör açıkken devre dışı)
+  // ESC kapatma (üstte editör veya bildir modalı açıkken devre dışı)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !editorOpenRef.current) close();
+      if (e.key === "Escape" && !editorOpenRef.current && !reportOpenRef.current) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -176,6 +184,34 @@ export function PlayerProfileTrigger({
     setConfirmKind(null);
   }, [profileId, confirmKind, social]);
 
+  // Bildir (ve isteğe bağlı engelle). Rapor SUNUCUDA türetilir; snapshot/kimlik
+  // istemciden gönderilmez. Kısmi sonuç (rapor ok / engel fail) doğru raporlanır;
+  // rapor başarısızsa (duplicate hariç, +engelle akışında) SESSİZCE başarı yok.
+  const handleReportSubmit = useCallback(
+    async (reason: ReportReason, detail: string | null): Promise<ReportSubmitResult> => {
+      if (!profileId) return { ok: false, error: "Profil bulunamadı." };
+      const alsoBlock = reportKind === "reportBlock";
+      const res = await reportProfile(profileId, reason, detail);
+      if (!res.ok && !(res.code === "duplicate" && alsoBlock)) {
+        return { ok: false, error: res.error };
+      }
+      if (alsoBlock) {
+        const b = await blockUser(profileId);
+        if (b.ok) {
+          social?.bumpFriends();
+          setProfile((prev) => (prev ? { ...prev, relationshipStatus: "blocked" } : prev));
+          return { ok: true, successNote: "Kullanıcı engellendi." };
+        }
+        return {
+          ok: true,
+          successNote: "Kullanıcı bildirildi. Engelleme başarısız oldu; karttan tekrar deneyebilirsin.",
+        };
+      }
+      return { ok: true };
+    },
+    [profileId, reportKind, social],
+  );
+
   const isSelf = profile?.relationshipStatus === "self";
   const Tag = as;
 
@@ -244,6 +280,8 @@ export function PlayerProfileTrigger({
                 onMessage={isMobile ? handleMessage : undefined}
                 onRemoveFriend={() => setConfirmKind("remove")}
                 onBlock={() => setConfirmKind("block")}
+                onReport={() => setReportKind("report")}
+                onReportAndBlock={() => setReportKind("reportBlock")}
                 onUnblock={handleUnblock}
                 onEditProfile={() => {
                   // Kartı KAPATMA: editör üstte açılır (z6100 > z1200), kapanınca
@@ -286,6 +324,14 @@ export function PlayerProfileTrigger({
           onCancel={() => !busy && setConfirmKind(null)}
         />,
         document.body,
+      )}
+
+      {reportKind && (
+        <ReportModal
+          kind="user"
+          onSubmit={handleReportSubmit}
+          onClose={() => setReportKind(null)}
+        />
       )}
     </>
   );

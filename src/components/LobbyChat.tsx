@@ -19,6 +19,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase, type DuelMessage } from "../lib/supabase";
 import { listBlockedUsers } from "../lib/social";
+import { reportRoomMessage } from "../lib/moderation";
+import { ReportModal } from "./ReportModal";
 
 const MAX_LEN = 200;
 
@@ -98,8 +100,23 @@ interface MsgListProps {
   myName:   string;
   listRef: React.RefObject<HTMLDivElement>;
   onMessagesScroll: (el: HTMLDivElement) => void;
+  /** Verilirse karşı-taraf (kendi olmayan, gerçek) mesajlarında bildir menüsü. */
+  onReportMessage?: (id: string) => void;
 }
-const MsgList = memo(({ messages, myName, listRef, onMessagesScroll }: MsgListProps) => {
+const MsgList = memo(({ messages, myName, listRef, onMessagesScroll, onReportMessage }: MsgListProps) => {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Menü açıkken dışarı tık ile kapan.
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (!el.closest(".lc-msg-menu-wrap")) setOpenMenuId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openMenuId]);
+
   return (
     <div
       className="lc-messages"
@@ -111,10 +128,50 @@ const MsgList = memo(({ messages, myName, listRef, onMessagesScroll }: MsgListPr
       )}
       {messages.map(m => {
         const isMe = m.player_name === myName;
+        // Karşı tarafın GERÇEK (optimistic/sistem olmayan) mesajı bildirilebilir.
+        const canReport =
+          !!onReportMessage && !isMe && !m.id.startsWith("temp-") && !!m.player_name?.trim();
         return (
           <div key={m.id} className={`lc-msg ${isMe ? "lc-msg-me" : "lc-msg-opp"}`}>
             {!isMe && <span className="lc-sender">{m.player_name}</span>}
-            <span className="lc-bubble">{m.message}</span>
+            {canReport ? (
+              <div className="lc-bubble-row">
+                <span className="lc-bubble">{m.message}</span>
+                <div className="lc-msg-menu-wrap">
+                  <button
+                    type="button"
+                    className="lc-msg-menu-btn"
+                    onClick={() => setOpenMenuId(cur => (cur === m.id ? null : m.id))}
+                    aria-label="Mesaj seçenekleri"
+                    aria-haspopup="menu"
+                    aria-expanded={openMenuId === m.id}
+                  >
+                    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+                      <circle cx="5" cy="12" r="1.7" fill="currentColor" />
+                      <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+                      <circle cx="19" cy="12" r="1.7" fill="currentColor" />
+                    </svg>
+                  </button>
+                  {openMenuId === m.id && (
+                    <div className="lc-msg-menu" role="menu">
+                      <button
+                        type="button"
+                        className="lc-msg-menu-item"
+                        role="menuitem"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onReportMessage?.(m.id);
+                        }}
+                      >
+                        Mesajı bildir
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <span className="lc-bubble">{m.message}</span>
+            )}
           </div>
         );
       })}
@@ -212,6 +269,11 @@ export default function LobbyChat({
   // sonra otomatik kaybolur. Normal hata akışı (network/auth) etkilenmez.
   const [notice,   setNotice]   = useState<string | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bildir modalı açık olan mesaj id'si (duel_messages.id). */
+  const [reportTargetId, setReportTargetId] = useState<string | null>(null);
+  // "direct" legacy yolunda mod ayırıcı yok → rapor devre dışı.
+  const canReportMessages = sendMode !== "direct";
+  const handleReportMessage = useCallback((id: string) => setReportTargetId(id), []);
 
   const effectiveSheetOpen = isControlled ? (mobileSheetOpen ?? false) : sheetOpen;
   const openSheet  = () => { if (isControlled) onMobileSheetOpenChange!(true);  else setSheetOpen(true);  };
@@ -516,6 +578,7 @@ export default function LobbyChat({
               myName={myName}
               listRef={desktopMessagesRef}
               onMessagesScroll={handleMessagesScroll}
+              onReportMessage={canReportMessages ? handleReportMessage : undefined}
             />
             {notice && (
               <div
@@ -586,6 +649,7 @@ fontWeight: 700,
               myName={myName}
               listRef={sheetMessagesRef}
               onMessagesScroll={handleMessagesScroll}
+              onReportMessage={canReportMessages ? handleReportMessage : undefined}
             />
             {notice && (
               <div
@@ -617,6 +681,23 @@ fontWeight: 700,
             />
           </div>
         </div>
+      )}
+
+      {reportTargetId && (
+        <ReportModal
+          kind="message"
+          onSubmit={(reason, detail) =>
+            reportRoomMessage({
+              messageId: reportTargetId,
+              reason,
+              mode: sendMode,
+              playerId: playerId ?? null,
+              claimToken: claimToken && claimToken.length > 0 ? claimToken : null,
+              detail,
+            })
+          }
+          onClose={() => setReportTargetId(null)}
+        />
       )}
     </>
   );

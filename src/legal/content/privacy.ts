@@ -66,6 +66,7 @@ export const PRIVACY: Localized<LegalDoc> = {
               "Hesap ve kimlik doğrulama bilgileri",
               "Profil ve sosyal özellik verileri",
               "Arkadaşlık, engelleme, mesaj ve bildirim verileri",
+              "Raporlama ve moderasyon verileri",
               "Oyun odaları, skorlar, sıralamalar, XP, Gold, başarımlar ve görev verileri",
               "Teknik, güvenlik ve oturum verileri",
             ],
@@ -146,6 +147,27 @@ export const PRIVACY: Localized<LegalDoc> = {
           {
             type: "p",
             text: "Mesajlarını, ilgili sohbeti karşındaki oyuncuya iletmek ve geçmişi göstermek için işleriz. Bir kullanıcıyı engellediğinde bu ilişki, ilgili etkileşimleri kısıtlamak için saklanır.",
+          },
+          {
+            type: "subheading",
+            text: "Raporlama ve moderasyon",
+          },
+          {
+            type: "p",
+            text: "Bir kullanıcıyı veya mesajı uygulama içinden bildirdiğinde, bildirimin incelenebilmesi için aşağıdaki bilgileri işleriz:",
+          },
+          {
+            type: "list",
+            items: [
+              "Seçtiğin bildirme nedeni ve (girdiysen) kısa açıklaman",
+              "Bildirilen profilin veya mesajın tanımlayıcısı",
+              "Bildirilen kullanıcı adının veya mesaj içeriğinin, bildirim anındaki sınırlı bir kopyası (anlık görüntü)",
+              "Bildirimin durumu ve moderasyon ekibimizin iç değerlendirme notları",
+            ],
+          },
+          {
+            type: "p",
+            text: "Bu bilgileri yalnızca güvenlik, kötüye kullanımın önlenmesi ve topluluk kurallarının uygulanması amacıyla işleriz. Bildirimi yapan olarak kimliğin, bildirdiğin kullanıcıya gösterilmez. Bildirilen içerik sonradan silinse bile, güvenlik incelemesi için alınan sınırlı anlık görüntü kaydı saklanabilir.",
           },
         ],
       },
@@ -285,6 +307,10 @@ export const PRIVACY: Localized<LegalDoc> = {
           {
             type: "p",
             text: "Silme işleminden sonra, sınırlı sayıda kaydın kısa bir süre için rutin yedeklerde kalabileceğini ve zamanla olağan akışta üzerine yazılacağını unutma. Teknik veya yasal bir zorunluluk bulunması halinde sınırlı kayıtlar daha uzun süre tutulabilir; bunu yalnızca gerçekten gerekli olduğunda yaparız.",
+          },
+          {
+            type: "p",
+            text: "Güvenlik ve kötüye kullanımın önlenmesi amacıyla oluşturulan bildirim (rapor) kayıtları, hesabın silinmesinden sonra da güvenlik ve uyuşmazlık incelemesi için tutulabilir. Bu durumda kayıtlardaki kişisel bağlantı azaltılır: bildiren ve bildirilen hesap bağlantıları kaldırılır ve geriye yalnızca güvenlik incelemesi için gereken sınırlı anlık görüntü ile moderasyon bilgisi kalır.",
           },
         ],
       },
@@ -486,6 +512,7 @@ export const PRIVACY: Localized<LegalDoc> = {
               "Account and authentication information",
               "Profile and social feature data",
               "Friendship, blocking, message, and notification data",
+              "Reporting and moderation data",
               "Game room, score, leaderboard, XP, Gold, achievement, and quest data",
               "Technical, security, and session data",
             ],
@@ -566,6 +593,27 @@ export const PRIVACY: Localized<LegalDoc> = {
           {
             type: "p",
             text: "We process your messages to deliver the relevant conversation to the other player and to show history. When you block a user, that relationship is stored so we can restrict the related interactions.",
+          },
+          {
+            type: "subheading",
+            text: "Reporting and moderation",
+          },
+          {
+            type: "p",
+            text: "When you report a user or a message from inside the app, we process the following information so the report can be reviewed:",
+          },
+          {
+            type: "list",
+            items: [
+              "The report reason you selected and (if you entered one) your short note",
+              "An identifier of the reported profile or message",
+              "A limited snapshot of the reported username or message content as it was at the time of the report",
+              "The status of the report and our moderation team's internal review notes",
+            ],
+          },
+          {
+            type: "p",
+            text: "We process this information solely for safety, abuse prevention, and enforcing our community rules. Your identity as the reporter is not shown to the user you reported. Even if the reported content is later deleted, the limited snapshot taken for safety review may be retained.",
           },
         ],
       },
@@ -705,6 +753,10 @@ export const PRIVACY: Localized<LegalDoc> = {
           {
             type: "p",
             text: "Note that after deletion, a limited number of records may remain in routine backups for a short time and will be overwritten in the ordinary course over time. Where there is a technical or legal requirement, limited records may be kept for longer; we only do this when it is genuinely necessary.",
+          },
+          {
+            type: "p",
+            text: "Report records created for safety and abuse prevention may be retained after your account is deleted for safety and dispute review. In that case, the personal link in these records is reduced: the reporter and reported account associations are removed, leaving only the limited snapshot and moderation information needed for safety review.",
           },
         ],
       },

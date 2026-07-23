@@ -86,6 +86,10 @@ interface PlayerProfileCardProps {
   onAddFriend?: () => void;
   onInvite?: () => void;
   onBlock?: () => void;
+  /** Kullanıcıyı bildir (kendi profili değilse). Verilirse buton render edilir. */
+  onReport?: () => void;
+  /** Bildir ve ardından engelle (kendi profili değil + engelli değilken). */
+  onReportAndBlock?: () => void;
   /** DM aç (yalnız arkadaşken gösterilir; verilmezse buton render edilmez —
    *  desktop bunu GÖNDERMEZ, böylece masaüstü kart davranışı aynı kalır). */
   onMessage?: () => void;
@@ -208,6 +212,8 @@ export function PlayerProfileCard({
   onAddFriend,
   onInvite,
   onBlock,
+  onReport,
+  onReportAndBlock,
   onMessage,
   onRemoveFriend,
   onUnblock,
@@ -390,6 +396,11 @@ export function PlayerProfileCard({
             <button type="button" className="ppc-btn ppc-btn--primary" onClick={onUnblock}>
               Engeli Kaldır
             </button>
+            {onReport && (
+              <button type="button" className="ppc-btn" onClick={onReport}>
+                Bildir
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -427,6 +438,16 @@ export function PlayerProfileCard({
             <button type="button" className="ppc-btn ppc-btn--danger" onClick={onBlock}>
               Engelle
             </button>
+            {onReport && (
+              <button type="button" className="ppc-btn" onClick={onReport}>
+                Bildir
+              </button>
+            )}
+            {onReportAndBlock && (
+              <button type="button" className="ppc-btn ppc-btn--danger" onClick={onReportAndBlock}>
+                Bildir ve Engelle
+              </button>
+            )}
           </>
         )}
       </div>

@@ -85,6 +85,7 @@ import { LeaderboardModal } from "./components/LeaderboardModal";
 import { SocialProvider } from "./components/SocialContext";
 import { isSafeInternalRoomPath } from "./lib/social";
 import { DmProvider } from "./components/DmContext";
+import { AccountModerationGate } from "./components/AccountModerationGate";
 import { isGameplayActive, type AppScreen as ScreenPolicyAppScreen } from "./lib/screenPolicy";
 import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
@@ -4035,6 +4036,10 @@ useEffect(() => {
       }}
       profileEditorOpen={selfProfileEditorOpen}
     >
+      {/* Hesabı kısıtlı (suspended/banned) kullanıcıya bilgilendirme modalı.
+          Gerçek zorlama sunucuda; bu yalnız bilgilendirir, hesap silmeyi /
+          gizlilik / destek erişimini engellemez. */}
+      <AccountModerationGate profileId={profile?.id ?? null} />
       <PresenceProvider profile={profile}>
         {/* Aktif oyun ekranında arkadaş DM toast'ı bastırılır (mesaj/unread
             yine kaydedilir); ana menü, profil/sosyal ve lobilerde gösterilir. */}

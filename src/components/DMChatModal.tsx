@@ -34,8 +34,10 @@ import {
   clearConversationForMe,
   type DmMessage,
 } from "../lib/dm";
+import { reportDmMessage } from "../lib/moderation";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ReportModal } from "./ReportModal";
 import { useDm, type DmFriend } from "./DmContext";
 import { usePresenceOptional } from "./PresenceContext";
 
@@ -69,6 +71,10 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
+  /** Karşı tarafın hangi mesajının seçenek menüsü açık (mesaj id). */
+  const [openMsgMenu, setOpenMsgMenu] = useState<string | null>(null);
+  /** Bildir modalı açık olan karşı-taraf mesaj id'si. */
+  const [reportMsgId, setReportMsgId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -221,6 +227,11 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (reportMsgId) return; // ReportModal kendi ESC'sini yönetir
+      if (openMsgMenu) {
+        setOpenMsgMenu(null);
+        return;
+      }
       if (menuOpen) {
         setMenuOpen(false);
         return;
@@ -233,7 +244,18 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [closeChat, menuOpen, confirmClear]);
+  }, [closeChat, menuOpen, confirmClear, openMsgMenu, reportMsgId]);
+
+  /* ── Mesaj seçenek menüsü: dışarı tık ile kapan. ── */
+  useEffect(() => {
+    if (!openMsgMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (!el.closest(".dm-msg-menu-wrap")) setOpenMsgMenu(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openMsgMenu]);
 
   /* ── Üç-nokta menüsü: dışarı tık ile kapan. ── */
   useEffect(() => {
@@ -408,9 +430,44 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
             <div className="dm-messages">
               {messages.map((m) => {
                 const isMe = m.senderId === myProfileId;
+                // Karşı tarafın GERÇEK (optimistic olmayan) mesajı bildirilebilir.
+                const canReport = !isMe && !m.id.startsWith("temp-");
                 return (
                   <div key={m.id} className={`dm-msg ${isMe ? "dm-msg--me" : "dm-msg--them"}`}>
                     <span className="dm-bubble">{m.content}</span>
+                    {canReport && (
+                      <div className="dm-msg-menu-wrap">
+                        <button
+                          type="button"
+                          className="dm-msg-menu-btn"
+                          onClick={() => setOpenMsgMenu((cur) => (cur === m.id ? null : m.id))}
+                          aria-label="Mesaj seçenekleri"
+                          aria-haspopup="menu"
+                          aria-expanded={openMsgMenu === m.id}
+                        >
+                          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+                            <circle cx="5" cy="12" r="1.7" fill="currentColor" />
+                            <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+                            <circle cx="19" cy="12" r="1.7" fill="currentColor" />
+                          </svg>
+                        </button>
+                        {openMsgMenu === m.id && (
+                          <div className="dm-msg-menu" role="menu">
+                            <button
+                              type="button"
+                              className="dm-msg-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenMsgMenu(null);
+                                setReportMsgId(m.id);
+                              }}
+                            >
+                              Mesajı bildir
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -475,6 +532,16 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
             busy={clearing}
             onConfirm={() => void doClear()}
             onCancel={() => setConfirmClear(false)}
+          />
+        </div>
+      )}
+
+      {reportMsgId && (
+        <div onClick={(e) => e.stopPropagation()} role="presentation">
+          <ReportModal
+            kind="message"
+            onSubmit={(reason, detail) => reportDmMessage(reportMsgId, reason, detail)}
+            onClose={() => setReportMsgId(null)}
           />
         </div>
       )}

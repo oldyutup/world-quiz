@@ -10,8 +10,9 @@
  *     profil düzenleme.
  *   • Arkadaşlık, engelleme, bildirim merkezi (temizleme dahil).
  *   • DM, oda kodları, çok oyunculu bağlantı.
- *   • Uygulama içi kullanıcı/içerik RAPORLAMA özelliği YOK — yalnız engelleme
- *     var; bu yüzden uygunsuzluk bildirimi e-posta ile yönlendirilir.
+ *   • Uygulama içi RAPORLAMA: profil kartından kullanıcı bildirme
+ *     (Bildir / Bildir ve Engelle) + DM ve lobi/oyun sohbeti mesaj menüsünden
+ *     mesaj bildirme. E-posta itiraz/ek destek kanalı olarak korunur.
  *
  * Bölüm id'leri TR ve EN'de birebir aynıdır (assertParallelDoc dev kontrolü).
  */
@@ -170,11 +171,20 @@ export const SUPPORT: Localized<LegalDoc> = {
         blocks: [
           {
             type: "p",
-            text: "Uygunsuz davranışla veya içerikle karşılaşırsan, o kullanıcıyı uygulama içinden engelleyerek etkileşimleri hemen sınırlayabilirsin.",
+            text: "Uygunsuz bir kullanıcı adı, profil ya da mesajla karşılaşırsan bunu doğrudan uygulama içinden bildirebilirsin.",
+          },
+          {
+            type: "list",
+            items: [
+              "Bir kullanıcıyı bildirmek için profil kartını aç ve \"Bildir\" veya \"Bildir ve Engelle\" seçeneğini kullan.",
+              "Bir mesajı bildirmek için (özel mesaj ya da oyun/lobi sohbeti) mesajın yanındaki seçenekler menüsünü açıp \"Mesajı bildir\"i seç.",
+              "Bir neden seç; istersen kısa bir açıklama ekleyebilirsin. Bildirimin, bildirdiğin kişiye gösterilmez.",
+              "Dilersen bildirmeyle birlikte kullanıcıyı engelleyerek etkileşimleri hemen sınırlayabilirsin.",
+            ],
           },
           {
             type: "p",
-            text: `Ayrıca durumu bize e-posta ile bildirebilirsin: ${CONTACT_EMAIL}. İncelememize yardımcı olması için ilgili kullanıcı adını ve olayın kısa bir açıklamasını eklersen memnun oluruz.`,
+            text: `Bildirimler güvenlik ekibimizce incelenir; gerekli gördüğümüzde içeriği kaldırma, uyarı, hesabı geçici olarak kısıtlama veya kalıcı olarak yasaklama gibi işlemler uygulayabiliriz. Uygulama içinden çözemediğin durumlar, itirazlar veya ek destek için her zaman ${CONTACT_EMAIL} adresinden bize yazabilirsin.`,
           },
         ],
       },
@@ -393,11 +403,20 @@ export const SUPPORT: Localized<LegalDoc> = {
         blocks: [
           {
             type: "p",
-            text: "If you encounter inappropriate behavior or content, you can immediately limit interactions by blocking that user from inside the app.",
+            text: "If you come across an inappropriate username, profile, or message, you can report it directly from inside the app.",
+          },
+          {
+            type: "list",
+            items: [
+              "To report a user, open their profile card and use \"Report\" or \"Report and Block\".",
+              "To report a message (a direct message or a game/lobby chat message), open the options menu next to the message and choose \"Report message\".",
+              "Pick a reason; you can add a short note if you like. Your report is not shown to the person you reported.",
+              "If you wish, you can block the user together with reporting to immediately limit interactions.",
+            ],
           },
           {
             type: "p",
-            text: `You can also report the situation to us by email: ${CONTACT_EMAIL}. To help us review it, we'd appreciate it if you include the relevant username and a short description of what happened.`,
+            text: `Reports are reviewed by our safety team; where necessary, we may take actions such as removing content, issuing a warning, temporarily restricting an account, or permanently banning it. For anything you can't resolve in the app, for appeals, or for extra support, you can always email us at ${CONTACT_EMAIL}.`,
           },
         ],
       },

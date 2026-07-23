@@ -4317,6 +4317,56 @@ a.mode-card-btn { text-decoration: none; }
   box-shadow: 0 2px 12px var(--accent-glow);
 }
 
+/* ── Karşı-taraf mesajı: bildir menüsü ── */
+.lc-bubble-row { display: flex; align-items: center; gap: 2px; max-width: 100%; }
+.lc-msg-menu-wrap { position: relative; display: flex; align-items: center; flex: 0 0 auto; }
+.lc-msg-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0.3;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.lc-msg-opp:hover .lc-msg-menu-btn,
+.lc-msg-menu-btn:focus-visible,
+.lc-msg-menu-btn[aria-expanded="true"] { opacity: 1; }
+.lc-msg-menu-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+@media (hover: none) { .lc-msg-menu-btn { opacity: 0.6; } }
+.lc-msg-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 3px;
+  z-index: 40;
+  background: var(--surface, #141a28);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  min-width: 132px;
+}
+.lc-msg-menu-item {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.lc-msg-menu-item:hover { background: rgba(214, 72, 72, 0.2); color: #ffd9d9; }
+
 /* Input satırı */
 .lc-input-row {
   display: flex;
@@ -23765,6 +23815,110 @@ html:not(.is-native-app) .apk-photo-card {
   .confirm-title { font-size: 16px; }
   .confirm-btn { font-size: 13px; padding: 10px; }
 }
+
+/* ── Report (Bildir) modal — confirm-* kabuğunu genişletir ── */
+.report-modal { width: min(420px, 100%); }
+.report-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 200, 230, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(210, 220, 240, 0.8);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.report-close:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.report-close:disabled { opacity: 0.5; cursor: not-allowed; }
+.report-reasons { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.report-reason {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(180, 200, 230, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(215, 225, 245, 0.9);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.report-reason:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.report-reason:disabled { opacity: 0.55; cursor: not-allowed; }
+.report-reason--active {
+  border-color: rgba(150, 180, 255, 0.6);
+  background: rgba(88, 141, 238, 0.16);
+  color: #fff;
+}
+.report-radio {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(160, 185, 230, 0.5);
+  position: relative;
+}
+.report-reason--active .report-radio { border-color: #7ba7ff; }
+.report-reason--active .report-radio::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: #7ba7ff;
+}
+.report-detail {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(180, 200, 230, 0.2);
+  background: rgba(10, 14, 24, 0.6);
+  color: rgba(232, 240, 255, 0.94);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 64px;
+}
+.report-detail:focus { outline: none; border-color: rgba(150, 180, 255, 0.6); }
+.report-error {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #ff9b9b;
+}
+.report-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(170, 190, 220, 0.6);
+}
+.amg-mail { color: #7ba7ff; text-decoration: underline; font-weight: 700; }
+.report-done { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.report-done-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(60, 190, 130, 0.95), rgba(40, 150, 120, 0.95));
+}
+@media (max-width: 520px) {
+  .report-reason { font-size: 13px; }
+}
+
 .notif-list { display: flex; flex-direction: column; }
 .notif-empty { padding: 28px; text-align: center; color: var(--muted); font-size: 13px; }
 .notif-item { padding: 11px 14px; border-bottom: 1px solid rgba(140, 170, 220, 0.08); }
@@ -25218,6 +25372,55 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   border-bottom-right-radius: 5px;
   color: #fff;
 }
+
+/* ── Karşı-taraf mesajı: bildir menüsü ── */
+.dm-msg--them { align-items: center; gap: 2px; }
+.dm-msg-menu-wrap { position: relative; display: flex; align-items: center; flex: 0 0 auto; }
+.dm-msg-menu-btn {
+  border: none;
+  background: transparent;
+  color: rgba(180, 200, 230, 0.5);
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.32;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.dm-msg--them:hover .dm-msg-menu-btn,
+.dm-msg-menu-btn:focus-visible,
+.dm-msg-menu-btn[aria-expanded="true"] { opacity: 1; }
+.dm-msg-menu-btn:hover { background: rgba(255, 255, 255, 0.08); color: rgba(220, 230, 250, 0.9); }
+.dm-overlay--sheet .dm-msg-menu-btn { opacity: 0.7; }
+.dm-msg-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  z-index: 30;
+  background: linear-gradient(180deg, rgba(24, 30, 46, 0.99), rgba(16, 20, 32, 0.99));
+  border: 1px solid rgba(150, 175, 225, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  min-width: 140px;
+}
+.dm-msg-menu-item {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(220, 228, 245, 0.9);
+  cursor: pointer;
+}
+.dm-msg-menu-item:hover { background: rgba(214, 72, 72, 0.18); color: #ffd9d9; }
 
 .dm-notice {
   margin: 0 14px 8px;
