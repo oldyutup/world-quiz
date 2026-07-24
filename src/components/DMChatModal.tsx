@@ -529,6 +529,7 @@ export function DMChatModal({ friend, conversationId, loading, myProfileId }: DM
             confirmLabel="Sohbeti temizle"
             cancelLabel="Vazgeç"
             destructive
+            nested /* DM overlay'i (6500) içinden açılır → üstünde dursun */
             busy={clearing}
             onConfirm={() => void doClear()}
             onCancel={() => setConfirmClear(false)}

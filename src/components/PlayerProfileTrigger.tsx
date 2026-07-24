@@ -74,24 +74,48 @@ export function PlayerProfileTrigger({
     setLoading(false);
   }, [profileId]);
 
-  // Kendi profilimi düzenleme modalı bu kartın ÜSTÜNDE açılır (z6100 > kart
-  // z1200). Açıkken kartın ESC'sini bastırırız ki ESC önce üstteki editörü
-  // kapatsın, kartı değil. Ref ile canlı okuruz (dinleyiciyi yeniden kurmadan).
+  // Kendi profilimi düzenleme modalı bu kartın ÜSTÜNDE açılır (kart açıkken
+  // body.ppc-card-open ile editör --z-card-modal'a, kart --z-profile-card'a
+  // yükselir; bkz. App.css merkezî overlay katman sistemi). Açıkken kartın
+  // ESC'sini bastırırız ki ESC önce üstteki editörü kapatsın, kartı değil. Ref
+  // ile canlı okuruz (dinleyiciyi yeniden kurmadan).
   const editorOpenRef = useRef(false);
   editorOpenRef.current = !!social?.profileEditorOpen;
   // Bildir modalı açıkken ESC önce onu kapatsın (kart değil).
   const reportOpenRef = useRef(false);
   reportOpenRef.current = reportKind !== null;
+  // Onay diyaloğu (arkadaşlıktan çıkar / engelle) açıkken de ESC önce onu
+  // kapatsın — ConfirmDialog kendi ESC'sini yönetir; kart bastırılmazsa ikisi
+  // birden kapanırdı ("ESC yalnız en üstteki katmanı kapatmalı").
+  const confirmOpenRef = useRef(false);
+  confirmOpenRef.current = confirmKind !== null;
 
-  // ESC kapatma (üstte editör veya bildir modalı açıkken devre dışı)
+  // ESC kapatma (üstte editör, bildir veya onay modalı açıkken devre dışı)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !editorOpenRef.current && !reportOpenRef.current) close();
+      if (
+        e.key === "Escape" &&
+        !editorOpenRef.current &&
+        !reportOpenRef.current &&
+        !confirmOpenRef.current
+      ) {
+        close();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, close]);
+
+  // Kart açıkken <body>'ye .ppc-card-open ekle: karttan açılan ikincil modallar
+  // (Bildir/Onay/Profili Düzenle) ve toast, App.css'teki katman kurallarıyla
+  // kartın ÜSTÜNE alınır. Kart kapanınca (veya bileşen sökülünce) kaldırılır,
+  // böylece bu paylaşılan modallar başka bağlamlarda taban z-index'inde kalır.
+  useEffect(() => {
+    if (!open) return;
+    document.body.classList.add("ppc-card-open");
+    return () => document.body.classList.remove("ppc-card-open");
+  }, [open]);
 
   // Editör kapanınca (true→false) açık kendi kartımı tazele: kaydedilen avatar /
   // kullanıcı adı / seviye / rozetler kartta anında görünsün. Kart açık değilse
@@ -243,7 +267,7 @@ export function PlayerProfileTrigger({
 
       {open && createPortal(
         <div
-          className={`ppc-overlay${isMobile ? " ppc-overlay--sheet" : ""}`}
+          className={`ppc-overlay ppc-overlay--card${isMobile ? " ppc-overlay--sheet" : ""}`}
           onClick={close}
           role="presentation"
         >
@@ -284,8 +308,9 @@ export function PlayerProfileTrigger({
                 onReportAndBlock={() => setReportKind("reportBlock")}
                 onUnblock={handleUnblock}
                 onEditProfile={() => {
-                  // Kartı KAPATMA: editör üstte açılır (z6100 > z1200), kapanınca
-                  // kullanıcı aynı karta döner. Kart, editör kapanınca tazelenir.
+                  // Kartı KAPATMA: editör kartın üstünde açılır (--z-card-modal
+                  // > --z-profile-card), kapanınca kullanıcı aynı karta döner.
+                  // Kart, editör kapanınca tazelenir.
                   social?.onEditProfile?.();
                 }}
                 onEditBadges={() => {
@@ -305,6 +330,7 @@ export function PlayerProfileTrigger({
           confirmLabel="Arkadaşlıktan Çıkar"
           cancelLabel="Vazgeç"
           destructive
+          nested /* profil kartı (6600) içinden açılır → üstünde dursun */
           busy={busy}
           onConfirm={() => void handleConfirm()}
           onCancel={() => !busy && setConfirmKind(null)}
@@ -319,6 +345,7 @@ export function PlayerProfileTrigger({
           confirmLabel="Engelle"
           cancelLabel="Vazgeç"
           destructive
+          nested /* profil kartı (6600) içinden açılır → üstünde dursun */
           busy={busy}
           onConfirm={() => void handleConfirm()}
           onCancel={() => !busy && setConfirmKind(null)}

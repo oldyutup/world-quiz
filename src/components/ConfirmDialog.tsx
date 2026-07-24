@@ -25,6 +25,14 @@ interface ConfirmDialogProps {
   destructive?: boolean;
   /** İşlem sürerken butonları kilitler. */
   busy?: boolean;
+  /**
+   * Bu onay BİR OVERLAY İÇİNDEN açılıyorsa (ör. DM sohbet-temizle, profil
+   * kartından engelle/çıkar) true geç → .confirm-overlay--nested ile --z-modal-
+   * nested'e (6800) çıkar ve açan yüzeyin (DM 6500 / kart 6600) üstünde durur.
+   * Panelden/oyundan açılan taban onaylarda (bildirim temizle, tur sıfırla)
+   * verme → paylaşılan --z-confirm (6400) tabanında kalır. Bkz. App.css.
+   */
+  nested?: boolean;
   onConfirm: (dontAskAgain: boolean) => void;
   onCancel: () => void;
 }
@@ -37,6 +45,7 @@ export function ConfirmDialog({
   dontAskAgainLabel,
   destructive = false,
   busy = false,
+  nested = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -67,7 +76,7 @@ export function ConfirmDialog({
 
   return createPortal(
     <div
-      className="confirm-overlay"
+      className={`confirm-overlay${nested ? " confirm-overlay--nested" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-label={title}

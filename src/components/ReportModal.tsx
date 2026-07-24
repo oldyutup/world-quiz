@@ -96,8 +96,12 @@ export function ReportModal({ kind, onSubmit, onClose }: ReportModalProps) {
   const busy = phase === "submitting";
 
   return createPortal(
+    // .report-overlay: ReportModal HER ZAMAN nested modaldır — onu açan yüzey
+    // (DM 6500 / profil kartı 6600 / lobi sohbeti) ne olursa olsun --z-modal-
+    // nested'e (6800) çıkar. Böylece hangi bağlamdan açılırsa açılsın açan
+    // overlay'in üstünde görünür (bkz. App.css merkezî katman sistemi).
     <div
-      className="confirm-overlay"
+      className="confirm-overlay report-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={title}

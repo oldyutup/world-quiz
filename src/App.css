@@ -6550,12 +6550,22 @@ a.mode-card-btn { text-decoration: none; }
     font-size: 15px !important;
   }
 
-  /* Mobil chat butonu / sheet çalışsın diye */
+  /* Mobil lobi sohbeti — merkezî banda alındı (eski 9999 !important kaldırıldı).
+     Oyun içeriğinin + oyun-içi kontrollerin ÜSTÜNDE ama modal bandının (kart
+     6600 / Bildir 6800) ALTINDA kalır → mesajdan açılan profil kartı ve
+     ReportModal sohbetin ÜSTÜNDE açılır. !important korunur: taban .lc-fab
+     (200) / .lc-sheet-backdrop (300) kurallarını yener; .dgg-wait-chat /
+     .wgg-chat-card sarmalayıcılarının daha özgül !important kuralları (999/
+     1000/80) kendi modlarında hâlâ kazanır (grup/dgg lobisi değişmez). */
   .lc-fab,
-  .lc-mobile-fab,
-  .lc-sheet-backdrop,
+  .lc-mobile-fab {
+    z-index: var(--z-lobby-fab) !important;
+  }
+  .lc-sheet-backdrop {
+    z-index: var(--z-lobby-backdrop) !important;
+  }
   .lc-sheet {
-    z-index: 9999 !important;
+    z-index: var(--z-lobby-sheet) !important;
   }
 }
 /* =========================================================
@@ -6903,7 +6913,7 @@ a.mode-card-btn { text-decoration: none; }
 .auth-overlay {
   position: fixed;
   inset: 0;
-  z-index: 6000;
+  z-index: var(--z-modal-base);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -9708,7 +9718,7 @@ a.mode-card-btn { text-decoration: none; }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 6000;
+  z-index: var(--z-modal-base);
   animation: lb-fade-in 0.2s ease-out;
 }
 @keyframes lb-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -19957,7 +19967,7 @@ a.mode-card-btn { text-decoration: none; }
   justify-content: center;
   padding: 20px;
   /* Profil dropdown (5200) ve sıralama overlay'in (6000) üstünde */
-  z-index: 6100;
+  z-index: var(--z-modal);
   animation: uc-fade-in 0.18s ease-out;
 }
 @keyframes uc-fade-in {
@@ -20849,7 +20859,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .mh-sheet-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 5300;
+    z-index: var(--z-panel);
     background: rgba(2, 6, 16, .68);
     -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
@@ -20860,7 +20870,7 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 5301;
+    z-index: calc(var(--z-panel) + 1);
     margin: 0 auto;
     width: 100%;
     max-width: 480px;
@@ -21980,7 +21990,7 @@ html.is-native-app .top-right-stack .upd-dropdown {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 6100; /* same band as the username-change modal */
+  z-index: var(--z-modal); /* same band as the username-change modal */
   animation: apk-fade-in 0.18s ease-out;
 }
 @keyframes apk-fade-in {
@@ -23124,6 +23134,61 @@ html:not(.is-native-app) .apk-photo-card {
 }
 .duel-player-chip.has-avatar { padding-left: 6px; }
 
+/* ════════════════════════════════════════════════════════════════════════
+   TORBLE MERKEZÎ OVERLAY KATMAN SİSTEMİ (z-index token'ları)
+   ────────────────────────────────────────────────────────────────────────
+   TEMEL KURAL: Bir overlay içinden AÇILAN ikincil işlem penceresi, onu açan
+   overlay'in ÜSTÜNDE görünmelidir. Katman DOM sırasına veya rastgele büyük
+   sayılara değil, bu adlandırılmış token sırasına bağlıdır.
+
+   Sıra (düşükten yükseğe) — değerler mevcut bandları KORUR:
+     --z-header       5100  masaüstü topbar / sağ-üst şerit (auth-mini-bar 5000)
+     --z-panel        5300  mobil home & sosyal bottom-sheet
+     --z-lobby-*    5790-5810  OYUN-İÇİ mobil lobi sohbeti (FAB / backdrop / sheet).
+                            Boş bant (5302–5999): oyun içeriği + oyun-içi
+                            kontrollerin (ses 5000, topbar 5100–5200, sheet 5300)
+                            ÜSTÜNDE, modal bandının (6000+) ALTINDA. Eski
+                            9999 !important yerine → mesajdan açılan profil kartı
+                            (6600) ve Bildir (6800) sohbetin ÜSTÜNDE açılır.
+     --z-modal-base   6000  auth-overlay, leaderboard (.lb-overlay)
+     --z-modal        6100  hesap / profil-düzenle / avatar / rozet modalları
+     --z-toast        6200  toast host — BİLİNÇLİ olarak taban modalların ALTINDA
+     --z-panel-notif  6300  bildirim paneli / sheet
+     --z-confirm      6400  paylaşılan onay/bildir TABANI (panelden/oyundan açılınca)
+     --z-modal-social 6500  DM sohbet — en yüksek TABAN yüzey
+     --z-profile-card 6600  PlayerProfileCard — tüm taban yüzeylerin üstünde
+     --z-card-modal   6700  karttan açılan "Profili Düzenle" ekosistemi (pem/uc/apk/bse)
+     --z-modal-nested 6800  BİR OVERLAY'DEN AÇILAN ikincil modal:
+                            ReportModal (HER ZAMAN) + ConfirmDialog (nested prop'la)
+     --z-card-toast   6810  kart bağlamında toast — nested modalın da üstünde okunur
+     --z-critical     6999  başarı/kutlama popover + hesap-kritik (üstte KORUNUR)
+     --z-app-top      9999  ses/debug/sistem — daima en üstte
+
+   NOT: --z-critical (achievement 6999/7000) ve --z-app-top (ses/debug 9999)
+   katmanları DOKUNULMAZ; burada yalnız tavanı belgelemek için tanımlıdır ve
+   nested banttan (≤6810) yüksek kalır. --z-toast bilinçli olarak modalların
+   altındadır (uygulama tercihi); yalnız kart bağlamında --z-card-toast'a çıkar.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --z-header:        5100;
+  --z-panel:         5300;
+  --z-lobby-fab:      5790; /* oyun-içi mobil lobi sohbeti FAB */
+  --z-lobby-backdrop: 5800; /* oyun-içi mobil lobi sohbeti sheet dimmer */
+  --z-lobby-sheet:    5810; /* oyun-içi mobil lobi sohbeti panel — backdrop'un bir kademe üstü */
+  --z-modal-base:    6000;
+  --z-modal:         6100;
+  --z-toast:         6200;
+  --z-panel-notif:   6300;
+  --z-confirm:       6400;
+  --z-modal-social:  6500;
+  --z-profile-card:  6600;
+  --z-card-modal:    6700;
+  --z-modal-nested:  6800;
+  --z-card-toast:    6810;
+  --z-critical:      6999; /* dokunulmaz tavan (achievement) — belge amaçlı */
+  --z-app-top:       9999; /* dokunulmaz tavan (ses/debug) — belge amaçlı */
+}
+
 /* ── Profil kartı overlay ── */
 .ppc-overlay {
   position: fixed;
@@ -23136,6 +23201,29 @@ html:not(.is-native-app) .apk-photo-card {
   background: rgba(4, 8, 16, 0.62);
   backdrop-filter: blur(3px);
 }
+/* Kart instance'ı bu modifier'ı taşır (PlayerProfileTrigger). LobbyInviteBar
+   aynı .ppc-overlay kabuğunu paylaşır ama --card ALMAZ → 1200'de kalır,
+   lobi davranışı hiç değişmez. */
+.ppc-overlay--card { z-index: var(--z-profile-card); }
+
+/* Kart açıkken "Profili Düzenle" ekosistemini (yalnız KENDİ kartımdan açılır)
+   kartın ÜSTÜNE al. Bu modallar portallı (.apk-overlay) ya da inline (App
+   kökünde .pem/.uc/.bse) fark etmeksizin <body> altında olduğundan seçici
+   eşleşir. Kart kapalıyken bu kural yoktur → her modal kendi taban bandında
+   kalır. NOT: Bildir (ReportModal → .report-overlay) ve karttan açılan onaylar
+   (ConfirmDialog nested → .confirm-overlay--nested) artık KENDİLERİ --z-modal-
+   nested'e (6800) çıktığından bu kurala DAHİL DEĞİL; her bağlamda (DM/kart/lobi)
+   doğru katmanda dururlar. */
+body.ppc-card-open .pem-overlay,      /* ProfileEditModal + BlockedUsersModal */
+body.ppc-card-open .uc-overlay,       /* AccountSettingsModal (kullanıcı adı/şifre) */
+body.ppc-card-open .apk-overlay,      /* AvatarPickerModal */
+body.ppc-card-open .bse-overlay {     /* BadgeShowcaseEditor */
+  z-index: var(--z-card-modal);
+}
+/* Toast, kart + karttan açılan (nested) modalların da üstünde okunur kalsın
+   (aksi halde kart yükselince "Arkadaşlık isteği gönderildi" gibi geri
+   bildirimler kartın/rapor modalının arkasında kaybolurdu). */
+body.ppc-card-open .app-toast-host { z-index: var(--z-card-toast); }
 .ppc-overlay--sheet { align-items: flex-end; padding: 0; }
 .ppc-overlay-inner { position: relative; width: 100%; max-width: 360px; }
 .ppc-overlay--sheet .ppc-overlay-inner { max-width: 100%; }
@@ -23718,9 +23806,20 @@ html:not(.is-native-app) .apk-photo-card {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 6400;
+  z-index: var(--z-confirm);
   animation: uc-fade-in 0.18s ease-out;
 }
+/* ── Nested (ikincil) modal katmanı ──
+   Bir overlay içinden AÇILAN modal, onu açan yüzeyin üstünde durmalı. Bu iki
+   bileşik seçici .confirm-overlay tabanını (--z-confirm 6400) --z-modal-nested'e
+   (6800) yükseltir; bileşik (.confirm-overlay.X) olduğundan taban kuralını
+   KAYNAK SIRASINDAN BAĞIMSIZ yener (özgüllük 0,2,0 > 0,1,0). ReportModal HER
+   ZAMAN nested'tir (onu DM/kart/lobi açar → .report-overlay). ConfirmDialog
+   yalnız nested prop'uyla (DM sohbet-temizle, karttan engelle/çıkar). Böylece
+   bir overlay'den açılan onay/bildir, DM (6500) ve kart (6600) dâhil her taban
+   yüzeyin üstünde kalır; kritik (6999) / sistem (9999) katmanların altında. */
+.confirm-overlay.report-overlay,
+.confirm-overlay.confirm-overlay--nested { z-index: var(--z-modal-nested); }
 .confirm-modal {
   position: relative;
   width: min(380px, 100%);
@@ -23975,7 +24074,7 @@ html:not(.is-native-app) .apk-photo-card {
 
 .app-toast-host {
   position: fixed;
-  z-index: 6200; /* oyun/lobi UI üstünde; modal & bottom-sheet (6300+) altında */
+  z-index: var(--z-toast); /* oyun/lobi UI üstünde; modal & bottom-sheet (6300+) altında */
   right: max(16px, env(safe-area-inset-right, 0px));
   bottom: calc(20px + var(--app-toast-extra-bottom, 0px) + env(safe-area-inset-bottom, 0px));
   width: min(380px, calc(100vw - 32px));
@@ -24568,8 +24667,8 @@ html:not(.is-native-app) .apk-photo-card {
    (Bottom-sheet panelleri upd-dropdown içinde pointer-events:auto kalır.) */
 html.is-native-app .social-bar .notif-bell { display: none; }
 /* Bottom-sheet ve backdrop her şeyin üstünde paint olsun. */
-.notif-sheet-backdrop { z-index: 6300; }
-.notif-panel--sheet { z-index: 6301; }
+.notif-sheet-backdrop { z-index: var(--z-panel-notif); }
+.notif-panel--sheet { z-index: calc(var(--z-panel-notif) + 1); }
 
 @media (max-width: 520px) {
   .notif-panel { width: 320px; }
@@ -24589,7 +24688,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 6100;
+  z-index: var(--z-modal);
   animation: apk-fade-in 0.18s ease-out;
 }
 .pem-modal {
@@ -24811,7 +24910,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 6100;
+  z-index: var(--z-modal);
   animation: apk-fade-in 0.18s ease-out;
 }
 .bse-modal {
@@ -25236,7 +25335,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 .dm-overlay {
   position: fixed;
   inset: 0;
-  z-index: 6500;
+  z-index: var(--z-modal-social);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -26045,7 +26144,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   html:not(.is-native-app) .home-topbar {
     position: fixed;
     inset: 0 0 auto 0;
-    z-index: 5100; /* sağ-üst şerit katmanı; modal overlay'ler (6000+) üstte kalır */
+    z-index: var(--z-header); /* sağ-üst şerit katmanı; modal overlay'ler (6000+) üstte kalır */
     display: grid;
     /* marka | eylemler | kimlik. Marka `auto` (DOĞAL genişlik → asla sıkışıp
        taşmaz); orta `minmax(0,1fr)` tüm boşluğu yutar ve eylemleri içinde
