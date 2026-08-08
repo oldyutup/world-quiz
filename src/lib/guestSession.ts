@@ -400,7 +400,7 @@ export function clearGuestMatchIds(): void {
  * kendi içinde `recallConquestClaim` ile tetikler.
  */
 const MODE_SESSION_KEYS: Partial<
-  Record<RoomCodeModeKey, { room: string; claim?: string }>
+  Record<RoomCodeModeKey, { room: string; claim?: string; player?: string }>
 > = {
   duel:       { room: "geoquiz_duel_room" },
   flagDuel:   { room: "geoquiz_flagduel_room" },
@@ -409,29 +409,77 @@ const MODE_SESSION_KEYS: Partial<
   wheelDuel:  { room: "geoquiz_wheel_duel_room",  claim: "geoquiz_wheel_duel_claim_token" },
   wheelGroup: { room: "geoquiz_wheel_group_room", claim: "geoquiz_wheel_group_claim_token" },
   routeDuel:  { room: "torble_route_duel_room",   claim: "torble_route_duel_claim_token" },
-  // Kör Nokta: oda oturumu playerId'yi, claim_token AYRI anahtarı kullanır
-  // (KorNoktaMode ROOM_KEY / CLAIM_TOKEN_KEY sabitleriyle BİREBİR aynı olmalı).
-  korNokta:   { room: "geoquiz_kornokta_room",    claim: "geoquiz_kornokta_claim_token" },
+  // Kör Nokta: YENİ oturumlar claim_token'ı ROOM_KEY içinde tutar (kanonik);
+  // `claim` anahtarı ESKİ oturumlar için geriye dönük yedektir. `player`
+  // yalnız temizlikte kullanılır (KorNoktaMode PLAYER_ID_KEY ile aynı olmalı).
+  korNokta:   {
+    room:   "geoquiz_kornokta_room",
+    claim:  "geoquiz_kornokta_claim_token",
+    player: "geoquiz_kornokta_player_id",
+  },
 };
 
-/** Aktif oda oturumundan (varsa) player_id + claim_token okur. */
+/** Aktif oda oturumu. `roomId`/`roomCode` yalnız oturumu YAZAN modlarda dolar. */
+export interface ModeRoomSession {
+  roomId: string;
+  roomCode: string;
+  playerId: string;
+  claimToken: string;
+}
+
+/**
+ * Aktif oda oturumunu okur.
+ *
+ * CLAIM_TOKEN KAYNAK SIRASI (önemli):
+ *   1. ROOM_KEY içindeki `claimToken` — KANONİK. İki ayrı localStorage yazımı
+ *      ATOMİK DEĞİLDİR; tek nesne içinde tutulan değer, oda kimliğiyle birlikte
+ *      yazıldığı için birbirinden ayrı düşemez.
+ *   2. Ayrı `claim` anahtarı — yalnız ESKİ (inline alanı olmayan) oturumlar için.
+ *
+ * roomId/roomCode boş dönebilir (bazı modlar yazmaz); çağıran kontrol etmeli.
+ */
 export function readModeRoomSession(
   mode: RoomCodeModeKey
-): { playerId: string; claimToken: string } | null {
+): ModeRoomSession | null {
   const keys = MODE_SESSION_KEYS[mode];
   if (!keys) return null;
   try {
     const raw = localStorage.getItem(keys.room);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const playerId = typeof parsed.playerId === "string" ? parsed.playerId : "";
-    const inline = typeof parsed.claimToken === "string" ? parsed.claimToken : "";
-    const separate = keys.claim ? localStorage.getItem(keys.claim) ?? "" : "";
-    const claimToken = inline || separate;
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    const playerId = str(parsed.playerId);
+    const inline = str(parsed.claimToken);
+    const legacy = keys.claim ? localStorage.getItem(keys.claim) ?? "" : "";
+    const claimToken = inline || legacy;   // inline KANONİK, legacy yedek
     if (!playerId || !claimToken) return null;
-    return { playerId, claimToken };
+    return {
+      roomId:   str(parsed.roomId),
+      roomCode: str(parsed.roomCode),
+      playerId,
+      claimToken,
+    };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Bir modun oda oturumunu TAMAMEN siler (oda + legacy claim + player id).
+ * Kısmi temizlik bırakmamak önemlidir: geride kalan tek bir anahtar, bir
+ * sonraki açılışta yarım bir oturum gibi okunup restore'u şaşırtabilir.
+ *
+ * Misafir kimliği (guest_id) KASTEN silinmez — odalar arasında yaşar.
+ */
+export function clearModeRoomSession(mode: RoomCodeModeKey): void {
+  const keys = MODE_SESSION_KEYS[mode];
+  if (!keys) return;
+  try {
+    localStorage.removeItem(keys.room);
+    if (keys.claim) localStorage.removeItem(keys.claim);
+    if (keys.player) localStorage.removeItem(keys.player);
+  } catch {
+    /* localStorage kapalı — yoksay */
   }
 }
 

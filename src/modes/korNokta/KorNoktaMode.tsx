@@ -63,6 +63,9 @@ import {
   validateGuestName,
   GUEST_NAME_REGISTERED_MESSAGE,
   GUEST_NAME_FORBIDDEN_MESSAGE,
+  readModeRoomSession,
+  clearModeRoomSession,
+  type ModeRoomSession,
 } from "../../lib/guestSession";
 import KorNoktaGame from "./KorNoktaGame";
 import {
@@ -179,18 +182,45 @@ function ensureGuestId(): string {
   }
 }
 
+/** Oturumu TAMAMEN siler (ROOM_KEY + legacy CLAIM_TOKEN_KEY + PLAYER_ID_KEY).
+ *  Tek ortak uygulama guestSession'dadır ki App ile bu bileşen ayrışmasın.
+ *  GUEST_ID_KEY KASTEN silinmez: misafir kimliği odalar arasında yaşar. */
 function clearKorNoktaSession() {
-  localStorage.removeItem(PLAYER_ID_KEY);
-  localStorage.removeItem(ROOM_KEY);
-  localStorage.removeItem(CLAIM_TOKEN_KEY);
-  // GUEST_ID_KEY KASTEN silinmez: misafir kimliği odalar arasında yaşar.
+  clearModeRoomSession("korNokta");
 }
 
-function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
-  localStorage.setItem(
-    ROOM_KEY,
-    JSON.stringify({ roomId, roomCode, playerId }),
-  );
+/**
+ * Oturumu yazar. claimToken ROOM_KEY'in İÇİNDE tutulur (kanonik): iki ayrı
+ * localStorage yazımı atomik olmadığı için, oda kimliği ile token'ın ayrı
+ * düşebildiği bir düzen sessiz "yarım oturum" üretir.
+ *
+ * Legacy CLAIM_TOKEN_KEY de yazılmaya devam eder — bu sürümde yazılan bir
+ * oturum, eski bir istemci sürümüne geri dönülürse hâlâ okunabilsin diye.
+ */
+function saveRoomSession(
+  roomId: string,
+  roomCode: string,
+  playerId: string,
+  claimToken: string,
+) {
+  try {
+    localStorage.setItem(
+      ROOM_KEY,
+      JSON.stringify({ roomId, roomCode, playerId, claimToken }),
+    );
+    localStorage.setItem(PLAYER_ID_KEY, playerId);
+    localStorage.setItem(CLAIM_TOKEN_KEY, claimToken);   // geriye dönük yedek
+  } catch {
+    /* localStorage kapalı (private mode) — oturum yalnız bu sekmede yaşar */
+  }
+}
+
+/** Saklanan oturum (varsa). Okuma sırası: ROOM_KEY.claimToken → legacy key. */
+function loadKorNoktaSession(): ModeRoomSession | null {
+  const s = readModeRoomSession("korNokta");
+  // roomId olmadan restore edilemez (get_room_state onu ZORUNLU ister).
+  if (!s?.roomId) return null;
+  return s;
 }
 
 /** RPC hata etiketlerini kullanıcı dostu Türkçe karşılıklarına çevirir
@@ -244,12 +274,17 @@ function describeKorNoktaRpcError(
 interface Props {
   onHome: () => void;
   profile: Profile | null;
-  /** "create" → mount'ta oda kur; "join" → oda kodu ekranı göster. */
-  initialAction: "create" | "join";
+  /** "create" → mount'ta oda kur; "join" → oda kodu ekranı göster;
+   *  "resume" → saklanan oturumu sunucudan doğrulayıp aynı slota dön.
+   *  "resume" YALNIZ App boot'ta, oturum ZATEN tevatur_get_room_state ile
+   *  doğrulandıktan sonra verilir (App körlemesine yönlendirmez). */
+  initialAction: "create" | "join" | "resume";
 }
 
 export default function KorNoktaMode({ onHome, profile, initialAction }: Props) {
-  const [phase, setPhase] = useState<Phase>(initialAction === "join" ? "join" : "creating");
+  const [phase, setPhase] = useState<Phase>(
+    initialAction === "join" ? "join" : "creating",
+  );
 
   const isLoggedInPlayer = !!profile?.username;
 
@@ -480,7 +515,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setRoom(createdRoom);
     setPlayers(initial.status === "ok" ? initial.players : []);
-    saveRoomSession(createdRoom.id, createdRoom.code, freshId);
+    saveRoomSession(createdRoom.id, createdRoom.code, freshId, claimToken);
     setStatusMsg(null);
     setPhase("lobby");
   }, [profile?.username]);
@@ -495,6 +530,63 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     void createRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAction, profile?.username]);
+
+  /* ── initialAction="resume": saklanan oturumu aynı slota geri yükle ──
+   *
+   * Sayfa yenileme / iOS WebView reload sonrası oyuncu aynı player_id ile
+   * odasına döner. YENİ SATIR OLUŞTURULMAZ: tek çağrı yetkili OKUMA'dır
+   * (tevatur_get_room_state), join DEĞİL.
+   *
+   * TEK OTORİTE: room_id + player_id + claim_token. guest_id ve nick burada
+   * kanıt olarak KULLANILMAZ — sunucuya bile gönderilmezler.
+   *
+   * Üç sonuç ayrı ele alınır (fetchKorNoktaRoomState sözleşmesi):
+   *   ok    → hydrate; lobby/playing/finished ayrımını knInGame türetir
+   *   lost  → üyelik KESİN bitti (kick / oda silindi / token geçersiz) → temizle
+   *   error → GEÇİCİ ağ hatası; oturum SİLİNMEZ, aksi hâlde tek bir çevrimdışı
+   *           açılış geçerli bir slotu yok ederdi. Kullanıcı join ekranında kalır.
+   */
+  const resumeAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (initialAction !== "resume") return;
+    if (resumeAttemptedRef.current) return;
+    resumeAttemptedRef.current = true;
+
+    const saved = loadKorNoktaSession();
+    if (!saved) { setPhase("join"); return; }
+
+    // Refs ÖNCE kurulur: realtime effect'i ve KorNoktaGame bunları okur;
+    // room set edildiği anda hazır olmalılar (aksi hâlde abonelik kurulmaz).
+    myIdRef.current = saved.playerId;
+    myClaimTokenRef.current = saved.claimToken;
+
+    setStatusMsg("Odana geri bağlanılıyor…");
+    void (async () => {
+      const res = await fetchKorNoktaRoomState(
+        saved.roomId, saved.playerId, saved.claimToken,
+      );
+
+      if (res.status === "ok") {
+        setRoom(res.room);
+        setPlayers(res.players);
+        setStatusMsg(null);
+        setPhase("lobby");   // knInGame → oyun/final ekranını kendisi seçer
+        return;
+      }
+
+      // Refs geri alınır ki yarım kimlikle hiçbir aksiyon denenmesin.
+      myIdRef.current = "";
+      myClaimTokenRef.current = "";
+      setStatusMsg(null);
+      setPhase("join");
+
+      if (res.status === "lost") {
+        clearKorNoktaSession();          // kesin: artık üye değiliz
+      }
+      // res.status === "error" → oturum KORUNUR, sonraki açılışta tekrar denenir
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAction]);
 
   async function joinRoomByCode() {
     playSound("click");
@@ -523,6 +615,34 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setStatusMsg("Odaya bağlanılıyor…");
     setPhase("creating");
 
+    /* RESUME YOLU: AYNI odaya ait saklanan bir oturum varsa önce onu dene.
+     * Sunucu zaten aynı guest_id ile ikinci bir katılmayı `already_in_room`
+     * ile reddeder — yani yeniden join etmek çıkmaz sokaktır. Doğrusu, var
+     * olan slotu yetkili OKUMA ile geri almaktır (yeni satır oluşmaz).
+     * Kimlik kanıtı yine yalnız claim_token'dır. */
+    const saved = loadKorNoktaSession();
+    if (saved?.roomCode && saved.roomCode === normalized) {
+      myIdRef.current = saved.playerId;
+      myClaimTokenRef.current = saved.claimToken;
+      const resumed = await fetchKorNoktaRoomState(
+        saved.roomId, saved.playerId, saved.claimToken,
+      );
+      if (resumed.status === "ok") {
+        setRoom(resumed.room);
+        setPlayers(resumed.players);
+        setStatusMsg(null);
+        setPhase("lobby");
+        return;
+      }
+      // "lost" → slot gerçekten gitmiş; aşağıdaki taze katılma yolu denenir.
+      // "error" → geçici; taze join de büyük ihtimalle başarısız olur ama
+      // kullanıcıyı kilitlemeyiz, sunucu son sözü söyler.
+      myIdRef.current = "";
+      myClaimTokenRef.current = "";
+      if (resumed.status === "lost") clearKorNoktaSession();
+    }
+
+    // FARKLI oda (ya da resume tutmadı) → eski oturum düşer, taze kimlik.
     clearKorNoktaSession();
     const freshId = freshPlayerId();
     const claimToken = freshClaimToken();
@@ -564,7 +684,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     setRoom(targetRoom);
     setPlayers(initial.status === "ok" ? initial.players : []);
-    saveRoomSession(targetRoom.id, targetRoom.code, freshId);
+    saveRoomSession(targetRoom.id, targetRoom.code, freshId, claimToken);
     setStatusMsg(null);
     setPhase("lobby");
   }

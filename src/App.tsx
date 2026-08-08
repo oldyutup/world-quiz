@@ -108,6 +108,8 @@ import {
   readPendingGuestJoin,
   clearPendingGuestJoin,
   linkActiveGuestSession,
+  readModeRoomSession,
+  clearModeRoomSession,
 } from "./lib/guestSession";
 import NicknameModal from "./components/NicknameModal";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
@@ -2916,6 +2918,15 @@ export default function App() {
    * yazar ve bu sayacı artırır → davet effect'i yeniden koşar ve bağlantı
    * web ile AYNI kod yolundan işlenir. Web'de hiç değişmez. */
   const [inviteNonce, setInviteNonce] = useState(0);
+
+  /* Kör Nokta "kaldığın odaya dön" akışı. Boot effect'i saklanan oturumu
+   * SUNUCUYA doğrulattıktan sonra bunu true yapar; KorNoktaMode o zaman
+   * initialAction="resume" ile mount olup aynı slota hydrate eder.
+   * Ref tek-atış koruması: profile?.id flip'inde tekrar denenmez, böylece
+   * yönlendirme döngüsü oluşmaz. */
+  const [korNoktaResume, setKorNoktaResume] = useState(false);
+  const korNoktaResumeAttemptedRef = useRef(false);
+
   // Native app only: the bottom-nav Profil tab drives the (otherwise
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
@@ -3768,16 +3779,65 @@ function clearPendingKorNoktaInvite() {
       const stillGated = !!ONLINE_GATED_SCREENS[storedTarget as AppScreen];
       if (!stillGated) {
         // Unknown screen or no longer gated — drop it so it can't linger.
+        // Bu bir NİYET sayılmaz: aşağıdaki Kör Nokta restore'unu engellemez.
         clearPendingOnlineTarget();
       } else if (profile?.username) {
         // Logged in: route once, clearing first so setScreen can't loop us
         // back through this effect (setScreen doesn't change the deps anyway).
         clearPendingOnlineTarget();
         if (screen !== storedTarget) setScreen(storedTarget as AppScreen);
+        return;
+      } else {
+        // Still gated but no session (e.g. OAuth dismissed/failed): leave it so a
+        // later in-modal login can still route; onClose/onGuest clear it.
+        // Bekleyen AÇIK niyet → restore bu açılışta çalışmaz.
+        return;
       }
-      // Still gated but no session (e.g. OAuth dismissed/failed): leave it so a
-      // later in-modal login can still route; onClose/onGuest clear it.
     }
+
+    /* ── EN DÜŞÜK ÖNCELİK: aktif Kör Nokta odasına geri dön ────────────────
+     *
+     * Buraya YALNIZ yukarıdaki tüm AÇIK niyetler (deep link, davet param'ı,
+     * bekleyen oda kodu, misafir nick bağlamı, görev/mod hedefi) elendikten
+     * sonra gelinir — hepsi `return` ile çıkar. Kural: bu açılışta verilmiş
+     * açık bir niyet, ÖRTÜK bir "kaldığın yerden devam"ı her zaman yener.
+     * Böylece yeni bir davet linki eski oturumun önüne geçer.
+     *
+     * KÖRLEMESİNE YÖNLENDİRME YOK: localStorage'da oturum bulunması yetmez;
+     * önce sunucuya doğrulatılır. Tek otorite room_id + player_id +
+     * claim_token → tevatur_get_room_state. guest_id ve nick gönderilmez.
+     *
+     * Sonsuz döngü koruması: yalnız `ok` cevabında yönlendirilir, yani ölü
+     * bir odaya asla girilmez; ayrıca tek-atış ref ile profile flip'inde
+     * tekrar koşmaz. */
+    if (korNoktaResumeAttemptedRef.current) return;
+    korNoktaResumeAttemptedRef.current = true;
+
+    const knSession = readModeRoomSession("korNokta");
+    if (!knSession?.roomId) return;
+
+    void (async () => {
+      const { data, error } = await supabase.rpc("tevatur_get_room_state", {
+        p_room_id:     knSession.roomId,
+        p_player_id:   knSession.playerId,
+        p_claim_token: knSession.claimToken,
+      });
+
+      // Ağ/sunucu hatası → durum BİLİNMİYOR. Oturuma DOKUNMA: tek bir
+      // çevrimdışı açılış geçerli bir slotu yok etmemeli. Home'da kalınır.
+      if (error) return;
+
+      const payload = data as { ok?: boolean } | null;
+      if (payload?.ok) {
+        setKorNoktaResume(true);
+        setScreen("kornokta-join");
+        return;
+      }
+
+      // not_a_member (kick / geçersiz token / başka oda) veya room_gone →
+      // üyelik KESİN bitti; yarım oturum bırakma, home'da kal.
+      clearModeRoomSession("korNokta");
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, profile?.id, inviteNonce]);
   /* ── Hoş geldin: misafir kullanıcıya giriş davet modal'ı (bir kez) ── */
@@ -4181,8 +4241,9 @@ useEffect(() => {
   );
   if (screen === "kornokta-join") return (
     <KorNoktaMode
-      initialAction="join"
-      onHome={() => setScreen("home")}
+      // Boot restore'da "resume": oturum App tarafında ZATEN doğrulandı.
+      initialAction={korNoktaResume ? "resume" : "join"}
+      onHome={() => { setKorNoktaResume(false); setScreen("home"); }}
       profile={profile}
     />
   );
