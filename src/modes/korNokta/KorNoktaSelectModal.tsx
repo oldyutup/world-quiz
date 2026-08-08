@@ -3,9 +3,12 @@
  * Kör Nokta card. Visually mirrors ConquestModeSelectModal (`.overlay` +
  * `.modal` + `.modal-btn`).
  *
- * Login restrictions (Kör Nokta is login-only, no guest play):
- *   - "Oda Kur"     → guest: onRequireAuth("create") — App auth modal'ı açar.
- *   - "Odaya Katıl" → guest: onRequireAuth("join")   — App auth modal'ı açar.
+ * Misafir kuralı (Kuşatma ile AYNI):
+ *   - "Oda Kur"     → yalnız kayıtlı kullanıcı. Misafir: onRequireAuth("create")
+ *     → App giriş/kayıt modalını açar. (Sunucuda da zorunlu:
+ *       tevatur_create_room yalnız `authenticated`.)
+ *   - "Odaya Katıl" → MİSAFİRE AÇIK. Oda kodunu bilen oyuncu katılma ekranına
+ *     geçer; adını orada seçer ve hesap açmadan oynar (20260809120000).
  */
 
 import { type CSSProperties } from "react";
@@ -45,10 +48,7 @@ export default function KorNoktaSelectModal({
 
   function handleJoin() {
     playSound("click");
-    if (!isLoggedIn) {
-      onRequireAuth("join");
-      return;
-    }
+    // Misafir de katılabilir: katılma ekranı oda kodu + misafir adı ister.
     onJoin();
   }
 

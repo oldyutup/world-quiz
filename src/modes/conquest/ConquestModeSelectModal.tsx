@@ -4,16 +4,24 @@
  * choice modals (`.overlay` + `.modal` + `.modal-btn`), but only offers
  * Kuşatma-specific entry points. No "Tek Oyuncu" or "Online 1v1".
  *
- * Guest restrictions (Kuşatma-only):
- *   - "Oda Kur"        → blocked for guests; inline warning shown.
- *   - "Odalara Göz At" → blocked for guests; inline warning shown.
- *   - "Oda Koduyla Katıl" → no inline block here; the host's online auth gate
- *       (navigateOnline) prompts login for guests before routing.
+ * ÜÇ SEÇENEK HER KULLANICIYA GÖRÜNÜR — buton gizlenmez, yerleşim değişmez.
+ * Misafir bir butona bastığında ne olduğunu ANLAR:
+ *   - "Oda Kur"           → giriş/kayıt ekranı (LoginRequiredModal).
+ *   - "Odalara Göz At"    → giriş/kayıt ekranı (LoginRequiredModal).
+ *   - "Oda Koduyla Katıl" → MİSAFİRE AÇIK; doğrudan katılma akışına gider.
+ *
+ * Buradaki kapı yalnız açıklayıcıdır. Gerçek yetki sunucudadır: liste
+ * `conquest_list_public_rooms()` (authenticated-only), oda kurma ise
+ * `conquest_rooms` INSERT policy'si (authenticated-only).
  */
 
 import { useState, type CSSProperties } from "react";
 import { playSound } from "../../lib/sound";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import LoginRequiredModal, {
+  type LoginRequiredChoice,
+  type LoginRequiredIntent,
+} from "../../components/LoginRequiredModal";
 
 interface Props {
   overlayStyle?: CSSProperties;
@@ -23,6 +31,9 @@ interface Props {
   onCreate:     () => void;
   onJoinByCode: () => void;
   onBrowse:     () => void;
+  /** Misafir kapalı bir seçeneği seçti → App auth modalını açar ve bekleyen
+   *  işlemi saklar (giriş sonrası oyuncu boş ana sayfaya DÜŞMEZ). */
+  onAuthRequired: (intent: LoginRequiredIntent, choice: LoginRequiredChoice) => void;
   onClose:      () => void;
 }
 
@@ -33,31 +44,47 @@ export default function ConquestModeSelectModal({
   onCreate,
   onJoinByCode,
   onBrowse,
+  onAuthRequired,
   onClose,
 }: Props) {
-  const [warnMsg, setWarnMsg] = useState<string | null>(null);
+  /** Misafir kapalı bir seçeneğe bastı → hangi işlem için giriş isteniyor? */
+  const [gateIntent, setGateIntent] = useState<LoginRequiredIntent | null>(null);
 
   function handleCreate() {
+    playSound("click");
     if (!isLoggedIn) {
-      setWarnMsg("Kuşatma odası kurmak için giriş yapmalısın.");
+      setGateIntent("conquest-create");
       return;
     }
-    playSound("click");
     onCreate();
   }
 
   function handleBrowse() {
+    playSound("click");
     if (!isLoggedIn) {
-      setWarnMsg("Açık Kuşatma odalarına katılmak için giriş yapmalısın.");
+      setGateIntent("conquest-browse");
       return;
     }
-    playSound("click");
     onBrowse();
   }
 
   function handleJoinByCode() {
     playSound("click");
     onJoinByCode();
+  }
+
+  // Giriş kapısı açıkken menünün yerine O gösterilir (üst üste iki overlay
+  // yığılmasın; mobilde de tek yüzey kalır).
+  if (gateIntent) {
+    return (
+      <LoginRequiredModal
+        intent={gateIntent}
+        overlayStyle={overlayStyle}
+        themeAttr={themeAttr}
+        onChoose={(choice) => onAuthRequired(gateIntent, choice)}
+        onCancel={() => setGateIntent(null)}
+      />
+    );
   }
 
   return (
@@ -81,12 +108,6 @@ export default function ConquestModeSelectModal({
         <button className="modal-btn" onClick={handleBrowse}>
           <EmojiIcon name="search" /> Odalara Göz At
         </button>
-
-        {warnMsg && (
-          <p className="duel-error" style={{ marginTop: 8, marginBottom: 0 }}>
-            <EmojiIcon name="lock" /> {warnMsg}
-          </p>
-        )}
 
         <button
           className="modal-close"

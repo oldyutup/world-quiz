@@ -19,6 +19,8 @@
  * remount'unda effect cleanup'ı duplicate aboneliği engeller.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildInviteUrl } from "../../lib/inviteLink";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE } from "../../lib/guestSession";
 import type { Profile } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import { playSound } from "../../lib/sound";
@@ -149,7 +151,7 @@ export default function RouteDuelGame({
   const [phase, setPhase] = useState<Phase>("setup");
 
   /* ── Setup form ── */
-  const [playerName, setPlayerName] = useState<string>(profile?.username ?? "");
+  const [playerName, setPlayerName] = useState<string>(profile?.username ?? getGuestName() ?? "");
   const [hostRounds, setHostRounds] = useState<number>(() => {
     const r = autoQuickMatch?.rounds;
     return ROUTE_DUEL_ROUND_OPTIONS.some(o => o.value === r) ? (r as number) : 5;
@@ -188,13 +190,16 @@ export default function RouteDuelGame({
   const opp = players.find(p => p.id !== myIdRef.current);
 
   const rosterProfiles = useRosterProfiles(players.map(p => p.profile_id ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL (identity
+  // roomContext ile değişip sonsuz effect döngüsü kuruyordu). Bkz. aynı
+  // düzeltme diğer altı online modda.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
+    if (!setRoomContext) return;
     const code = room?.code;
-    if (code) social.setRoomContext({ code, mode: "routeDuel", roomUrl: `/?routeDuel=${code}` });
-    return () => social.setRoomContext(null);
-  }, [social, room?.code]);
+    if (code) setRoomContext({ code, mode: "routeDuel", roomUrl: `/?routeDuel=${code}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, room?.code]);
 
   /* ── Quit modal (yalnız aktif maçta) ── */
   const [quitModal, setQuitModal] = useState(false);
@@ -223,23 +228,18 @@ export default function RouteDuelGame({
   useInviteJoin({
     paramKey: "routeDuel",
     setJoinCode,
-    canAutoJoin: !!profile?.username && phase === "setup" && !room,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" (GuestJoinScreen adı önceden almıştır).
+    canAutoJoin: !!playerName.trim() && phase === "setup" && !room,
     triggerJoin: code => {
       inviteOverrideCodeRef.current = code;
-      inviteOverrideNameRef.current = profile?.username ?? null;
+      inviteOverrideNameRef.current = (profile?.username ?? playerName.trim()) || null;
       void joinRoomByCode();
     },
   });
 
-  const shareLink = useMemo(() => {
-    if (!room) return "";
-    const url = new URL(window.location.href);
-    for (const p of ["duel", "duelGroup", "flagDuel", "flagGroup", "wheelDuel", "wheelGroup"]) {
-      url.searchParams.delete(p);
-    }
-    url.searchParams.set("routeDuel", room.code);
-    return url.toString();
-  }, [room]);
+  // Native-güvenli davet linki (bkz. lib/inviteLink.ts).
+  const shareLink = useMemo(() => (room ? buildInviteUrl("routeDuel", room.code) : ""), [room]);
 
   const inviteMessage = useMemo(() => {
     if (!room) return "";
@@ -517,6 +517,9 @@ export default function RouteDuelGame({
 
   async function createRoom() {
     playSound("click");
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Asıl engel sunucuda
+    // (route_duel_create_room artık anon'a grant'li değil); bu net mesaj içindir.
+    if (!profile?.username) { setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE); return; }
     const nameErr = validateName(playerName);
     if (nameErr) { setErrorMsg(nameErr); return; }
 

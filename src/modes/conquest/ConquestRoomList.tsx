@@ -7,18 +7,29 @@
  * scalable across many small rooms.  Auto-refresh fires every 20 seconds
  * while the list is visible.
  *
- * Guest restriction (Kuşatma-only): guests cannot browse or join public
- * rooms.  They see the inline lock notice and the Katıl/Oda Kur buttons
- * are disabled.  Guests may still join via direct invite link.
+ * MİSAFİR KISITI: açık oda listesi yalnız kayıtlı kullanıcıya açıktır.
+ * Kullanıcı normalde buraya hiç gelmez — Kuşatma menüsündeki "Odalara Göz At"
+ * misafire giriş/kayıt ekranını gösterir. Bu ekran yine de savunma amaçlı
+ * kendi kapısını kurar (doğrudan yönlendirme / eski sekme gibi durumlar için)
+ * ve aynı LoginRequiredModal metnini kullanır.
+ *
+ * ASIL YETKİ SUNUCUDADIR: liste `conquest_list_public_rooms()` RPC'sinden
+ * gelir ve o fonksiyon `anon` için `auth_required` fırlatır. Yani buradaki
+ * `isLoggedIn` bayrağı kaldırılsa bile misafire oda bilgisi SIZMAZ.
+ * Misafir davet linki / oda koduyla katılmaya devam edebilir.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { playSound } from "../../lib/sound";
 import { mapLabel } from "./types";
 import { EmojiIcon } from "../../components/EmojiIcon";
+import LoginRequiredModal, {
+  type LoginRequiredChoice,
+} from "../../components/LoginRequiredModal";
 import type { ConquestRoomStatus } from "./types";
 import {
   fetchPublicConquestRooms,
+  ConquestAuthRequiredError,
   type ConquestPublicRoomSummary,
 } from "./conquestService";
 
@@ -28,6 +39,8 @@ interface Props {
   onCreate:   () => void;
   /** Called with the 6-char room_code when the user picks a card to join. */
   onJoin:     (code: string) => void;
+  /** Misafir bu ekrana düştü → App giriş/kayıt modalını açar. */
+  onAuthRequired?: (choice: LoginRequiredChoice) => void;
 }
 
 /** How often (ms) to silently re-fetch the public room list while open. */
@@ -44,10 +57,13 @@ export default function ConquestRoomList({
   onBack,
   onCreate,
   onJoin,
+  onAuthRequired,
 }: Props) {
   const [rooms,    setRooms]    = useState<ConquestPublicRoomSummary[]>([]);
   const [loading,  setLoading]  = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /** Sunucu "auth_required" dedi (ya da hiç giriş yapılmamış) → giriş kapısı. */
+  const [authBlocked, setAuthBlocked] = useState<boolean>(!isLoggedIn);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -55,8 +71,16 @@ export default function ConquestRoomList({
     try {
       const next = await fetchPublicConquestRooms();
       setRooms(next);
+      setAuthBlocked(false);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Liste alınamadı.");
+      // Yetki hatası ile "liste alınamadı" AYRI ele alınır: biri açıklanabilir
+      // bir ürün kuralı, diğeri geçici bir arıza.
+      if (err instanceof ConquestAuthRequiredError) {
+        setRooms([]);
+        setAuthBlocked(true);
+      } else {
+        setErrorMsg(err instanceof Error ? err.message : "Liste alınamadı.");
+      }
     } finally {
       setLoading(false);
     }
@@ -64,11 +88,23 @@ export default function ConquestRoomList({
 
   // Initial fetch + auto-refresh while mounted.
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn) { setAuthBlocked(true); return; }
     void refresh();
     const handle = window.setInterval(() => { void refresh(); }, AUTO_REFRESH_MS);
     return () => window.clearInterval(handle);
   }, [isLoggedIn, refresh]);
+
+  // Misafir bu ekrana düştüyse listeyi HİÇ göstermeyiz — menüdekiyle aynı
+  // giriş/kayıt ekranı gelir (tek metin kaynağı).
+  if (authBlocked) {
+    return (
+      <LoginRequiredModal
+        intent="conquest-browse"
+        onChoose={(choice) => onAuthRequired?.(choice)}
+        onCancel={onBack}
+      />
+    );
+  }
 
   return (
     <div className="duel-lobby">
@@ -85,7 +121,7 @@ export default function ConquestRoomList({
               type="button"
               className="btn btn-ghost cq-refresh-btn"
               onClick={() => { playSound("click"); void refresh(); }}
-              disabled={loading || !isLoggedIn}
+              disabled={loading}
               title="Listeyi yenile"
             >
               {loading ? "⟳ Yükleniyor…" : "⟳ Yenile"}
@@ -93,20 +129,12 @@ export default function ConquestRoomList({
             <button
               type="button"
               className="btn btn-accent cq-create-cta"
-              onClick={() => { playSound("click"); if (isLoggedIn) onCreate(); }}
-              disabled={!isLoggedIn}
-              title={!isLoggedIn ? "Oda kurmak için giriş yapmalısın" : undefined}
+              onClick={() => { playSound("click"); onCreate(); }}
             >
               + Oda Kur
             </button>
           </div>
         </div>
-
-        {!isLoggedIn && (
-          <p className="duel-error" style={{ textAlign: "left", marginBottom: 4 }}>
-            <EmojiIcon name="lock" /> Açık Kuşatma odalarına katılmak için giriş yapmalısın.
-          </p>
-        )}
 
         {errorMsg && (
           <p className="duel-error" style={{ textAlign: "left", marginBottom: 4 }}>
@@ -114,7 +142,7 @@ export default function ConquestRoomList({
           </p>
         )}
 
-        {isLoggedIn && rooms.length === 0 && !loading ? (
+        {rooms.length === 0 && !loading ? (
           <div className="cq-rooms-empty" role="status">
             <div className="cq-rooms-empty-icon" aria-hidden><EmojiIcon name="shield" /></div>
             <p className="cq-rooms-empty-title">
@@ -124,24 +152,11 @@ export default function ConquestRoomList({
               İlk odayı sen kur, davet linkini paylaş.
             </p>
           </div>
-        ) : !isLoggedIn ? (
-          <div className="cq-rooms-empty" role="status">
-            <div className="cq-rooms-empty-icon" aria-hidden><EmojiIcon name="shield" /></div>
-            <p className="cq-rooms-empty-title">
-              Giriş yaparak Kuşatma odalarına katılabilirsin.
-            </p>
-            <p className="cq-rooms-empty-hint">
-              Davet linkin varsa misafir olarak da katılabilirsin.
-            </p>
-          </div>
         ) : (
           <ul className="cq-rooms-list">
             {rooms.map(({ room, playerCount }) => {
               const full   = playerCount >= room.max_players;
-              const joinDisabled =
-                !isLoggedIn ||
-                room.status !== "waiting" ||
-                full;
+              const joinDisabled = room.status !== "waiting" || full;
 
               return (
                 <li key={room.id} className="cq-room-card">
@@ -171,7 +186,7 @@ export default function ConquestRoomList({
                       type="button"
                       className="btn btn-accent cq-join-btn"
                       disabled={joinDisabled}
-                      title={!isLoggedIn ? "Katılmak için giriş yapmalısın" : undefined}
+                      title={full ? "Oda dolu" : undefined}
                       onClick={() => { playSound("click"); onJoin(room.room_code); }}
                     >
                       Katıl

@@ -24,8 +24,12 @@ export { legalPath };
  * web'de göreli path zaten yeterlidir.
  */
 export function getSiteOrigin(): string {
-  const site = (import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined)?.trim();
-  const web = (import.meta.env.VITE_PUBLIC_WEB_ORIGIN as string | undefined)?.trim();
+  // NOT: `import.meta.env` yalnız Vite bundle'ında tanımlıdır. Node altında
+  // çalışan test scriptleri bu modülü import edebilsin diye erişim savunmacı
+  // yapılır (tarayıcı davranışı DEĞİŞMEZ; orada env her zaman vardır).
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  const site = env?.VITE_PUBLIC_SITE_URL?.trim();
+  const web = env?.VITE_PUBLIC_WEB_ORIGIN?.trim();
   const base = site || web || "https://torble.com";
   return base.replace(/\/+$/, "");
 }

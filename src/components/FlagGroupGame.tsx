@@ -25,6 +25,8 @@
  * aittir (mevcut çözüm satırı kilit altında okunur).
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import GuestEndPrompt from "./GuestEndPrompt";
+import { buildInviteUrl } from "../lib/inviteLink";
 import { supabase } from "../lib/supabase";
 import { LobbyInviteBar } from "./LobbyInviteBar";
 import LobbyChat from "./LobbyChat";
@@ -40,6 +42,8 @@ import {
   type CountryEntry,
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE } from "../lib/guestSession";
+import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
@@ -81,6 +85,9 @@ interface FGPlayer {
   status:       "waiting" | "playing" | "finished";
   joined_at:    string;
   last_seen_at: string;
+  /** auth.users.id — kayıtlı oyuncuda dolu, MİSAFİRDE null. Lobi "Misafir"
+   *  etiketinin tek kaynağı budur (DB kolonu zaten var; select '*' döndürür). */
+  profile_id?:  string | null;
 }
 interface FGClaim {
   id:           number;
@@ -198,8 +205,8 @@ function describeFlagGroupRpcError(err: FGRpcError | null | undefined): string {
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
   if (m.includes("code_taken"))                return "Bu kod kullanımda. Tekrar dene.";
-  if (m.includes("display_name_forbidden"))    return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
-  if (m.includes("registered_username_taken")) return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+  if (m.includes("display_name_forbidden"))    return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
+  if (m.includes("registered_username_taken")) return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   if (m.includes("name_taken"))                return "Bu isim bu odada kullanılıyor. Farklı bir isim seç.";
   if (m.includes("room_full"))                 return "Oda dolu.";
   if (m.includes("room_not_found"))            return "Oda bulunamadı. Kodu kontrol et.";
@@ -241,7 +248,8 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
   /* lobby form */
   const loggedInUsername = profile?.username ?? "";
   const isLoggedInPlayer = !!loggedInUsername;
-  const [playerName, setPlayerName] = useState("");
+  // Misafir nick ekranında ad seçtiyse hazır gelir.
+  const [playerName, setPlayerName] = useState(() => getGuestName() ?? "");
   const effectivePlayerName = loggedInUsername || playerName;
   const [joinCode, setJoinCode] = useState("");
   const inviteOverrideCodeRef = useRef<string | null>(null);
@@ -368,7 +376,8 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
   const myScore = useMemo(() => leaderboard.find(r => r.playerId === myId)?.score ?? 0, [leaderboard, myId]);
 
   const regionLabel = CONTINENT_LABEL[denormalizeRegion(room?.region ?? hostRegion)] ?? "🌍 Dünya";
-  const shareLink = room ? `${location.origin}${location.pathname}?flagGroup=${room.code}` : "";
+  // Native-güvenli davet linki (bkz. lib/inviteLink.ts).
+  const shareLink = room ? buildInviteUrl("flagGroup", room.code) : "";
 
   /* per-round reset (input/feedback/img/timer) */
   useEffect(() => {
@@ -389,7 +398,9 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
   useInviteJoin({
     paramKey: "flagGroup",
     setJoinCode,
-    canAutoJoin: !!profile?.username && phase === "lobby" && !room && !hasSavedSessionAtMount,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" (GuestJoinScreen adı önceden almıştır).
+    canAutoJoin: !!effectivePlayerName.trim() && phase === "lobby" && !room && !hasSavedSessionAtMount,
     triggerJoin: (code) => { inviteOverrideCodeRef.current = code; void joinRoom(); },
   });
 
@@ -703,6 +714,14 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
 
   /* ═══════════ CREATE / JOIN ═══════════ */
   const createRoom = async () => {
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Asıl engel sunucuda
+    // (*_create_room artık anon'a grant'li değil); bu net mesaj içindir.
+    if (!isLoggedInPlayer) {
+      setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE);
+      setStatusMsg(null);
+      setPhase("lobby");
+      return;
+    }
     const name = effectivePlayerName.trim();
     const err = validateUsername(name);
     if (err) { setErrorMsg(err); setPhase("lobby"); return; }
@@ -1030,6 +1049,7 @@ ${shareLink}` : "";
             {p.name}
           </span>
           {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+          {!p.profile_id && <GuestTag className="dgg-guest-tag" />}
           {p.is_host && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
         </div>
         {onResults && (
@@ -1516,6 +1536,8 @@ ${shareLink}` : "";
                   );
                 })}
               </div>
+
+              <GuestEndPrompt visible={!profile?.username} />
 
               <div className="fgg-result-actions">
                 {returned ? (

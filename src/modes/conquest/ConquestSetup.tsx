@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { getGuestName } from "../../lib/guestSession";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
 import { EmojiIcon } from "../../components/EmojiIcon";
@@ -36,7 +37,7 @@ interface Props {
 
 export default function ConquestSetup({ profile, onBack, onCreate }: Props) {
   const isLoggedInPlayer = !!profile?.username;
-  const [playerName, setPlayerName] = useState<string>(profile?.username ?? "");
+  const [playerName, setPlayerName] = useState<string>(profile?.username ?? getGuestName() ?? "");
 
   useEffect(() => {
     if (profile?.username) setPlayerName(profile.username);

@@ -6,5 +6,26 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!--
+	  Universal Links — oda davet bağlantıları (https://torble.com/?duel=AB12C).
+	  Bu izin sayesinde iOS, Torble kuruluysa bağlantıyı Safari yerine uygulamaya
+	  teslim eder (appUrlOpen → src/lib/deepLink.ts). Uygulama kurulu DEĞİLSE
+	  aynı bağlantı mobil webde normal şekilde açılmaya devam eder.
+
+	  ÖNKOŞUL (Apple Developer portalında yapılmalı):
+	    App ID "com.kavakgames.torble" için "Associated Domains" özelliği
+	    etkinleştirilmeli ve provisioning profile yenilenmeli. Aksi hâlde
+	    imzalama "profile doesn't include the com.apple.developer.associated-domains
+	    entitlement" hatası verir.
+
+	  Ayrıca https://torble.com/.well-known/apple-app-site-association dosyası
+	  yayında ve application/json olarak servis ediliyor olmalı
+	  (public/.well-known/apple-app-site-association + vercel.json headers).
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:torble.com</string>
+		<string>applinks:www.torble.com</string>
+	</array>
 </dict>
 </plist>

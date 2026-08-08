@@ -66,6 +66,8 @@
  * ─────────────────────────────────────────────────────────────────
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import GuestEndPrompt from "./GuestEndPrompt";
+import { buildInviteUrl } from "../lib/inviteLink";
 import { supabase } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
@@ -78,6 +80,8 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE } from "../lib/guestSession";
+import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
@@ -112,6 +116,9 @@ interface GroupPlayer {
   last_seen_at: string;
   status: "waiting" | "playing" | "finished";
   color_key:    string | null;
+  /** auth.users.id — kayıtlı oyuncuda dolu, MİSAFİRDE null. Lobi "Misafir"
+   *  etiketinin tek kaynağı budur (DB kolonu zaten var; select '*' döndürür). */
+  profile_id?:  string | null;
 }
 interface GroupClaim {
   id:           number;
@@ -254,8 +261,8 @@ function describeDuelGroupRpcError(err: DuelGroupRpcError | null | undefined): s
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
-  if (m.includes("display_name_forbidden"))   return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
-  if (m.includes("registered_username_taken"))return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+  if (m.includes("display_name_forbidden"))   return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
+  if (m.includes("registered_username_taken"))return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   if (m.includes("name_taken"))               return "Bu isim bu odada kullanılıyor. Farklı bir isim seç.";
   if (m.includes("room_full"))                return "Oda dolu.";
   if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
@@ -315,7 +322,8 @@ export default function DuelGroupGame({
   }, [profile?.id]);
 
   /* lobby form */
-  const [playerName,   setPlayerName]   = useState("");
+  // Misafir nick ekranında ad seçtiyse hazır gelir.
+  const [playerName,   setPlayerName]   = useState(() => getGuestName() ?? "");
   const loggedInUsername = profile?.username ?? "";
   const effectivePlayerName = loggedInUsername || playerName;
   const isLoggedInPlayer = !!loggedInUsername;
@@ -519,7 +527,10 @@ useEffect(() => {
   }, [claims, colorByPlayerId]);
 
 
-  const shareLink = room ? `${location.origin}${location.pathname}?duelGroup=${room.code}` : "";
+  // Native kabukta location.origin capacitor://localhost olur → paylaşılan
+  // link kırılırdı. buildInviteUrl web davranışını korur, native'de gerçek
+  // HTTPS adresini üretir.
+  const shareLink = room ? buildInviteUrl("duelGroup", room.code) : "";
   const timerPct  = gameDuration > 0 ? (timeLeft / gameDuration) * 100 : 0;
   const timerColor =
     timeLeft > gameDuration * 0.33 ? "var(--accent)" :
@@ -552,8 +563,10 @@ useEffect(() => {
   useInviteJoin({
     paramKey: "duelGroup",
     setJoinCode,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" (GuestJoinScreen adı önceden almıştır).
     canAutoJoin:
-      !!profile?.username && phase === "lobby" && !room && !hasSavedSessionAtMount,
+      !!effectivePlayerName.trim() && phase === "lobby" && !room && !hasSavedSessionAtMount,
     triggerJoin: (code) => {
       inviteOverrideCodeRef.current = code;
       void joinRoom();
@@ -999,6 +1012,14 @@ useEffect(() => {
 
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Asıl engel sunucuda
+    // (*_create_room artık anon'a grant'li değil); bu net mesaj içindir.
+    if (!isLoggedInPlayer) {
+      setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE);
+      setStatusMsg(null);
+      setPhase("lobby");
+      return;
+    }
     const name = effectivePlayerName.trim();
 const usernameError = validateUsername(name);
 
@@ -1635,6 +1656,7 @@ const returnToRoom = useCallback(async () => {
                   {p.name}
                 </span>
                 {isMe     && <span className="duel-tag"      style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                {!p.profile_id && <GuestTag className="dgg-guest-tag" />}
                 {p.is_host && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
               </div>
               {isMe && (
@@ -2412,6 +2434,8 @@ const returnToRoom = useCallback(async () => {
 
                 {errorMsg && <p className="duel-error" style={{ marginTop: 8 }}>{errorMsg}</p>}
 
+                <GuestEndPrompt visible={!profile?.username} />
+
                 <div className="wheel-result-actions">
                   <button
                     type="button"
@@ -2516,7 +2540,10 @@ const returnToRoom = useCallback(async () => {
 
       <h3>Oda Kapatıldı</h3>
 
-      <p>Oda artık aktif değil. Yeni bir oda kurabilir veya başka bir odaya katılabilirsin.</p>
+      {/* Oda satırı silindi. Tek sebebi host'un ayrılması ve odada host
+          olabilecek KAYITLI oyuncu kalmamasıdır (misafir host OLAMAZ —
+          duel_group_leave_room). */}
+      <p>Oda sahibi ayrıldığı için oda kapatıldı. Yeni bir oda kurabilir veya başka bir odaya katılabilirsin.</p>
 
       <div className="dgg-confirm-actions single">
         <button

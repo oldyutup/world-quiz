@@ -24,10 +24,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import GuestEndPrompt from "./GuestEndPrompt";
+import { buildInviteUrl } from "../lib/inviteLink";
 import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
@@ -236,11 +240,11 @@ function describeWheelDuelRpcError(
   // NOT: 'registered_username_taken' check'i 'name_taken' check'inden ÖNCE
   // gelmeli — substring olarak içerdiği için aksi halde yanlış dala düşer.
   if (msg.includes("registered_username_taken"))
-                                          return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   // 'display_name_forbidden' name_invalid/name_taken'den ÖNCE kontrol edilmeli;
   // helper bu etiketi yasaklı/rezerv/küfürlü nick'ler için fırlatıyor.
   if (msg.includes("display_name_forbidden"))
-                                          return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
   if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
   if (msg.includes("name_invalid"))       return "Oyuncu adı 2–16 karakter olmalı.";
   if (msg.includes("room_full"))          return "Oda dolu (2 oyuncu mevcut).";
@@ -293,7 +297,8 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   const [phase, setPhase] = useState<Phase>("setup");
 
   /* ── Setup form state ────────────────────────────────────── */
-  const initialName = profile?.username ?? "";
+  // Kayıtlı kullanıcıda hesap adı; misafirde nick ekranında seçilen ad.
+  const initialName = profile?.username ?? getGuestName() ?? "";
   const [playerName, setPlayerName] = useState<string>(initialName);
   // Lazy-init from the Hızlı Eşleş intent so startQuickMatch's first closure
   // already carries the chosen Süre/bölge (no setState flush race). Desktop /
@@ -330,13 +335,16 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   const [players, setPlayers] = useState<WheelDuelPlayer[]>([]);
   // Sosyal: roster avatarları + odadayken davet için room context.
   const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL (identity
+  // roomContext ile değişip sonsuz effect döngüsü kuruyordu). Bkz. aynı
+  // düzeltme diğer altı online modda.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
+    if (!setRoomContext) return;
     const code = room?.code;
-    if (code) social.setRoomContext({ code, mode: "wheelDuel", roomUrl: `/?wheelDuel=${code}` });
-    return () => social.setRoomContext(null);
-  }, [social, room?.code]);
+    if (code) setRoomContext({ code, mode: "wheelDuel", roomUrl: `/?wheelDuel=${code}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, room?.code]);
 
   /* ── Gameplay state ───────────────────────────────────────── */
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -419,7 +427,9 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   useInviteJoin({
     paramKey: "wheelDuel",
     setJoinCode,
-    canAutoJoin: !!profile?.username && phase === "setup" && !room,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" (GuestJoinScreen adı önceden almıştır).
+    canAutoJoin: !!playerName.trim() && phase === "setup" && !room,
     triggerJoin: (code) => {
       inviteOverrideCodeRef.current = code;
       inviteOverrideNameRef.current = profile?.username ?? null;
@@ -428,16 +438,9 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   });
 
   /* ── Davet linki ─────────────────────────────────────────── */
-  const shareLink = useMemo(() => {
-    if (!room) return "";
-    const url = new URL(window.location.href);
-    url.searchParams.delete("duel");
-    url.searchParams.delete("duelGroup");
-    url.searchParams.delete("flagDuel");
-    url.searchParams.delete("wheelGroup");
-    url.searchParams.set("wheelDuel", room.code);
-    return url.toString();
-  }, [room]);
+  // Native-güvenli davet linki (bkz. lib/inviteLink.ts). Eski sürüm mevcut
+  // URL'i temizleyip yeniden yazıyordu; buildInviteUrl temiz adres üretir.
+  const shareLink = useMemo(() => (room ? buildInviteUrl("wheelDuel", room.code) : ""), [room]);
 
   const inviteMessage = useMemo(() => {
     if (!room) return "";
@@ -941,8 +944,14 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   useEffect(() => {
     if (phase !== "finished" || !room) return;
     if (xpAwardedRef.current) return;
-    if (!isLoggedInPlayer || !profile?.id) return;
     if (!room.current_match_id) return;
+
+    // ── MİSAFİR / XP SINIRI (maç bazlı) — bkz. DuelGame'deki açıklama ──
+    if (!isLoggedInPlayer || !profile?.id) {
+      markGuestMatchId(room.current_match_id);
+      return;
+    }
+    if (isGuestMatchId(room.current_match_id)) return;
 
     const me  = players.find(p => p.id === myIdRef.current);
     const opp = players.find(p => p.id !== myIdRef.current);
@@ -1608,6 +1617,13 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
 
   async function createRoom() {
     playSound("click");
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Asıl engel sunucuda
+    // (*_create_room artık anon'a grant'li değil); bu net mesaj içindir.
+    if (!isLoggedInPlayer) {
+      setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE);
+      return;
+    }
+
     const nameErr = validateName(playerName);
     if (nameErr) {
       setErrorMsg(nameErr);
@@ -2221,6 +2237,7 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
                           </PlayerProfileTrigger>
                           <div className="duel-player-tags">
                             {isMe && <span className="duel-tag">Sen</span>}
+                            {!p.profile_id && <GuestTag />}
                             {isPlayerHost && (
                               <span className="duel-tag host">👑</span>
                             )}
@@ -2704,6 +2721,8 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
                   <strong>{regionLabel(room.region)}</strong>
                 </div>
               </div>
+
+              <GuestEndPrompt visible={!profile?.username} />
 
               <div className="wheel-result-actions">
                 <button

@@ -41,10 +41,16 @@ type CtaKind = "start" | "resume" | "retry" | "claim" | "claimed" | "expired";
 export function DailyQuestModal({
   onClose,
   onStartSession,
+  introMode = false,
 }: {
   onClose: () => void;
   /** "Göreve Başla / Devam Et / Tekrar Dene" → App görev oyun ekranını açar. */
   onStartSession: (session: DailyQuestSession) => void;
+  /** İlk-giriş intro'su olarak OTOMATİK açıldıysa true: birincil CTA'nın yanına
+   *  açık bir "Şimdi Değil" ikincil butonu eklenir (kapatma davranışı = onClose;
+   *  görevi tamamlamaz, ödül vermez). Manuel açılışta (buton/sekme) false →
+   *  görünüm birebir aynı kalır. */
+  introMode?: boolean;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<DailyQuestState | null>(null);
@@ -320,6 +326,20 @@ export function DailyQuestModal({
               {cta === "expired" && (
                 <button type="button" className="dq-btn dq-btn--ghost" onClick={() => void load()}>
                   Süresi Doldu — Yenile
+                </button>
+              )}
+              {/* İlk-giriş intro'su: birincil CTA'nın altında açık "Şimdi Değil".
+                  Kapatma davranışı onClose ile aynı (görevi tamamlamaz, ödül
+                  vermez, hatırlatıcı + badge devam eder). Terminal durumlarda
+                  (alındı / süresi doldu) gösterilmez — kapatma düğmesi yeterli. */}
+              {introMode && cta !== "claimed" && cta !== "expired" && (
+                <button
+                  type="button"
+                  className="dq-btn dq-btn--ghost"
+                  disabled={busy}
+                  onClick={() => { playSound("click"); onClose(); }}
+                >
+                  Şimdi Değil
                 </button>
               )}
             </div>

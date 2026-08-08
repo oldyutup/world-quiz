@@ -42,30 +42,28 @@ import {
   recallConquestClaim,
   rememberConquestClaim,
 } from "./conquestClaim";
+import {
+  conquestFail,
+  mapConquestJoinFailure,
+  type ConquestJoinFail,
+} from "./conquestJoinFlow";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Result types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ConquestJoinFailReason =
-  | "not-found"   // No room with this code
-  | "full"        // Room at max_players
-  | "started"     // Room status="playing"
-  | "closed"      // Room status="finished" or "closed"
-  | "guest-only"  // Public list requires login (frontend-enforced)
-  | "error";      // Network / DB error
+// Hata sebepleri, kullanıcı metinleri ve sunucu-kodu eşlemesi SAF modülde
+// (conquestJoinFlow.ts) durur — böylece Supabase istemcisi yüklenmeden test
+// edilebilirler. Buradan re-export edilirler ki mevcut import yolları
+// (`from "./conquestService"`) değişmesin.
+export type { ConquestJoinFailReason, ConquestJoinFail } from "./conquestJoinFlow";
+export { conquestFail } from "./conquestJoinFlow";
 
 export interface ConquestJoinSuccess {
   ok: true;
   room:    ConquestRoomRow;
   me:      ConquestPlayerRow;
   players: ConquestPlayerRow[];
-}
-
-export interface ConquestJoinFail {
-  ok: false;
-  reason:  ConquestJoinFailReason;
-  message: string;
 }
 
 export type ConquestJoinResult = ConquestJoinSuccess | ConquestJoinFail;
@@ -87,38 +85,16 @@ export type ConquestCreateResult = ConquestCreateSuccess | ConquestCreateFail;
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Localized join-failure messages used by lobby/join screens. */
-const FAIL_MESSAGES: Record<ConquestJoinFailReason, string> = {
-  "not-found":   "Kuşatma odası bulunamadı.",
-  "full":        "Bu Kuşatma odası dolu.",
-  "started":     "Bu Kuşatma oyunu başlamış.",
-  "closed":      "Bu Kuşatma odası kapanmış.",
-  "guest-only":  "Açık Kuşatma odalarına katılmak için giriş yapmalısın.",
-  "error":       "Bağlantı sorunu. Lütfen tekrar dene.",
-};
-
-export function conquestFail(
-  reason: ConquestJoinFailReason,
-  override?: string,
-): ConquestJoinFail {
-  return { ok: false, reason, message: override ?? FAIL_MESSAGES[reason] };
-}
-
 /** Normalise a room code to canonical form (uppercase, no whitespace). */
 export function normalizeConquestRoomCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
 }
 
-/** Quick joinability check given a room row + current player count. */
-function evaluateJoinable(
-  room: ConquestRoomRow,
-  currentCount: number,
-): ConquestJoinFailReason | null {
-  if (room.status === "playing")                     return "started";
-  if (room.status === "finished" || room.status === "closed") return "closed";
-  if (currentCount >= room.max_players)              return "full";
-  return null;
-}
+// NOT: eski `evaluateJoinable(room, currentCount)` yardımcısı KALDIRILDI.
+// Kapasite kararı artık sunucudadır (`conquest_register_player` oda satırını
+// kilitleyip sayar) — istemcide ikinci bir kapasite kuralı tutmak, ikisinin
+// sessizce ayrışması demektir. Oda DURUMUNA bakan kısa kontrol
+// joinConquestRoom içinde, yalnız daha iyi hata metni için durur.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Create room
@@ -242,8 +218,14 @@ interface JoinIdentity {
 
 /**
  * Join an existing room by its room_code (case-insensitive, normalised).
- * Guest path is allowed (frontend-controlled) so invite links keep working
- * for users without an account.
+ * Guest path is allowed so invite links keep working for users without an
+ * account — bu, ürün kuralının misafire AÇIK olan tek Kuşatma girişidir.
+ *
+ * Oda arama `conquest_find_room_by_code` RPC'sinden geçer (20260809120000,
+ * Bölüm A2): adı üstünde TEK bir kodu çözer, en fazla bir satır döndürür ve
+ * filtresiz çağrılamaz. Böylece "bildiğim kodu doğrula" misafire açık kalırken
+ * "kod havuzunu tara" yolu açılmaz — açık oda listesinin yetkili uç noktası
+ * (`conquest_list_public_rooms`) ayrıdır ve misafire kapalıdır.
  */
 export async function joinConquestRoomByCode(
   rawCode: string,
@@ -254,61 +236,55 @@ export async function joinConquestRoomByCode(
     return conquestFail("not-found", "Oda kodu 6 karakter olmalı.");
   }
 
-  const { data: roomData, error: roomErr } = await supabase
-    .from("conquest_rooms")
-    .select("*")
-    .eq("room_code", code)
-    .maybeSingle();
+  const { data: roomData, error: roomErr } = await supabase.rpc(
+    "conquest_find_room_by_code",
+    { p_code: code },
+  );
 
   if (roomErr) {
     return conquestFail("error", `Oda aranamadı: ${roomErr.message}`);
   }
-  if (!roomData) {
+  // `.id` de kontrol edilir: composite döndüren bir RPC, satır bulunamadığında
+  // yanlışlıkla "alanları NULL olan bir nesne" döndürebilir (PL/pgSQL SELECT
+  // INTO davranışı). Fonksiyon bunu `if not found then return null` ile
+  // engelliyor; bu kontrol o sözleşme bozulursa katılmanın anlaşılmaz bir
+  // hataya dönüşmesini önler.
+  const found = roomData as ConquestRoomRow | null;
+  if (!found?.id) {
     return conquestFail("not-found");
   }
 
-  return joinConquestRoom(roomData as ConquestRoomRow, identity);
+  return joinConquestRoom(found, identity);
 }
 
 /**
- * Insert the current user into a room.  Re-fetches the player list under
- * the same call so the caller can update its local state atomically.
+ * Insert the current user into a room.
  *
- * If the same logged-in profile already has a row in this room (e.g. re-join
- * from another tab), the existing row is returned without inserting a
- * duplicate — the partial unique index would reject the insert anyway.
+ * KATILMADAN ÖNCE OYUNCU TABLOSU OKUNMAZ.
+ * Eskiden bu fonksiyon önce `conquest_players` tablosunu ham okuyup
+ * (a) kapasiteyi kontrol ediyor, (b) boş rengi seçiyordu. 20260810120000 o
+ * tabloyu `anon` rolüne kapattı (misafirin açık odaları enumerasyonla
+ * listelemesini engellemek için), dolayısıyla her iki karar da SUNUCUYA
+ * taşındı — `conquest_register_player` oda satırını kilitleyip kapasiteyi
+ * sayar, rengi paletten atar ve aynı hesap zaten odadaysa mevcut satırı
+ * döndürür. Sunucu zaten tek otoriteydi; artık tek KARAR VEREN de o.
+ *
+ * Oyuncu listesi katılma BAŞARILI olduktan sonra, üyeliği kanıtlanmış
+ * `conquest_get_room_state` RPC'siyle okunur.
  */
 export async function joinConquestRoom(
   room:     ConquestRoomRow,
   identity: JoinIdentity,
 ): Promise<ConquestJoinResult> {
-  // Refresh player count from DB so the joinability check is authoritative.
-  const { data: existing, error: pErr } = await supabase
-    .from("conquest_players")
-    .select("*")
-    .eq("room_id", room.id)
-    .order("joined_at", { ascending: true });
-
-  if (pErr) {
-    return conquestFail("error", `Oyuncular yüklenemedi: ${pErr.message}`);
+  // Odanın kendi satırından okunabilen engeller (durum) için erken ve net bir
+  // mesaj: sunucu bunları yine reddeder, bu yalnız daha iyi bir UI cevabıdır.
+  if (room.status === "playing")  return conquestFail("started");
+  if (room.status === "finished" || room.status === "closed") {
+    return conquestFail("closed");
   }
-
-  const players = (existing ?? []) as ConquestPlayerRow[];
-
-  // Already in this room as a logged-in user? Return existing row.
-  if (identity.profile?.id) {
-    const mine = players.find(p => p.profile_id === identity.profile!.id);
-    if (mine) {
-      return { ok: true, room, me: mine, players };
-    }
-  }
-
-  const blocker = evaluateJoinable(room, players.length);
-  if (blocker) return conquestFail(blocker);
 
   const guestId = identity.profile ? null : freshConquestPlayerId();
   const trimmed = identity.name.trim();
-  const joinColor = pickNextConquestColor(players.map(p => p.color));
   const claimToken = generateConquestClaim();
 
   const { data: inserted, error: insertErr } = await supabase.rpc(
@@ -319,26 +295,19 @@ export async function joinConquestRoom(
       p_profile_id:  identity.profile?.id ?? null,
       p_guest_id:    guestId,
       p_name:        trimmed,
-      p_color:       joinColor,
+      // null → rengi sunucu seçer (odadaki dolu renkleri okuyabilen tek taraf).
+      p_color:       null,
       p_is_host:     false,
       p_claim_token: claimToken,
     },
   );
 
   if (insertErr || !inserted) {
-    // 23505: partial-unique violation → treat as "already joined", refetch
-    if (insertErr?.code === "23505" && identity.profile?.id) {
-      const { data: refetch } = await supabase
-        .from("conquest_players")
-        .select("*")
-        .eq("room_id", room.id)
-        .eq("profile_id", identity.profile.id)
-        .maybeSingle();
-      if (refetch) {
-        return { ok: true, room, me: refetch as ConquestPlayerRow, players };
-      }
-    }
-    return conquestFail("error", insertErr?.message ?? "Odaya katılınamadı.");
+    // Sunucu tarafı kararlar (kapasite, oda durumu, görünen ad) diğer modlarla
+    // AYNI kullanıcı-dostu metinlere çevrilir; ham Postgres mesajı UI'ya sızmaz.
+    // Eşleme saf modüldedir (conquestJoinFlow) ve orada test edilir.
+    const raw = `${insertErr?.message ?? ""} ${insertErr?.details ?? ""}`;
+    return mapConquestJoinFailure(raw, insertErr?.message);
   }
 
   // The RPC also touches conquest_rooms.updated_at so the public list refresh
@@ -347,7 +316,13 @@ export async function joinConquestRoom(
 
   const me = inserted as ConquestPlayerRow;
   rememberConquestClaim(me.id, claimToken);
-  return { ok: true, room, me, players: [...players, me] };
+
+  // Artık üyeyiz → yetkili okuma yolu açık. Liste alınamazsa katılma yine de
+  // başarılıdır; abonelik ilk turunda listeyi zaten tazeleyecek.
+  const state = await fetchConquestRoomState(room.id, me.id);
+  return state.status === "ok"
+    ? { ok: true, room: state.room, me, players: state.players }
+    : { ok: true, room, me, players: [me] };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -514,61 +489,55 @@ export interface ConquestPublicRoomSummary {
   playerCount: number;
 }
 
-/**
- * Active-player horizon (ms). conquest_players satırının last_seen_at değeri
- * bu eşikten daha eskiyse oyuncu "stale" sayılır ve public listede oda
- * doluluğunu artırmaz. Bkz: 20260531130000_conquest_player_heartbeat.sql.
- */
-const CONQUEST_ACTIVE_PLAYER_WINDOW_MS = 60_000;
+/** `fetchPublicConquestRooms` giriş yapılmamış çağrıda bunu fırlatır.
+ *  ConquestRoomList bunu yakalayıp "giriş yap" ekranını gösterir. */
+export class ConquestAuthRequiredError extends Error {
+  constructor() {
+    super("Açık odaları görüntülemek için giriş yapmalısın.");
+    this.name = "ConquestAuthRequiredError";
+  }
+}
 
 /**
- * List public, joinable Kuşatma rooms.  Filters:
- *   • visibility = 'public'
- *   • status     = 'waiting'
- *   • updated_at within the last 6 hours (drops abandoned rooms)
- *   • playerCount > 0 ve < max (sadece aktif heartbeat'li oyuncular sayılır)
+ * List public, joinable Kuşatma rooms.
  *
- * Stale oyuncular (browser kapatma / bağlantı kopması) listeden düşürülür:
- * `last_seen_at >= now() - 60s` olanlar aktif sayılır. Böylece "0/4" ya da
- * "1/4 ama gerçekte boş" gibi hayalet odalar listede yer kaplamaz.
+ * YETKİ: SUNUCU TARAFINDA. Liste artık `conquest_list_public_rooms()`
+ * SECURITY DEFINER RPC'sinden gelir; o fonksiyon yalnız `authenticated`a
+ * grant'lidir ve gövdesinin ilk satırında auth.uid()'yi kontrol edip misafir
+ * için `auth_required` fırlatır (20260809120000, Bölüm A1).
+ *
+ * ÖNCEDEN bu fonksiyon `conquest_rooms` tablosunu doğrudan sorguluyordu ve
+ * "kim listeleyebilir" kontrolü YALNIZCA React tarafındaki `isLoggedIn`
+ * bayrağıydı — yani gerçek bir kontrol değildi. Filtre mantığı (public +
+ * waiting + son 6 saat + aktif heartbeat'li oyuncu sayısı) RPC'ye BİREBİR
+ * taşındı; kayıtlı kullanıcının gördüğü liste değişmez.
+ *
+ * Oyuncu sayımı da sunucuda yapılır → istemci artık `conquest_players`
+ * tablosunu toplu sorgulamaz (oda kodu/host/oyuncu bilgisi tek uç noktadan
+ * ve yalnız yetkili çağrıya döner).
  */
 export async function fetchPublicConquestRooms(): Promise<ConquestPublicRoomSummary[]> {
-  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-  const activeSince = new Date(Date.now() - CONQUEST_ACTIVE_PLAYER_WINDOW_MS).toISOString();
+  const { data, error } = await supabase.rpc("conquest_list_public_rooms");
 
-  const { data: rooms, error: roomErr } = await supabase
-    .from("conquest_rooms")
-    .select("*")
-    .eq("visibility", "public")
-    .eq("status", "waiting")
-    .gte("updated_at", sixHoursAgo)
-    .order("updated_at", { ascending: false })
-    .limit(50);
-
-  if (roomErr || !rooms || rooms.length === 0) return [];
-
-  const ids = rooms.map(r => r.id);
-  // Sadece aktif (heartbeat'i son 60sn içinde olan) oyuncuları say. Eski/null
-  // last_seen_at değerleri filtreyi geçemez, dolayısıyla ghost oyuncular oda
-  // doluluk göstergesini şişiremez.
-  const { data: players } = await supabase
-    .from("conquest_players")
-    .select("room_id")
-    .in("room_id", ids)
-    .gte("last_seen_at", activeSince);
-
-  const counts = new Map<string, number>();
-  for (const p of (players ?? []) as { room_id: string }[]) {
-    counts.set(p.room_id, (counts.get(p.room_id) ?? 0) + 1);
+  if (error) {
+    // Sessiz boş liste DÖNDÜRMEYİZ: yetki eksikliği ile "hiç oda yok" durumu
+    // kullanıcıya farklı görünmeli.
+    if (
+      error.message?.includes("auth_required") ||
+      error.code === "42501" ||
+      error.code === "PGRST202"
+    ) {
+      throw new ConquestAuthRequiredError();
+    }
+    throw new Error(error.message ?? "Oda listesi alınamadı.");
   }
 
-  return (rooms as ConquestRoomRow[])
-    .map(room => ({
-      room,
-      playerCount: counts.get(room.id) ?? 0,
-    }))
-    // Aktif oyuncusu kalmamış / dolmuş odalar listede yer almaz.
-    .filter(s => s.playerCount > 0 && s.playerCount < s.room.max_players);
+  type ListRow = ConquestRoomRow & { player_count: number };
+
+  return ((data ?? []) as ListRow[]).map(row => {
+    const { player_count, ...room } = row;
+    return { room: room as ConquestRoomRow, playerCount: player_count ?? 0 };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -597,36 +566,80 @@ export async function heartbeatConquestPlayer(playerId: string): Promise<void> {
   }
 }
 
-/** Fetch room+players for a known room id (used after realtime UPDATE events). */
-export async function fetchConquestRoomState(
-  roomId: string,
-): Promise<{ room: ConquestRoomRow; players: ConquestPlayerRow[] } | null> {
-  const [{ data: room }, { data: players }] = await Promise.all([
-    supabase.from("conquest_rooms").select("*").eq("id", roomId).maybeSingle(),
-    supabase
-      .from("conquest_players")
-      .select("*")
-      .eq("room_id", roomId)
-      .order("joined_at", { ascending: true }),
-  ]);
+/**
+ * Bir odanın durumu okunmaya çalışıldığında dönen sonuç.
+ *
+ * `lost` ayrı bir durumdur ve AĞ HATASI DEĞİLDİR: sunucu "sen bu odanın üyesi
+ * değilsin" ya da "oda yok" dedi. Çağıran bunu oyuncuyu odadan çıkarmak için
+ * kullanır; geçici hata (`error`) ile karıştırılmamalıdır, yoksa tek bir kopuk
+ * istek oyuncuyu odadan atardı.
+ */
+export type ConquestRoomStateResult =
+  | { status: "ok"; room: ConquestRoomRow; players: ConquestPlayerRow[] }
+  | { status: "lost"; reason: "not_a_member" | "room_gone" }
+  | { status: "error" };
 
-  if (!room) return null;
+/**
+ * Bir odanın satırını + oyuncularını okur.
+ *
+ * TEK OKUMA YOLU: `conquest_get_room_state` SECURITY DEFINER RPC'si.
+ * Ham `conquest_rooms` / `conquest_players` sorgusu KASTEN kullanılmaz —
+ * 20260810120000 ile o tablolar `anon` rolüne kapatıldı (misafirin açık oda
+ * listesini enumerasyonla çıkarmasını engellemek için). RPC, çağıranın O
+ * ODADAKİ oyuncu satırının sahibi olduğunu (auth.uid() veya claim_token)
+ * kanıtlamasını ister ve TEK bir odayı döndürür; filtre/limit/sıralama kabul
+ * etmez.
+ *
+ * Kayıtlı kullanıcı da aynı yolu kullanır — misafir/kayıtlı için iki ayrı
+ * okuma yolu tutmak, ikisinden birinin sessizce ayrışması demektir.
+ */
+export async function fetchConquestRoomState(
+  roomId:   string,
+  playerId: string,
+): Promise<ConquestRoomStateResult> {
+  const claimToken = recallConquestClaim(playerId);
+  const { data, error } = await supabase.rpc("conquest_get_room_state", {
+    p_room_id:     roomId,
+    p_player_id:   playerId,
+    p_claim_token: claimToken,
+  });
+
+  if (error || !data) return { status: "error" };
+
+  const payload = data as {
+    ok?:      boolean;
+    reason?:  string;
+    room?:    ConquestRoomRow;
+    players?: ConquestPlayerRow[];
+  };
+
+  if (payload.ok !== true) {
+    const reason = payload.reason === "room_gone" ? "room_gone" : "not_a_member";
+    return { status: "lost", reason };
+  }
+  if (!payload.room) return { status: "error" };
+
   return {
-    room:    room as ConquestRoomRow,
-    players: (players ?? []) as ConquestPlayerRow[],
+    status:  "ok",
+    room:    payload.room,
+    players: payload.players ?? [],
   };
 }
 
-/** Refresh just the player list for a room. */
+/**
+ * Yalnız oyuncu listesini tazeler. Aynı yetkili RPC'yi kullanır (sunucuda
+ * oyuncuları odadan ayrı okumanın bir yolu yoktur — ve olmamalıdır).
+ *
+ * Yetki/oda kaybı durumunda `null` döner; çağıran bunu "listeyi değiştirme"
+ * olarak yorumlar, çünkü kick/oda-kapandı kararı asıl abonelik akışında
+ * verilir.
+ */
 export async function fetchConquestPlayers(
-  roomId: string,
-): Promise<ConquestPlayerRow[]> {
-  const { data } = await supabase
-    .from("conquest_players")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("joined_at", { ascending: true });
-  return (data ?? []) as ConquestPlayerRow[];
+  roomId:   string,
+  playerId: string,
+): Promise<ConquestPlayerRow[] | null> {
+  const result = await fetchConquestRoomState(roomId, playerId);
+  return result.status === "ok" ? result.players : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -804,24 +817,15 @@ export async function resetConquestQuickMatch(profileId: string): Promise<void> 
  * içinde (RPC server-side ekledi).
  */
 export async function fetchConquestRoomWithPlayers(
-  roomId: string,
+  roomId:   string,
+  playerId: string,
 ): Promise<{ room: ConquestRoomRow; players: ConquestPlayerRow[] } | null> {
-  const { data: room, error: rErr } = await supabase
-    .from("conquest_rooms")
-    .select("*")
-    .eq("id", roomId)
-    .maybeSingle();
-  if (rErr || !room) return null;
-
-  const { data: players, error: pErr } = await supabase
-    .from("conquest_players")
-    .select("*")
-    .eq("room_id", roomId)
-    .order("joined_at", { ascending: true });
-  if (pErr) return null;
-
-  return {
-    room:    room as ConquestRoomRow,
-    players: (players ?? []) as ConquestPlayerRow[],
-  };
+  // Hızlı Eşleş yalnız kayıtlı kullanıcıya açıktır, yani bu çağrı teknik
+  // olarak `authenticated` RLS'iyle de çalışırdı. Yine de ortak yetkili RPC
+  // kullanılır: istemcide Kuşatma odalarına ham tablo sorgusu atan TEK BİR
+  // yol bile kalmasın (yarın biri bu fonksiyonu misafir akışında çağırırsa
+  // sessizce enumerasyon kapısı açılmasın).
+  const result = await fetchConquestRoomState(roomId, playerId);
+  if (result.status !== "ok") return null;
+  return { room: result.room, players: result.players };
 }

@@ -29,6 +29,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import GuestEndPrompt from "../../components/GuestEndPrompt";
 import {
   addGold,
   useGold,
@@ -182,6 +183,7 @@ import {
 } from "../../lib/progression";
 import { recordOnlineMatchResult, recordGameComplete } from "../../lib/achievementStats";
 import type { Profile } from "../../lib/auth";
+import { markGuestMatchId, isGuestMatchId } from "../../lib/guestSession";
 import {
   areTeammates,
   buildTeamSummaries,
@@ -1692,9 +1694,15 @@ export default function ConquestGame({
 
   useEffect(() => {
     if (!finishedPhase) return;
-    if (!isLoggedInPlayer || !profile?.id) return;
     if (!myPlayerId) return;
     if (!matchKey) return;
+
+    // ── MİSAFİR / XP SINIRI (maç bazlı) — bkz. DuelGame'deki açıklama ──
+    if (!isLoggedInPlayer || !profile?.id) {
+      markGuestMatchId(matchKey);
+      return;
+    }
+    if (isGuestMatchId(matchKey)) return;
     // Per-match guard: same match → exit; new match → fall through.
     if (xpAwardedRef.current === matchKey) return;
     xpAwardedRef.current = matchKey;
@@ -5417,6 +5425,8 @@ export default function ConquestGame({
                 XP kazanmak için giriş yap.
               </p>
             )}
+
+            <GuestEndPrompt visible={!profile?.username} />
 
             <div className="cq-finished-actions">
               <button

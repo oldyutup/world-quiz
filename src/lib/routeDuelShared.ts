@@ -157,9 +157,9 @@ export function describeRouteDuelRpcError(
   if (msg.includes("code_taken"))         return "Bu oda kodu az önce kullanıldı. Tekrar dene.";
   // 'registered_username_taken' kontrolü 'name_taken'den ÖNCE (substring).
   if (msg.includes("registered_username_taken"))
-                                          return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   if (msg.includes("display_name_forbidden"))
-                                          return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
   if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
   if (msg.includes("name_invalid"))       return "Oyuncu adı 2–16 karakter olmalı.";
   if (msg.includes("already_in_room"))    return "Zaten bu odadasın (aynı hesapla ikinci kez katılamazsın).";

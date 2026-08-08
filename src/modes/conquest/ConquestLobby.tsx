@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { GuestTag } from "../../components/GuestTag";
 import LobbyChat from "../../components/LobbyChat";
 import { PlayerAvatar } from "../../components/PlayerAvatar";
 import { PlayerProfileTrigger } from "../../components/PlayerProfileTrigger";
@@ -284,12 +285,15 @@ export default function ConquestLobby({
 
   // Sosyal: roster avatarları (tek batched RPC) + odadayken davet için room context.
   const rosterProfiles = useRosterProfiles(players.map((p) => p.profileId ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL (identity
+  // roomContext ile değişip sonsuz effect döngüsü kuruyordu). Bkz. aynı
+  // düzeltme diğer altı online modda.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
-    if (roomCode) social.setRoomContext({ code: roomCode, mode: "conquest", roomUrl: `/?conquest=${roomCode}` });
-    return () => social.setRoomContext(null);
-  }, [social, roomCode]);
+    if (!setRoomContext) return;
+    if (roomCode) setRoomContext({ code: roomCode, mode: "conquest", roomUrl: `/?conquest=${roomCode}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, roomCode]);
   const me            = myPlayerId ? players.find(p => p.id === myPlayerId) ?? null : null;
   const myColor       = me ? resolvedColors[me.id] : null;
   /* Build "taken by someone else" set on raw `player.color` (not the resolved
@@ -480,6 +484,7 @@ export default function ConquestLobby({
             <span className="cq-player-name">{p.name}</span>
           </PlayerProfileTrigger>
           {isMe && <span className="cq-player-you-tag">sen</span>}
+          {!p.profileId && <GuestTag />}
           {p.isHost && <span className="duel-tag host"><EmojiIcon name="crown" /></span>}
           {isRematch && ready && (
             <span className="cq-player-status-tag cq-player-status-tag--ready">Hazır</span>

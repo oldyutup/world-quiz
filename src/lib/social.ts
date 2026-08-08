@@ -207,10 +207,13 @@ export async function resolveRoomInviteInvalid(id: string): Promise<boolean> {
  * belirsiz durum → false (davet açılır; mod kendi join akışında son doğrulamayı
  * yapar). Her davet için değil, yalnız tıklama anında bir kez çalışır.
  *
- * Şimdilik yalnız Kuşatma (conquest) için: conquest_rooms SELECT RLS herkese
- * açıktır (using true) → koda göre okuma güvenlidir, RLS kaynaklı yanlış "yok"
- * riski YOKTUR. Kapasite (dolu) KESİN ölü sayılmaz (biri çıkabilir) — yalnız
- * satır yoksa veya durum terminal (playing/finished/closed) ise ölü kabul edilir.
+ * Şimdilik yalnız Kuşatma (conquest) için ve YALNIZ `conquest_find_room_by_code`
+ * RPC'si üzerinden: o fonksiyon TEK bir kodu çözer, oda havuzunu taramaz.
+ * Ham `conquest_rooms` sorgusu KASTEN kullanılmaz — 20260810120000 ile o tablo
+ * `anon` rolüne kapatıldı (misafirin açık odaları enumerasyonla listelemesini
+ * engellemek için) ve ham sorgu misafirde her daveti "ölü" göstermeye başlardı.
+ * Kapasite (dolu) KESİN ölü sayılmaz (biri çıkabilir) — yalnız satır yoksa veya
+ * durum terminal (playing/finished/closed) ise ölü kabul edilir.
  */
 export async function isRoomInviteDead(mode: unknown, roomCode: unknown): Promise<boolean> {
   if (typeof mode !== "string" || typeof roomCode !== "string") return false;
@@ -218,11 +221,9 @@ export async function isRoomInviteDead(mode: unknown, roomCode: unknown): Promis
     if (mode === "conquest") {
       const code = roomCode.trim().toUpperCase().replace(/\s+/g, "");
       if (code.length !== 6) return false;
-      const { data, error } = await supabase
-        .from("conquest_rooms")
-        .select("status")
-        .eq("room_code", code)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("conquest_find_room_by_code", {
+        p_code: code,
+      });
       if (error) return false; // erişilemezlik → daveti öldürme
       if (!data) return true; // oda yok → ölü
       const status = (data as { status?: string }).status;

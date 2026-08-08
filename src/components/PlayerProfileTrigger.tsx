@@ -29,6 +29,7 @@ import { useDmOptional } from "./DmContext";
 import { PlayerProfileCard } from "./PlayerProfileCard";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ReportModal, type ReportSubmitResult } from "./ReportModal";
+import { SecurityActionSheet } from "./SecurityActionSheet";
 
 interface PlayerProfileTriggerProps {
   /** Hedef oyuncunun profil id'si. null/undefined → guest, tıklama no-op. */
@@ -55,6 +56,8 @@ export function PlayerProfileTrigger({
   const [confirmKind, setConfirmKind] = useState<null | "remove" | "block">(null);
   /** Bildir modalı: sadece bildir veya bildir+engelle. */
   const [reportKind, setReportKind] = useState<null | "report" | "reportBlock">(null);
+  /** Mobil "Bildir / Engelle" güvenlik alt-sayfası açık mı (yalnız mobil). */
+  const [securitySheetOpen, setSecuritySheetOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const close = useCallback(() => {
@@ -62,6 +65,7 @@ export function PlayerProfileTrigger({
     setProfile(null);
     setConfirmKind(null);
     setReportKind(null);
+    setSecuritySheetOpen(false);
     setBusy(false);
   }, []);
 
@@ -89,8 +93,13 @@ export function PlayerProfileTrigger({
   // birden kapanırdı ("ESC yalnız en üstteki katmanı kapatmalı").
   const confirmOpenRef = useRef(false);
   confirmOpenRef.current = confirmKind !== null;
+  // Mobil güvenlik alt-sayfası açıkken ESC önce onu kapatsın (kart değil). Sheet
+  // kendi ESC'sini yönetir; kart bastırılmazsa ikisi birden kapanırdı
+  // ("ESC yalnız en üstteki katmanı kapatmalı").
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = securitySheetOpen;
 
-  // ESC kapatma (üstte editör, bildir veya onay modalı açıkken devre dışı)
+  // ESC kapatma (üstte editör, bildir, onay ya da güvenlik sheet'i açıkken devre dışı)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -98,7 +107,8 @@ export function PlayerProfileTrigger({
         e.key === "Escape" &&
         !editorOpenRef.current &&
         !reportOpenRef.current &&
-        !confirmOpenRef.current
+        !confirmOpenRef.current &&
+        !sheetOpenRef.current
       ) {
         close();
       }
@@ -116,6 +126,19 @@ export function PlayerProfileTrigger({
     document.body.classList.add("ppc-card-open");
     return () => document.body.classList.remove("ppc-card-open");
   }, [open]);
+
+  // Mobil: kart açıkken arka sayfa kaymasın. Proje scroll-lock deseni (save →
+  // "hidden" → restore); ConfirmDialog/ReportModal kendi kilitlerini üstüne
+  // save/restore ile yığar, çakışmaz. Masaüstü ortalı-modal davranışı DEĞİŞMEZ
+  // (yalnız isMobile'da uygulanır).
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open, isMobile]);
 
   // Editör kapanınca (true→false) açık kendi kartımı tazele: kaydedilen avatar /
   // kullanıcı adı / seviye / rozetler kartta anında görünsün. Kart açık değilse
@@ -299,6 +322,8 @@ export function PlayerProfileTrigger({
                 isSelf={isSelf}
                 relationshipStatus={profile.relationshipStatus}
                 canInvite={!!social?.roomContext}
+                isMobile={isMobile}
+                onOpenSecurity={() => setSecuritySheetOpen(true)}
                 onAddFriend={handleAddFriend}
                 onInvite={handleInvite}
                 onMessage={isMobile ? handleMessage : undefined}
@@ -358,6 +383,28 @@ export function PlayerProfileTrigger({
           kind="user"
           onSubmit={handleReportSubmit}
           onClose={() => setReportKind(null)}
+        />
+      )}
+
+      {/* Mobil güvenlik alt-sayfası: tek "Bildir / Engelle" butonundan açılır.
+          Seçenekler mevcut modalları tetikler; sheet önce kapanır (çakışan
+          overlay kalmaz), sonra ReportModal / ConfirmDialog açılır. */}
+      {securitySheetOpen && (
+        <SecurityActionSheet
+          title={profile?.username ? `@${profile.username} için` : undefined}
+          onReport={() => {
+            setSecuritySheetOpen(false);
+            setReportKind("report");
+          }}
+          onBlock={() => {
+            setSecuritySheetOpen(false);
+            setConfirmKind("block");
+          }}
+          onReportAndBlock={() => {
+            setSecuritySheetOpen(false);
+            setReportKind("reportBlock");
+          }}
+          onClose={() => setSecuritySheetOpen(false)}
         />
       )}
     </>

@@ -29,6 +29,8 @@
  *   -- Also enable Realtime on all three tables.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import GuestEndPrompt from "./GuestEndPrompt";
+import { buildInviteUrl } from "../lib/inviteLink";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import {
   calculateCountryDuelXp,
@@ -52,6 +54,8 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
@@ -218,8 +222,8 @@ function describeDuelRpcError(err: DuelRpcError | null | undefined): string {
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
   // display_name_forbidden ve registered_username_taken, name_taken/name_invalid'dan
   // ÖNCE kontrol edilmeli — helper bu hataları RPC body'sinin başında fırlatıyor.
-  if (m.includes("display_name_forbidden"))   return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
-  if (m.includes("registered_username_taken"))return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+  if (m.includes("display_name_forbidden"))   return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
+  if (m.includes("registered_username_taken"))return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   if (m.includes("name_taken"))               return "Bu odada bu isim zaten kullanılıyor.";
   if (m.includes("room_full"))                return "Oda dolu (2 oyuncu mevcut).";
   if (m.includes("room_not_found"))           return "Oda bulunamadı. Kodu kontrol et.";
@@ -308,7 +312,9 @@ export default function DuelGame({
   }, [profile?.id]);
 
   /* lobby form */
-  const [playerName,   setPlayerName]   = useState("");
+  // Misafir daha önce nick seçtiyse (GuestJoinScreen) alan hazır gelir —
+  // davet linkinden gelen oyuncu adı ikinci kez yazmaz.
+  const [playerName,   setPlayerName]   = useState(() => getGuestName() ?? "");
   const loggedInUsername = profile?.username ?? "";
   const effectivePlayerName = loggedInUsername || playerName;
   const isLoggedInPlayer = !!loggedInUsername;
@@ -337,13 +343,16 @@ export default function DuelGame({
   const [claims,      setClaims]      = useState<DuelClaim[]>([]);
   // Sosyal: roster avatarları (tek batched RPC) + odadayken davet için room context.
   const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL (identity
+  // roomContext ile değişip sonsuz effect döngüsü kuruyordu). Bkz. aynı
+  // düzeltme diğer altı online modda.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
+    if (!setRoomContext) return;
     const code = room?.code;
-    if (code) social.setRoomContext({ code, mode: "duel", roomUrl: `/?duel=${code}` });
-    return () => social.setRoomContext(null);
-  }, [social, room?.code]);
+    if (code) setRoomContext({ code, mode: "duel", roomUrl: `/?duel=${code}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, room?.code]);
   const [timeLeft,    setTimeLeft]    = useState(60);
   const [isHost,      setIsHost]      = useState(false);
   const [input,       setInput]       = useState("");
@@ -516,8 +525,17 @@ useEffect(() => {
 useEffect(() => {
   if (phase !== "finished" || !finalScores) return;
   if (xpAwardedRef.current) return;
-  if (!isLoggedInPlayer || !profile?.id) return;
   if (!room?.id) return;
+
+  // ── MİSAFİR / XP SINIRI (maç bazlı) ──────────────────────────────────
+  // Misafirken biten maç, o maçın kimliğiyle işaretlenir. Oyuncu sonuç
+  // ekranından hesap açsa bile GEÇMİŞ maça XP yazılmaz. YENİ tur farklı bir
+  // maç kimliği taşıdığı için normal şekilde XP kazandırır.
+  if (!isLoggedInPlayer || !profile?.id) {
+    markGuestMatchId(room.id);
+    return;
+  }
+  if (isGuestMatchId(room.id)) return;
 
   const myScoreFinal  = finalScores.my;
   const oppScoreFinal = finalScores.opp;
@@ -631,7 +649,9 @@ useEffect(() => {
   const myScore    = myTopoIds.size;
   const oppScore   = oppTopoIds.size;
 
-  const shareLink  = room ? `${location.origin}${location.pathname}?duel=${room.code}` : "";
+  // Native kabukta location.origin capacitor://localhost olur → paylaşılan
+  // link kırılırdı. buildInviteUrl web davranışını korur.
+  const shareLink  = room ? buildInviteUrl("duel", room.code) : "";
   const timerPct   = (timeLeft / gameDuration) * 100;
   const timerColor = timeLeft > gameDuration * 0.33 ? "var(--accent)" : timeLeft > gameDuration * 0.13 ? "#f59e0b" : "#ef4444";
   const gameOver = gameEndedRef.current || timeLeft <= 0 || phase === "finished";
@@ -705,7 +725,9 @@ useEffect(() => {
   useInviteJoin({
     paramKey: "duel",
     setJoinCode,
-    canAutoJoin: !!profile?.username && phase === "lobby" && !room,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" olmalı (GuestJoinScreen adı önceden almıştır).
+    canAutoJoin: !!effectivePlayerName.trim() && phase === "lobby" && !room,
     triggerJoin: (code) => {
       inviteOverrideCodeRef.current = code;
       void joinRoom();
@@ -1241,6 +1263,14 @@ const stale =
 
   /* ── CREATE ROOM ── */
   const createRoom = async () => {
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Sunucu da bunu zorlar
+    // (duel_create_room artık anon'a grant'li DEĞİL); bu yalnız net mesaj için.
+    if (!isLoggedInPlayer) {
+      setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE);
+      setStatusMsg(null);
+      setPhase("lobby");
+      return;
+    }
     const name = effectivePlayerName.trim();
 const usernameError = validateUsername(name);
 
@@ -2452,6 +2482,7 @@ setXpResult(null); xpAwardedRef.current = false;
 
           <div className="duel-player-tags">
             {p.id === myId && <span className="duel-tag">Sen</span>}
+            {!p.profile_id && <GuestTag />}
             {players[0]?.id === p.id && <span className="duel-tag host">👑</span>}
           </div>
         </div>
@@ -2938,6 +2969,8 @@ setXpResult(null); xpAwardedRef.current = false;
                 <p className="duel-rematch-status declined">😞 Rakip rövanşı reddetti.</p>
               )}
             </div>
+
+            <GuestEndPrompt visible={!profile?.username} />
 
             {/* ── Actions ── */}
             <div className="duel-result-actions">

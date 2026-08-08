@@ -6,10 +6,22 @@
    .mode-grid is hidden at ≤600px). The desktop homepage markup,
    styling and behaviour stay untouched.
 
-   IA: the first screen shows only three category cards (Tek
-   Oyunculu / Düello / Çok Oyunculu). Tapping one opens a bottom
-   sheet listing that category's modes; Kuşatma is the featured
-   card at the top of the Çok Oyunculu sheet.
+   IA: the first screen shows four equal cards — Tek Oyunculu /
+   Düello / Çok Oyunculu / Oda Kodu ile Katıl. Tapping one of the
+   first three opens a bottom sheet listing that category's modes
+   (Kuşatma is the featured card atop the Çok Oyunculu sheet); the
+   fourth opens the RoomCodeSheet directly. Oda Kodu used to be a
+   sub-row welded onto the Çok Oyunculu card — it is now its own
+   peer card, same surface, same size, same handler.
+
+   Günün Görevi is NOT surfaced on THIS screen: lib/dailyQuest's
+   MOBILE_DAILY_QUEST_HOME_VISIBLE gates the home surface only —
+   no card/entry and no +1 on the bottom-nav badge, so the four-card
+   layout stays exactly as approved. The other two mobile entries
+   are separate switches and are ON: the launch intro modal
+   (…_INTRO_ENABLED, App.tsx) and the social sheet's "Görev" tab
+   (…_SOCIAL_VISIBLE, SocialCenterSheet). Feature, RPCs and rewards
+   are untouched; desktop is unaffected.
 
    Purely presentational: every action routes through the same
    callbacks the desktop mode cards use — onPlay maps to App's
@@ -30,6 +42,7 @@ import { SocialCenterSheet } from "./SocialCenterSheet";
 import { useSocialOptional } from "./SocialContext";
 import { useDmOptional } from "./DmContext";
 import { useToastSurfaceOffset } from "../lib/useToastOffset";
+import { useDailyQuestStatus, MOBILE_DAILY_QUEST_HOME_VISIBLE } from "../lib/dailyQuest";
 import { RoomCodeSheet, type RoomCodeSubmitOutcome } from "./RoomCodeJoin";
 import {
   CONQUEST_QUICK_MATCH_ENABLED,
@@ -662,6 +675,23 @@ export default function MobileHome({
   const dm = useDmOptional();
   const socialBadge = (social?.unreadCount ?? 0) + (dm?.totalUnread ?? 0);
 
+  // Günün Görevi hatırlatıcısı → Arkadaşlar alt-nav badge'ine +1. dailyQuestPending
+  // = giriş yapılmış && bugünkü görev henüz "bitmemiş" (oynanabilir / devam eden /
+  // ödül bekleyen). YALNIZ gerçek claim ("claimed") bu +1'i kaldırır — sheet açmak
+  // veya modalı kapatmak KALDIRMAZ (tek kaynak: sunucu-otoriter dailyQuest durumu).
+  // Misafirde ("unknown" + isLoggedIn false) hiç eklenmez. Sosyal sayaç bundan
+  // etkilenmez; iki kaynak ayrı toplanıp gösterimde birleşir (99+ üst sınırı korunur).
+  // Bu +1, ANA MENÜ yüzeyine ait olduğu için …_HOME_VISIBLE'a bağlı: kapalıyken
+  // ana menüde Günün Görevi'ne dair hiçbir iz kalmaz (rozet +1 dahil) ve onaylanan
+  // dört-kart görünümü birebir korunur. Sosyal sayaç bundan etkilenmez; görev
+  // yine intro modalı ve Arkadaşlar sheet'indeki "Görev" sekmesinden erişilebilir.
+  const dqStatus = useDailyQuestStatus();
+  const dailyQuestPending =
+    MOBILE_DAILY_QUEST_HOME_VISIBLE &&
+    isLoggedIn &&
+    (dqStatus === "available" || dqStatus === "active" || dqStatus === "reward_ready");
+  const navBadge = socialBadge + (dailyQuestPending ? 1 : 0);
+
   // Native app ana ekranında alt-nav (.mh-bottom-nav, ~70px) yalnız native'de
   // görünür; global bildirim toast'larını onun üzerine kaldır (çakışma yok).
   const isNativeApp =
@@ -717,59 +747,17 @@ export default function MobileHome({
 
   return (
     <div className="mobile-home">
-      {/* Hızlı Eşleş girişi — yalnız narrow/mobil WEB'de görünür. Native app'te
-          bunun yerine alt-nav'daki ⚡ Eşleş sekmesi kullanılır (CSS:
-          html.is-native-app .mh-qm-entry { display:none }), böylece çift giriş
-          olmaz. Aynı MobileQuickMatchSheet'i açar. */}
-      <button
-        type="button"
-        className="mh-qm-entry"
-        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(true); }}
-      >
-        <span className="mh-qm-entry-icon" aria-hidden="true">⚡</span>
-        <span className="mh-qm-entry-text">
-          <span className="mh-qm-entry-title">Hızlı Eşleş</span>
-          <span className="mh-qm-entry-desc">Seviyene yakın rakiple birebir yarış.</span>
-        </span>
-        <span className="mh-cat-chevron" aria-hidden="true">›</span>
-      </button>
+      {/* ── Ana menü: DÖRT eşit kart ────────────────────────────────────────
+          Tek Oyunculu · Düello · Çok Oyunculu · Oda Kodu ile Katıl. Dördü de
+          AYNI .mh-cat yüzeyi, aynı grid (ikon · metin · chevron), aynı
+          min-height → aynı genişlik/yükseklik, eşit aralık (.mobile-home gap).
+          Oda Kodu artık Çok Oyunculu kartının gömülü alt satırı DEĞİL, bağımsız
+          dördüncü kart; tetiklediği akış (RoomCodeSheet → App'in merkezî
+          çözümleyicisi, misafir yolu dahil) hiç değişmedi.
 
-      {/* Günün Görevi — desktop üst bar butonunun mobil karşılığı. Aynı App
-          handler'ı: guest'te auth gate, girişte AYNI DailyQuestModal (≤600px'te
-          CSS ile alt-sheet düzenine döner). Ayrı mobil görev mantığı YOK. */}
-      <button
-        type="button"
-        className="mh-dq-entry"
-        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(false); onOpenDailyQuest(); }}
-      >
-        <img
-          className="mh-dq-entry-icon"
-          src="/assets/icons/home/daily-quest-scroll.png"
-          alt=""
-          aria-hidden="true"
-        />
-        <span className="mh-dq-entry-text">
-          <span className="mh-dq-entry-title">Günün Görevi</span>
-          <span className="mh-dq-entry-desc">Bugünün görevini bitir, 50 Gold kazan.</span>
-        </span>
-        <span className="mh-cat-chevron" aria-hidden="true">›</span>
-      </button>
-
-      {/* Oda Kodu ile Katıl — kompakt aksiyon; dokununca alt sheet açılır.
-          Tüm input'u üst bara sıkıştırmak yerine (mobil) sheet kullanılır. */}
-      <button
-        type="button"
-        className="mh-code-entry"
-        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(false); setRoomCodeOpen(true); }}
-      >
-        <span className="mh-code-entry-icon" aria-hidden="true">🔑</span>
-        <span className="mh-code-entry-text">
-          <span className="mh-code-entry-title">Oda Kodu ile Katıl</span>
-          <span className="mh-code-entry-desc">Arkadaşının odasına kodla gir.</span>
-        </span>
-        <span className="mh-cat-chevron" aria-hidden="true">›</span>
-      </button>
-
+          Günün Görevi bu ekranda YOK: lib/dailyQuest → MOBILE_DAILY_QUEST_HOME_VISIBLE
+          kapalı (özellik/RPC/ödül duruyor; intro ve sosyal sekme AYRI anahtarlarla
+          açık — bu ekrana kart geri EKLENMEZ). */}
       {categories.map(c => (
         <button
           key={c.id}
@@ -789,6 +777,43 @@ export default function MobileHome({
         </button>
       ))}
 
+      {/* 4. kart — Oda Kodu ile Katıl. Diğer üçüyle birebir aynı yapı; tek fark
+          mod-sayısı rozetinin olmaması (zorlama badge yok, hizayı bozmaz).
+          onClick gövdesi eski alt satırdan AYNEN taşındı. */}
+      <button
+        type="button"
+        className="mh-cat mh-cat--roomcode"
+        aria-label="Oda koduyla bir odaya katıl"
+        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(false); setRoomCodeOpen(true); }}
+      >
+        <span className="mh-cat-icon" aria-hidden="true">🔑</span>
+        <span className="mh-cat-text">
+          <span className="mh-cat-titlerow">
+            <span className="mh-cat-title">Oda Kodu ile Katıl</span>
+          </span>
+          <span className="mh-cat-tagline">Arkadaşının odasına kodla gir.</span>
+        </span>
+        <span className="mh-cat-chevron" aria-hidden="true">›</span>
+      </button>
+
+      {/* Hızlı Eşleş — yalnız narrow/mobil WEB'de görünür (native'de alt-nav'ın
+          ⚡ Eşleş sekmesi var; CSS: html.is-native-app .mh-qm-entry{display:none}).
+          Mobil web'de BAŞKA girişi yok (üst bar ≤600px'te gizli), o yüzden
+          kaldırılmadı — ama dört kartın ALTINDA ve belirgin şekilde daha sessiz
+          bir satır olarak durur, böylece ana grup dört eşit karttan ibaret kalır. */}
+      <button
+        type="button"
+        className="mh-qm-entry"
+        onClick={() => { playSound("click"); setOpenId(null); setSocialOpen(false); setMatchOpen(true); }}
+      >
+        <span className="mh-qm-entry-icon" aria-hidden="true">⚡</span>
+        <span className="mh-qm-entry-text">
+          <span className="mh-qm-entry-title">Hızlı Eşleş</span>
+          <span className="mh-qm-entry-desc">Seviyene yakın rakiple birebir yarış.</span>
+        </span>
+        <span className="mh-qm-entry-chevron" aria-hidden="true">›</span>
+      </button>
+
       {open && (
         <MobileSheet
           category={open}
@@ -803,6 +828,11 @@ export default function MobileHome({
           activeTheme={activeTheme}
           onSelectTheme={onSelectTheme}
           onClose={() => setSocialOpen(false)}
+          isLoggedIn={isLoggedIn}
+          /* "Görev" sekmesi: sheet'i KAPATMADAN Günün Görevi modalını açar
+             (App handler'ı yalnız modalı açar, socialOpen'a dokunmaz → modal
+             sheet'in ÜSTÜNDE görünür, kapanınca sheet açık kalır). */
+          onOpenDailyQuest={onOpenDailyQuest}
         />
       )}
 
@@ -885,12 +915,15 @@ export default function MobileHome({
         <button
           type="button"
           className={"mh-nav-item mh-nav-item--social" + (socialOpen ? " mh-nav-item--active" : "")}
+          /* Badge rengi tek bilgi taşıyıcısı olmasın: sayı aria-label'a da yansır
+             (screen reader "Arkadaşlar, N yeni" duyar). Görsel badge aria-hidden. */
+          aria-label={navBadge > 0 ? `Arkadaşlar, ${navBadge} yeni` : "Arkadaşlar"}
           onClick={() => { playSound("click"); setOpenId(null); setMatchOpen(false); setSocialOpen(true); }}
         >
           <span className="mh-nav-icon-wrap" aria-hidden="true">
             <span className="mh-nav-icon">👥</span>
-            {socialBadge > 0 && (
-              <span className="mh-nav-badge">{socialBadge > 99 ? "99+" : socialBadge}</span>
+            {navBadge > 0 && (
+              <span className="mh-nav-badge">{navBadge > 99 ? "99+" : navBadge}</span>
             )}
           </span>
           <span className="mh-nav-label">Arkadaşlar</span>

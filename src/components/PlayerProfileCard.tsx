@@ -100,6 +100,13 @@ interface PlayerProfileCardProps {
   /** Davet edilebilir mi (aktif oda context'i var mı). */
   canInvite?: boolean;
 
+  /** Mobil kompakt aksiyon düzeni (durum chip'i + tek "Bildir / Engelle").
+   *  false/undefined → mevcut masaüstü buton dizisi AYNEN korunur (değişmez). */
+  isMobile?: boolean;
+  /** Mobil "Bildir / Engelle" güvenlik alt-sayfasını açar (yalnız mobil ve
+   *  engelli DEĞİLken). Engelliyken mobil doğrudan onReport kullanır. */
+  onOpenSecurity?: () => void;
+
   /** Kendi profil aksiyonları. */
   onEditProfile?: () => void;
   /** Rozet slotuna tıklayınca doğrudan sergileme editörünü açar (yalnız self). */
@@ -116,6 +123,28 @@ function friendButtonLabel(status: RelationshipStatus): { label: string; disable
       return { label: "Yanıt Bekliyor", disabled: true };
     default:
       return { label: "Arkadaş Ekle", disabled: false };
+  }
+}
+
+/** Mobil kompakt durum chip'i — büyük disabled buton yerine. none/blocked_by →
+ *  null döner (bu durumlarda birincil "Arkadaş Ekle" butonu gösterilir; masaüstü
+ *  iş kuralıyla birebir). Yalnız GÖSTERİM sıkıştırması; ilişki mantığı değişmez. */
+function friendStatusChip(
+  status: RelationshipStatus,
+): { label: string; tone: "friend" | "pending" } | null {
+  switch (status) {
+    case "friends":
+      return { label: "Arkadaşsınız", tone: "friend" };
+    case "request_sent":
+      return { label: "İstek Gönderildi", tone: "pending" };
+    case "request_received":
+      // Karşı taraf BANA istek gönderdi (request_sent'in tersi). Kabul/Reddet
+      // profil kartı bağlamında MEVCUT DEĞİL (get_public_profile friend_request
+      // id'si döndürmez; respondFriendRequest bildirim akışında kullanılır) →
+      // yeni RPC/mantık yazmadan yalnız doğru durumu bildiririz.
+      return { label: "Arkadaşlık isteği geldi", tone: "pending" };
+    default:
+      return null;
   }
 }
 
@@ -218,12 +247,21 @@ export function PlayerProfileCard({
   onRemoveFriend,
   onUnblock,
   canInvite,
+  isMobile = false,
+  onOpenSecurity,
   onEditProfile,
   onEditBadges,
 }: PlayerProfileCardProps) {
   const friendBtn = friendButtonLabel(relationshipStatus);
-  const isBlocked = relationshipStatus === "blocked";
+  const isBlocked = relationshipStatus === "blocked"; // BEN onu engelledim
+  const isBlockedBy = relationshipStatus === "blocked_by"; // O beni engelledi
   const isFriend = relationshipStatus === "friends";
+  // Mobil kompakt düzen yardımcıları (masaüstü bu değerleri kullanmaz).
+  const statusChip = friendStatusChip(relationshipStatus);
+  // "Arkadaş Ekle" YALNIZ "none"da geçerli. blocked_by (karşı taraf beni
+  // engelledi) kendi dalında ele alınır → hiçbir geçersiz sosyal aksiyon (Arkadaş
+  // Ekle / Mesaj / Davet / Engelle) sunulmaz.
+  const canAddFriend = relationshipStatus === "none";
 
   // Başka oyuncu: yalnız gerçek (çözülebilen) rozetleri göster — boş slot yok.
   const otherBadges = showcasedBadgeIds.filter((id) => getAvatar(id));
@@ -285,7 +323,12 @@ export function PlayerProfileCard({
           <div className="ppc-hero">
             <div className="ppc-photo">
               <PassportSeal />
-              <PlayerAvatar avatarId={avatarId} username={username} size="lg" frameId={resolvedFrame} />
+              <PlayerAvatar
+                avatarId={avatarId}
+                username={username}
+                size={isMobile ? 80 : "lg"}
+                frameId={resolvedFrame}
+              />
             </div>
             <div className="ppc-identity">
               <span className="ppc-uname" style={nameColor ? { color: nameColor } : undefined}>
@@ -383,11 +426,95 @@ export function PlayerProfileCard({
       </div>
 
       {/* AKSİYONLAR (kasa altı bandı — sade product UI, foil YOK) */}
-      <div className="ppc-actions">
+      <div className={`ppc-actions${isMobile && !isSelf ? " ppc-actions--mobile" : ""}`}>
         {isSelf ? (
           <button type="button" className="ppc-btn ppc-btn--primary" onClick={onEditProfile}>
             Profili Düzenle
           </button>
+        ) : isMobile ? (
+          /* ─── MOBİL KOMPAKT DÜZEN ───────────────────────────────────────────
+             Aynı callback'ler, kompakt sunum. Büyük disabled durum butonları →
+             küçük chip; ayrı Engelle/Bildir/Bildir ve Engelle → tek "Bildir /
+             Engelle" (action sheet). İlişki mantığı masaüstüyle birebir. */
+          isBlocked ? (
+            /* BEN onu engelledim → Engeli Kaldır + (izinliyse) Bildir. */
+            <>
+              <div className="ppc-status-row ppc-status-row--solo">
+                <span className="ppc-status-chip ppc-status-chip--blocked">Engellendi</span>
+              </div>
+              <button type="button" className="ppc-btn ppc-btn--primary" onClick={onUnblock}>
+                Engeli Kaldır
+              </button>
+              {onReport && (
+                <button type="button" className="ppc-btn ppc-btn--security" onClick={onReport}>
+                  Bildir
+                </button>
+              )}
+            </>
+          ) : isBlockedBy ? (
+            /* O BENİ engelledi → geçersiz sosyal aksiyon YOK (Arkadaş Ekle / Mesaj
+               / Davet / Engeli Kaldır / Engelle hiçbiri). "Seni engelledi" ifşası
+               YOK (mevcut product davranışı değil) → nötr durum + (izinliyse)
+               yalnız Bildir. blocked ile KARIŞTIRILMAZ. */
+            <>
+              <div className="ppc-status-row ppc-status-row--solo">
+                <span className="ppc-status-chip ppc-status-chip--muted">
+                  Etkileşim kullanılamıyor
+                </span>
+              </div>
+              {onReport && (
+                <button type="button" className="ppc-btn ppc-btn--security" onClick={onReport}>
+                  Bildir
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {statusChip && (
+                <div className="ppc-status-row">
+                  <span className={`ppc-status-chip ppc-status-chip--${statusChip.tone}`}>
+                    {statusChip.tone === "friend" && (
+                      <span className="ppc-status-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
+                    {statusChip.label}
+                  </span>
+                  {isFriend && (
+                    <button type="button" className="ppc-linkbtn" onClick={onRemoveFriend}>
+                      Arkadaşlıktan Çıkar
+                    </button>
+                  )}
+                </div>
+              )}
+              {isFriend && onMessage && (
+                <button type="button" className="ppc-btn ppc-btn--primary" onClick={onMessage}>
+                  Mesaj Gönder
+                </button>
+              )}
+              {canAddFriend && (
+                <button type="button" className="ppc-btn ppc-btn--primary" onClick={onAddFriend}>
+                  Arkadaş Ekle
+                </button>
+              )}
+              <button
+                type="button"
+                className="ppc-btn"
+                onClick={onInvite}
+                disabled={!canInvite}
+                title={canInvite ? undefined : "Bir odadayken davet gönderebilirsin."}
+              >
+                Davet Et
+              </button>
+              <button
+                type="button"
+                className="ppc-btn ppc-btn--security"
+                onClick={onOpenSecurity}
+              >
+                Bildir / Engelle
+              </button>
+            </>
+          )
         ) : isBlocked ? (
           <>
             <button type="button" className="ppc-btn" disabled>

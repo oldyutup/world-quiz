@@ -64,6 +64,22 @@ import {
   type CountryEntry,
   type Difficulty,
 } from "./data/countries";
+/* Barlow / Barlow Condensed — mobil ana sayfa tipografi denemesi. YALNIZ
+   gereken ağırlıklar ve YALNIZ latin + latin-ext altkümeleri (Türkçe Ç Ğ İ Ö Ş Ü
+   için latin-ext şart) yerel olarak bundle'a dahil edilir. @fontsource paketleri
+   uygulama içine gömülür (Google Fonts CDN'i YOK → harici ağ isteği yok, OFL-1.1
+   lisansı bağımlılıkta). Diğer yüzeyler DM Sans/Bebas kullanmaya devam eder;
+   Barlow yalnız App.css'te mobil-home kapsamlı selektörlerde uygulanır. */
+import "@fontsource/barlow/latin-500.css";
+import "@fontsource/barlow/latin-ext-500.css";
+import "@fontsource/barlow/latin-600.css";
+import "@fontsource/barlow/latin-ext-600.css";
+import "@fontsource/barlow/latin-700.css";
+import "@fontsource/barlow/latin-ext-700.css";
+import "@fontsource/barlow-condensed/latin-700.css";
+import "@fontsource/barlow-condensed/latin-ext-700.css";
+import "@fontsource/barlow-condensed/latin-800.css";
+import "@fontsource/barlow-condensed/latin-ext-800.css";
 import "./App.css";
 import {
   playSound,
@@ -77,6 +93,22 @@ import {
   type CountdownSoundMode,
 } from "./lib/sound";
 import AuthModal from "./components/AuthModal";
+import GuestJoinScreen from "./components/GuestJoinScreen";
+import type {
+  LoginRequiredChoice,
+  LoginRequiredIntent,
+} from "./components/LoginRequiredModal";
+import { modeFromInviteParam } from "./lib/inviteLink";
+import { initInviteDeepLinks } from "./lib/deepLink";
+import { GUEST_SIGNUP_EVENT } from "./components/GuestEndPrompt";
+import {
+  isGuestJoinableMode,
+  setGuestName,
+  setPendingGuestJoin,
+  readPendingGuestJoin,
+  clearPendingGuestJoin,
+  linkActiveGuestSession,
+} from "./lib/guestSession";
 import NicknameModal from "./components/NicknameModal";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -128,8 +160,11 @@ import {
   refreshDailyQuestStatus,
   setDailyQuestStatus,
   useDailyQuestStatus,
+  getCurrentDailyQuestKey,
+  MOBILE_DAILY_QUEST_INTRO_ENABLED,
   type DailyQuestSession,
 } from "./lib/dailyQuest";
+import { getMyModerationStatus } from "./lib/moderation";
 
 /* ═══════════════════════════════════════════════════════════════
    TYPES
@@ -145,21 +180,30 @@ type AuthPromptReason =
   | "conquest-invite"
   | "kornokta-invite" | "kornokta-create" | "kornokta-join"
   | "duel-gate" | "multi-gate" | "kusatma-gate"
-  | "daily-quest";
+  | "daily-quest"
+  /* Misafir oyun-sonu ekranındaki "Hesap Oluştur" bölümünden geldi. Oyuncu
+   * odadan çıkarılmaz; kayıt sonrası aynı ekrana döner ve slotunu korur. */
+  | "guest-signup";
 
 /** Online modes that require login (Düello + Çok Oyunculu). Maps each gated
  *  AppScreen to the auth-prompt reason driving the modal copy. Single-player
  *  and Kör Nokta (its own gating) screens are intentionally absent — they pass
- *  straight through navigateOnline() to setScreen. */
+ *  straight through navigateOnline() to setScreen.
+ *
+ *  "conquest-join" KASTEN LİSTEDE DEĞİL: "Oda Koduyla Katıl" ürün kuralı gereği
+ *  MİSAFİRE AÇIKTIR (bilinen bir kodla belirli bir odaya katılmak). Kapalı olan
+ *  yalnız oda KURMA ("conquest-game") ve açık oda LİSTESİ ("conquest-rooms");
+ *  ikisi de sunucuda ayrıca zorunlu kılınır (conquest_rooms INSERT policy /
+ *  conquest_list_public_rooms authenticated-only). */
 const ONLINE_GATED_SCREENS: Partial<Record<AppScreen, AuthPromptReason>> = {
   "duel-game":        "duel-gate",
   "flag-duel-game":   "duel-gate",
   "wheel-duel-game":  "duel-gate",
   "route-duel-game":  "duel-gate",
   "duel-group-game":  "multi-gate",
+  "flag-group-game":  "multi-gate",
   "wheel-group-game": "multi-gate",
   "conquest-game":    "kusatma-gate",
-  "conquest-join":    "kusatma-gate",
   "conquest-rooms":   "kusatma-gate",
 };
 
@@ -240,6 +284,25 @@ function clearPendingQuickMatch() {
  *  çözülüp yönlendirilir. sessionStorage OAuth redirect'inde aynı sekmede
  *  hayatta kaldığı için kullanılır; kısa ömürlü, tek seferlik tüketilir. */
 const PENDING_ROOM_CODE_KEY = "pending_room_code_join";
+
+/** Oyun ekranı → oda-kodu modu. Misafir hesap açtığında hangi modun oda
+ *  oturumunun devredileceğini bulmak için kullanılır. Kör Nokta yok (misafir
+ *  zaten katılamaz); Kuşatma yok (farklı claim mekanizması, V1'de devir yok). */
+const SCREEN_TO_ROOM_MODE: Partial<Record<AppScreen, RoomCodeModeKey>> = {
+  "duel-game":        "duel",
+  "flag-duel-game":   "flagDuel",
+  "wheel-duel-game":  "wheelDuel",
+  "route-duel-game":  "routeDuel",
+  "duel-group-game":  "duelGroup",
+  "wheel-group-game": "wheelGroup",
+  "flag-group-game":  "flagGroup",
+  // Kör Nokta artık misafire açık (20260809120000): oyuncu oyun sonu
+  // ekranından hesap açtığında odadaki AYNI satır yeni hesaba bağlanır.
+  // Kuşatma burada YOK çünkü devri ConquestMode kendi claim deposundan
+  // (recallConquestClaim) tetikler — bkz. ConquestMode linkAttemptedRef.
+  "kornokta-create":  "korNokta",
+  "kornokta-join":    "korNokta",
+};
 
 function clearPendingRoomCode() {
   try { sessionStorage.removeItem(PENDING_ROOM_CODE_KEY); }
@@ -636,6 +699,13 @@ interface HomeProps {
   /** Kör Nokta login-only: guest bir aksiyon seçince App auth modal'ı açar
    *  ve login sonrası ilgili ekrana yönlendirir. */
   onKorNoktaAuthRequired: (action: "create" | "join") => void;
+  /** Kuşatma misafire kapalı bir seçenek seçti ("Oda Kur" / "Odalara Göz At").
+   *  App giriş/kayıt modalını açar ve BEKLEYEN İŞLEMİ saklar; giriş bitince
+   *  oyuncu boş ana sayfaya değil, seçtiği akışa döner. */
+  onConquestAuthRequired: (
+    intent: LoginRequiredIntent,
+    choice: LoginRequiredChoice,
+  ) => void;
   /** Native-app bottom nav: ranking ve profil App seviyesindeki mevcut
    *  chrome'a (LeaderboardModal / AuthModal / UserProfileDropdown) bağlanır. */
   onOpenRanking: () => void;
@@ -650,7 +720,7 @@ interface HomeProps {
   /** Günün Görevi girişi (mobil kart) — App auth gate + modal açılışını yapar. */
   onOpenDailyQuest: () => void;
 }
-function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange, onOpenDailyQuest }: HomeProps) {
+function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onConquestAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange, onOpenDailyQuest }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showRouteMenu, setShowRouteMenu] = useState(false);
@@ -1043,6 +1113,10 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
     onBrowse={() => {
       setShowConquestMenu(false);
       onSelect("conquest-rooms");
+    }}
+    onAuthRequired={(intent, choice) => {
+      setShowConquestMenu(false);
+      onConquestAuthRequired(intent, choice);
     }}
     onClose={() => {
       playSound("click");
@@ -2832,6 +2906,16 @@ export default function App() {
   // bulunursa seçim, ya da (login sonrası devam akışında) hata bildirimi için
   // tek üst-seviye modal. null iken hiçbir şey render edilmez.
   const [roomCodeResult, setRoomCodeResult] = useState<RoomCodeResultData | null>(null);
+  /* MİSAFİR KATILIM — giriş yapmamış kullanıcı geçerli bir oda koduna / davet
+   * bağlantısına ulaştığında gösterilen nick ekranının bağlamı. null iken
+   * ekran render edilmez. Kullanıcı kayıt ekranına ZORLANMAZ; giriş yapmak
+   * isterse "Giriş Yap" bağlantısı bu bağlamı koruyarak auth modalını açar. */
+  const [guestJoin, setGuestJoin] = useState<{ mode: RoomCodeModeKey; code: string } | null>(null);
+  /* Native davet bağlantısı sayacı. iOS Universal Link'i webview adresini
+   * DEĞİŞTİRMEDEN `appUrlOpen` olayı olarak gelir; deepLink.ts kodu URL'e
+   * yazar ve bu sayacı artırır → davet effect'i yeniden koşar ve bağlantı
+   * web ile AYNI kod yolundan işlenir. Web'de hiç değişmez. */
+  const [inviteNonce, setInviteNonce] = useState(0);
   // Native app only: the bottom-nav Profil tab drives the (otherwise
   // top-right) UserProfileDropdown open state. On web this stays undefined
   // and the dropdown keeps its own internal open state.
@@ -2853,6 +2937,9 @@ export default function App() {
   /* Screen a logged-out user tried to open through an online gate. After a
    * successful login navigateOnline()/the auth modal routes here. */
   const [pendingOnlineTarget, setPendingOnlineTarget] = useState<AppScreen | null>(null);
+  /* "Hesap Oluştur" ile gelindiğinde auth modalı doğrudan kayıt sekmesinde
+   * açılır (kullanıcı bir adım daha tıklamasın). Modal kapanınca sıfırlanır. */
+  const [authStartInSignup, setAuthStartInSignup] = useState(false);
   /* Hızlı Eşleş intent (native + narrow/mobil-web sheet). Carried alongside
    * pendingOnlineTarget through the auth gate, persisted to sessionStorage for
    * the OAuth round-trip, and consumed once by the target game's auto-start
@@ -2874,6 +2961,17 @@ export default function App() {
    * DOKUNULMAZ, normal oyunlar göreve sayılmaz. */
   const [dailyQuestOpen, setDailyQuestOpen] = useState(false);
   const [dailyQuestSession, setDailyQuestSession] = useState<DailyQuestSession | null>(null);
+  /* Modal İLK-GİRİŞ intro'su olarak mı açıldı? true → "Şimdi Değil" ikincil
+     butonu görünür. Manuel açılışlarda (buton/Görev sekmesi/guest-login devamı)
+     false; yalnız aşağıdaki auto-open effect'i true yapar. */
+  const [dailyQuestIntro, setDailyQuestIntro] = useState(false);
+  /* Auto-open intro durumu (rozet DEĞİL): tek kaynak dailyQuest gözlemlenebiliri. */
+  const dailyQuestStatus = useDailyQuestStatus();
+  /* Moderasyon durumu (App seviyesinde, senkron okunur): intro auto-open,
+     AccountModerationGate açıkken (banned/suspended) açılmasın diye. Gate kendi
+     durumunu ayrıca çeker; bu yalnız auto-open kapısı içindir. fail-open:
+     okunamazsa "aktif" varsayılır (intro yanlışlıkla bastırılmaz). */
+  const [moderationActive, setModerationActive] = useState(true);
   /* Auth Phase 3 (native only): a freshly signed-in social user (Apple/Google)
    * who has no valid Torble username yet. When set, the NicknameModal blocks
    * routing until the player picks a handle. Never set on web (gated on
@@ -2912,6 +3010,32 @@ export default function App() {
       return;
     }
     setScreen(target);
+  };
+
+  /* Kuşatma menüsünde misafirin bastığı KAPALI seçenek ("Oda Kur" / "Odalara
+   * Göz At") → giriş/kayıt. Bekleyen işlem saklanır ki giriş bitince oyuncu
+   * BOŞ ANA SAYFAYA düşmesin, seçtiği akışa dönsün:
+   *   • Odalara Göz At → conquest-rooms (oda listesi)
+   *   • Oda Kur        → conquest-game  (oda kurma akışı)
+   *
+   * "Yalnızca BİR KEZ devam ettirilsin" kuralı mevcut pendingOnlineTarget
+   * mekanizmasından gelir: hedef sessionStorage'a yazılır (OAuth round-trip'i
+   * atlatmak için), tüketilir tüketilmez clearPendingOnlineTarget() ile
+   * silinir ve auth modalı kapatılırsa da temizlenir. sessionStorage sekmeye
+   * bağlı olduğu için iOS cold-start'ta zaten boştur → eski bir bekleyen işlem
+   * sonraki uygulama açılışında TEKRAR ÇALIŞMAZ. */
+  const onConquestAuthRequired = (
+    intent: LoginRequiredIntent,
+    choice: LoginRequiredChoice,
+  ) => {
+    const target: AppScreen =
+      intent === "conquest-browse" ? "conquest-rooms" : "conquest-game";
+    setPendingOnlineTarget(target);
+    try { sessionStorage.setItem(PENDING_ONLINE_TARGET_KEY, target); }
+    catch { /* sessionStorage disabled — best effort */ }
+    setAuthPromptReason("kusatma-gate");
+    setAuthStartInSignup(choice === "signup");
+    setAuthOpen(true);
   };
 
   /* ── Oda Kodu ile Katıl (üst bar + mobil sheet) ──────────────────────────
@@ -2957,13 +3081,41 @@ export default function App() {
     if (screen !== link.screen) setScreen(link.screen);
   };
 
+  /* Çözümlenen odaya YÖNLENDİRME kararı — kayıtlı ve misafir tek yoldan geçer.
+   *   • Giriş yapılmışsa → mevcut akış (routeToResolvedRoom) aynen çalışır.
+   *   • Misafirse ve mod misafire açıksa → nick ekranı (GuestJoinScreen).
+   *   • Misafirse ve mod login-only ise (Kör Nokta) → giriş istenir.
+   * Böylece oda kodu, davet linki ve ambiguous seçimi AYNI kararı kullanır. */
+  const enterResolvedRoom = (mode: RoomCodeModeKey, code: string) => {
+    if (profile?.username) {
+      routeToResolvedRoom(mode, code);
+      return;
+    }
+    if (!isGuestJoinableMode(mode)) {
+      // Login-only mod (Kör Nokta): kod saklanır, login sonrası devam eder.
+      try { sessionStorage.setItem(PENDING_ROOM_CODE_KEY, code); }
+      catch { /* best effort */ }
+      setRoomCodeResult(null);
+      setAuthPromptReason("kornokta-join");
+      setAuthOpen(true);
+      return;
+    }
+    // Misafir: nick ekranı. Bağlam localStorage'a da yazılır ki OAuth
+    // round-trip'i, sayfa yenilemesi veya iOS cold-start'ı kodu kaybetmesin.
+    setRoomCodeResult(null);
+    setLeaderboardOpen(false);
+    setHomeQuickMatchOpen(false);
+    setPendingGuestJoin(mode, code);
+    setGuestJoin({ mode, code });
+  };
+
   /* Çözümleme sonucunu ele al: found → yönlendir; ambiguous → seçim modalı;
-   * hata → çağırana (bar/sheet inline) mesaj. Yalnız giriş yapmış kullanıcı. */
+   * hata → çağırana (bar/sheet inline) mesaj. */
   const applyRoomCodeResolution = (
     res: Awaited<ReturnType<typeof resolveRoomCode>>,
   ): RoomCodeSubmitOutcome => {
     if (res.result === "found") {
-      routeToResolvedRoom(res.match.mode, res.code);
+      enterResolvedRoom(res.match.mode, res.code);
       return { kind: "done" };
     }
     if (res.result === "ambiguous") {
@@ -2976,22 +3128,14 @@ export default function App() {
     };
   };
 
-  /* Üst bar/mobil sheet submit. Giriş yapmamışsa: kod SAKLANIR + login istenir
-   * (resolver authenticated; guest çözümleme yapmayız → enumeration yüzeyi yok).
-   * Login sonrası completeAuthRouting / boot effect devam ettirir. */
+  /* Üst bar/mobil sheet submit. Resolver artık `anon`a da açık olduğu için
+   * (bkz. 20260808120000_guest_room_join.sql) MİSAFİR de kodu çözebilir ve
+   * doğrudan nick ekranına gider — kullanıcı kayıt ekranına ZORLANMAZ. */
   const handleRoomCodeSubmit = async (
     rawCode: string,
   ): Promise<RoomCodeSubmitOutcome> => {
     if (!isProbablyValidRoomCode(rawCode)) {
       return { kind: "error", message: "Geçersiz oda kodu." };
-    }
-    if (!profile?.username) {
-      try { sessionStorage.setItem(PENDING_ROOM_CODE_KEY, normalizeRoomCode(rawCode)); }
-      catch { /* sessionStorage yok — best effort */ }
-      setPendingOnlineTarget(null);
-      setAuthPromptReason("multi-gate");
-      setAuthOpen(true);
-      return { kind: "done" };
     }
     const res = await resolveRoomCode(rawCode);
     return applyRoomCodeResolution(res);
@@ -3000,7 +3144,58 @@ export default function App() {
   /* Ambiguous modalında bir mod seçilince: doğrudan o modun mevcut katılma
    * akışına yönlendir (kullanıcı kodu tekrar yazmaz). */
   const handleRoomCodePick = (mode: RoomCodeModeKey, code: string) => {
+    enterResolvedRoom(mode, code);
+  };
+
+  /* ── Misafir nick ekranı sonuçları ───────────────────────────────────────
+   * onConfirm: adı sakla → maçı "misafir maçı" olarak işaretle (XP yazılmasın)
+   *            → modun MEVCUT katılma akışına yönlendir. Yeni bir join sistemi
+   *            kurulmaz; mod kendi useInviteJoin'iyle otomatik katılır. */
+  const handleGuestJoinConfirm = (name: string) => {
+    if (!guestJoin) return;
+    setGuestName(name);
+    clearPendingGuestJoin();
+    // Bekleyen davet çıpalarını DÜŞÜR: bağlam artık URL parametresine taşındı
+    // (routeToResolvedRoom yazar) ve modun useInviteJoin'i oradan okur. Çıpa
+    // kalırsa ESKİ oda linki sonraki uygulama açılışlarında tekrar tetiklenir.
+    clearPendingOnlineInvites();
+    clearPendingConquestInvite();
+    const { mode, code } = guestJoin;
+    setGuestJoin(null);
     routeToResolvedRoom(mode, code);
+  };
+
+  /* Misafir "Giriş Yap" dedi: bağlam KORUNUR. Login (in-page veya OAuth
+   * round-trip) tamamlanınca kod çözülüp normal kayıtlı akışa devam edilir. */
+  const handleGuestJoinLogin = () => {
+    if (guestJoin) {
+      try { sessionStorage.setItem(PENDING_ROOM_CODE_KEY, guestJoin.code); }
+      catch { /* best effort */ }
+    }
+    setGuestJoin(null);
+    clearPendingGuestJoin();
+    setPendingOnlineTarget(null);
+    setAuthPromptReason("multi-gate");
+    setAuthOpen(true);
+  };
+
+  const handleGuestJoinCancel = () => {
+    setGuestJoin(null);
+    clearPendingGuestJoin();
+    clearPendingRoomCode();
+    // Davet linki param'ını da temizle ki geri dönüşte ekran tekrar açılmasın.
+    try {
+      const url = new URL(window.location.href);
+      let touched = false;
+      for (const link of ONLINE_INVITE_LINKS) {
+        if (url.searchParams.has(link.param)) { url.searchParams.delete(link.param); touched = true; }
+      }
+      if (url.searchParams.has("conquest")) { url.searchParams.delete("conquest"); touched = true; }
+      if (url.searchParams.has("korNokta")) { url.searchParams.delete("korNokta"); touched = true; }
+      if (touched) window.history.replaceState({}, "", url.toString());
+    } catch { /* history API yok */ }
+    clearPendingOnlineInvites();
+    setScreen("home");
   };
 
   /* Guest → login sonrası devam: saklanan kodu çöz + yönlendir. found/ambiguous
@@ -3043,6 +3238,7 @@ export default function App() {
       setAuthOpen(true);
       return;
     }
+    setDailyQuestIntro(false); // manuel açılış → "Şimdi Değil" gösterme
     setDailyQuestOpen(true);
   };
 
@@ -3052,6 +3248,25 @@ export default function App() {
    * originally picked, then clears the pending-auth bookkeeping. Kept in one
    * place so the nickname path preserves the exact same pending navigation. */
   const completeAuthRouting = (nextProfile: Profile | null) => {
+    // Kayıt sekmesi tercihi tek seferliktir; sonraki açılış normal (giriş)
+    // kipinde başlasın.
+    setAuthStartInSignup(false);
+
+    /* Misafir oyun-sonu ekranından hesap açtı: odadaki AYNI satırı yeni
+     * hesaba devret (sunucu claim_token'ı doğrular; başka bir misafirin
+     * slotu devralınamaz). Böylece oyuncu listesinde ikinci bir kişi
+     * OLUŞMAZ ve "Misafir" etiketi kalkar.
+     *
+     * Ekran DEĞİŞTİRİLMEZ — oyuncu sonuç ekranında kalır.
+     * Başarısızlık ölümcül değildir: oyuncu misafir olarak devam eder.
+     * Bu çağrı XP/altın AKTARMAZ; yalnız kimlik devridir. */
+    if (nextProfile?.username && authPromptReason === "guest-signup") {
+      const mode = SCREEN_TO_ROOM_MODE[screen];
+      if (mode) void linkActiveGuestSession(mode);
+      setAuthPromptReason(null);
+      localStorage.setItem("torble_welcome_seen", "true");
+      return;
+    }
     if (nextProfile?.username && authPromptReason === "kornokta-create") {
       setScreen("kornokta-create");
     } else if (nextProfile?.username && authPromptReason === "kornokta-join") {
@@ -3093,6 +3308,7 @@ export default function App() {
       catch { /* sessionStorage yok */ }
       if (pendingDq) {
         clearPendingDailyQuest();
+        setDailyQuestIntro(false); // guest→login devamı = manuel açılış
         setDailyQuestOpen(true);
       }
     }
@@ -3153,6 +3369,78 @@ useEffect(() => {
   else setDailyQuestStatus("unknown");
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [screen, profile?.id, authLoading]);
+
+// Moderasyon durumunu (aktif/suspended/banned) App seviyesine oku — yalnız Günün
+// Görevi intro auto-open kapısı için (aşağıda). Girişte / hesap değişiminde bir
+// kez; misafirde "aktif" varsayılır. AccountModerationGate ayrıca kendi okumasını
+// yapar; burada tek amaç, moderasyon modalı görünecekken intro'yu bastırmak.
+useEffect(() => {
+  if (authLoading) return;
+  if (!profile?.id) { setModerationActive(true); return; }
+  let alive = true;
+  void getMyModerationStatus().then((m) => {
+    if (alive) setModerationActive(m.status === "active");
+  });
+  return () => { alive = false; };
+}, [profile?.id, authLoading]);
+
+// Günün Görevi İLK-GİRİŞ intro'su — mobil ana sayfada, giriş uygun olduğunda o
+// görev günü için BİR KEZ DailyQuestModal'ı otomatik açar (AYNI bileşen; yeni
+// görev mantığı YOK). Sıkı kapılar: yalnız mobil yüzey (native veya ≤600px web →
+// masaüstü akışı DEĞİŞMEZ), giriş yapılmış, ana menüde (oyun-içi değil), görev
+// "bekliyor" (available/active/reward_ready — claimed/unknown'da YOK), moderasyon
+// aktif ve hiçbir kritik/home modalı açık değil (açıksa güvenle ertelenir: modal
+// kapanınca dep değişir → yeniden değerlendirilir). "Gösterildi" kaydı
+// localStorage'da profil+görev-tarihi bazında (hesaplar arası taşınmaz; ertesi
+// gün yeni tarih → yeniden bir kez). setItem, setDailyQuestOpen'dan ÖNCE senkron
+// yazılır → tekrar açılmaz (dailyQuestOpen zaten dqIntroBlockedByModal'da).
+const dqIntroBlockedByModal =
+  authOpen ||
+  pendingNicknameUserId != null ||
+  recoveryState !== "none" ||
+  dailyQuestOpen ||
+  leaderboardOpen ||
+  homeQuickMatchOpen ||
+  roomCodeResult != null ||
+  accountModalOpen ||
+  avatarModalOpen ||
+  profileEditOpen ||
+  badgeShowcaseOpen ||
+  blockedUsersOpen;
+useEffect(() => {
+  // İntro AYRI bir karar (lib/dailyQuest → MOBILE_DAILY_QUEST_INTRO_ENABLED);
+  // ana menü görünürlüğünden (…_HOME_VISIBLE) bağımsızdır: ana menüde kart/rozet
+  // olmasa da uygulamaya girişte intro çalışır. Bu efekt ZATEN yalnız mobil
+  // yüzeyde koşuyor (aşağıdaki isMobileSurface kapısı) → masaüstü etkilenmez.
+  if (!MOBILE_DAILY_QUEST_INTRO_ENABLED) return;
+  if (authLoading) return;
+  if (screen !== "home") return;
+  if (!profile?.username || !profile?.id) return;
+  const isMobileSurface =
+    IS_NATIVE_APP ||
+    (typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 600px)").matches);
+  if (!isMobileSurface) return;
+  if (
+    dailyQuestStatus !== "available" &&
+    dailyQuestStatus !== "active" &&
+    dailyQuestStatus !== "reward_ready"
+  ) return;
+  if (!moderationActive) return;
+  if (dqIntroBlockedByModal) return;
+  const key = getCurrentDailyQuestKey();
+  if (!key) return; // snapshot henüz hazır değil → sonraki dep değişiminde
+  const seenKey = `daily_quest_intro_seen:${profile.id}:${key.date}`;
+  let alreadySeen = false;
+  try { alreadySeen = localStorage.getItem(seenKey) === "1"; }
+  catch { /* localStorage yok — best effort */ }
+  if (alreadySeen) return;
+  try { localStorage.setItem(seenKey, "1"); } catch { /* best effort */ }
+  setDailyQuestIntro(true);
+  setDailyQuestOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [authLoading, screen, profile?.id, dailyQuestStatus, moderationActive, dqIntroBlockedByModal]);
 
 // Savunmacı kurtarma: görev ekranı oturumsuz kalırsa (beklenmez) home'a dön.
 useEffect(() => {
@@ -3278,13 +3566,44 @@ function clearPendingKorNoktaInvite() {
   }
 }
 
+  /* ── Native davet bağlantısı köprüsü (iOS/Android Universal Link) ────────
+   * iOS bir Universal Link'i uygulamaya `appUrlOpen` olayı olarak teslim eder;
+   * webview'in adresi değişmez, dolayısıyla aşağıdaki davet effect'i tek
+   * başına hiçbir şey göremez. deepLink.ts kodu URL'e yazar, biz de nonce'u
+   * artırıp effect'i yeniden koştururuz → bağlantı WEB İLE AYNI yoldan işlenir.
+   *
+   * Kapsanan durumlar: uygulama arka planda (appUrlOpen) ve uygulama tamamen
+   * kapalı (getLaunchUrl). Web'de initInviteDeepLinks no-op'tur. */
+  useEffect(() => {
+    const dispose = initInviteDeepLinks(() => {
+      setInviteNonce((n) => n + 1);
+    });
+    return dispose;
+  }, []);
+
+  /* ── Misafir oyun-sonu "Hesap Oluştur" isteği ────────────────────────────
+   * GuestEndPrompt sekiz farklı oyun bileşeninin sonuç ekranında render
+   * ediliyor. Her birine auth prop'u geçirmek yerine tek bir global olay
+   * dinlenir; oyun bileşenleri auth akışından habersiz kalır.
+   *
+   * Auth modalı "kayıt" sekmesiyle açılır. Oyuncu odadan ATILMAZ — oyun
+   * ekranı arkada durur, kayıt bitince aynı ekrana geri dönülür ve odadaki
+   * yeri korunur (bkz. torble_link_guest_player). */
+  useEffect(() => {
+    const onRequest = () => {
+      setAuthPromptReason("guest-signup");
+      setAuthOpen(true);
+    };
+    window.addEventListener(GUEST_SIGNUP_EVENT, onRequest);
+    return () => window.removeEventListener(GUEST_SIGNUP_EVENT, onRequest);
+  }, []);
+
   /* ── Invite-link routing ──────────────────────────────────────────────────
-   * Conquest is the only mode that requires login, so it has to wait for the
-   * auth-load to settle before routing. Re-runs when authLoading / profile
-   * flips so a guest who logs in via the conquest auth prompt is routed into
-   * the lobby on the same mount. The conquest invite code is mirrored into
-   * sessionStorage too — an OAuth round-trip (e.g. Google) replaces the URL,
-   * so we'd otherwise lose it; we write it back into the URL once we resume.
+   * Kayıtlı kullanıcı doğrudan modun lobisine gider. MİSAFİR ise (giriş
+   * yapmamış) mod misafire açıksa "Odaya Katıl" nick ekranına yönlendirilir —
+   * kayıt ekranına ZORLANMAZ. Auth-load'un oturması beklenir; profile flip'i
+   * effect'i yeniden koşturur. Kodlar sessionStorage'a yazılır çünkü bir OAuth
+   * round-trip'i URL'i siler; dönüşte geri yazılır.
    */
   useEffect(() => {
     if (authLoading) return;
@@ -3317,27 +3636,28 @@ function clearPendingKorNoktaInvite() {
         try { sessionStorage.removeItem("pending_conquest_invite_code"); }
         catch { /* ignore */ }
         if (screen !== "conquest-join") setScreen("conquest-join");
-      } else {
-        // Guest: prompt login. The effect re-runs after onAuthSuccess
-        // sets the profile, which is when the join actually happens.
-        if (!authOpen) {
-          setAuthPromptReason("conquest-invite");
-          setAuthOpen(true);
-        }
+      } else if (!guestJoin && !authOpen) {
+        // Misafir: KAYIT ekranına değil, nick ekranına gider. Kuşatma odasına
+        // katılma sunucuda misafire açıktır (conquest_register_player anon);
+        // yalnız oda KURMA login gerektirir.
+        setPendingGuestJoin("conquest", conquestCode);
+        setGuestJoin({ mode: "conquest", code: conquestCode });
       }
       return;
     }
 
     if (korNoktaCode) {
-      // Kör Nokta login-only: misafire önce auth modal'ı açılır; login sonrası
-      // bu effect profile?.id flip'iyle yeniden koşar ve join ekranına geçer.
-      // KorNoktaMode içindeki useInviteJoin ?korNokta= param'ını okuyup
-      // auto-join tetikler ve URL'den temizler.
+      // KorNoktaMode içindeki auto-join effect'i ?korNokta= param'ını okuyup
+      // katılmayı tetikler ve URL'den temizler.
       if (profile?.username) {
         if (screen !== "kornokta-join") setScreen("kornokta-join");
-      } else if (!authOpen) {
-        setAuthPromptReason("kornokta-invite");
-        setAuthOpen(true);
+      } else if (!guestJoin && !authOpen) {
+        // Misafir: KAYIT ekranına DEĞİL, nick ekranına gider (Kuşatma ile aynı
+        // yol). Kör Nokta odasına katılma 20260809120000 ile misafire açıldı;
+        // yalnız oda KURMA login gerektirir.
+        const clean = normalizeRoomCode(korNoktaCode);
+        setPendingGuestJoin("korNokta", clean);
+        setGuestJoin({ mode: "korNokta", code: clean });
       }
       return;
     }
@@ -3366,14 +3686,23 @@ function clearPendingKorNoktaInvite() {
         }
         if (screen !== link.screen) setScreen(link.screen);
       } else {
-        // Misafir: kodu OAuth redirect'e dayanması için sakla, login iste.
+        // Misafir: kodu sakla (OAuth redirect'e ve iOS cold-start'a dayansın),
+        // param'ı URL'e geri koy, sonra KAYIT ekranı yerine nick ekranını aç.
         try { sessionStorage.setItem(link.storageKey, code); } catch { /* ignore */ }
         if (!fromUrl && typeof window !== "undefined") {
           const restored = new URL(window.location.href);
           restored.searchParams.set(link.param, code);
           window.history.replaceState({}, "", restored.toString());
         }
-        if (!authOpen) {
+        const inviteMode = modeFromInviteParam(link.param);
+        if (inviteMode && isGuestJoinableMode(inviteMode)) {
+          if (!guestJoin && !authOpen) {
+            const clean = normalizeRoomCode(code);
+            setPendingGuestJoin(inviteMode, clean);
+            setGuestJoin({ mode: inviteMode, code: clean });
+          }
+        } else if (!authOpen) {
+          // Misafire kapalı mod → mevcut login akışı korunur.
           setPendingOnlineTarget(link.screen);
           setAuthPromptReason(link.reason);
           setAuthOpen(true);
@@ -3395,6 +3724,26 @@ function clearPendingKorNoktaInvite() {
       return;
     }
 
+    // MİSAFİR: nick ekranındayken uygulama kapandı / sayfa yenilendi ise
+    // bağlamı geri getir. localStorage kullanılır çünkü iOS'ta uygulama
+    // tamamen kapatılıp açıldığında (cold start) sessionStorage silinir —
+    // "uygulama kapalıyken bağlantıya basılırsa oda kodu kaybolmamalı"
+    // kabul kriteri bunu gerektirir. Giriş yapılmışsa bağlam düşürülür
+    // (kayıtlı kullanıcı normal akıştan devam eder).
+    if (!guestJoin) {
+      const pendingGuest = readPendingGuestJoin();
+      if (pendingGuest) {
+        if (profile?.username) {
+          clearPendingGuestJoin();
+        } else if (isGuestJoinableMode(pendingGuest.mode)) {
+          setGuestJoin({ mode: pendingGuest.mode, code: pendingGuest.code });
+          return;
+        } else {
+          clearPendingGuestJoin();
+        }
+      }
+    }
+
     // Günün Görevi niyeti OAuth round-trip'ten döndüyse (page reload in-memory
     // state'i sildi): login oturduğunda görev modalını otomatik aç.
     let pendingDailyQuest: string | null = null;
@@ -3402,6 +3751,7 @@ function clearPendingKorNoktaInvite() {
     catch { /* sessionStorage disabled — best effort */ }
     if (pendingDailyQuest && profile?.username) {
       clearPendingDailyQuest();
+      setDailyQuestIntro(false); // guest→login (OAuth) devamı = manuel açılış
       setDailyQuestOpen(true);
       return;
     }
@@ -3429,7 +3779,7 @@ function clearPendingKorNoktaInvite() {
       // later in-modal login can still route; onClose/onGuest clear it.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, profile?.id]);
+  }, [authLoading, profile?.id, inviteNonce]);
   /* ── Hoş geldin: misafir kullanıcıya giriş davet modal'ı (bir kez) ── */
 useEffect(() => {
   // Auth check henüz bitmediyse bekle
@@ -3443,11 +3793,15 @@ useEffect(() => {
   // Daha önce göstermişsek bir daha çıkma
   if (localStorage.getItem("torble_welcome_seen") === "true") return;
 
+  // Misafir katılım ekranı açık / beklemedeyse hoş geldin modalını gösterme —
+  // kullanıcı odaya girmeye çalışıyor, araya login duvarı koymayız.
+  if (guestJoin || readPendingGuestJoin()) return;
+
   // Davet linkiyle gelmişse modal'ı atla — arkadaş odasına direkt geçsin.
   // Conquest davetinde de modal'ı atla; conquest-invite effect kendi auth
   // promptunu açıyor (farklı header mesajıyla).
   const params = new URLSearchParams(window.location.search);
-  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("routeDuel") || params.get("conquest") || params.get("korNokta")) {
+  if (params.get("duel") || params.get("duelGroup") || params.get("flagDuel") || params.get("flagGroup") || params.get("wheelDuel") || params.get("wheelGroup") || params.get("routeDuel") || params.get("conquest") || params.get("korNokta")) {
     return;
   }
   let pendingConquest: string | null = null;
@@ -3564,6 +3918,7 @@ useEffect(() => {
           setAuthPromptReason(action === "create" ? "kornokta-create" : "kornokta-join");
           setAuthOpen(true);
         }}
+        onConquestAuthRequired={onConquestAuthRequired}
         onOpenRanking={() => setLeaderboardOpen(true)}
         onOpenProfile={() => {
           // Reuse the existing chrome: logged-in opens the profile dropdown
@@ -3586,9 +3941,11 @@ useEffect(() => {
           yanıtından oturum kurar ve daily-quest-game ekranına geçer. */}
       {dailyQuestOpen && (
         <DailyQuestModal
-          onClose={() => setDailyQuestOpen(false)}
+          introMode={dailyQuestIntro}
+          onClose={() => { setDailyQuestOpen(false); setDailyQuestIntro(false); }}
           onStartSession={(session) => {
             setDailyQuestOpen(false);
+            setDailyQuestIntro(false);
             setDailyQuestSession(session);
             setScreen("daily-quest-game");
           }}
@@ -3625,10 +3982,23 @@ useEffect(() => {
           home'un yanı sıra lobiler/oyun ekranlarındaki profil kartından da
           açılabiliyor. Burada tekrar mount EDİLMEZ. */}
 
+      {/* MİSAFİR "Odaya Katıl" nick ekranı. Auth modalı açıkken gösterilmez
+          (kullanıcı giriş yapmayı seçmiştir). Giriş yapılmışsa da anlamsızdır. */}
+      {guestJoin && !authOpen && !profile?.username && (
+        <GuestJoinScreen
+          mode={guestJoin.mode}
+          code={guestJoin.code}
+          onConfirm={handleGuestJoinConfirm}
+          onLogin={handleGuestJoinLogin}
+          onCancel={handleGuestJoinCancel}
+        />
+      )}
+
       {authOpen && (
   <AuthModal
     isNative={IS_NATIVE_APP}
     startInForgot={authStartInForgot}
+    startInSignup={authStartInSignup}
     onNeedsUsername={(userId) => {
       // Native first-login social user with no handle. Hide the auth modal and
       // hand off to the NicknameModal, KEEPING pendingOnlineTarget +
@@ -3651,6 +4021,8 @@ useEffect(() => {
         ? "Kuşatma oynamak için giriş yapmalısın."
         : authPromptReason === "daily-quest"
         ? "Günün Görevi'ni oynamak ve ödülünü almak için giriş yapmalısın."
+        : authPromptReason === "guest-signup"
+        ? "Hesap oluştur: odadaki yerini korursun ve bundan sonraki turlarda kazandığın XP, altın ve başarılar hesabına işlenir."
         : undefined
     }
     hideGuest={
@@ -3660,11 +4032,14 @@ useEffect(() => {
       authPromptReason === "duel-gate" ||
       authPromptReason === "multi-gate" ||
       authPromptReason === "kusatma-gate" ||
-      authPromptReason === "daily-quest"
+      authPromptReason === "daily-quest" ||
+      // Misafir zaten oyunun içinde; "Misafir olarak devam et" anlamsız olurdu.
+      authPromptReason === "guest-signup"
     }
     onClose={() => {
       setAuthOpen(false);
       setAuthStartInForgot(false);
+      setAuthStartInSignup(false);
       // Dismissing the conquest auth prompt drops the pending invite so
       // a reload doesn't pester the user with the same login modal.
       if (authPromptReason === "conquest-invite") {
@@ -3883,6 +4258,7 @@ useEffect(() => {
       initialPhase="rooms"
       onHome={() => setScreen("home")}
       profile={profile}
+      onAuthRequired={(choice) => onConquestAuthRequired("conquest-browse", choice)}
     />
   );
   if (screen === "conquest-join") return (

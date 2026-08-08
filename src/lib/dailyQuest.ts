@@ -16,6 +16,31 @@ import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { syncGoldFromServer } from "./gold";
 
+/* ── Mobil görünürlük kararları (ÜRÜN, YÜZEY BAŞINA AYRI ANAHTAR) ───────────
+   Eskiden tek bir `MOBILE_DAILY_QUEST_VISIBLE` üç ayrı davranışı birlikte
+   açıp kapatıyordu; ana menüyü temizlemek için kapatıldığında intro ve sosyal
+   sekme de yanında kapandı. Kararlar artık ayrı — biri diğerini sürüklemez.
+
+   Ortak sabitler (üçü de): özellik, RPC'ler, ödül/ilerleme akışı ve
+   DailyQuestModal / DailyQuestGame bileşenleri OLDUĞU GİBİ durur; bayraklar
+   yalnız GİRİŞLERİ kapatır. MASAÜSTÜ ETKİLENMEZ — üst bardaki "Günün Görevi"
+   butonu bu bayrakların hiçbirini okumaz. */
+
+/** Mobil ANA MENÜ yüzeyi (MobileHome). Kapalı: ana menüde Günün Görevi'ne dair
+ *  hiçbir iz yok — kart/entry yok ve alt-nav rozetine +1 EKLENMEZ (sosyal
+ *  okunmamış sayacı bundan etkilenmez). Ana menü tasarımı dondurulmuş durumda;
+ *  bunu `true` yapmak görsel bir değişikliktir, ürün onayı ister. */
+export const MOBILE_DAILY_QUEST_HOME_VISIBLE: boolean = false;
+
+/** Mobil İLK-GİRİŞ intro'su (App.tsx efekti). Açık: uygun koşullarda o görev
+ *  günü için BİR KEZ DailyQuestModal otomatik açılır. "Bir kez göster" kaydı
+ *  localStorage'da profil+görev-tarihi bazında — gün içinde tekrarlamaz. */
+export const MOBILE_DAILY_QUEST_INTRO_ENABLED: boolean = true;
+
+/** Arkadaşlar / SocialCenter sheet'indeki "Görev" sekmesi. Açık: sekme listede
+ *  görünür ve mevcut görev paneli (durum + CTA) render edilir. */
+export const MOBILE_DAILY_QUEST_SOCIAL_VISIBLE: boolean = true;
+
 /* ── Tipler ─────────────────────────────────────────────────────────────── */
 
 export type DailyQuestMode =
@@ -115,6 +140,7 @@ export async function fetchDailyQuestState(): Promise<DailyQuestState> {
   const res = await rpc<DailyQuestState>("daily_quest_get_state");
   const state = res as DailyQuestState;
   updateStatusFromState(state);
+  setLastState(state);
   return state;
 }
 
@@ -263,6 +289,46 @@ export function useDailyQuestStatus(): DailyQuestStatus {
     };
   }, []);
   return status;
+}
+
+/* ── Görev anlık görüntüsü (Görev sekmesi özeti + intro auto-open anahtarı) ──
+   Son daily_quest_get_state yanıtı, status gözlemlenebiliriyle AYNI fetch'te
+   güncellenir (ayrı RPC atılmaz). Görev sekmesi buradan başlık/mod/ödül/açıklama
+   okur; intro auto-open buradan quest tarih/id anahtarını türetir. Otorite yine
+   status + sunucu; bu yalnız görüntü içindir. */
+let lastState: DailyQuestState | null = null;
+let stateListeners: Array<(s: DailyQuestState | null) => void> = [];
+
+function setLastState(state: DailyQuestState | null): void {
+  lastState = state;
+  for (const cb of stateListeners) cb(state);
+}
+
+export function getDailyQuestState(): DailyQuestState | null {
+  return lastState;
+}
+
+/** Bugünkü görevin { id, quest_date } anahtarı — intro "bir kez göster"
+ *  localStorage anahtarı (daily_quest_intro_seen:<profil>:<tarih>) için. Yalnız
+ *  geçerli+oynanabilir görev yüklüyken dolu; aksi halde null (auto-open atlanır). */
+export function getCurrentDailyQuestKey(): { id: string; date: string } | null {
+  if (lastState?.ok && lastState.quest) {
+    return { id: lastState.quest.id, date: lastState.quest.quest_date };
+  }
+  return null;
+}
+
+/** React hook: Görev sekmesi özet kartı son durumu tek kaynaktan okur. */
+export function useDailyQuestState(): DailyQuestState | null {
+  const [snapshot, setSnapshot] = useState<DailyQuestState | null>(getDailyQuestState);
+  useEffect(() => {
+    stateListeners.push(setSnapshot);
+    setSnapshot(getDailyQuestState());
+    return () => {
+      stateListeners = stateListeners.filter((l) => l !== setSnapshot);
+    };
+  }, []);
+  return snapshot;
 }
 
 /* ── Yardımcılar ────────────────────────────────────────────────────────── */

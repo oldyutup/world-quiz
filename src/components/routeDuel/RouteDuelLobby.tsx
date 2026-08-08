@@ -14,6 +14,7 @@
  * gelen callback'lerle sunucu-otoriter RPC'lere gider.
  */
 import LobbyChat from "../LobbyChat";
+import { GuestTag } from "../GuestTag";
 import { PlayerAvatar } from "../PlayerAvatar";
 import { PlayerProfileTrigger } from "../PlayerProfileTrigger";
 import { LobbyInviteBar } from "../LobbyInviteBar";
@@ -130,6 +131,7 @@ export default function RouteDuelLobby({
                       </PlayerProfileTrigger>
                       <div className="duel-player-tags">
                         {isMe && <span className="duel-tag">Sen</span>}
+                        {!p.profile_id && <GuestTag />}
                         {isPlayerHost && <span className="duel-tag host">👑</span>}
                       </div>
                     </div>

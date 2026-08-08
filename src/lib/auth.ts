@@ -1,7 +1,4 @@
 import { supabase } from "./supabase";
-import {
-  BANNED_USERNAME_WORDS,
-} from "../data/bannedUsernames";
 import { isValidAvatarId } from "../data/avatars";
 import {
   isAchievementAvatarId,
@@ -34,11 +31,6 @@ export type Profile = {
    *  'change' | 'legacy'. Never shown to the user. */
   username_source?: string | null;
 };
-
-// Oyun-içi MİSAFİR görünen-ad doğrulaması için (account username DEĞİL).
-// Bkz. validateUsername / normalizeUsername aşağıda; bu kurallar (3-16,
-// ASCII+Türkçe, nokta/tire yok) değiştirilmedi.
-const USERNAME_REGEX = /^[a-z0-9_çğıöşü]{3,16}$/;
 
 export const USERNAME_CHANGE_COST = 500;
 export const USERNAME_CHANGE_COOLDOWN_DAYS = 14;
@@ -125,35 +117,12 @@ export async function callChangeUsername(
 }
 
 
-export function normalizeUsername(username: string) {
-  return username.trim().toLocaleLowerCase("tr-TR");
-}
-
-export function validateUsername(usernameRaw: string): string | null {
-  const username = normalizeUsername(usernameRaw);
-
-  if (username.length < 3) {
-    return "Kullanıcı adı en az 3 karakter olmalı.";
-  }
-
-  if (username.length > 16) {
-    return "Kullanıcı adı en fazla 16 karakter olabilir.";
-  }
-
-  if (!USERNAME_REGEX.test(username)) {
-    return "Sadece küçük harf, rakam, alt çizgi ve Türkçe karakter kullanabilirsin.";
-  }
-
-  const hasBannedWord = BANNED_USERNAME_WORDS.some((word) =>
-    username.includes(word)
-  );
-
-  if (hasBannedWord) {
-    return "Bu kullanıcı adı kullanılamaz.";
-  }
-
-  return null;
-}
+/* Oyun-içi görünen ad kuralları artık SAF bir modülde (lib/displayName.ts) —
+ * hem misafir nick ekranı hem de mod lobileri aynı fonksiyonu kullanır ve
+ * kurallar Node altındaki test scriptlerinden import edilebilir. Buradan
+ * re-export edilir, böylece mevcut çağıranların hiçbiri değişmez. */
+import { normalizeUsername, validateUsername } from "./displayName";
+export { normalizeUsername, validateUsername };
 
 export async function signUpWithEmail(
   email: string,

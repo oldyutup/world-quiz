@@ -1,0 +1,23 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["MJ2952BGX2.com.kavakgames.torble"],
+        "components": [
+          { "/": "/", "?": { "duel": "?*" },       "comment": "Ulke Yaz 1v1 oda daveti" },
+          { "/": "/", "?": { "flagDuel": "?*" },   "comment": "Bayrak 1v1 oda daveti" },
+          { "/": "/", "?": { "wheelDuel": "?*" },  "comment": "Cark 1v1 oda daveti" },
+          { "/": "/", "?": { "routeDuel": "?*" },  "comment": "Rota 1v1 oda daveti" },
+          { "/": "/", "?": { "duelGroup": "?*" },  "comment": "Ulke Yaz grup oda daveti" },
+          { "/": "/", "?": { "wheelGroup": "?*" }, "comment": "Cark grup oda daveti" },
+          { "/": "/", "?": { "flagGroup": "?*" },  "comment": "Bayrak Bilmece oda daveti" },
+          { "/": "/", "?": { "conquest": "?*" },   "comment": "Kusatma oda daveti" },
+          { "/": "/", "?": { "korNokta": "?*" },   "comment": "Kor Nokta oda daveti" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["MJ2952BGX2.com.kavakgames.torble"]
+  }
+}

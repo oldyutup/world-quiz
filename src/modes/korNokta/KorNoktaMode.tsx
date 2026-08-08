@@ -5,8 +5,7 @@
  * (dedektif/raporcu/köstebek tur döngüsü) KorNoktaGame.tsx'tedir ve
  * room.status 'playing'/'finished' + game_state doluyken lobi yerine
  * render edilir. Host "Oyunu Başlat" → tevatur_kn_start_game RPC'si
- * (20260713120000 migration'ı); sonrası mevcut tevatur_rooms realtime
- * UPDATE aboneliğiyle tüm oyunculara akar.
+ * (20260713120000 migration'ı); sonrası oda aboneliğiyle tüm oyunculara akar.
  *
  * Altyapı NOT'u: Kör Nokta, eski Tevatür iskeletinin devamıdır. DB tarafı
  * tevatur_* tablolarını/RPC'lerini aynen kullanır (en düşük riskli yol):
@@ -14,6 +13,11 @@
  *   • Tüm yazma yolları SECURITY DEFINER RPC'ler üzerinden
  *     (tevatur_create_room / join_room / update_settings / kick_player /
  *      leave_room / send_message)
+ *   • OKUMA yolu TEK: `tevatur_get_room_state` RPC'si (korNoktaRoomState.ts).
+ *     Ham tablo SELECT'i YOKTUR — 20260811120000 o yolu `anon` rolüne
+ *     kapattı, yoksa hesabı olmayan biri bütün Kör Nokta odalarını ve
+ *     oyuncularını listeleyebiliyordu. Canlı akış kayıtlı kullanıcıda
+ *     postgres_changes, misafirde private broadcast sinyali + yoklamadır.
  *   • Chat: mevcut duel_messages tablosu reuse edilir (LobbyChat,
  *     sendMode="tevatur" → tevatur_send_message RPC).
  *   • Oda kodu "N" ile başlar (N = Kör Nokta) → diğer modların kodlarıyla
@@ -21,8 +25,14 @@
  *     (K=Conquest, M=WheelGroup, W=WheelDuel, T=eski Tevatür).
  *
  * Mod kuralları:
- *   • LOGIN-ONLY: misafir oyuncu yok. Oyuncu adı server-side
- *     profiles.username'den resolve edilir; client ad göndermez.
+ *   • ODA KURMA login gerektirir; ODAYA KATILMA misafire de açıktır
+ *     (20260809120000). Kayıtlı oyuncunun adı server-side
+ *     profiles.username'den resolve edilir ve client'ın gönderdiği ad YOK
+ *     SAYILIR; misafir ise nick ekranında seçtiği adı gönderir ve o ad
+ *     sunucuda `assert_display_name_allowed` kapısından geçer (kayıtlı
+ *     kullanıcı adı taklidi + yasaklı kelime + oda-içi çakışma).
+ *   • Misafire kalıcı XP/altın/görev/istatistik YAZILMAZ
+ *     (award_kornokta_xp_event yalnız `authenticated`).
  *   • 3–5 oyuncu. "Oyunu Başlat" min 3 oyuncuyla aktifleşir ama şimdilik
  *     yalnız "sonraki adımda" bilgisi gösterir (start RPC'si henüz yok).
  *   • Ayarlar: Tur Sayısı (5/7/10/15/20, varsayılan 7). "Roller" ayarı
@@ -33,6 +43,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildInviteUrl } from "../../lib/inviteLink";
 import LobbyChat from "../../components/LobbyChat";
 import type { Profile } from "../../lib/auth";
 import { useInviteJoin } from "../../lib/useInviteJoin";
@@ -44,7 +55,20 @@ import { LobbyInviteBar } from "../../components/LobbyInviteBar";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
 import { useSocialOptional } from "../../components/SocialContext";
 import { playSound } from "../../lib/sound";
+import { GuestTag } from "../../components/GuestTag";
+import {
+  getGuestName,
+  setGuestName,
+  sanitizeGuestName,
+  validateGuestName,
+  GUEST_NAME_REGISTERED_MESSAGE,
+  GUEST_NAME_FORBIDDEN_MESSAGE,
+} from "../../lib/guestSession";
 import KorNoktaGame from "./KorNoktaGame";
+import {
+  fetchKorNoktaRoomState,
+  subscribeToKorNoktaRoom,
+} from "./korNoktaRoomState";
 import {
   buildKnScenePlan,
   parseKnGameState,
@@ -83,6 +107,11 @@ const LEGACY_PHOTO_SECONDS = 10;
 const PLAYER_ID_KEY   = "geoquiz_kornokta_player_id";
 const ROOM_KEY        = "geoquiz_kornokta_room";
 const CLAIM_TOKEN_KEY = "geoquiz_kornokta_claim_token";
+/** Misafir oturum kimliği. Oda oturumundan AYRI yaşar: oyuncu odadan çıkıp
+ *  başka bir odaya girdiğinde aynı guest_id kullanılır (diğer modlarla aynı
+ *  desen, bkz. FlagGroupGame GUEST_ID_KEY). Yetki VERMEZ — sunucudaki kanıt
+ *  claim_token'dır; guest_id yalnız "aynı misafir oturumu" ayrımı içindir. */
+const GUEST_ID_KEY    = "geoquiz_kornokta_guest_id";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -132,10 +161,29 @@ function freshClaimToken(): string {
   return tok;
 }
 
+/** Kalıcı misafir oturum kimliği (yoksa üretilir). */
+function ensureGuestId(): string {
+  try {
+    let g = localStorage.getItem(GUEST_ID_KEY);
+    if (!g) {
+      g =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(GUEST_ID_KEY, g);
+    }
+    return g;
+  } catch {
+    // localStorage kapalı (private mode) → oturum-ömürlü kimlik.
+    return `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 function clearKorNoktaSession() {
   localStorage.removeItem(PLAYER_ID_KEY);
   localStorage.removeItem(ROOM_KEY);
   localStorage.removeItem(CLAIM_TOKEN_KEY);
+  // GUEST_ID_KEY KASTEN silinmez: misafir kimliği odalar arasında yaşar.
 }
 
 function saveRoomSession(roomId: string, roomCode: string, playerId: string) {
@@ -153,8 +201,17 @@ function describeKorNoktaRpcError(
   if (!error) return null;
   const msg = (error.message ?? "").toLowerCase();
   if (msg.includes("code_taken"))           return "Bu oda kodu az önce kullanıldı. Tekrar dene.";
-  if (msg.includes("auth_required"))        return "Kör Nokta için giriş yapmalısın.";
+  if (msg.includes("auth_required"))        return "Kör Nokta odası kurmak için giriş yapmalısın.";
   if (msg.includes("username_required"))    return "Hesabında bir kullanıcı adı yok.";
+  // Misafir ad kapısı (assert_display_name_allowed) — metinler tek kaynaktan
+  // gelir ki nick ekranıyla lobi aynı cümleyi göstersin.
+  if (msg.includes("registered_username_taken")) return GUEST_NAME_REGISTERED_MESSAGE;
+  if (msg.includes("display_name_forbidden"))    return GUEST_NAME_FORBIDDEN_MESSAGE;
+  if (msg.includes("name_taken"))
+    return "Bu kullanıcı adı odada kullanılıyor. Başka bir kullanıcı adı seç.";
+  if (msg.includes("name_invalid"))         return "Bu kullanıcı adı geçersiz. 3-16 karakter kullan.";
+  if (msg.includes("guest_id_required"))
+    return "Misafir oturumun oluşturulamadı. Sayfayı yenileyip tekrar dene.";
   if (msg.includes("already_in_room"))      return "Zaten bu odadasın (başka bir sekmede olabilir).";
   if (msg.includes("room_full"))            return "Oda dolu.";
   if (msg.includes("room_finished"))        return "Bu oda kapanmış.";
@@ -196,6 +253,20 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
   const isLoggedInPlayer = !!profile?.username;
 
+  /** Misafirin daha önce (nick ekranında ya da başka bir modda) seçtiği ad.
+   *  Katılma ekranındaki alan bununla ön-doldurulur. */
+  const [guestNameInput, setGuestNameInput] = useState<string>(
+    () => (profile?.username ? "" : getGuestName() ?? ""),
+  );
+
+  /** Davet linkiyle gelen misafir ADI HAZIRSA auto-join edebilir. Adı yoksa
+   *  katılma ekranında kalır ve adını orada yazar. */
+  const canAutoJoinAsSomeone =
+    isLoggedInPlayer || !!(profile?.username ? null : getGuestName());
+
+  /** Giriş kapısı YALNIZ oda kurmada. Katılma misafire açıktır. */
+  const showLoginGuard = !isLoggedInPlayer && initialAction === "create";
+
   /* ── Form / status state ─────────────────────────────────── */
   const [joinCode, setJoinCode]   = useState<string>("");
   const [errorMsg, setErrorMsg]   = useState<string | null>(null);
@@ -213,13 +284,18 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   const [players, setPlayers] = useState<TevaturPlayer[]>([]);
   // Sosyal: roster avatarları + odadayken davet için room context.
   const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL. Context
+  // value'su roomContext değiştiğinde yeni identity alır; effect `social`a
+  // bağlıyken bu, setRoomContext → yeni identity → cleanup(null) → effect →
+  // … döngüsünü kuruyordu ("Maximum update depth exceeded"). setRoomContext
+  // bir useState setter'ıdır, React kimliğini garanti eder.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
+    if (!setRoomContext) return;
     const code = room?.code;
-    if (code) social.setRoomContext({ code, mode: "korNokta", roomUrl: `/?korNokta=${code}` });
-    return () => social.setRoomContext(null);
-  }, [social, room?.code]);
+    if (code) setRoomContext({ code, mode: "korNokta", roomUrl: `/?korNokta=${code}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, room?.code]);
 
   /* ── Mobile sheets ───────────────────────────────────────── */
   const [playersSheetOpen, setPlayersSheetOpen] = useState(false);
@@ -228,6 +304,14 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   /* ── Identity ── */
   const myIdRef         = useRef<string>("");
   const myClaimTokenRef = useRef<string>("");
+
+  /** Odadaki görünen adım. SUNUCU satırı birincil kaynaktır: misafirin
+   *  profiles.username'i yoktur, kayıtlı oyuncuda ise adı zaten sunucu yazar.
+   *  Böylece LobbyChat gibi yüzeyler misafirde BOŞ ada düşmez. Satır henüz
+   *  gelmediyse yerel değere geriler. */
+  const myRoomName =
+    players.find((p) => p.id === myIdRef.current)?.name ??
+    (isLoggedInPlayer ? (profile?.username ?? "").trim() : (getGuestName() ?? "").trim());
 
   /* ── Refs that callbacks read ── */
   const roomRef = useRef<TevaturRoom | null>(null);
@@ -238,6 +322,20 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
   /* ── Derived ── */
   const isHost = !!room && room.host_player_id === myIdRef.current;
+
+  /** Canlı akışın hangi taşıyıcıyı kullanacağını belirler (bkz.
+   *  korNoktaRoomState.ts): misafirde `postgres_changes` RLS yüzünden olay
+   *  ALMAZ, sinyal + yoklama gerekir.
+   *
+   *  Otorite SUNUCU satırıdır (`profile_id`), yerel oturum değil: misafir maç
+   *  bitiminde hesap açıp slotunu devrettiğinde (torble_link_guest_player)
+   *  satır kayıtlıya döner ve bu bayrak tek seferlik `true → false` düşer →
+   *  abonelik postgres_changes'e geçer. Satır henüz gelmediyse yerel oturuma
+   *  gerilenir. */
+  const amGuest =
+    players.find((p) => p.id === myIdRef.current)?.profile_id != null
+      ? false
+      : !isLoggedInPlayer;
 
   const knGameState = room ? parseKnGameState(room.game_state) : null;
 
@@ -317,12 +415,8 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   }, [markReturnedLocally, applyRoomUpdate]);
 
   /* ── Share/invite ── */
-  const shareLink = useMemo(() => {
-    if (!room) return "";
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    return `${origin}${pathname}?korNokta=${room.code}`;
-  }, [room]);
+  // Native-güvenli davet linki (bkz. lib/inviteLink.ts).
+  const shareLink = useMemo(() => (room ? buildInviteUrl("korNokta", room.code) : ""), [room]);
 
   const inviteMessage = useMemo(() => {
     if (!room) return "";
@@ -381,14 +475,11 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     const createdRoom = roomData as TevaturRoom;
 
     // İlk player listesini çek (realtime devreye girene kadar UI hazır olsun).
-    const { data: ps } = await supabase
-      .from("tevatur_players")
-      .select("*")
-      .eq("room_id", createdRoom.id)
-      .order("joined_at", { ascending: true });
+    // Ham tablo okuması YOK — tek okuma yolu yetkili RPC'dir.
+    const initial = await fetchKorNoktaRoomState(createdRoom.id, freshId, claimToken);
 
     setRoom(createdRoom);
-    setPlayers((ps ?? []) as TevaturPlayer[]);
+    setPlayers(initial.status === "ok" ? initial.players : []);
     saveRoomSession(createdRoom.id, createdRoom.code, freshId);
     setStatusMsg(null);
     setPhase("lobby");
@@ -410,10 +501,18 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     const overrideCode = inviteOverrideCodeRef.current;
     inviteOverrideCodeRef.current = null;
 
+    // MİSAFİR YOLU: hesabı olmayan oyuncu da katılabilir. Adı ya nick
+    // ekranından gelir (davet linki akışı) ya da bu ekrandaki alandan.
+    let guestName: string | null = null;
     if (!profile?.username) {
-      setErrorMsg("Kör Nokta moduna katılmak için giriş yapmalısın.");
-      return;
+      guestName = sanitizeGuestName(guestNameInput || getGuestName() || "");
+      const nameErr = validateGuestName(guestName);
+      if (nameErr) {
+        setErrorMsg(nameErr);
+        return;
+      }
     }
+
     const normalized = normalizeRoomCode(overrideCode ?? joinCode);
     if (normalized.length !== 6) {
       setErrorMsg("Oda kodu 6 karakter olmalı.");
@@ -430,12 +529,17 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     myIdRef.current = freshId;
     myClaimTokenRef.current = claimToken;
 
+    // Kayıtlı kullanıcıda p_guest_id/p_name sunucuda YOK SAYILIR (ad her zaman
+    // profiles.username'den okunur) — yine de null gönderip tek çağrı yolu
+    // korunur, böylece iki paralel katılma akışı oluşmaz.
     const { data: roomData, error: joinErr } = await supabase.rpc(
       "tevatur_join_room",
       {
         p_code:        normalized,
         p_player_id:   freshId,
         p_claim_token: claimToken,
+        p_guest_id:    profile?.username ? null : ensureGuestId(),
+        p_name:        profile?.username ? null : guestName,
       },
     );
 
@@ -450,14 +554,16 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     const targetRoom = roomData as TevaturRoom;
 
-    const { data: ps } = await supabase
-      .from("tevatur_players")
-      .select("*")
-      .eq("room_id", targetRoom.id)
-      .order("joined_at", { ascending: true });
+    // Ham tablo okuması YOK — misafirin `tevatur_players` SELECT yetkisi
+    // kaldırıldı (20260811120000); tek okuma yolu yetkili RPC'dir.
+    const initial = await fetchKorNoktaRoomState(targetRoom.id, freshId, claimToken);
+
+    // Misafir adı SUNUCU kabul ettikten SONRA hatırlanır — reddedilen bir ad
+    // (kayıtlı taklidi / yasaklı) bir sonraki odaya taşınmasın.
+    if (guestName) setGuestName(guestName);
 
     setRoom(targetRoom);
-    setPlayers((ps ?? []) as TevaturPlayer[]);
+    setPlayers(initial.status === "ok" ? initial.players : []);
     saveRoomSession(targetRoom.id, targetRoom.code, freshId);
     setStatusMsg(null);
     setPhase("lobby");
@@ -605,21 +711,15 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
   ═══════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (!room) return;
-    const roomId = room.id;
+    if (!myIdRef.current || !myClaimTokenRef.current) return;
 
-    const chan = supabase
-      .channel(`kornokta:${roomId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "tevatur_rooms",
-          filter: `id=eq.${roomId}`,
-        },
-        payload => {
-          const r = payload.new as TevaturRoom;
-
+    const sub = subscribeToKorNoktaRoom({
+      roomId:     room.id,
+      playerId:   myIdRef.current,
+      claimToken: myClaimTokenRef.current,
+      isGuest:    amGuest,
+      handlers: {
+        onRoomUpdate: (r) => {
           // Yeni host detection: önceki host ben değilken yeni host ben oldum
           if (
             r.host_player_id === myIdRef.current &&
@@ -627,19 +727,17 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           ) {
             setNewHostModalOpen(true);
           }
-
           applyRoomUpdate(r);
         },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "tevatur_rooms",
-          filter: `id=eq.${roomId}`,
-        },
-        () => {
+        onPlayersChange: setPlayers,
+        onMembershipLost: (cause) => {
+          if (cause === "kicked") {
+            clearKorNoktaSession();
+            setRoom(null);
+            setPlayers([]);
+            setKickedNoticeOpen(true);
+            return;
+          }
           // Oda silindi (host son kişiyken kapattı). Kendim host değilsem
           // bildirim göster — Tamam ile ana menüye dönülür.
           if (roomRef.current?.host_player_id !== myIdRef.current) {
@@ -649,32 +747,11 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
             setRoomClosedNoticeOpen(true);
           }
         },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tevatur_players",
-          filter: `room_id=eq.${roomId}`,
-        },
-        () => {
-          supabase
-            .from("tevatur_players")
-            .select("*")
-            .eq("room_id", roomId)
-            .order("joined_at", { ascending: true })
-            .then(({ data }) => {
-              if (data) setPlayers(data as TevaturPlayer[]);
-            });
-        },
-      )
-      .subscribe();
+      },
+    });
 
-    return () => {
-      supabase.removeChannel(chan);
-    };
-  }, [room?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { sub.unsubscribe(); };
+  }, [room?.id, amGuest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Kick detection: lobide kendimi listede bulamıyorsam atıldım ── */
   useEffect(() => {
@@ -691,11 +768,14 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     }
   }, [phase, players, room]);
 
-  /* ── Davet linki: ?korNokta=KOD prefill + giriş yapmışsa auto-join ── */
+  /* ── Davet linki: ?korNokta=KOD prefill + auto-join ──
+   * Misafir de auto-join eder; App.tsx onu buraya ancak GuestJoinScreen'de
+   * nick onaylandıktan SONRA yönlendirir (ad localStorage'da hazırdır). Adı
+   * olmayan misafir auto-join etmez → join ekranında kalır. */
   useInviteJoin({
     paramKey: "korNokta",
     setJoinCode,
-    canAutoJoin: isLoggedInPlayer && phase === "join" && !room,
+    canAutoJoin: canAutoJoinAsSomeone && phase === "join" && !room,
     triggerJoin: (code) => {
       inviteOverrideCodeRef.current = code;
       void joinRoomByCode();
@@ -768,6 +848,10 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                     </span>
                   </PlayerProfileTrigger>
                   {rp?.level != null && <span className="kn-team-level">Sv {rp.level}</span>}
+                  {/* Misafir etiketi SUNUCU satırından türetilir (profile_id
+                      null) — istemci bayrağı değil, dolayısıyla sahtelenemez.
+                      Oyuncu hesap açınca satır güncellenir ve etiket kalkar. */}
+                  {!p.profile_id && <GuestTag className="kn-guest-tag" />}
                   {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
                   {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                   {onResultScreen && (
@@ -826,8 +910,17 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
         <div style={{ width: 80 }} />
       </div>
 
-      {/* ════════ LOGIN GUARD (davet linkiyle gelen misafir vb.) ════════ */}
-      {!isLoggedInPlayer && (
+      {/* ════════ LOGIN GUARD ════════
+          Yalnız misafirin GERÇEKTEN yapamayacağı iki durumda görünür:
+            1. Oda KURMA ("kornokta-create" ekranı) — ürün kuralı gereği
+               yalnız kayıtlı kullanıcıya açık (sunucuda da: tevatur_create_room
+               yalnız `authenticated`).
+            2. Misafirin henüz bir adı yok — normalde App.tsx oyuncuyu buraya
+               ancak GuestJoinScreen'de nick onaylandıktan sonra yönlendirir;
+               bu dal yalnız doğrudan deep-link kurcalama gibi uç durumlarda
+               çalışır.
+          Geçerli nick'i olan misafir bu kapıyı GÖRMEZ — doğrudan katılır. */}
+      {showLoginGuard && (
         <div className="duel-lobby">
           <div className="duel-lobby-card">
             <h2 className="duel-lobby-title">🕵️‍♂️ Kör Nokta</h2>
@@ -835,8 +928,9 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
               İki takım, mesafe yarışı. 2v2 · 3v3 · 4v4 · 5v5.
             </p>
             <p className="duel-error">
-              🔒 Kör Nokta moduna katılmak için giriş yapmalısın. Ana menüden
-              giriş yapıp tekrar dene.
+              {initialAction === "create"
+                ? "🔒 Kör Nokta odası kurmak için giriş yapmalısın. Davet edildiğin bir odaya oda koduyla kayıt olmadan katılabilirsin."
+                : "🔒 Katılmak için önce bir kullanıcı adı seçmelisin. Ana menüdeki \"Oda Kodu\" alanına kodu yazarak misafir olarak katılabilirsin."}
             </p>
             <button
               className="btn btn-ghost"
@@ -850,7 +944,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       )}
 
       {/* ════════ JOIN — oda kodu ekranı ════════ */}
-      {isLoggedInPlayer && phase === "join" && (
+      {!showLoginGuard && phase === "join" && (
         <div className="duel-lobby">
           <div className="duel-lobby-card">
             <h2 className="duel-lobby-title">🕵️‍♂️ Kör Nokta · Odaya Katıl</h2>
@@ -878,28 +972,58 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
               />
             </div>
 
+            {/* KAYITLI: ad SUNUCUDA profiles.username'den okunur; bu alan
+                salt-okunur bir özettir ve gönderilen hiçbir metin kimliği
+                değiştiremez.
+                MİSAFİR: adını burada yazar. Asıl doğrulama sunucudadır
+                (assert_display_name_allowed: kayıtlı ad taklidi + yasaklı
+                kelime + oda-içi çakışma) — buradaki kontrol yalnız anında
+                geri bildirim içindir. Kuşatma'nın ConquestJoinByCode ekranıyla
+                aynı desen. */}
             <div className="duel-field-row">
               <label className="duel-field-label">Oyuncu Adın</label>
-              <div
-                className="duel-name-input"
-                aria-readonly="true"
-                title="Login olduğun için adın profil hesabından alınır"
-                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default", opacity: 0.95 }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "4px 10px", borderRadius: 999,
-                    background: "rgba(79,139,255,0.18)",
-                    border: "1px solid rgba(79,139,255,0.55)",
-                    fontWeight: 800, fontSize: 14, letterSpacing: "0.01em",
-                  }}
+              {isLoggedInPlayer ? (
+                <div
+                  className="duel-name-input"
+                  aria-readonly="true"
+                  title="Login olduğun için adın profil hesabından alınır"
+                  style={{ display: "flex", alignItems: "center", gap: 8, cursor: "default", opacity: 0.95 }}
                 >
-                  <span aria-hidden>👤</span>
-                  <span>@{profile?.username}</span>
-                </span>
-                <span style={{ fontSize: 12, opacity: 0.65 }}>olarak katılıyorsun</span>
-              </div>
+                  <span
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "4px 10px", borderRadius: 999,
+                      background: "rgba(79,139,255,0.18)",
+                      border: "1px solid rgba(79,139,255,0.55)",
+                      fontWeight: 800, fontSize: 14, letterSpacing: "0.01em",
+                    }}
+                  >
+                    <span aria-hidden>👤</span>
+                    <span>@{profile?.username}</span>
+                  </span>
+                  <span style={{ fontSize: 12, opacity: 0.65 }}>olarak katılıyorsun</span>
+                </div>
+              ) : (
+                <>
+                  <input
+                    className="duel-name-input"
+                    type="text"
+                    value={guestNameInput}
+                    onChange={e => setGuestNameInput(e.target.value.slice(0, 16))}
+                    onKeyDown={e => { if (e.key === "Enter") void joinRoomByCode(); }}
+                    placeholder="Adın..."
+                    autoComplete="nickname"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    maxLength={16}
+                  />
+                  <p className="duel-lobby-desc" style={{ marginTop: 6, marginBottom: 0, fontSize: 12, opacity: 0.75 }}>
+                    <GuestTag /> olarak katılıyorsun. XP, altın ve istatistik
+                    yalnızca hesabı olan oyunculara işlenir.
+                  </p>
+                </>
+              )}
             </div>
 
             <button
@@ -916,7 +1040,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       )}
 
       {/* ════════ CREATING — durum / hata ekranı ════════ */}
-      {isLoggedInPlayer && phase === "creating" && (
+      {!showLoginGuard && phase === "creating" && (
         <div className="duel-lobby">
           <div className="duel-lobby-card">
             <h2 className="duel-lobby-title">🕵️‍♂️ Kör Nokta</h2>
@@ -946,7 +1070,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       )}
 
       {/* ════════ GAMEPLAY — Kör Nokta tur döngüsü ════════ */}
-      {isLoggedInPlayer && phase === "lobby" && room && knInGame && (
+      {!showLoginGuard && phase === "lobby" && room && knInGame && (
         <KorNoktaGame
           room={room}
           players={players}
@@ -963,7 +1087,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       )}
 
       {/* ════════ LOBBY — 3-card grid (WheelGroup düzeni) ════════ */}
-      {isLoggedInPlayer && phase === "lobby" && room && !knInGame && (
+      {!showLoginGuard && phase === "lobby" && room && !knInGame && (
         <>
         <div className="duel-lobby">
           <div className="wgg-grid">
@@ -1129,7 +1253,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
             <div className="wgg-chat-card">
               <LobbyChat
                 roomCode={room.code}
-                playerName={(profile?.username ?? "").trim()}
+                playerName={myRoomName}
                 mobileSheetOpen={chatSheetOpen}
                 onMobileSheetOpenChange={v => { setChatSheetOpen(v); if (v) setPlayersSheetOpen(false); }}
                 hideMobileFab={chatSheetOpen || playersSheetOpen}
@@ -1278,7 +1402,11 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           <div className="dgg-confirm-modal" onClick={e => e.stopPropagation()}>
             <div className="dgg-confirm-icon">🏠</div>
             <h3>Oda Kapatıldı</h3>
-            <p>Ev sahibi odayı kapattı.</p>
+            {/* Bu ekran artık İKİ durumu kapsıyor: host odayı bilinçli kapattı,
+                VEYA host ayrıldı ve odada host olabilecek kayıtlı oyuncu
+                kalmadı (misafir host OLAMAZ — tevatur_leave_room). İkisinde de
+                sonuç aynı olduğu için tek ve doğru cümle kullanılır. */}
+            <p>Oda sahibi ayrıldığı için oda kapatıldı.</p>
             <div className="dgg-confirm-actions single">
               <button
                 type="button"

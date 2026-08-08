@@ -15,19 +15,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGuestName, setGuestName, linkGuestPlayerToAccount } from "../../lib/guestSession";
 import { EmojiIcon } from "../../components/EmojiIcon";
 import type { Profile } from "../../lib/auth";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 import { playSound } from "../../lib/sound";
 import {
   getThemeBackgroundStyle,
   getThemeDataAttr,
   readStoredHomeTheme,
 } from "../../lib/themeBackgrounds";
-import {
-  supabase,
-  type ConquestPlayerRow,
-  type ConquestRoomRow,
+// NOT: bu ekran artık `supabase` istemcisini DOĞRUDAN kullanmaz. Kuşatma oda
+// verisinin tek okuma yolu conquestService'teki yetkili RPC sarmalayıcılarıdır
+// (20260810120000: ham conquest_rooms / conquest_players sorgusu `anon` rolüne
+// kapalıdır).
+import type {
+  ConquestPlayerRow,
+  ConquestRoomRow,
 } from "../../lib/supabase";
 import ConquestSetup from "./ConquestSetup";
 import ConquestLobby from "./ConquestLobby";
@@ -62,6 +65,7 @@ import {
   cancelConquestQuickMatch,
   conquestQuickMatchTick,
   createConquestRoom,
+  fetchConquestPlayers,
   fetchConquestRoomWithPlayers,
   heartbeatConquestPlayer,
   joinConquestRoomByCode,
@@ -74,7 +78,14 @@ import {
   updateConquestRoomSettings,
   type ConquestJoinResult,
 } from "./conquestService";
+import {
+  resolveConquestJoinFailure,
+  type ConquestJoinDraft,
+  type ConquestJoinOrigin,
+} from "./conquestJoinFlow";
+import type { ConquestJoinFormError } from "./ConquestJoinByCode";
 import { freshConquestPlayerId } from "./utils";
+import { recallConquestClaim } from "./conquestClaim";
 import { quickMatchBracket, quickMatchBracketLabel } from "../../lib/quickMatch";
 import { subscribeToConquestRoom } from "./conquestRealtime";
 import { getConquestMapConfig } from "./maps";
@@ -103,6 +114,9 @@ interface Props {
   autoQuickMatch?: { rounds: number; map: "turkey" } | null;
   /** Fired once the search actually kicks off, so App can clear the intent. */
   onQuickMatchConsumed?: () => void;
+  /** Misafir "Odalara Göz At" ekranına düştü → App giriş/kayıt modalını açar
+   *  ve bekleyen işlemi saklar (giriş sonrası liste ekranına döner). */
+  onAuthRequired?: (choice: "login" | "signup") => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,7 +148,7 @@ function rowToPlayer(row: ConquestPlayerRow): ConquestPlayer {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ConquestMode({ initialPhase, profile, onHome, autoQuickMatch = null, onQuickMatchConsumed }: Props) {
+export default function ConquestMode({ initialPhase, profile, onHome, autoQuickMatch = null, onQuickMatchConsumed, onAuthRequired }: Props) {
   // Mount snapshot: qmTick reads rounds/map repeatedly, so capture once. App
   // clears the live prop after onQuickMatchConsumed; the ref keeps the search
   // alive while the cleared prop prevents a stale auto-search on re-entry.
@@ -254,12 +268,50 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
   const isHost  = !!me?.is_host;
   const myName  = me?.name ?? "";
 
+  /* ── MİSAFİR → KAYITLI HESAP slot devri (Kuşatma) ────────────────────────
+   * Diğer modlar oda oturumunu (player_id + claim_token) localStorage'da
+   * tuttuğu için devri App.tsx tetikleyebiliyor. Kuşatma ise oturumu React
+   * state'inde tutar ve claim_token'ı player_id'ye göre saklar — bu yüzden
+   * devir BURADAN tetiklenir.
+   *
+   * Koşul: giriş yapılmış + odadaki satırım hâlâ MİSAFİR satırı
+   * (profile_id null). Sunucu ayrıca claim_token doğrular; başka birinin
+   * slotu devralınamaz. Başarısızlık ölümcül değildir — oyuncu misafir
+   * olarak devam eder.
+   *
+   * XP AKTARMAZ: geçmiş misafir maçı, maç kimliğiyle işaretlendiği için
+   * (ConquestGame) devirden sonra da ödül yazılmaz; yeni turlar normal kazanır. */
+  const linkAttemptedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!profile?.id) return;
+    if (!me || me.profile_id) return;          // zaten kayıtlı satır
+    if (linkAttemptedRef.current === me.id) return;
+    linkAttemptedRef.current = me.id;
+
+    const token = recallConquestClaim(me.id);
+    if (!token) return;
+
+    void linkGuestPlayerToAccount({
+      mode: "conquest",
+      playerId: me.id,
+      claimToken: token,
+    }).then((okLink) => {
+      const rid = me.room_id;
+      if (!okLink || !rid) return;
+      // Satırı tazele ki "Misafir" etiketi YENİ TURDAN ÖNCE kalksın.
+      void fetchConquestPlayers(rid, me.id).then(rows => {
+        if (rows) setPlayerRows(rows);
+      });
+    });
+  }, [profile?.id, me]);
+
   // ── Mount: detect invite link ?conquest=CODE and auto-join ──────────────
-  // App.tsx gates routing to this screen on a resolved profile, so by the
-  // time we mount with ?conquest= the user is guaranteed to be logged in.
-  // The defensive `onHome` fallback exists only for direct deep-link edge
-  // cases (e.g. someone forcing the screen via dev tools) — guests should
-  // never land here with the manual code-entry screen pre-filled.
+  // Kayıtlı kullanıcı hesap adıyla, MİSAFİR ise GuestJoinScreen'de seçtiği
+  // adla otomatik katılır (App.tsx misafiri buraya ancak nick onaylandıktan
+  // sonra yönlendirir). Ad hiç yoksa ana ekrana düşülür — bu yalnız doğrudan
+  // deep-link kurcalama gibi uç durumlarda olur.
+  // Oda KURMA misafire kapalıdır (ConquestSetup + sunucu RLS); yalnız
+  // katılma açıktır (conquest_register_player anon'a grant'li).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -277,18 +329,25 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     try { sessionStorage.removeItem("pending_conquest_invite_code"); }
     catch { /* ignore */ }
 
-    if (profile?.username) {
-      void doAutoJoin(code, profile.username);
+    const joinName = profile?.username ?? getGuestName() ?? "";
+    if (joinName.trim()) {
+      void doAutoJoin(code, joinName.trim());
     } else {
       onHome();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-filled code for the join-code screen — only populated when the user
-  // arrives here manually from a "Kod ile katıl" entry point. Invite links
-  // skip this state entirely (they auto-join above).
-  const [pendingJoinCode, setPendingJoinCode] = useState<string>("");
+  /* ── Katılma formu taslağı + hatası ──────────────────────────────────────
+   * Oda kodu + nick, BAŞARISIZ bir denemeden sonra da yaşamalıdır: sunucu
+   * adı reddettiğinde kullanıcı aynı formda kalıp adını düzeltebilmeli,
+   * baştan başlamamalı. Taslak "joining" fazını atlatabilmek için burada
+   * (form bileşeninin dışında) tutulur — davet linki yolunda form o anda
+   * henüz monte bile değildir. */
+  const [joinDraft, setJoinDraft] = useState<ConquestJoinDraft>({ code: "", name: "" });
+  const [joinError, setJoinError] = useState<ConquestJoinFormError | null>(null);
+  /** Katılma isteği uçuşta — form monte kalır, yalnız buton kilitlenir. */
+  const [joinBusy,  setJoinBusy]  = useState(false);
 
   // ── Auto-create: when launched from "Oda Kur" menu button ───────────────
   // Fires once on mount; creates a room with defaults so the user lands
@@ -325,9 +384,15 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     if (phase !== "lobby" && phase !== "game") return;
 
     let cancelled = false;
-    let channel: RealtimeChannel | null = null;
 
-    channel = subscribeToConquestRoom(roomRow.id, {
+    // Misafirin canlı akışı KAYITLI kullanıcınınkinden farklı taşıyıcı kullanır
+    // (postgres_changes yerine sunucu sinyali + yetkili okuma). Bu ayrım
+    // conquestRealtime içinde kapsüllenir; buradaki handler'lar aynı kalır.
+    const subscription = subscribeToConquestRoom({
+      roomId:   roomRow.id,
+      playerId: myPlayerIdRef.current,
+      isGuest:  !profile?.id,
+      handlers: {
       onRoomUpdate: (next) => {
         if (cancelled) return;
 
@@ -420,13 +485,16 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
           setPhase("setup");
         }
       },
+      },
     });
 
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
+      subscription.unsubscribe();
     };
-  }, [roomRow?.id, phase]);
+    // profile?.id: misafir oyun ortasında hesap açarsa (torble_link_guest_player)
+    // taşıyıcı postgres_changes'e geçmelidir.
+  }, [roomRow?.id, phase, profile?.id]);
 
   // ── Server-clock sync ──────────────────────────────────────────────────
   // Kuşatma's per-match timeline (challenge.startedAt/endsAt, gameIntroEndsAt,
@@ -577,12 +645,44 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     [profile],
   );
 
-  const applyJoinResult = useCallback((result: ConquestJoinResult) => {
+  /**
+   * Katılma sonucunu uygula.
+   *
+   * BAŞARI dalı değişmedi: oda + oyuncu listesi yazılır, lobiye geçilir.
+   *
+   * HATA dalı ESKİDEN koşulsuz `setPhase("setup")` diyordu. Sonucu: sunucu
+   * görünen adı reddettiğinde (örn. `registered_username_taken`) oyuncu oda
+   * kodu + nick formundan DÜŞÜP "Oda Kur" ekranına atılıyordu — yazdığı kod
+   * ve nick de form unmount olduğu için siliniyordu. Artık nereye dönüleceği
+   * kararı saf `resolveConquestJoinFailure`e aittir: kullanıcı GELDİĞİ
+   * ekranda kalır, yazdıkları taslakta korunur, hata yerinde gösterilir.
+   */
+  const applyJoinResult = useCallback((
+    result:    ConquestJoinResult,
+    origin:    ConquestJoinOrigin,
+    attempted: ConquestJoinDraft,
+  ) => {
     if (!result.ok) {
-      setStatusMsg(result.message);
-      setPhase("setup");
+      const outcome = resolveConquestJoinFailure(origin, attempted, result);
+      setJoinDraft(outcome.draft);
+      setJoinError({
+        message:   outcome.message,
+        focusName: outcome.focusName,
+        at:        Date.now(),
+      });
+      setJoinBusy(false);
+      // Formda hata inline gösterilir; oda listesinde üstteki banner taşır.
+      setStatusMsg(outcome.phase === "rooms" ? outcome.message : null);
+      setPhase(outcome.phase);
       return;
     }
+    // Misafir DÜZELTİLMİŞ adıyla girdiyse o ad hatırlansın — aksi hâlde bir
+    // sonraki davet linki reddedilen eski adı tekrar dener. Kaynak sunucunun
+    // döndürdüğü satırdır (profile_id NULL ⇒ misafir), istemci tahmini değil.
+    if (!result.me.profile_id && result.me.name) setGuestName(result.me.name);
+
+    setJoinError(null);
+    setJoinBusy(false);
     setRoomRow(result.room);
     setPlayerRows(result.players);
     setMyPlayerId(result.me.id);
@@ -590,45 +690,56 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     setPhase("lobby");
   }, []);
 
+  /** Davet linki / çözümlenmiş oda kodu → otomatik katılma. Form henüz monte
+   *  değil, o yüzden tam ekran "bağlanılıyor" paneli gösterilir; hata olursa
+   *  kod + nick DOLU olarak katılma formuna düşülür (ana menüye DEĞİL). */
   const doAutoJoin = useCallback(
     async (code: string, displayName: string) => {
       setStatusMsg("Odaya bağlanılıyor…");
+      setJoinError(null);
       setPhase("joining");
       const result = await joinConquestRoomByCode(code, {
         profile,
         name:    displayName,
         source:  "invite",
       });
-      applyJoinResult(result);
+      applyJoinResult(result, "invite", { code, name: displayName });
     },
     [profile, applyJoinResult],
   );
 
+  /** "Oda Koduyla Katıl" formu. Faz KASTEN değiştirilmez — form monte kalır,
+   *  böylece hata dönerse kod, nick ve odak olduğu gibi durur. */
   const handleJoinByCode = useCallback(
     async (code: string, displayName: string) => {
-      setStatusMsg("Odaya bağlanılıyor…");
-      setPhase("joining");
+      setJoinDraft({ code, name: displayName });
+      setJoinError(null);
+      setStatusMsg(null);
+      setJoinBusy(true);
       const result = await joinConquestRoomByCode(code, {
         profile,
         name:    displayName,
         source:  "code",
       });
-      applyJoinResult(result);
+      applyJoinResult(result, "code", { code, name: displayName });
     },
     [profile, applyJoinResult],
   );
 
+  /** Açık oda listesinden katılma (yalnız girişli kullanıcı). Hata olursa
+   *  liste ekranında kalınır, banner hatayı gösterir. */
   const handleJoinFromList = useCallback(
     async (code: string) => {
       if (!profile?.username) return;
       setStatusMsg("Odaya katılınıyor…");
+      setJoinError(null);
       setPhase("joining");
       const result = await joinConquestRoomByCode(code, {
         profile,
         name:    profile.username,
         source:  "public",
       });
-      applyJoinResult(result);
+      applyJoinResult(result, "public", { code, name: profile.username });
     },
     [profile, applyJoinResult],
   );
@@ -849,7 +960,7 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     if (result?.matched && result.room_id && result.my_player_id) {
       qmMatchedRef.current = true;
       stopQmTimers();
-      const loaded = await fetchConquestRoomWithPlayers(result.room_id);
+      const loaded = await fetchConquestRoomWithPlayers(result.room_id, result.my_player_id);
       if (qmAbortRef.current) return;
       if (!loaded) { setQmError("Oda yüklenemedi."); return; }
       setRoomRow(loaded.room);
@@ -965,12 +1076,8 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
       const result = await updateConquestPlayerColor(roomRow.id, myPlayerId, color);
       if (!result.ok) {
         // Roll back optimistic write and surface the reason in the banner.
-        const refreshed = await supabase
-          .from("conquest_players")
-          .select("*")
-          .eq("room_id", roomRow.id)
-          .order("joined_at", { ascending: true });
-        if (refreshed.data) setPlayerRows(refreshed.data as ConquestPlayerRow[]);
+        const refreshed = await fetchConquestPlayers(roomRow.id, myPlayerId);
+        if (refreshed) setPlayerRows(refreshed);
         setStatusMsg(result.message);
       }
     },
@@ -1099,12 +1206,8 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
       if (!result.ok) {
         setTeamNotice(result.message);
         // Roll back from server.
-        const refreshed = await supabase
-          .from("conquest_players")
-          .select("*")
-          .eq("room_id", roomRow.id)
-          .order("joined_at", { ascending: true });
-        if (refreshed.data) setPlayerRows(refreshed.data as ConquestPlayerRow[]);
+        const refreshed = await fetchConquestPlayers(roomRow.id, myPlayerId);
+        if (refreshed) setPlayerRows(refreshed);
       }
     },
     [roomRow, myPlayerId],
@@ -1225,12 +1328,14 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
       </div>
 
       {/* Transient notification banner: host-closed event or last action error.
-          Shown on setup phase so it sits above the create form. */}
-      {phase === "setup" && (hostClosed || statusMsg) && (
+          Setup fazında oda kurma formunun üstünde durur; "rooms" fazında da
+          gösterilir çünkü açık listeden katılma hatası artık kullanıcıyı
+          setup'a atmak yerine listede bırakıyor. */}
+      {(phase === "setup" || phase === "rooms") && (hostClosed || statusMsg) && (
         <div className="cq-banner-wrap" role="status">
           <div className="cq-banner">
             <span className="cq-banner-msg">
-              {hostClosed ? <><EmojiIcon name="cross-mark" /> Ev sahibi odayı kapattı.</> : statusMsg}
+              {hostClosed ? <><EmojiIcon name="cross-mark" /> Oda sahibi ayrıldığı için oda kapatıldı.</> : statusMsg}
             </span>
             <button
               type="button"
@@ -1294,14 +1399,23 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
           onBack={onHome}
           onCreate={() => setPhase("setup")}
           onJoin={handleJoinFromList}
+          onAuthRequired={onAuthRequired}
         />
       )}
 
       {phase === "join-code" && (
         <ConquestJoinByCode
           profile={profile}
-          initialCode={pendingJoinCode}
-          onBack={() => { setPendingJoinCode(""); setPhase("setup"); }}
+          initialCode={joinDraft.code}
+          initialName={joinDraft.name}
+          joinError={joinError}
+          busy={joinBusy}
+          onBack={() => {
+            setJoinDraft({ code: "", name: "" });
+            setJoinError(null);
+            setJoinBusy(false);
+            setPhase("setup");
+          }}
           onJoin={handleJoinByCode}
         />
       )}

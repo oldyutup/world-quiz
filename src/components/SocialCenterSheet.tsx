@@ -29,6 +29,13 @@ import { NotificationList } from "./NotificationList";
 import { ClearNotificationsButton } from "./ClearNotificationsButton";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
+import GoldIcon from "./GoldIcon";
+import {
+  useDailyQuestStatus,
+  useDailyQuestState,
+  DAILY_QUEST_MODE_META,
+  MOBILE_DAILY_QUEST_SOCIAL_VISIBLE,
+} from "../lib/dailyQuest";
 
 interface ThemeOption {
   id: string;
@@ -41,16 +48,29 @@ interface SocialCenterSheetProps {
   activeTheme: string;
   onSelectTheme: (id: string) => void;
   onClose: () => void;
+  /** Görev sekmesi: girişe göre nötr durum / badge kararı. */
+  isLoggedIn: boolean;
+  /** "Görev" sekmesi CTA'sı — sheet'i KAPATMADAN Günün Görevi modalını açar
+   *  (App handler'ı yalnız modalı açar). Misafirde App'in mevcut auth gate'i devreye
+   *  girer. Yeni görev mantığı YOK; mevcut DailyQuestModal yeniden kullanılır. */
+  onOpenDailyQuest: () => void;
 }
 
-type SocialTab = "friends" | "requests" | "notifications" | "theme";
+type SocialTab = "friends" | "requests" | "notifications" | "quest" | "theme";
 
-const TABS: { id: SocialTab; label: string }[] = [
+const ALL_TABS: { id: SocialTab; label: string }[] = [
   { id: "friends", label: "Arkadaşlar" },
   { id: "requests", label: "İstekler" },
   { id: "notifications", label: "Bildirimler" },
+  { id: "quest", label: "Görev" },
   { id: "theme", label: "Tema" },
 ];
+
+/* "Görev" sekmesi KENDİ anahtarına bağlı (…_SOCIAL_VISIBLE): mobil ana menüde
+   Günün Görevi girişi olmaması bu sekmeyi ARTIK kapatmaz — sheet, görevin mobil
+   kalıcı girişidir. Kapalıyken sekme listeden düşer (panel kodu ve dq durum
+   okuyucuları OLDUĞU GİBİ kalır, sadece ulaşılmaz olur). Bkz. lib/dailyQuest. */
+const TABS = ALL_TABS.filter((t) => t.id !== "quest" || MOBILE_DAILY_QUEST_SOCIAL_VISIBLE);
 
 /**
  * İlişki durumuna göre "Oyuncular" sonucu buton etiketi/aktifliği
@@ -76,11 +96,51 @@ export function SocialCenterSheet({
   activeTheme,
   onSelectTheme,
   onClose,
+  isLoggedIn,
+  onOpenDailyQuest,
 }: SocialCenterSheetProps) {
   const social = useSocial();
   const dm = useDm();
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Beş sekme dar ekranda (≤360px) tek satıra sığmayabilir → tab şeridi yatay
+  // kaydırılabilir; sekme değişince aktifi tam görünür kaydır (metin kesilmez,
+  // ikon-only'ye düşülmez). Geniş ekranda (fits) scroll oluşmaz.
+  const tablistRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SocialTab>("friends");
+
+  // Günün Görevi — Görev sekmesi özeti. Tek kaynak: sunucu-otoriter dailyQuest
+  // gözlemlenebilirleri (status = birincil karar; snapshot = başlık/mod/ödül/
+  // ilerleme metni). Ayrı RPC atılmaz; App home'a girişte zaten tazeliyor.
+  const dqStatus = useDailyQuestStatus();
+  const dqState = useDailyQuestState();
+  const dqQuest = dqState?.ok ? dqState.quest ?? null : null;
+  const dqMeta = dqQuest ? DAILY_QUEST_MODE_META[dqQuest.mode] : null;
+  const questPending =
+    isLoggedIn &&
+    (dqStatus === "available" || dqStatus === "active" || dqStatus === "reward_ready");
+  const questStatusLabel = (() => {
+    switch (dqStatus) {
+      case "available": return "Bugünün görevi hazır";
+      case "active": return "Görevin devam ediyor";
+      case "reward_ready": return "Tamamlandı — ödülün hazır!";
+      case "claimed": return "Bugünün görevi tamamlandı";
+      default: return "Görev bilgisi yükleniyor…";
+    }
+  })();
+  const questCtaLabel =
+    dqStatus === "active" ? "Devam Et" : dqStatus === "reward_ready" ? "Ödülü Al" : "Göreve Başla";
+  // Aktif attempt için kısa ilerleme satırı (modal ile aynı snapshot alanları).
+  const questProgress = (() => {
+    if (dqStatus !== "active" || !dqQuest) return null;
+    const a = dqState?.ok ? dqState.attempt : null;
+    if (!a || a.status !== "active") return null;
+    switch (dqQuest.mode) {
+      case "country_write": return `İlerleme: ${a.found_count ?? 0} / ${a.target ?? "?"} ülke`;
+      case "flag_quiz": return `İlerleme: ${a.correct_count ?? 0} / ${a.required ?? "?"} doğru`;
+      case "wheel_find": return `İlerleme: ${a.target_index ?? 0} / ${a.target_count ?? "?"} hedef`;
+      case "route_complete": return `İlerleme: ${(a.path?.length ?? 1) - 1} adım`;
+    }
+  })();
   const [friends, setFriends] = useState<FriendRow[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
 
@@ -127,6 +187,12 @@ export function SocialCenterSheet({
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  // Aktif sekmeyi tab şeridinde tam görünür yap (dar ekran yatay scroll durumu).
+  useEffect(() => {
+    const active = tablistRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    active?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [tab]);
 
   // Arkadaşlar sekmesi açıkken (ve arkadaş değişiminde) listeyi çek.
   useEffect(() => {
@@ -287,9 +353,13 @@ export function SocialCenterSheet({
           </button>
         </header>
 
-        <div className="social-tabs" role="tablist">
+        <div className="social-tabs" role="tablist" ref={tablistRef}>
           {TABS.map((t) => {
-            const count = t.id === "requests" ? pendingRequests : t.id === "notifications" ? unreadCount : 0;
+            const count =
+              t.id === "requests" ? pendingRequests
+              : t.id === "notifications" ? unreadCount
+              : t.id === "quest" ? (questPending ? 1 : 0)
+              : 0;
             return (
               <button
                 key={t.id}
@@ -433,6 +503,77 @@ export function SocialCenterSheet({
               )}
               <NotificationList emptyText="Henüz bildirim yok." onNavigate={onClose} />
             </>
+          )}
+
+          {tab === "quest" && (
+            <div className="social-quest">
+              {!isLoggedIn ? (
+                /* Misafir: nötr durum. CTA App'in mevcut auth gate'ini açar
+                   (onOpenDailyQuest guest'te AuthModal). Görev badge'i yok. */
+                <div className="social-quest-empty">
+                  <img
+                    className="social-quest-empty-icon"
+                    src="/assets/icons/home/daily-quest-scroll.png"
+                    alt=""
+                    aria-hidden="true"
+                  />
+                  <span className="social-quest-empty-title">Günün Görevi</span>
+                  <span className="social-quest-empty-sub">
+                    Giriş yaparak bugünün görevini oyna ve 50 Gold kazan.
+                  </span>
+                  <button
+                    type="button"
+                    className="social-quest-cta"
+                    onClick={() => { playSound("click"); onOpenDailyQuest(); }}
+                  >
+                    Giriş Yap
+                  </button>
+                </div>
+              ) : (
+                <div className="social-quest-card">
+                  <div className="social-quest-head">
+                    <img
+                      className="social-quest-icon"
+                      src={dqMeta?.iconPath ?? "/assets/icons/home/daily-quest-scroll.png"}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                    <div className="social-quest-headtext">
+                      <span className="social-quest-title">{dqQuest?.title ?? "Günün Görevi"}</span>
+                      <span className="social-quest-status">{questStatusLabel}</span>
+                    </div>
+                    {dqQuest && (
+                      <span className="social-quest-reward" title="Görev ödülü">
+                        <GoldIcon />
+                        <span>+{dqQuest.reward_gold}</span>
+                      </span>
+                    )}
+                  </div>
+                  {dqQuest?.description && (
+                    <p className="social-quest-desc">{dqQuest.description}</p>
+                  )}
+                  {questProgress && <p className="social-quest-progress">{questProgress}</p>}
+                  {/* CTA sheet'i KAPATMADAN modalı açar (modal üstte; kapanınca
+                      sheet açık kalır). Gerçek başlat/devam/claim modalda. */}
+                  {dqStatus === "claimed" ? (
+                    <div className="social-quest-done">
+                      <span aria-hidden="true">✓</span> Bugünün görevi tamamlandı
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={
+                        "social-quest-cta" +
+                        (dqStatus === "reward_ready" ? " social-quest-cta--claim" : "")
+                      }
+                      onClick={() => { playSound("click"); onOpenDailyQuest(); }}
+                    >
+                      {questCtaLabel}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {tab === "theme" && (

@@ -37,10 +37,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import GuestEndPrompt from "./GuestEndPrompt";
+import { buildInviteUrl } from "../lib/inviteLink";
 import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
@@ -242,11 +246,11 @@ function describeWheelGroupRpcError(
   // NOT: 'registered_username_taken' check'i 'name_taken' check'inden ÖNCE
   // gelmeli — substring olarak içerdiği için aksi halde yanlış dala düşer.
   if (msg.includes("registered_username_taken"))
-                                          return "Bu nick zaten kayıtlı. Giriş yap ya da farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   // 'display_name_forbidden' name_invalid/name_taken'den ÖNCE kontrol edilmeli;
   // helper bu etiketi yasaklı/rezerv/küfürlü nick'ler için fırlatıyor.
   if (msg.includes("display_name_forbidden"))
-                                          return "Bu nick kullanılamaz. Lütfen farklı bir nick dene.";
+                                          return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
   if (msg.includes("name_taken"))         return "Bu odada bu isim zaten kullanılıyor.";
   if (msg.includes("name_invalid"))       return "Oyuncu adı 2–16 karakter olmalı.";
   if (msg.includes("room_full"))          return "Oda dolu.";
@@ -309,7 +313,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   }, [phase]);
 
   /* ── Setup form state ────────────────────────────────────── */
-  const initialName = profile?.username ?? "";
+  // Kayıtlı kullanıcıda hesap adı; misafirde nick ekranında seçilen ad.
+  const initialName = profile?.username ?? getGuestName() ?? "";
   const [playerName, setPlayerName] = useState<string>(initialName);
 
   /** Login durumu. Login olmus kullanici icin ad input'u readonly olur ve
@@ -345,13 +350,16 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   const [players, setPlayers] = useState<WheelGroupPlayer[]>([]);
   // Sosyal: roster avatarları + odadayken davet için room context.
   const rosterProfiles = useRosterProfiles(players.map((p) => p.profile_id ?? null));
-  const social = useSocialOptional();
+  // YALNIZ stable setter'a bağlan — tüm `social` nesnesine DEĞİL (identity
+  // roomContext ile değişip sonsuz effect döngüsü kuruyordu). Bkz. aynı
+  // düzeltme diğer altı online modda.
+  const setRoomContext = useSocialOptional()?.setRoomContext;
   useEffect(() => {
-    if (!social) return;
+    if (!setRoomContext) return;
     const code = room?.code;
-    if (code) social.setRoomContext({ code, mode: "wheelGroup", roomUrl: `/?wheelGroup=${code}` });
-    return () => social.setRoomContext(null);
-  }, [social, room?.code]);
+    if (code) setRoomContext({ code, mode: "wheelGroup", roomUrl: `/?wheelGroup=${code}` });
+    return () => setRoomContext(null);
+  }, [setRoomContext, room?.code]);
   const [kickTarget, setKickTarget] = useState<WheelGroupPlayer | null>(null);
   const [wggPlayersOpen, setWggPlayersOpen] = useState(false);
   const [wggChatOpen,    setWggChatOpen]    = useState(false);
@@ -495,7 +503,9 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   useInviteJoin({
     paramKey: "wheelGroup",
     setJoinCode,
-    canAutoJoin: !!profile?.username && phase === "setup" && !room,
+    // Misafir de otomatik katılır: koşul "giriş yapmış" DEĞİL, "kullanılabilir
+    // bir görünen ad var" (GuestJoinScreen adı önceden almıştır).
+    canAutoJoin: !!playerName.trim() && phase === "setup" && !room,
     triggerJoin: (code) => {
       inviteOverrideCodeRef.current = code;
       void joinRoomByCode();
@@ -507,12 +517,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
    *  window.location.href kullanirsak Supabase auth callback'lerinden
    *  donen `#error=access_denied&error_code=otp_expired` gibi hash
    *  parcalari linke bulasiyor. URL hash'i de string'e karistirma. */
-  const shareLink = useMemo(() => {
-    if (!room) return "";
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    return `${origin}${pathname}?wheelGroup=${room.code}`;
-  }, [room]);
+  // Native-güvenli davet linki (bkz. lib/inviteLink.ts).
+  const shareLink = useMemo(() => (room ? buildInviteUrl("wheelGroup", room.code) : ""), [room]);
 
   /* ── Max-players dropdown: click-outside + Esc kapanis ─────── */
   useEffect(() => {
@@ -1066,6 +1072,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     if (phase !== "finished" || !room) return;
     if (xpAwardedRef.current) return;
     if (!finalLeaderboard) return;
+    if (!room.current_match_id) return;
+
+    // ── MİSAFİR / XP SINIRI (maç bazlı) — bkz. DuelGame'deki açıklama ──
+    if (!isLoggedInPlayer || !profile?.id) {
+      markGuestMatchId(room.current_match_id);
+      return;
+    }
+    if (isGuestMatchId(room.current_match_id)) return;
 
     const me = finalLeaderboard.find(b => b.playerId === myIdRef.current);
     if (!me) return;
@@ -1189,6 +1203,13 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
   async function createRoom() {
     playSound("click");
+    // Ürün kuralı: yalnız kayıtlı oyuncu oda kurar. Asıl engel sunucuda
+    // (*_create_room artık anon'a grant'li değil); bu net mesaj içindir.
+    if (!isLoggedInPlayer) {
+      setErrorMsg(GUEST_CANNOT_CREATE_MESSAGE);
+      return;
+    }
+
     // Loginli kullanici icin daima profile.username; misafir icin manuel input.
     const effectiveName = isLoggedInPlayer
       ? (profile?.username ?? "").trim()
@@ -1564,7 +1585,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
             {hostClosedRoom && (
               <p className="duel-error" style={{ marginTop: 4 }}>
-                Ev sahibi odayı kapattı.
+                Oda sahibi ayrıldığı için oda kapatıldı.
               </p>
             )}
 
@@ -1834,6 +1855,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                           </span>
                         </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                        {!p.profile_id && <GuestTag className="dgg-guest-tag" />}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>
                       {/* Sağ: kick */}
@@ -2132,6 +2154,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                           </span>
                         </PlayerProfileTrigger>
                         {isMe && <span className="duel-tag" style={{ flexShrink: 0, marginLeft: 2 }}>Sen</span>}
+                        {!p.profile_id && <GuestTag className="dgg-guest-tag" />}
                         {isPlayerHost && <span className="duel-tag host" style={{ flexShrink: 0, marginLeft: 2 }}>👑</span>}
                       </div>
                       {isHost && !isPlayerHost && (
@@ -2710,6 +2733,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
                 <span className="duel-sum-dot">·</span>
                 <span>Sıra #{Math.max(1, myRank)}</span>
               </div>
+
+              <GuestEndPrompt visible={!profile?.username} />
 
               <div className="wheel-result-actions">
                 <button

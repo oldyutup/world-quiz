@@ -59,6 +59,10 @@ type AuthModalProps = {
   /** Modal açılışında doğrudan "Şifremi unuttum" görünümünü göster (geçersiz/
    *  süresi dolmuş recovery bağlantısından "yeni bağlantı iste" akışı için). */
   startInForgot?: boolean;
+  /** Modal açılışında "Hesap Oluştur" sekmesinde başla. Kullanıcı zaten
+   *  "Hesap Oluştur" butonuna bastıysa bir tıklama daha istemeyelim
+   *  (Kuşatma giriş kapısı / misafir kayıt akışı). */
+  startInSignup?: boolean;
 };
 
 export default function AuthModal({
@@ -70,8 +74,9 @@ export default function AuthModal({
   isNative = false,
   onNeedsUsername,
   startInForgot = false,
+  startInSignup = false,
 }: AuthModalProps) {
-  const [mode, setMode] = useState<AuthMode>("login");
+  const [mode, setMode] = useState<AuthMode>(startInSignup ? "signup" : "login");
   // "Şifremi unuttum" görünümü — giriş görünümünden link ile geçilir.
   const [view, setView] = useState<AuthView>(startInForgot ? "forgot" : "auth");
   const [resetEmail, setResetEmail] = useState("");

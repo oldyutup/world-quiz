@@ -25,6 +25,14 @@
   --radius:       9px;
   --font-head:    "Bebas Neue", sans-serif;
   --font-body:    "DM Sans", sans-serif;
+  /* Mobil ana sayfa tipografi denemesi (Barlow ailesi, yerel bundle). Yalnız
+     mobil-home kapsamlı selektörlerde uygulanır — global body/desktop DM
+     Sans/Bebas'a DOKUNMAZ. Kalın/tok yön: ince/300/400 kullanılmaz.
+       --font-cond → Barlow Condensed ExtraBold başlıklar (kart/sheet başlığı)
+       --font-ui   → Barlow SemiBold/Bold gövde-UI (etiket, açıklama, buton)
+     Fallback zinciri fontlar yüklenmeden okunur bir tok yüz verir. */
+  --font-cond:    "Barlow Condensed", "Bebas Neue", system-ui, sans-serif;
+  --font-ui:      "Barlow", "DM Sans", system-ui, sans-serif;
 }
 
 /* ═══════════════════════════════════════════
@@ -20707,21 +20715,26 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .home-screen .atlas-strip { display: none; }
 
   /* ── App-home vertical rhythm (mobile only) ──
-     Desktop keeps its own .home-screen padding; here the hero (logo +
-     subtitle) and the three category cards are pushed down together so the
-     first screen reads balanced instead of top-heavy. Both the top offset
-     and the hero→cards gap scale with viewport height (clamped), so the
-     card group drifts toward the lower guide on tall phones yet stays fully
-     visible — all three cards clear of the social dock — on a 4.7" iPhone
-     SE. Only padding-top + gap are overridden; the horizontal and bottom
-     padding from the shared mobile rules stay intact. The theme variants
-     are listed so this wins over the default .home-screen--adventure class. */
+     Logo + slogan + dört kart TEK bir kompozisyon: ikisi de viewport
+     yüksekliğine bağlı iki değişkenden beslenir, böylece grup bir bütün
+     olarak hareket eder (kartlara ayrı margin verilmez).
+       --mh-top-offset : ekranın üstü → logo
+       --mh-hero-gap   : slogan → kart grubu (.home-screen flex gap'i)
+     Eski değerler (12vh / 6.5vh) grubu gereğinden fazla aşağı itiyordu;
+     6vh / 4vh ile iPhone 17 Pro'da ~74px yukarı gelir, küçük telefonlarda
+     ise oransal olarak daha az kısalır (clamp tabanları koruyucu).
+     Native kabuk AYNI değişkeni okur, üstüne yalnız safe-area inset'ini
+     ekler (aşağıdaki html.is-native-app kuralı) → iOS app ile mobil web
+     tek hizalama mantığını paylaşır. Yatay/alt padding'e dokunulmaz. Tema
+     varyantları .home-screen--adventure'ı yenmek için listelenir. */
   .home-screen,
   .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
   .home-screen.home-screen--dark-space {
-    padding-top: clamp(46px, 12vh, 128px);
-    gap: clamp(26px, 6.5vh, 60px);
+    --mh-top-offset: clamp(28px, 6vh, 72px);
+    --mh-hero-gap:   clamp(18px, 4vh, 40px);
+    padding-top: var(--mh-top-offset);
+    gap: var(--mh-hero-gap);
   }
 
   /* Hero legibility over the bright sky (mobile-only; desktop type intact) */
@@ -20746,13 +20759,19 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     z-index: 1;
   }
 
-  /* ── First screen: three category cards ──
-     Dark-blue frosted glass over the bright art. A 3-column grid
-     (icon · text · arrow), vertically centred, keeps every element
-     balanced and the three cards at equal height. The per-category accent
-     (--cat) tints the icon tile, count pill, corner glow and chevron so the
-     cards read as distinct destinations of equal weight, not a repeated
-     icon+text grid. */
+  /* ── Ana menü: DÖRT eşit kart ──
+     Tek Oyunculu · Düello · Çok Oyunculu · Oda Kodu ile Katıl. Hepsi AYNI
+     .mh-cat kuralını paylaşır: aynı 3 kolonlu grid (ikon · metin · ok), aynı
+     min-height, aynı padding → aynı genişlik + aynı yükseklik; eşit aralık
+     .mobile-home'un gap'inden gelir. Yapı farkı YOK (Oda Kodu kartında yalnız
+     mod-sayısı rozeti yok — hizayı etkilemeyen inline bir öğe).
+
+     BUZLU CAM YÜZEY: arka plandaki atlas illüstrasyonu kartın altından hafifçe
+     okunur. Yarı saydam lacivert dolgu + ölçülü backdrop blur; koyu opak blok
+     DEĞİL, ama iOS Control Center taklidi de değil. Renk (--cat) yalnız ikon
+     karosunda, mod rozetinde ve ok'ta; gövde nötr cam kalır. Neon/glow yok:
+     tek ışık kaynağı üst kenardaki 1px iç highlight. Eski 4px sol renk şeridi
+     KALDIRILDI (dekoratif yan-şerit yasağı + dört kartın tek aile okunması). */
   .mh-cat {
     --cat: var(--accent);
     --cat-rgb: 88, 166, 255;
@@ -20762,78 +20781,103 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     align-items: center;
     column-gap: 14px;
     width: 100%;
-    min-height: 90px;
-    padding: 15px 17px;
-    border-radius: 20px;
-    /* Shared deep-navy glass for all three cards; the per-category accent
-       lives only in the border tint, a confined top-corner glow and a soft
-       outer halo — never a full red/green wash. The base is a touch more
-       transparent than before so the bright art reads through as glass,
-       while the backdrop blur keeps the navy dark enough for white text. */
-    border: 1px solid rgba(var(--cat-rgb), .26);
-    background:
-      radial-gradient(78% 70% at 92% -12%, rgba(var(--cat-rgb), .20), transparent 62%),
-      linear-gradient(155deg, rgba(18, 30, 56, .48), rgba(10, 18, 38, .64));
+    min-height: 84px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(158, 188, 232, 0.24);
+    background: linear-gradient(180deg, rgba(31, 52, 92, 0.42), rgba(13, 26, 52, 0.54));
+    -webkit-backdrop-filter: blur(16px) saturate(128%);
+    backdrop-filter: blur(16px) saturate(128%);
     box-shadow:
-      0 14px 34px rgba(3, 9, 26, .32),
-      0 2px 8px rgba(3, 9, 26, .20),
-      0 0 26px -8px rgba(var(--cat-rgb), .26),
-      inset 0 1px 0 rgba(255, 255, 255, .15);
-    -webkit-backdrop-filter: blur(18px) saturate(1.3);
-    backdrop-filter: blur(18px) saturate(1.3);
+      0 8px 22px rgba(3, 8, 22, 0.26),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10);
     color: var(--text);
-    font-family: var(--font-body);
+    font-family: var(--font-ui);
     text-align: left;
     cursor: pointer;
     overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
     transition: transform .14s cubic-bezier(.22,1,.36,1), border-color .18s, box-shadow .18s;
+  }
+  /* backdrop-filter yoksa (eski WebView / kapalı efekt): saydamlığı düşür ki
+     metin her arka planda okunur kalsın — cam his gider, okunabilirlik kalır. */
+  @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+    .mh-cat {
+      background: linear-gradient(180deg, rgba(25, 43, 78, 0.90), rgba(12, 24, 48, 0.93));
+    }
   }
   .mh-cat:active {
     transform: scale(.985);
-    border-color: rgba(var(--cat-rgb), .6);
+    border-color: rgba(var(--cat-rgb), .46);
     box-shadow:
-      0 10px 24px rgba(3, 9, 26, .4),
-      0 0 30px -6px rgba(var(--cat-rgb), .34),
-      inset 0 1px 0 rgba(255, 255, 255, .12);
+      0 4px 14px rgba(3, 8, 22, 0.30),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10);
   }
-  /* Subtler accents: cool blue (solo), soft coral (duel), green-teal (multi). */
-  .mh-cat--solo  { --cat: #74b8ff; --cat-rgb: 116, 184, 255; }
-  .mh-cat--duel  { --cat: #ff8e84; --cat-rgb: 255, 142, 132; }
-  .mh-cat--multi { --cat: #5fd2a0; --cat-rgb: 95, 210, 160; }
+  /* Klavye odağı görünür olsun (dokunmada tetiklenmez): kategori renginde ince
+     halka — parıltı değil, durum bildirimi. */
+  .mh-cat:focus-visible {
+    outline: none;
+    border-color: rgba(var(--cat-rgb), .68);
+    box-shadow:
+      0 0 0 3px rgba(var(--cat-rgb), .30),
+      0 8px 22px rgba(3, 8, 22, 0.26),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  }
+  /* Kategori aksanları: soğuk mavi (tek oyunculu), yumuşak mercan (düello),
+     yeşil-turkuaz (çok oyunculu), pirinç/parşömen (oda kodu). Hepsi aynı
+     doygunluk bandında → dördü eşit görsel ağırlıkta okunur. */
+  .mh-cat--solo     { --cat: #74b8ff; --cat-rgb: 116, 184, 255; }
+  .mh-cat--duel     { --cat: #ff8e84; --cat-rgb: 255, 142, 132; }
+  .mh-cat--multi    { --cat: #5fd2a0; --cat-rgb: 95, 210, 160; }
+  .mh-cat--roomcode { --cat: #e3c08d; --cat-rgb: 227, 192, 141; }
 
   .mh-cat-icon {
-    width: 56px;
-    height: 56px;
+    width: 50px;
+    height: 50px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.9rem;
+    font-size: 1.65rem;
     line-height: 1;
-    border-radius: 16px;
-    background: linear-gradient(160deg, rgba(var(--cat-rgb), .24), rgba(var(--cat-rgb), .08));
-    border: 1px solid rgba(var(--cat-rgb), .36);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+    border-radius: 14px;
+    /* Kartın camına oturan renkli karo: hafif tint + ince kenar, gradient yok. */
+    background: rgba(var(--cat-rgb), 0.15);
+    border: 1px solid rgba(var(--cat-rgb), 0.32);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
   }
-  .mh-cat-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-  .mh-cat-titlerow { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .mh-cat-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .mh-cat-titlerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .mh-cat-title {
-    font-family: var(--font-head);
-    font-weight: 400;
-    font-size: 1.6rem;
-    letter-spacing: .035em;
+    /* Okunabilirlik gölgesi KISA tutulur (0 1px 2px). Geniş blur'lu bir gölge
+       (eskiden 0 1px 10px) sık dizilmiş condensed harflerin aralarında birleşip
+       başlığın arkasında kesintisiz koyu bir ŞERİT oluşturuyordu; kart tek parça
+       cam görünmüyordu. 2px blur harf kenarını tanımlar, harf aralarını
+       dolduramaz → şerit yok, kontrast korunur. Kartın kendi cam zemini
+       ikondan chevron'a kadar kesintisiz akar (ayrı zemin/overlay YOK). */
+    font-family: var(--font-cond);   /* Barlow Condensed ExtraBold */
+    font-weight: 800;
+    font-size: 1.44rem;
+    letter-spacing: .015em;
     text-transform: uppercase;
-    line-height: 1;
+    line-height: .96;
     white-space: nowrap;
-    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #f4f8ff;
+    text-shadow: 0 1px 2px rgba(4, 10, 26, .45);
   }
+  /* Mod sayısı rozeti — satır-içi, kart yüksekliğini/ hizasını etkilemez.
+     Oda Kodu kartında mod sayısı olmadığı için hiç render edilmez (zorlama
+     badge yok); grid kolonları değişmediğinden dört kart yine aynı ölçüde. */
   .mh-cat-count {
     flex-shrink: 0;
-    font-size: .56rem;
+    font-family: var(--font-ui);
+    font-size: .58rem;
     font-weight: 700;
-    letter-spacing: .08em;
+    letter-spacing: .07em;
     text-transform: uppercase;
     color: var(--cat);
-    background: rgba(var(--cat-rgb), .15);
+    background: rgba(var(--cat-rgb), .16);
     border: 1px solid rgba(var(--cat-rgb), .36);
     padding: 3px 8px;
     border-radius: 999px;
@@ -20841,16 +20885,19 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     white-space: nowrap;
   }
   .mh-cat-tagline {
-    font-size: .8rem;
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: .78rem;
     line-height: 1.3;
-    color: rgba(223, 233, 250, .74);
+    color: rgba(214, 226, 248, .80);
+    text-shadow: 0 1px 2px rgba(4, 10, 26, .40);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .mh-cat-chevron {
     color: var(--cat);
-    font-size: 1.7rem;
+    font-size: 1.55rem;
     line-height: 1;
     opacity: .9;
   }
@@ -21054,27 +21101,43 @@ button.cq-team-toggle:active { transform: scale(0.92); }
      Tek sheet içinde sekmeli: Arkadaşlar / İstekler / Bildirimler / Tema.
      Reuses the .mh-sheet shell; opened solely from .mh-bottom-nav. ── */
   .mh-sheet--social { max-height: 88vh; }
+  /* Arkadaşlar sheet başlığı — Barlow Condensed ExtraBold (yalnız sosyal sheet). */
+  .mh-sheet--social .mh-sheet-title {
+    font-family: var(--font-cond);
+    font-weight: 800;
+    letter-spacing: .01em;
+  }
 
+  /* Beş sekme (Arkadaşlar · İstekler · Bildirimler · Görev · Tema). Barlow
+     Condensed (dar) + azaltılmış padding ile 375px+ ekranlarda tek satıra sığar;
+     çok dar ekranda (≤360px) yatay kaydırma güvenlik ağı devreye girer (aktif
+     sekme JS ile tam görünür kaydırılır — metin kesilmez, ikon-only'ye düşülmez). */
   .social-tabs {
     display: flex;
-    gap: 6px;
+    gap: 5px;
     padding: 2px;
     border-radius: 14px;
     background: rgba(8, 14, 28, .55);
     border: 1px solid rgba(160, 196, 255, .12);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
+  .social-tabs::-webkit-scrollbar { display: none; }
   .social-tab {
     position: relative;
-    flex: 1;
+    flex: 1 0 auto;               /* dolduğunda eşit büyür, içerikten kısalmaz → kesilmez */
     min-width: 0;
-    padding: 9px 4px;
+    padding: 9px 9px;
     border: 0;
     border-radius: 11px;
     background: transparent;
     color: var(--muted);
-    font-family: var(--font-body);
-    font-size: .8rem;
+    font-family: var(--font-cond); /* Barlow Condensed — dar, 5 sekme sığar */
+    font-size: .92rem;
     font-weight: 700;
+    letter-spacing: .01em;
+    white-space: nowrap;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: color .15s, background-color .15s;
@@ -21131,6 +21194,136 @@ button.cq-team-toggle:active { transform: scale(0.92); }
     color: var(--muted);
   }
   .social-search-section-label:first-child { padding-top: 6px; }
+
+  /* ── "Görev" sekmesi — Günün Görevi özeti (tek kaynak: dailyQuest durumu).
+     CTA sheet'i KAPATMADAN DailyQuestModal'ı açar (modal --z-modal-nested ile
+     ÜSTTE). Gece Atlası dili + görevin sıcak/altın ödül vurgusu. Barlow. ── */
+  .social-quest { display: flex; flex-direction: column; padding: 12px; }
+  .social-quest-card {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(122, 152, 205, 0.18);
+    background:
+      repeating-linear-gradient(0deg,  rgba(126, 158, 214, 0.04) 0 1px, transparent 1px 24px),
+      linear-gradient(180deg, rgba(23, 37, 65, 0.7), rgba(15, 26, 49, 0.72));
+  }
+  .social-quest-head { display: flex; align-items: center; gap: 11px; }
+  .social-quest-icon {
+    width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  }
+  .social-quest-headtext { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+  .social-quest-title {
+    font-family: var(--font-cond);
+    font-weight: 800;
+    font-size: 1.28rem;
+    letter-spacing: .01em;
+    line-height: 1;
+    color: #f3f7ff;
+  }
+  .social-quest-status {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: .78rem;
+    color: rgba(198, 213, 240, .72);
+  }
+  .social-quest-reward {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border: 1px solid rgba(245, 181, 68, 0.4);
+    border-radius: 999px;
+    background: rgba(245, 181, 68, 0.10);
+    color: #f5d488;
+    font-family: var(--font-ui);
+    font-size: .82rem;
+    font-weight: 700;
+  }
+  .social-quest-reward .gold-coin-icon { width: 16px; height: 16px; }
+  .social-quest-desc {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: .88rem;
+    line-height: 1.4;
+    color: rgba(214, 226, 246, .86);
+  }
+  .social-quest-progress {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: .82rem;
+    color: #7fd8ff;
+  }
+  .social-quest-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0 18px;
+    border: 1px solid rgba(120, 170, 255, .42);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(88, 166, 255, .3), rgba(56, 132, 255, .22));
+    color: #eaf2ff;
+    font-family: var(--font-ui);
+    font-size: .96rem;
+    font-weight: 700;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  .social-quest-cta:active { transform: translateY(1px); }
+  /* Ödül hazır: sıcak/altın CTA (görevi bitir → ödülünü al vurgusu). */
+  .social-quest-cta--claim {
+    border-color: rgba(245, 181, 68, .5);
+    background: linear-gradient(180deg, rgba(245, 181, 68, .28), rgba(214, 150, 40, .2));
+    color: #ffe6b0;
+  }
+  .social-quest-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 46px;
+    padding: 0 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    background: rgba(74, 222, 128, 0.09);
+    color: #86efac;
+    font-family: var(--font-ui);
+    font-size: .92rem;
+    font-weight: 700;
+  }
+  /* Misafir / nötr durum */
+  .social-quest-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 26px 16px;
+    text-align: center;
+  }
+  .social-quest-empty-icon { width: 46px; height: 46px; object-fit: contain; opacity: .92; }
+  .social-quest-empty-title {
+    font-family: var(--font-cond);
+    font-weight: 800;
+    font-size: 1.3rem;
+    letter-spacing: .01em;
+    color: #eaf2ff;
+  }
+  .social-quest-empty-sub {
+    font-family: var(--font-ui);
+    font-weight: 500;
+    font-size: .86rem;
+    line-height: 1.4;
+    color: rgba(198, 213, 240, .72);
+    max-width: 260px;
+  }
+  .social-quest-empty .social-quest-cta { margin-top: 4px; }
 
   .social-theme { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
   .social-section-label {
@@ -21399,28 +21592,66 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   }
   .mh-qm-primary[aria-disabled="true"]:active { transform: none; filter: none; }
 
-  /* Narrow/mobil-web Hızlı Eşleş giriş kartı (.mobile-home içinde). Native'de
-     gizli — orada alt-nav ⚡ sekmesi kullanılır (aşağıda is-native-app override). */
+  /* Narrow/mobil-web Hızlı Eşleş girişi — dört kartın ALTINDA, bilinçli olarak
+     ONLARDAN DAHA SESSİZ: daha alçak, daha küçük ikon, daha düşük kontrastlı cam,
+     ikon karosu yok. Böylece ana menü "dört eşit kart" olarak okunmaya devam eder
+     ve bu satır beşinci bir eş kart gibi görünmez. Native'de hiç yok — orada
+     alt-nav ⚡ sekmesi var (aşağıdaki is-native-app override); mobil web'de ise
+     Hızlı Eşleş'in TEK girişi burasıdır (üst bar ≤600px'te gizli). */
   .mh-qm-entry {
     display: flex;
     align-items: center;
-    gap: 13px;
+    gap: 11px;
     width: 100%;
-    padding: 15px 16px;
-    border-radius: 16px;
-    border: 1px solid rgba(88, 166, 255, .42);
-    background: linear-gradient(135deg, rgba(40, 92, 180, .42), rgba(22, 44, 90, .5));
+    min-height: 60px;
+    margin-top: 2px;
+    padding: 10px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(158, 188, 232, .18);
+    background: linear-gradient(180deg, rgba(26, 44, 80, .30), rgba(11, 22, 44, .38));
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    backdrop-filter: blur(14px) saturate(120%);
     color: var(--text);
-    font-family: var(--font-body);
+    font-family: var(--font-ui);
     text-align: left;
     cursor: pointer;
-    transition: transform .12s, border-color .15s;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .12s, border-color .15s, box-shadow .15s;
   }
-  .mh-qm-entry:active { transform: scale(.99); border-color: var(--accent); }
-  .mh-qm-entry-icon { font-size: 1.7rem; line-height: 1; }
+  @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+    .mh-qm-entry {
+      background: linear-gradient(180deg, rgba(22, 38, 70, .86), rgba(10, 20, 42, .90));
+    }
+  }
+  .mh-qm-entry:active { transform: scale(.99); border-color: rgba(88, 166, 255, .5); }
+  .mh-qm-entry:focus-visible {
+    outline: none;
+    border-color: rgba(88, 166, 255, .6);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, .26);
+  }
+  .mh-qm-entry-icon { font-size: 1.25rem; line-height: 1; opacity: .95; }
   .mh-qm-entry-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-  .mh-qm-entry-title { font-size: 1rem; font-weight: 800; }
-  .mh-qm-entry-desc { font-size: .78rem; color: var(--muted); line-height: 1.35; }
+  .mh-qm-entry-title {
+    font-size: .95rem;
+    font-weight: 700;
+    color: rgba(233, 241, 255, .94);
+    text-shadow: 0 1px 2px rgba(4, 10, 26, .45);
+  }
+  .mh-qm-entry-desc {
+    font-size: .74rem;
+    color: rgba(206, 220, 246, .72);
+    line-height: 1.3;
+    text-shadow: 0 1px 2px rgba(4, 10, 26, .4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mh-qm-entry-chevron {
+    flex: 0 0 auto;
+    color: rgba(160, 186, 226, .7);
+    font-size: 1.3rem;
+    line-height: 1;
+  }
   /* Native app: hide the web entry card — the bottom-nav ⚡ Eşleş tab handles
      Quick Match there, so showing both would be a duplicate entry point. */
   html.is-native-app .mh-qm-entry { display: none; }
@@ -21436,6 +21667,8 @@ button.cq-team-toggle:active { transform: scale(0.92); }
   .mh-sheet { animation: none; }
   .mh-sheet-backdrop { animation: none; }
   .mh-qm-pop { animation: none; }
+  .mh-cat,
+  .mh-qm-entry,
   .mh-qm-mode,
   .mh-qm-field,
   .mh-qm-field-caret,
@@ -21444,21 +21677,26 @@ button.cq-team-toggle:active { transform: scale(0.92); }
 }
 
 @media (max-width: 360px) {
-  /* Gentler vertical rhythm for the smallest (and often shortest) phones so
-     all three cards stay clear of the dock; mirrors the ≤600px override with
-     a smaller vh share. Theme variants listed to win specificity, as above. */
+  /* En küçük (ve genelde en kısa) telefonlar: aynı iki değişken, daha küçük
+     vh payı — dört kart alt nav / dock'un üstünde rahatça kalsın. YALNIZ
+     değişkenler ezilir; padding-top/gap bildirimleri ≤600px bloğundan gelir
+     (custom property'ler bağımsız cascade eder), böylece native kuralı da
+     otomatik olarak bu değeri okur. Tema varyantları özgüllük için listeli. */
   .home-screen,
   .home-screen.home-screen--turkiye,
   .home-screen.home-screen--adventure,
   .home-screen.home-screen--dark-space {
-    padding-top: clamp(34px, 9vh, 84px);
-    gap: clamp(20px, 5vh, 44px);
+    --mh-top-offset: clamp(20px, 4.5vh, 46px);
+    --mh-hero-gap:   clamp(14px, 3.5vh, 30px);
   }
   .mobile-home { gap: 10px; padding-bottom: 82px; }
-  .mh-cat { min-height: 82px; padding: 13px 14px; column-gap: 12px; }
-  .mh-cat-icon { width: 50px; height: 50px; font-size: 1.7rem; border-radius: 14px; }
-  .mh-cat-title { font-size: 1.45rem; }
-  .mh-cat-tagline { font-size: .74rem; }
+  .mh-cat { min-height: 76px; padding: 12px 13px; column-gap: 11px; }
+  .mh-cat-icon { width: 44px; height: 44px; font-size: 1.45rem; border-radius: 12px; }
+  /* "ODA KODU İLE KATIL" en uzun başlık: condensed + bu ölçek 320px'te de
+     kırpılmadan sığar (nowrap + ellipsis yine emniyet ağı). */
+  .mh-cat-title { font-size: 1.22rem; }
+  .mh-cat-tagline { font-size: .72rem; }
+  .mh-qm-entry { min-height: 54px; padding: 9px 13px; }
   /* Slightly narrower rail cards so 3 + a peek still fit the smallest phones. */
   .mh-qm-mode { width: 96px; min-height: 88px; }
 }
@@ -21520,24 +21758,17 @@ html.is-native-app .control-bar {
   }
 }
 
-/* Mobile/native home vertical rhythm. The browser-mobile layout reserves
-   clamp(46px, 12vh, 128px) of top padding *below the browser's own top chrome*.
-   The native webview is full-bleed (viewport-fit=cover + ios.contentInset:
-   'never'), so the equivalent of that chrome is the status-bar / Dynamic Island
-   inset — add it on top of the same tuned rhythm. This reproduces the browser's
-   balanced position inside the native shell: the logo block clears the Island
-   and the vh-scaling balance is preserved. (Replaces the earlier flat
-   max(20px, inset+12px), which was *smaller* than the browser value and let the
-   hero ride up under the Island.) */
+/* Mobile/native home vertical rhythm. The browser-mobile layout puts
+   --mh-top-offset of top padding *below the browser's own top chrome*. The
+   native webview is full-bleed (viewport-fit=cover + ios.contentInset:'never'),
+   so the equivalent of that chrome is the status-bar / Dynamic Island inset —
+   add it on top of the SAME variable. One source of truth: retuning the mobile
+   rhythm (see the ≤600px / ≤360px blocks) moves web and native together, and
+   the hero always clears the Island by the full safe-area inset.
+   The fallback keeps native tablets (>600px, where the mobile blocks never
+   run and the variable is unset) on their previous value. */
 html.is-native-app .home-screen {
-  padding-top: calc(env(safe-area-inset-top, 0px) + clamp(46px, 12vh, 128px));
-}
-/* Smallest / shortest phones: mirror the ≤360px browser rhythm (gentler vh
-   share) plus the inset, so all three cards stay clear of the social dock. */
-@media (max-width: 360px) {
-  html.is-native-app .home-screen {
-    padding-top: calc(env(safe-area-inset-top, 0px) + clamp(34px, 9vh, 84px));
-  }
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--mh-top-offset, clamp(46px, 12vh, 128px)));
 }
 
 /* Bottom safe area: .mobile-home reserves 88px below the last card so it clears
@@ -21592,7 +21823,10 @@ html.is-native-app .mh-bottom-nav {
   bottom: 0;
   z-index: 40;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* minmax(0,1fr): 5 sekme HER genişlikte eşit paylaşır ve İÇERİKTEN kısalabilir
+     → sütun toplamı asla viewport'u aşmaz (yatay taşma yok). Barlow etiketleri
+     bir tık geniş olsa da (1fr yerine minmax(auto,1fr) taşırdı) burada güvende. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   /* Side insets keep tabs off the rounded corners / camera in landscape;
      the bottom inset lifts the row above the home-indicator. */
@@ -21614,13 +21848,14 @@ html.is-native-app .mh-nav-item {
   align-items: center;
   justify-content: center;
   gap: 3px;
+  min-width: 0;        /* grid item içerikten kısalabilsin (minmax(0,1fr) ile) */
   min-height: 54px;
   padding: 6px 4px;
   border: 0;
   border-radius: 14px;
   background: transparent;
   color: rgba(190, 208, 240, .72);
-  font-family: var(--font-body);
+  font-family: var(--font-ui); /* Barlow — mobil alt-nav etiketleri */
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .12s ease;
@@ -21634,11 +21869,14 @@ html.is-native-app .mh-nav-icon {
   transition: transform .16s ease;
 }
 html.is-native-app .mh-nav-label {
-  font-size: .68rem;
+  font-size: .66rem;         /* Barlow bir tık geniş; 5 sekme 375px'te rahat sığar */
   font-weight: 700;
-  letter-spacing: .01em;
+  letter-spacing: 0;
   line-height: 1;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;   /* aşırı dar durumda kesme yerine … (kelime kesilmez) */
 }
 /* Narrowest phones (≤360px, incl. iPhone SE): trim gap + label so all five
    tabs stay on one row without overflow. */
@@ -23157,6 +23395,7 @@ html:not(.is-native-app) .apk-photo-card {
      --z-confirm      6400  paylaşılan onay/bildir TABANI (panelden/oyundan açılınca)
      --z-modal-social 6500  DM sohbet — en yüksek TABAN yüzey
      --z-profile-card 6600  PlayerProfileCard — tüm taban yüzeylerin üstünde
+     --z-card-sheet   6650  mobil "Bildir / Engelle" güvenlik alt-sayfası (karttan BİR ÜST)
      --z-card-modal   6700  karttan açılan "Profili Düzenle" ekosistemi (pem/uc/apk/bse)
      --z-modal-nested 6800  BİR OVERLAY'DEN AÇILAN ikincil modal:
                             ReportModal (HER ZAMAN) + ConfirmDialog (nested prop'la)
@@ -23182,6 +23421,7 @@ html:not(.is-native-app) .apk-photo-card {
   --z-confirm:       6400;
   --z-modal-social:  6500;
   --z-profile-card:  6600;
+  --z-card-sheet:    6650; /* mobil güvenlik action sheet — kart (6600) üstü, nested modal (6800) altı */
   --z-card-modal:    6700;
   --z-modal-nested:  6800;
   --z-card-toast:    6810;
@@ -23683,26 +23923,304 @@ body.ppc-card-open .app-toast-host { z-index: var(--z-card-toast); }
 }
 .ppc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* MOBİL: belge iki sütundan tek sütuna akar; aksiyonlar tam genişlik istif. */
-@media (max-width: 520px) {
-  .ppc-strip { padding: 10px 44px 10px 13px; }
+/* MOBİL: belge iki sütundan tek sütuna akar; aksiyonlar tam genişlik istif.
+   Ayrıca dikey bütçe için çeperler/boşluklar hafifçe daralır — istatistikler,
+   5 rozet, kullanıcı adı ve seviye KORUNUR; metin ve dokunma hedefleri okunaklı
+   kalır (≥44px). Küçük iPhone'larda taşarsa kart KENDİ içinde kayar (aşağıdaki
+   .ppc-overlay--sheet .ppc-card kuralı).
+   BREAKPOINT: 600px — useIsMobile'ın mobil sınırıyla (max-width:600px) BİREBİR.
+   Böylece mobil sheet DOM'u (isMobile ≤600) ile bu kompakt CSS AYNI ANDA açılır;
+   521–600px'te "2-sütun belge + mobil aksiyon" karışımı OLUŞMAZ. Masaüstü
+   (601px+) ortalı modal 2-sütun düzeni DEĞİŞMEZ. */
+@media (max-width: 600px) {
+  .ppc-strip { padding: 9px 42px 8px 12px; }
   .ppc-strip-brand { font-size: 16px; }
-  .ppc-doc { margin: 4px 10px 10px; }
+  .ppc-doc { margin: 4px 9px 9px; }
   .ppc-doc::after { display: none; } /* perforasyon mobilde gizli */
   .ppc-doc-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 16px;
+    gap: 13px;
+    padding: 13px;
   }
-  /* Sağ sütun: dikey ayraç → üst ayraca döner. */
+  /* Sağ sütun: dikey ayraç → üst ayraca döner (daha sıkı). */
   .ppc-log {
     padding-left: 0;
     border-left: 0;
-    padding-top: 15px;
+    padding-top: 12px;
+    gap: 12px;
     border-top: 1px solid var(--ppc-paper-line);
   }
+  /* Kimlik: avatar prop ile 80px'e indi; çevresi de sıkışır. */
+  .ppc-hero { gap: 9px; }
+  .ppc-photo { padding: 4px; }
+  .ppc-identity { gap: 5px; }
+  /* Kayıt defteri + damgalar: satır/boşluk hafif daralır (içerik korunur). */
+  .ppc-section,
+  .ppc-records { gap: 7px; }
+  .ppc-record { padding: 5px 0; }
+  .ppc-badges { gap: 7px; }
+  .ppc-badge-slot { width: 40px; height: 40px; }
   .ppc-actions { flex-direction: column; padding: 12px; }
   .ppc-btn { width: 100%; min-width: 0; min-height: 46px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MOBİL profil kartı — viewport güvenliği + kompakt aksiyon düzeni + güvenlik
+   action sheet. Bu bloktaki kurallar YALNIZ mobilde etkindir: ya
+   `.ppc-overlay--sheet` (isMobile ≤600px'te eklenir) altında, ya da yalnız
+   mobilde render edilen `.ppc-actions--mobile` / `.ppc-status-*` / `.ppc-linkbtn`
+   / `.sec-sheet*` sınıflarıyla. Masaüstü kart (`--card` ama `--sheet` DEĞİL)
+   hiç etkilenmez → masaüstü boyut/spacing/buton sırası değişmez.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Viewport güvenliği: kart iPhone ekranına güvenli sığar; taşarsa DIŞ sayfa
+   değil KARTIN KENDİSİ kayar. Kapatma (×) `.ppc-overlay-inner` üstünde sabit
+   olduğundan her zaman erişilebilir. Üstte çentik, altta home-indicator için
+   güvenli alan bırakılır; `100dvh` (vh fallback'li) tarayıcı çubuğuyla uyumlu. */
+.ppc-overlay--sheet .ppc-overlay-inner--card {
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+.ppc-overlay--sheet .ppc-card {
+  max-height: calc(100vh - 10px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Kompakt aksiyon bandı (mobil): tek sütun istif, dokunma hedefleri ≥44px. */
+.ppc-actions--mobile {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+}
+.ppc-actions--mobile .ppc-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+}
+
+/* Durum satırı: [durum chip'i]  ikincil metin butonu (ör. Arkadaşsınız · Çıkar).
+   flex-wrap: çok dar ekranda (≤~360px) uzun "Arkadaşlıktan Çıkar" etiketi kesilmek
+   yerine alt satıra iner → yatay taşma YOK, dokunma hedefi korunur. */
+.ppc-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 0 2px;
+}
+.ppc-status-row--solo { justify-content: flex-start; }
+
+/* Durum chip'i — koyu kasa bandı üstünde küçük pill. Büyük disabled butonun
+   yerini alır. Anlam etiket + (arkadaşta) ✓ ikonuyla verilir; renk TEK BAŞINA
+   taşımaz (renk körlüğü dostu; Tek Ses Kuralı korunur — yeşil kimlik icat YOK). */
+.ppc-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.ppc-status-chip--friend {
+  color: #dbe6f5;
+  background: rgba(122, 158, 224, 0.12);
+  border: 1px solid rgba(122, 158, 224, 0.30);
+}
+.ppc-status-chip--pending {
+  color: #c7d0e0;
+  background: rgba(150, 170, 210, 0.08);
+  border: 1px solid rgba(150, 170, 210, 0.22);
+}
+.ppc-status-chip--blocked {
+  color: #e8b0aa;
+  background: rgba(248, 81, 73, 0.10);
+  border: 1px solid rgba(248, 81, 73, 0.30);
+}
+/* Nötr "kullanılamıyor" durumu (ör. blocked_by): alarm değil, sönük/pasif ton.
+   "Seni engelledi" ifşası YOK; yalnızca etkileşimin kapalı olduğunu bildirir. */
+.ppc-status-chip--muted {
+  color: var(--muted);
+  background: rgba(125, 133, 144, 0.10);
+  border: 1px solid rgba(125, 133, 144, 0.28);
+}
+.ppc-status-check { font-size: 12px; line-height: 1; opacity: 0.9; }
+
+/* İkincil metin butonu (Arkadaşlıktan Çıkar) — ana aksiyon gibi görünmez; nötr,
+   yeterli dokunma hedefi. Ağırlık onay diyaloğunda (bu yalnız tetikler). */
+.ppc-linkbtn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease-out;
+}
+.ppc-linkbtn:hover { color: var(--text); text-decoration: underline; }
+.ppc-linkbtn:focus-visible {
+  color: var(--text);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* Güvenlik butonu ("Bildir / Engelle", engelliyken "Bildir") — sosyal
+   aksiyonlardan üst boşlukla AYRILIR; baskın DEĞİL: hafif uyarı tonu (mat kırmızı
+   yazı), vurgu yalnız hover/focus'ta. Mesaj Gönder kadar öne çıkmaz. */
+.ppc-actions--mobile .ppc-btn--security {
+  margin-top: 4px;
+  color: #cf9a94;
+  font-weight: 700;
+}
+.ppc-actions--mobile .ppc-btn--security:hover:not(:disabled) {
+  border-color: var(--red);
+  color: #ffc4bf;
+  background: rgba(248, 81, 73, 0.08);
+}
+.ppc-actions--mobile .ppc-btn--security:focus-visible {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px var(--red-glow);
+}
+
+/* ── Mobil güvenlik action sheet (SecurityActionSheet) ──
+   Alt-sayfa; document.body'e portallanır → parent stacking context'ten
+   etkilenmez. Kartın (--z-profile-card 6600) BİR ÜSTÜNDE (--z-card-sheet 6650);
+   seçim anında sheet kapanıp ReportModal/ConfirmDialog (6800) açıldığından
+   çakışma olmaz. Backdrop/ESC/Vazgeç YALNIZ sheet'i kapatır (kart açık kalır). */
+.sec-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-card-sheet);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(6, 10, 18, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: uc-fade-in 0.16s ease-out;
+}
+.sec-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(180deg, rgba(20, 26, 40, 0.98), rgba(14, 18, 30, 0.98));
+  border: 1px solid rgba(140, 170, 220, 0.22);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -18px 60px rgba(0, 0, 0, 0.55);
+  animation: sec-sheet-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sec-sheet-grip {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(160, 180, 215, 0.35);
+  margin: 2px auto 6px;
+}
+.sec-sheet-title {
+  margin: 0 0 2px;
+  padding: 0 4px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(180, 200, 230, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sec-sheet-opt {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 700;
+  color: rgba(226, 236, 255, 0.94);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(180, 200, 230, 0.18);
+  cursor: pointer;
+  transition: background 0.14s ease-out, border-color 0.14s ease-out, color 0.14s ease-out;
+}
+.sec-sheet-opt:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(200, 220, 250, 0.34);
+}
+.sec-sheet-opt:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.sec-sheet-opt:active { transform: translateY(1px); }
+/* Yıkıcı seçenekler: mat kırmızı yazı; vurgu yalnız hover/focus'ta (Tek Ses). */
+.sec-sheet-opt--danger { color: #eaa8a2; }
+.sec-sheet-opt--danger:hover {
+  border-color: var(--red);
+  color: #ffc9c4;
+  background: rgba(248, 81, 73, 0.10);
+}
+.sec-sheet-opt--danger:focus-visible {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px var(--red-glow);
+}
+/* Vazgeç — nötr; küçük üst boşlukla seçeneklerden ayrılır. */
+.sec-sheet-cancel {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(200, 212, 235, 0.85);
+  background: transparent;
+  border: 1px solid rgba(180, 200, 230, 0.16);
+  cursor: pointer;
+  transition: background 0.14s ease-out, color 0.14s ease-out;
+}
+.sec-sheet-cancel:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.sec-sheet-cancel:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+@keyframes sec-sheet-rise {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sec-sheet-overlay,
+  .sec-sheet { animation: none; }
 }
 
 /* ── Bildirim merkezi ── */
@@ -26769,49 +27287,6 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   html:not(.is-native-app) .rcj-bar-input { width: 70px; }
 }
 
-/* ── Mobil "Oda Kodu ile Katıl" giriş kartı (MobileHome) — Hızlı Eşleş
-      girişiyle (mh-qm-entry) aynı aile, biraz daha sakin. Yalnız ≤600px web +
-      native'de görünür (mobile-home kapsayıcısı zaten öyle). */
-.mh-code-entry {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(140, 165, 205, 0.20);
-  border-radius: 14px;
-  background: rgba(12, 20, 36, 0.55);
-  color: #eaf1fc;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.mh-code-entry:active { transform: translateY(1px); }
-.mh-code-entry-icon {
-  flex: 0 0 auto;
-  font-size: 22px;
-  line-height: 1;
-}
-.mh-code-entry-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.mh-code-entry-title {
-  font-family: var(--font-body);
-  font-size: 14.5px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-.mh-code-entry-desc {
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(184, 200, 226, 0.7);
-}
 
 /* ── Mobil Oda Kodu sheet gövdesi (mh-sheet cam tabanını miras alır) ── */
 .rcj-sheet-body {
@@ -26984,7 +27459,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 }
 .rcj-modal-ok:active { transform: translateY(1px); }
 @media (prefers-reduced-motion: reduce) {
-  .rcj-modal-opt, .mh-code-entry, .rcj-sheet-submit, .rcj-modal-ok { transition: none; }
+  .rcj-modal-opt, .rcj-sheet-submit, .rcj-modal-ok { transition: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -27288,7 +27763,12 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Modal (desktop merkez panel) ── */
-.dq-overlay { z-index: 1200; }
+/* Günün Görevi modalı ön-plan foreground modal bandında: mobil sosyal bottom-
+   sheet'in (--z-panel 5300) ve alt-nav'ın ÜSTÜNDE görünmeli — "Görev" sekmesi
+   sheet AÇIKKEN bu modalı açar (sheet kapanmaz, modal üste biner). --z-modal-
+   nested = bir overlay'den açılan ikincil modal bandı; normal (home) açılışında
+   da doğru foreground kalır. (Eski 1200 sheet'in ALTINDAYDI.) */
+.dq-overlay { z-index: var(--z-modal-nested); }
 .dq-modal {
   width: min(480px, calc(100vw - 32px));
   max-height: min(86dvh, 640px);
@@ -27475,7 +27955,17 @@ html.is-native-app .social-bar .notif-bell { display: none; }
     border-right: none;
     border-bottom: none;
     padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    /* Mobil (intro/alt-sheet) Günün Görevi modalı: Barlow gövde. Masaüstü
+       (>600px) DM Sans/zümrüt görünümü DEĞİŞMEZ (bu blok yalnız ≤600px). */
+    font-family: var(--font-ui);
   }
+  /* Barlow Condensed ExtraBold başlık (mobil). Buton/etiketler .dq-btn
+     font-family:inherit ile Barlow'u alır. */
+  .dq-modal .dq-title,
+  .dq-modal .dq-mode-label { font-family: var(--font-cond); font-weight: 800; letter-spacing: .01em; }
+  /* Butonlar: Barlow Bold 700 (yalnız 500/600/700 bundle'landı; 800 sentetik
+     kalınlaşmayı önle). Desktop dq-btn 800 (DM Sans) değişmez. */
+  .dq-modal .dq-btn { font-weight: 700; }
   .dq-grab {
     display: block;
     width: 44px;
@@ -27486,50 +27976,13 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   }
 }
 
-/* ── Mobil "Günün Görevi" giriş kartı (MobileHome) — Oda Kodu kartıyla aynı
-      aile; zümrüt kenar vurgusu görev kimliğini verir. Yalnız ≤600px web +
-      native'de görünür (mobile-home kapsayıcısı zaten öyle). ── */
-.mh-dq-entry {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(90, 200, 175, 0.32);
-  border-radius: 14px;
-  background: rgba(9, 30, 25, 0.6);
-  color: #eaf1fc;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.mh-dq-entry:active { transform: translateY(1px); }
-.mh-dq-entry-icon {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-}
-.mh-dq-entry-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.mh-dq-entry-title {
-  font-family: var(--font-body);
-  font-size: 14.5px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-}
-.mh-dq-entry-desc {
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(184, 214, 202, 0.75);
-}
+/* Mobil "Günün Görevi" girişleri YÜZEY BAŞINA ayrı bayraklarla yönetilir
+   (lib/dailyQuest): ANA MENÜ kapalı (…_HOME_VISIBLE=false → kart yok, alt-nav
+   rozetine +1 yok), otomatik intro modalı AÇIK (…_INTRO_ENABLED) ve Arkadaşlar
+   sheet'indeki "Görev" sekmesi AÇIK (…_SOCIAL_VISIBLE). Aşağıdaki .dq-* stilleri
+   her hâlükârda korunur — modal/oyun ekranı masaüstü üst bar butonundan da
+   açılıyor. Eski .mh-dq-entry / .mh-quick* kartları çoktan kaldırılmıştı ve
+   ana menüye geri gelmiyor. */
 
 /* ── Görev oyun ekranı ── */
 .dq-game-root {
@@ -27788,7 +28241,7 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .dq-spinner { animation: none; }
-  .dq-btn, .dq-back, .mh-dq-entry { transition: none; }
+  .dq-btn, .dq-back { transition: none; }
 }
 
 /* ── Profil menüsü: Yasal & Destek bağlantıları (Gizlilik / Destek / İletişim)
@@ -27820,4 +28273,304 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 .upd-legal-link:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgba(242, 200, 121, 0.4);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MİSAFİR KATILIM — "Odaya Katıl" nick ekranı (GuestJoinScreen)
+   ---------------------------------------------------------------------------
+   Kabuk olarak mevcut .auth-overlay / .auth-modal yeniden kullanılır; burada
+   yalnız bu ekrana özgü parçalar tanımlanır. Masaüstü web görünümü mevcut
+   auth modalıyla aynı dilde kalır — yeni bir görsel sistem kurulmaz.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* Klavye açıldığında panelin ekrandan taşmaması için: overlay kaydırılabilir,
+   panel dikeyde ortalanır ama gerektiğinde yukarı akar. */
+.gj-overlay {
+  align-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
+}
+
+.gj-modal {
+  /* Kısa ekranlarda (yatay telefon / klavye açık) panel kendi içinde kaysın. */
+  max-height: none;
+}
+
+/* Oda bilgisi şeridi: mod adı + kod. */
+.gj-room {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(140, 160, 190, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.gj-room-mode {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(190, 200, 215, 0.85);
+}
+.gj-room-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 8px;
+  padding: 3px 10px;
+}
+
+.gj-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gj-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: rgba(190, 200, 215, 0.75);
+}
+
+.gj-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid rgba(140, 160, 190, 0.3);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(235, 242, 255, 0.96);
+  /* iOS'ta 16px altı font-size otomatik zoom tetikler — 16px sabit. */
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.14s, box-shadow 0.14s;
+}
+.gj-input::placeholder {
+  color: rgba(190, 200, 215, 0.42);
+  font-weight: 500;
+}
+.gj-input:focus {
+  border-color: rgba(88, 166, 255, 0.6);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.gj-input[aria-invalid="true"] {
+  border-color: rgba(248, 81, 73, 0.65);
+}
+
+.gj-error {
+  /* Uzun hata mesajı ekranı taşırmasın: sarmalanır, kesilmez. */
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgb(255, 173, 166);
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.32);
+  border-radius: 10px;
+  padding: 8px 11px;
+  overflow-wrap: anywhere;
+}
+
+.gj-submit {
+  margin-top: 4px;
+}
+
+.gj-login {
+  margin-top: 10px;
+}
+
+.gj-note {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(190, 200, 215, 0.6);
+}
+
+@media (max-width: 480px) {
+  .gj-modal {
+    padding: 22px 18px;
+    border-radius: 22px;
+  }
+  .gj-room-code {
+    font-size: 15px;
+  }
+  .gj-note {
+    font-size: 12px;
+  }
+}
+
+/* Native kabuk: alt navigasyonla çakışmaması için ek dip boşluğu. */
+html.is-native-app .gj-overlay {
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Lobi "Misafir" etiketi ──────────────────────────────────────────────
+   Mevcut .duel-tag ("Sen" / 👑) ile aynı yapı; kayıtlı kullanıcı rozeti gibi
+   görünmemesi için nötr/sessiz bir ton kullanılır. Mobilde satırı taşırmaması
+   için küçültülür ve asla kırpılmaz. */
+.duel-tag.guest {
+  background: rgba(140, 160, 190, 0.14);
+  color: rgba(190, 200, 215, 0.78);
+  border: 1px solid rgba(140, 160, 190, 0.24);
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@media (max-width: 480px) {
+  .duel-tag.guest {
+    font-size: 0.55rem;
+    padding: 1px 4px;
+  }
+}
+/* Kör Nokta takım paneli satırları dar; etiket satırı taşırmasın. */
+.kn-guest-tag {
+  margin-left: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GİRİŞ GEREKLİ EKRANI (LoginRequiredModal)
+   ---------------------------------------------------------------------------
+   Kuşatma menüsündeki kapalı seçenekler (Oda Kur / Odalara Göz At) için.
+   Mevcut .overlay/.modal kabuğunu kullanır → menünün görünümü ve yerleşimi
+   DEĞİŞMEZ; bu yalnız açıklama katmanıdır. Butonlar .modal-btn ailesinden
+   geldiği için masaüstü ve mobilde diğer seçim modallarıyla aynı hizada durur.
+═══════════════════════════════════════════════════════════════════════════ */
+.lrm-title {
+  margin-bottom: 6px;
+}
+.lrm-body {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  opacity: 0.82;
+  text-align: center;
+  max-width: 34ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+/* Ana eylem, ikincil "Hesap Oluştur"dan görsel olarak ayrılsın. */
+.lrm-primary {
+  font-weight: 800;
+}
+.lrm-cancel {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.62;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 12px;
+  min-height: 40px;
+  border-radius: 10px;
+}
+.lrm-cancel:hover { opacity: 0.9; }
+@media (max-width: 480px) {
+  .lrm-body { font-size: 0.85rem; }
+  /* Dokunma hedefi 44px altına düşmesin. */
+  .lrm-cancel { min-height: 44px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MİSAFİR OYUN-SONU "Hesap Oluştur" bölümü (GuestEndPrompt)
+   ---------------------------------------------------------------------------
+   Sonuç kartının İÇİNDE, mevcut aksiyon satırının hemen ÜSTÜNDE durur.
+   Sonuç kartının kendi düzenine dokunmaz; yalnız kendi kutusunu çizer.
+   Yalnız misafirde render edilir → kayıtlı kullanıcının ekranı DEĞİŞMEZ.
+═══════════════════════════════════════════════════════════════════════════ */
+.gep-card {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(88, 166, 255, 0.28);
+  border-radius: 14px;
+  background: rgba(88, 166, 255, 0.08);
+  text-align: left;
+}
+.gep-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.gep-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.gep-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: rgba(235, 242, 255, 0.95);
+  /* Uzun başlık taşmasın */
+  overflow-wrap: anywhere;
+}
+.gep-body {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(190, 200, 215, 0.8);
+}
+.gep-cta {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #06203f;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: filter 0.14s;
+}
+.gep-cta:hover { filter: brightness(1.08); }
+.gep-cta:active { filter: brightness(0.94); }
+.gep-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+@media (max-width: 480px) {
+  .gep-card { margin: 10px 0; padding: 10px 12px; border-radius: 12px; }
+  .gep-title { font-size: 13px; }
+  .gep-body { font-size: 12px; }
+}
+
+/* Oyun-sonu misafir bölümündeki ikincil "Giriş Yap" bağlantısı. */
+.gep-login {
+  width: 100%;
+  margin-top: 8px;
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  color: rgba(190, 200, 215, 0.85);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.gep-login:hover { color: rgba(235, 242, 255, 0.95); }
+.gep-login:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--accent-glow);
 }

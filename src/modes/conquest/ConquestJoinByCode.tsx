@@ -18,17 +18,33 @@
  * by the parent (ConquestMode) so this component stays presentation-only.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getGuestName } from "../../lib/guestSession";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
 import { EmojiIcon } from "../../components/EmojiIcon";
 import { normalizeConquestRoomCode } from "./conquestService";
 import { validateConquestName } from "./utils";
 
+/** Ebeveynden gelen katılma hatası. Her başarısızlıkta YENİ bir nesne üretilir
+ *  (`at` alanı) — böylece aynı hata art arda iki kez oluşsa bile effect yeniden
+ *  koşar ve odak tekrar ad alanına döner. */
+export interface ConquestJoinFormError {
+  message:   string;
+  focusName: boolean;
+  at:        number;
+}
+
 interface Props {
   profile:     Profile | null;
   /** Pre-fill the code field (used by invite-link redirects). */
   initialCode?: string;
+  /** Pre-fill the name field — başarısız denemeden sonra yazdığı nick geri gelir. */
+  initialName?: string;
+  /** Sunucudan dönen katılma hatası; formu KAPATMADAN burada gösterilir. */
+  joinError?:  ConquestJoinFormError | null;
+  /** Katılma isteği uçuşta — yalnız buton kilitlenir, alanlar düzenlenebilir kalır. */
+  busy?:       boolean;
   onBack:      () => void;
   onJoin:      (code: string, displayName: string) => void;
 }
@@ -36,20 +52,41 @@ interface Props {
 export default function ConquestJoinByCode({
   profile,
   initialCode = "",
+  initialName = "",
+  joinError = null,
+  busy = false,
   onBack,
   onJoin,
 }: Props) {
   const isLoggedInPlayer = !!profile?.username;
   const [code, setCode]           = useState<string>(initialCode);
-  const [playerName, setPlayerName] = useState<string>(profile?.username ?? "");
+  // Başarısız denemeden gelen taslak ad, hatırlanan misafir adından ÖNCE gelir.
+  const [playerName, setPlayerName] = useState<string>(
+    profile?.username ?? initialName ?? getGuestName() ?? ""
+  );
   const [errorMsg, setErrorMsg]   = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   // Keep the username in sync if profile loads after mount.
   useEffect(() => {
     if (profile?.username) setPlayerName(profile.username);
   }, [profile?.username]);
 
+  /* Sunucu reddi → formda göster. Ekran DEĞİŞMEZ, alanlar temizlenmez;
+   * ad kaynaklı retlerde odak ad alanına döner ki kullanıcı doğrudan
+   * düzeltmeye başlasın (mobilde klavye tekrar açılır). */
+  useEffect(() => {
+    if (!joinError) return;
+    setErrorMsg(joinError.message);
+    if (joinError.focusName && !isLoggedInPlayer) {
+      nameRef.current?.focus();
+      nameRef.current?.select();
+    }
+  }, [joinError, isLoggedInPlayer]);
+
   function handleSubmit() {
+    if (busy) return;
+
     const normalised = normalizeConquestRoomCode(code);
     if (normalised.length !== 6) {
       setErrorMsg("Oda kodu 6 karakter olmalı.");
@@ -62,12 +99,13 @@ export default function ConquestJoinByCode({
 
     if (!isLoggedInPlayer) {
       const err = validateConquestName(playerName);
-      if (err) { setErrorMsg(err); return; }
+      if (err) { setErrorMsg(err); nameRef.current?.focus(); return; }
     } else if (effectiveName.length < 2) {
       setErrorMsg("Hesabında bir kullanıcı adı yok.");
       return;
     }
 
+    // Yeni deneme başlıyor → eski hata düşer (ebeveyn de kendi hatasını siler).
     setErrorMsg(null);
     playSound("click");
     onJoin(normalised, effectiveName);
@@ -87,7 +125,12 @@ export default function ConquestJoinByCode({
             className="duel-name-input cq-code-input"
             type="text"
             value={code}
-            onChange={e => setCode(e.target.value.toUpperCase().slice(0, 6))}
+            onChange={e => {
+              setCode(e.target.value.toUpperCase().slice(0, 6));
+              if (errorMsg) setErrorMsg(null);
+            }}
+            aria-invalid={errorMsg ? true : undefined}
+            aria-describedby={errorMsg ? "cq-join-error" : undefined}
             placeholder="K_____"
             autoComplete="off"
             spellCheck={false}
@@ -113,10 +156,16 @@ export default function ConquestJoinByCode({
             </div>
           ) : (
             <input
+              ref={nameRef}
               className="duel-name-input"
               type="text"
               value={playerName}
-              onChange={e => setPlayerName(e.target.value.slice(0, 16))}
+              onChange={e => {
+                setPlayerName(e.target.value.slice(0, 16));
+                if (errorMsg) setErrorMsg(null);
+              }}
+              aria-invalid={errorMsg ? true : undefined}
+              aria-describedby={errorMsg ? "cq-join-error" : undefined}
               placeholder="Adın..."
               autoComplete="off"
               spellCheck={false}
@@ -128,11 +177,12 @@ export default function ConquestJoinByCode({
           className="btn btn-accent duel-create-btn"
           onClick={handleSubmit}
           type="button"
+          disabled={busy}
         >
-          <EmojiIcon name="door" /> Odaya Katıl
+          <EmojiIcon name="door" /> {busy ? "Katılınıyor…" : "Odaya Katıl"}
         </button>
 
-        {errorMsg && <p className="duel-error">{errorMsg}</p>}
+        {errorMsg && <p className="duel-error" id="cq-join-error" role="alert">{errorMsg}</p>}
 
         <button
           type="button"

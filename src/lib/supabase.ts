@@ -227,9 +227,13 @@ export interface TevaturRoom {
 export interface TevaturPlayer {
   id:           string;
   room_id:      string;
-  /** Login-only mod her zaman dolu yazar; NULL yalnız hesap silme
-   *  anonimleştirmesinden sonra görülür (trg_account_deletion_cleanup). */
+  /** Kayıtlı oyuncuda dolu, MİSAFİRDE null (20260809120000: profile_id XOR
+   *  guest_id). Ayrıca hesap silme anonimleştirmesinden sonra da null olur
+   *  (trg_account_deletion_cleanup). "Misafir" etiketinin tek kaynağıdır. */
   profile_id:   string | null;
+  /** Misafir oturum kimliği — yalnız profile_id null iken dolu. Yetki VERMEZ;
+   *  sunucudaki kanıt tevatur_player_claims.claim_token'dır. */
+  guest_id?:    string | null;
   name:         string;
   score:        number;
   /** Kör Nokta takım modu: "blue" | "red" (lobide atanır). */

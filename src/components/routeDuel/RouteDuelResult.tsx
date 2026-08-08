@@ -21,6 +21,7 @@ import {
   type RouteDuelRoom,
   type RouteDuelPlayer,
 } from "../../lib/routeDuelShared";
+import GuestEndPrompt from "../GuestEndPrompt";
 
 interface Props {
   room: RouteDuelRoom;
@@ -126,6 +127,8 @@ export default function RouteDuelResult({
           >
             {rematchLabel}
           </button>
+
+          <GuestEndPrompt visible={!isLoggedIn} />
 
           <div className="rd-result-actions-row">
             {isLoggedIn ? (

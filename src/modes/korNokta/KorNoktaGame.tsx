@@ -50,6 +50,7 @@ import {
   type KnAnswerValue,
 } from "./korNoktaQuestions";
 import { resolveKnBackground } from "./korNoktaBackgrounds";
+import { fetchKorNoktaRoomState } from "./korNoktaRoomState";
 import { prefetchAssetUrl } from "../../lib/assetUrl";
 import Panorama360 from "./Panorama360";
 import KorNoktaGuessMap, { type KnLatLng, type KnRevealGuess } from "./KorNoktaGuessMap";
@@ -62,6 +63,8 @@ import {
   type XpBreakdown,
 } from "../../lib/progression";
 import { recordGameComplete, recordOnlineMatchResult } from "../../lib/achievementStats";
+import { markGuestMatchId, isGuestMatchId } from "../../lib/guestSession";
+import GuestEndPrompt from "../../components/GuestEndPrompt";
 import "./KorNoktaGame.css";
 
 /** Takım renkleri — harita marker'ları ve panellerde kullanılır. */
@@ -267,17 +270,14 @@ export default function KorNoktaGame({
     if (!phase || phase === "final_results" || phaseEndsAt == null) return;
     const id = window.setInterval(() => {
       if (getSyncedNowMs() < phaseEndsAt + 3000) return;
-      supabase
-        .from("tevatur_rooms")
-        .select("*")
-        .eq("id", room.id)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) onRoomUpdateRef.current?.(data as TevaturRoom);
-        });
+      // Ham `tevatur_rooms` okuması YOK: misafirde o yol kapalı
+      // (20260811120000). Tek okuma yolu üyeliği doğrulayan RPC'dir.
+      void fetchKorNoktaRoomState(room.id, myId, claimToken).then(result => {
+        if (result.status === "ok") onRoomUpdateRef.current?.(result.room);
+      });
     }, 5000);
     return () => window.clearInterval(id);
-  }, [phase, roundIndex, phaseEndsAt, room.id]);
+  }, [phase, roundIndex, phaseEndsAt, room.id, myId, claimToken]);
 
   /* ── Süreli fazların son saniyelerinde geri sayım sesi ── */
   const countdownPhaseRef = useRef<string | null>(null);
@@ -374,7 +374,20 @@ export default function KorNoktaGame({
   useEffect(() => {
     if (phase !== "final_results") return;
     if (xpAwardedRef.current) return;
-    if (!myProfileId || !myTeamForXp) return;
+    if (!myTeamForXp) return;
+
+    // ── MİSAFİR / XP SINIRI (maç bazlı) ──────────────────────────────────
+    // Misafirken biten maç, o maçın kimliğiyle (room.id) işaretlenir. Oyuncu
+    // sonuç ekranındaki "Hesap Oluştur"dan kayıt olsa bile GEÇMİŞ maça XP
+    // yazılmaz — hesap açılınca profile dolar, bu effect yeniden koşar ve
+    // işaret onu durdurur. YENİ tur farklı bir maç kimliği taşıdığı için
+    // normal şekilde XP kazandırır. (Diğer beş modla aynı desen.)
+    if (!myProfileId) {
+      markGuestMatchId(room.id);
+      return;
+    }
+    if (isGuestMatchId(room.id)) return;
+
     xpAwardedRef.current = true;
 
     const myTotal = myTeamForXp === "blue" ? blueTotalForXp : redTotalForXp;
@@ -1223,6 +1236,12 @@ export default function KorNoktaGame({
                 Ana Menüye Dön
               </button>
             </div>
+
+            {/* Misafir oyun-sonu: hesap oluştur / giriş yap. Sonuç kartının
+                mevcut "Lobiye Dön" + "Ana Menüye Dön" butonlarını TEKRAR
+                ETMEZ; onların yanında durur. Metin geçmiş maçın XP'sini VAAT
+                ETMEZ — kazanç bir sonraki turdan itibaren başlar. */}
+            <GuestEndPrompt visible={!myProfileId} />
           </div>
         </div>
 

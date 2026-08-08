@@ -1,3 +1,4 @@
+import { buildInviteUrl } from "../../lib/inviteLink";
 /**
  * Conquest (Kuşatma) — pure helpers.
  *
@@ -57,9 +58,10 @@ export function validateConquestName(raw: string): string | null {
  *  lobby for the given code. Backend-less for now; just a placeholder
  *  for the share-link UI. */
 export function buildConquestShareLink(code: string): string {
-  if (typeof window === "undefined") return "";
-  const { origin, pathname } = window.location;
-  return `${origin}${pathname}?conquest=${code}`;
+  // Native kabukta window.location.origin capacitor://localhost olduğu için
+  // paylaşılan link kırılırdı; ortak builder web davranışını korurken
+  // native'de gerçek HTTPS adresini üretir (bkz. lib/inviteLink.ts).
+  return buildInviteUrl("conquest", code);
 }
 
 /**
