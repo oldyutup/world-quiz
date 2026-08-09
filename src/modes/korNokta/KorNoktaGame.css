@@ -102,6 +102,9 @@
 
 /* ── Genel kart / merkez yerleşim ──────────────────────────── */
 
+/* M2 — alt güvenli alan: rol kartı, brifing, "Oyun durumu okunamadı" ve FİNAL
+   kartının CTA'ları (Lobiye Dön / Ana Menü / Hesap Oluştur) home indicator
+   şeridinin altında kalmasın. env() native dışında 0'dır → web değişmez. */
 .kn-center-wrap {
   flex: 1;
   min-height: 0;
@@ -109,6 +112,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
 }
 /* XP paneli ekranın altında sabit (position: fixed) durur; final kartı onunla
@@ -388,7 +392,7 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   z-index: 2;
   width: min(560px, calc(100% - 20px));
   display: flex;
@@ -485,7 +489,8 @@
   display: grid;
   grid-template-columns: minmax(300px, 420px) 1fr;
   gap: 12px;
-  padding: 0 14px 14px;
+  /* M2: harita ve altındaki canlı ipucu home indicator'ın altına girmesin. */
+  padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
 }
 
 .kn-guess__reports {
@@ -495,6 +500,13 @@
   flex-direction: column;
   gap: 10px;
   padding-right: 2px;
+}
+
+/* Tanık kartı sarmalayıcısı. Masaüstünde `display: contents` — kutu üretmez,
+   kartlar .kn-guess__reports'un doğrudan çocuğuymuş gibi akar (yerleşim
+   DEĞİŞMEZ). Mobilde yatay snap şeridine dönüşür (bkz. mobil blok). */
+.kn-guess__cards {
+  display: contents;
 }
 
 .kn-guess__head {
@@ -659,7 +671,8 @@
   overflow-y: auto;
   width: min(920px, 100%);
   margin: 0 auto;
-  padding: 2px 16px 22px;
+  /* M2: 20 soruluk listenin son kartı home indicator'a girmesin. */
+  padding: 2px 16px calc(22px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -784,7 +797,9 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 14px;
+  /* M2: en alttaki soru satırının Evet/Hayır/Emin değilim butonları home
+     indicator kaydırma şeridine girmesin (375×667'de 6 buton giriyordu). */
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   z-index: 2;
   width: min(620px, calc(100% - 20px));
   max-height: min(72%, 540px);
@@ -1023,7 +1038,7 @@
 
 @media (max-width: 640px) {
   .kn-answersheet {
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     max-height: 76%;
     width: calc(100% - 16px);
   }
@@ -1070,7 +1085,8 @@
   gap: 10px;
   width: min(760px, 100%);
   margin: 0 auto;
-  padding: 0 14px 16px;
+  /* M2: sonuç kolonlarının ve "Sonraki tur birazdan…" satırının altı. */
+  padding: 0 14px calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── round_reveal: solda dosya, sağda sohbet (desktop iki kolon) ── */
@@ -1090,7 +1106,7 @@
   max-width: 760px;
   width: auto;
   margin: 0;
-  padding: 0 0 16px;
+  padding: 0 0 calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 .kn-reveal-chat {
@@ -1358,16 +1374,77 @@
 /* ── Mobil ─────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
+  /* ── M1: dedektif tahmin ekranı — harita öncelikli dikey bütçe ──────────
+   * ÖNCEDEN: dosya panosu `1fr` alıp haritayı `45dvh`e sıkıştırıyordu; 801 px
+   * içerik 310 px pencereden kaydırılıyor ve üç tanık kartından HİÇBİRİ tam
+   * görünmüyordu. ŞİMDİ: pano içeriği kadar yer alır (auto), harita kalan tüm
+   * alanı alır (1fr). Kartlar dikey yığın yerine yatay snap şeridi olduğu için
+   * pano yüksekliği tek kart kadardır — bilgi aynı, dikey maliyet 1/3. */
   .kn-guess {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(240px, 45dvh);
-    padding: 0 10px 10px;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
-  .kn-guess__map { min-height: 170px; }
+  /* Pano artık dikey kaydırmaz: başlık + şerit + kontrol listesi sığar.
+   * `min-width: 0` ZORUNLU: grid/flex öğelerinin otomatik minimumu içeriğin
+   * min-content genişliğidir; yatay şeridin iç genişliği (3 kart ≈ 1600px)
+   * `1fr` track'ini şişirip hem kartları hem HARİTAYI ekran dışına taşırıyordu.
+   * `.app { overflow: hidden }` bunu kaydırmasız kırptığı için sessizce olurdu. */
+  .kn-guess__reports,
+  .kn-guess__map-panel {
+    min-width: 0;
+  }
+
+  .kn-guess__reports {
+    overflow-y: visible;
+    gap: 8px;
+    padding-right: 0;
+  }
+
+  /* Yatay snap şeridi: kart genişliği %92 → sonraki kartın kenarı görünür
+     (kaydırılabilir olduğunun tek doğal işareti; ayrı nokta göstergesi yok). */
+  .kn-guess__cards {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    /* Kenarlardaki kartlar da tam ortalanabilsin. */
+    scroll-padding-inline: 0;
+  }
+  .kn-guess__cards::-webkit-scrollbar { display: none; }
+
+  .kn-guess__cards > .kn-answer-card {
+    flex: 0 0 92%;
+    min-width: 0;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+  }
+
+  /* Başlık bloğu 112px → ~52px. Tekrar eden iki cümle mobilde gizli
+     (haritanın altındaki canlı ipucunda zaten var), başlık tek satıra iner. */
+  .kn-guess__sub-long { display: none; }
+  .kn-guess__title { font-size: 1.25rem; }
+  .kn-guess__sub { font-size: 0.8rem; line-height: 1.35; }
+
+  /* Kart içi sıkıştırma: 5 soru + cevap dar ekranda kaydırmasız okunur. */
+  .kn-answer-card { padding: 9px 11px; gap: 6px; }
+  .kn-answer-card__rows { gap: 5px; }
+  .kn-answer-card__row { font-size: 0.82rem; line-height: 1.25; }
+  .kn-answer-pill { padding: 3px 9px; font-size: 11px; }
+
+  .kn-guess__checklist { padding: 0 2px 2px; }
+
+  /* Harita artık kalan alanın tamamını alır; taban değeri de yükseldi. */
+  .kn-guess__map { min-height: 220px; }
 
   .kn-reportbar {
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     padding: 10px 12px;
   }
 
@@ -1375,7 +1452,27 @@
 
   .kn-reportbar__send { width: 100%; }
 
-  .kn-reveal__map-wrap { height: clamp(180px, 32vh, 240px); }
+  /* ── M3: tur sonucu — başlık paneli EZİLMESİN ──────────────────────────
+   * `.kn-reveal` bir flex kolon; harita ve sonuç kolonları `flex-shrink: 0`
+   * olduğu için tek esneyen öğe başlık paneliydi. Panel 58 px'e eziliyor ve
+   * `overflow: hidden` yüzünden "tur farkı" rozeti ile sahne kimliği satırı
+   * (başlık · bölge · yıl) GÖRÜNMEZ oluyordu. Ezilmeyi durdur, kırpmayı kaldır
+   * ve haritadan biraz yükseklik geri al — dördü de tek ekranda okunur. */
+  /* Özgüllük (0,2,0): taban `.kn-reveal__head--panel { overflow: hidden }`
+     bu bloktan SONRA tanımlı, sıra bazlı override tutmazdı. */
+  .kn-reveal .kn-reveal__head--panel {
+    flex-shrink: 0;
+    overflow: visible;
+    padding: 12px 14px;
+  }
+  .kn-reveal__title { font-size: 1.25rem; }
+  .kn-reveal__scene { font-size: 0.85rem; line-height: 1.3; }
+  .kn-reveal { gap: 8px; }
+
+  .kn-reveal__map-wrap { height: clamp(150px, 24vh, 200px); }
+
+  .kn-result-cols { gap: 8px; margin-top: 6px; }
+  .kn-result-col { padding: 8px 10px; gap: 4px; }
 
   .kn-reveal__stats { grid-template-columns: 1fr 1fr; }
 
@@ -1386,6 +1483,40 @@
   .kn-reveal__reports { grid-template-columns: 1fr; }
 
   .kn-topbar { padding: 8px 10px; gap: 6px; }
+}
+
+/* ── Kısa telefonlar (iPhone SE / 13 mini sınıfı, ≤720px yükseklik) ────────
+ * Dikey bütçe burada gerçekten dar. Tanık şeridi tam görünür kalsın diye
+ * kartı bir tık daha sıkıştır ve kontrol listesini kaldır: "pin koy / konum
+ * işaretlendi" bilgisi haritanın hemen altındaki canlı ipucunda zaten var,
+ * iki kez söylemek bu ekranda 24px'e mal oluyordu. Kazanılan yer haritaya
+ * gider — tahmin ekranının asıl işi o. */
+@media (max-width: 760px) and (max-height: 720px) {
+  .kn-answer-card { padding: 7px 10px; gap: 5px; }
+  .kn-answer-card__rows { gap: 4px; }
+  .kn-answer-card__row { font-size: 0.78rem; }
+  .kn-answer-card__meta { font-size: 10px; }
+  .kn-guess__checklist { display: none; }
+  .kn-guess__title { font-size: 1.1rem; }
+  .kn-guess { gap: 6px; }
+  .kn-guess__reports { gap: 6px; }
+  /* "DOSYA HAZIR" süslemesi: faz ve rol zaten üst şeritte yazıyor. */
+  .kn-guess__eyebrow { display: none; }
+
+  /* Tur sonucu bu yükseklikte kaydırmasız sığsın — dördü de tek ekranda:
+     kim önde, fark ne, gerçek yer neresi, skorlar ne. */
+  .kn-reveal { gap: 6px; }
+  .kn-reveal .kn-reveal__head--panel { padding: 10px 12px; }
+  .kn-reveal__title { font-size: 1.1rem; }
+  .kn-reveal__scene { font-size: 0.8rem; }
+  .kn-reveal__map-wrap { height: clamp(120px, 20vh, 180px); }
+  .kn-result-col { padding: 7px 9px; gap: 3px; }
+  .kn-result-cols { margin-top: 2px; }
+  .kn-reveal__waiting { font-size: 0.78rem; }
+
+  /* Harita paneli: ipucu satırını haritaya yaklaştır, birkaç piksel geri al. */
+  .kn-guess__map-panel { gap: 6px; }
+  .kn-guess__livehint { font-size: 11px; }
 }
 
 /* ≤860px: lc-panel gizlenir (LobbyChat FAB + bottom-sheet devralır).
@@ -1449,6 +1580,82 @@
     clip-path: none;
   }
   .kn-anim-glow { animation: none; }
+}
+
+/* ── MOBİL DÜZELTME: ortalanmış sahne panellerinde transform çakışması ──────
+ * .kn-answersheet (cevaplama) ve .kn-reportbar (inceleme brifingi) yatayda
+ * `left: 50%` + `transform: translateX(-50%)` ile ortalanır. Her ikisi de
+ * `kn-anim-fade-up` taşır; knFadeUp'ın SON karesi `transform: none` ve
+ * animasyon `fill-mode: both` olduğu için animasyon bitince ortalama
+ * transform'u SİLİNİYORDU. Sonuç: panel sol kenarı ekranın tam ortasında
+ * kalıyor (390 px'te x=195, genişlik 374) ve sağ tarafı kırpılıyordu —
+ * cevaplama ekranında "Hayır" ve "Emin değilim" butonları tamamen ekran
+ * dışında kalıyor, raporcu/casus yalnız "Evet" seçebiliyordu.
+ *
+ * Çözüm: dar ekranda `transform`'a HİÇ dokunmayan bir animasyon varyantı
+ * kullan. Bağımsız `translate` özelliği `transform`'u ezmez, dolayısıyla
+ * `translateX(-50%)` ortalaması animasyon boyunca ve sonrasında korunur.
+ * Tarayıcı `translate`'i desteklemezse hareket kaybolur ama YERLEŞİM DOĞRU
+ * kalır (güvenli bozulma).
+ *
+ * KAPSAM — iki koşul, genişlik VEYA giriş yeteneği:
+ *
+ *   (max-width: 1240px)                   → kırpılmanın gerçekleştiği her genişlik
+ *   (hover: none) and (pointer: coarse)   → dokunmatik-birincil her cihaz
+ *
+ * Genişlik eşiği keyfî değil, hatanın tam sınırı. Panel genişliği
+ * `min(620px, 100% - 20px)`; ortalama kaybolduğunda sol kenar `50%`'de kalır,
+ * yani sağ kenar `0.5·vw + width` olur ve `width > 0.5·vw` olduğu anda kırpılır:
+ *
+ *   vw ≥ 640  → width = 620  → kırpılır ⟺ 620 > 0.5·vw ⟺ vw < 1240
+ *   vw < 640  → width = vw−20 → her zaman kırpılır
+ *
+ * Yani 1240px altındaki HER viewport etkilenir; telefon, tablet ve dar
+ * masaüstü penceresi (1024×768 fare: "Emin değilim" dışarı taşıyordu) aynı
+ * hatanın parçasıdır. 1240px'te panel tam sığar, üstünde de sorun yoktur —
+ * bu yüzden 1440px masaüstü kuralın DIŞINDA kalır ve byte-for-byte aynıdır.
+ *
+ * İkinci koşul genişlikten bağımsız gerekir: 1240px'ten geniş dokunmatik
+ * cihazlar (ör. iPad Pro 12.9" yatay, 1366px) da dokunmatik varyantı almalı.
+ *
+ * Not: bu kural YALNIZ `animation-name` değiştirir; hiçbir yerleşim özelliğine
+ * dokunmaz. Düzen reflow'ları (M1/M3) kendi genişlik eşiklerinde (760/640/600px)
+ * kalır, dolayısıyla 1024px'te masaüstü düzeni korunur ve yalnız ortalama düzelir.
+ */
+@keyframes knFadeUpTranslate {
+  from { opacity: 0; translate: 0 14px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+
+@media (max-width: 1240px), (hover: none) and (pointer: coarse) {
+  .kn-answersheet.kn-anim-fade-up,
+  .kn-reportbar.kn-anim-fade-up {
+    animation-name: knFadeUpTranslate;
+  }
+}
+
+/* Hareket azaltma: yukarıdaki genel kural da `transform: none` yazıp ortalamayı
+   siliyordu — bu iki panelde transform'u açıkça geri koy. Seçici özgüllüğü
+   (0,2,0) genel kuralı (0,1,0) yener, sıra bağımsız. İki koşul ayrı bloklara
+   yazıldı: media sorgusunda `,` ile `and` birlikte kullanılamaz. */
+@media (max-width: 1240px) and (prefers-reduced-motion: reduce) {
+  .kn-answersheet.kn-anim-fade-up,
+  .kn-reportbar.kn-anim-fade-up {
+    animation: none;
+    opacity: 1;
+    translate: none;
+    transform: translateX(-50%);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (prefers-reduced-motion: reduce) {
+  .kn-answersheet.kn-anim-fade-up,
+  .kn-reportbar.kn-anim-fade-up {
+    animation: none;
+    opacity: 1;
+    translate: none;
+    transform: translateX(-50%);
+  }
 }
 
 /* ── Sinematik scrim: rol kartının arkasını koyulaştırır + odak ──
@@ -2274,8 +2481,24 @@
   margin-top: 4px;
 }
 
+/* M3 — mobil tur sonucu okunabilirliği.
+ * ÖNCEDEN tek kolona yığılıyordu: Mavi kartı + orta blok + Kırmızı kartı alt
+ * alta = 337px. Başlık paneli + harita ile birlikte 375×667'de ekrana sığmıyor,
+ * skor karşılaştırması katlanıyordu. ŞİMDİ iki takım YAN YANA (karşılaştırma
+ * zaten yan yana okunur), gerçek konum ise iki kartın ÜSTÜNDE tam genişlik bir
+ * satır — "neresiymiş?" sorusu önce cevaplanır. Yükseklik ~337px → ~150px.
+ * "VS" yalnız masaüstünün 3-kolon düzeninde anlamlıydı; yan yana düzende
+ * bilgi taşımadığı için mobilde gizlenir. */
 @media (max-width: 600px) {
-  .kn-result-cols { grid-template-columns: 1fr; }
-  .kn-result-mid { flex-direction: row; gap: 10px; min-width: 0; }
-  .kn-result-mid__vs { margin-top: 0; }
+  .kn-result-cols { grid-template-columns: 1fr 1fr; }
+  .kn-result-mid {
+    grid-column: 1 / -1;
+    order: -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+  }
+  .kn-result-mid__vs { display: none; }
+  .kn-result-col__head { flex-wrap: wrap; gap: 4px; }
 }

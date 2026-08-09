@@ -993,13 +993,24 @@ export default function KorNoktaGame({
             <header className="kn-guess__head">
               <span className="kn-guess__eyebrow">Dosya Hazır</span>
               <h2 className="kn-guess__title">Anonim Cevaplar</h2>
+              {/* Mobilde ilk iki cümle GİZLENİR (kn-guess__sub-long): ikisi de
+                  haritanın altındaki canlı ipucunda + kontrol listesinde zaten
+                  yazıyor, dar ekranda 4 satır yer yiyordu. Anonimlik cümlesi
+                  başka hiçbir yerde geçmediği için her ekranda kalır. */}
               <p className="kn-guess__sub">
-                Tanıkların cevaplarını incele ve konumu işaretle. Haritaya her
-                dokunuşta tahminin anında kaydedilir; süre bitene kadar dilediğin
-                kadar değiştirebilirsin. Hangi cevabın kimden geldiği gizlidir.
+                <span className="kn-guess__sub-long">
+                  Tanıkların cevaplarını incele ve konumu işaretle. Haritaya her
+                  dokunuşta tahminin anında kaydedilir; süre bitene kadar dilediğin
+                  kadar değiştirebilirsin.{" "}
+                </span>
+                Hangi cevabın kimden geldiği gizlidir.
               </p>
             </header>
 
+            {/* Masaüstünde `display: contents` → DOM akışı ve yerleşim birebir
+                aynı kalır. Mobilde yatay snap şeridine dönüşür, böylece her
+                tanık kartı tam görünür ve harita dikey alanı geri kazanır. */}
+            <div className="kn-guess__cards">
             {myReportOrder.map((pid, i) => {
               const ans = getKnPlayerAnswers(round, pid);
               return (
@@ -1033,6 +1044,7 @@ export default function KorNoktaGame({
                 </article>
               );
             })}
+            </div>
 
             <div className="kn-guess__checklist">
               <span className={guess ? "is-done" : ""}>

@@ -51,6 +51,34 @@ interface KorNoktaGuessMapProps {
 
 const MAP_DEFAULT_CENTER: [number, number] = [25, 20];
 const MAP_DEFAULT_ZOOM = 2;
+const MAP_MIN_ZOOM = 2;
+
+/* ── Dar ekran (mobil app + mobil web) harita alt sınırı ──────────────────────
+ * Harita konteyneri telefonda ≈370 px geniş. Sağlayıcı 512 px tile + zoomOffset
+ * -1 kullandığı için harita zoom 2'de dünya 1024 px'e denk gelir → ekranda
+ * boylamca ancak ~%36'sı kalır ve minZoom 2 olduğundan zoom-out düğmesi BAŞTAN
+ * pasif gelirdi. Dedektif 35 sn'lik fazda görmediği kıtalara kör pan yapmak
+ * zorunda kalıyor, oryantasyon için uzaklaşamıyordu.
+ *
+ * Dar ekranda alt sınırı (ve tahmin ekranının açılış zoom'unu) 1'e indiriyoruz:
+ * dünya 512 px'e iner, 370 px'lik haritada ~%72'si görünür.
+ *
+ * 1'in ALTINA inilmez: zoomOffset -1 ile harita zoom'u 0 olduğunda tile z = -1
+ * istenir ve sağlayıcı 404 döner (harita boş kalır). Yani 1, tile şemasının
+ * izin verdiği gerçek taban.
+ *
+ * Geniş ekranda hiçbir şey değişmez — masaüstü aynı 2/2 değerleriyle açılır.
+ */
+const NARROW_VIEWPORT_QUERY = "(max-width: 899px)";
+const MAP_NARROW_MIN_ZOOM = 1;
+
+function isNarrowViewport(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(NARROW_VIEWPORT_QUERY).matches
+  );
+}
 
 export default function KorNoktaGuessMap({
   mode,
@@ -77,10 +105,14 @@ export default function KorNoktaGuessMap({
     const el = containerRef.current;
     if (!el) return;
 
+    // Dar ekranda dünya kadrajı iki kat genişler; masaüstünde değerler aynı
+    // kalır. "reveal" modunda açılış zoom'unu zaten fitBounds ezer.
+    const narrow = isNarrowViewport();
+
     const map = L.map(el, {
       center: MAP_DEFAULT_CENTER,
-      zoom: MAP_DEFAULT_ZOOM,
-      minZoom: 2,
+      zoom: narrow ? MAP_NARROW_MIN_ZOOM : MAP_DEFAULT_ZOOM,
+      minZoom: narrow ? MAP_NARROW_MIN_ZOOM : MAP_MIN_ZOOM,
       maxZoom: 18,
       zoomSnap: 1,
       zoomDelta: 1,

@@ -28568,6 +28568,13 @@ html.is-native-app .gj-overlay {
   text-underline-offset: 3px;
   cursor: pointer;
 }
+/* Dokunma hedefi: mobilde 36px, PRODUCT.md'nin ~44px eşiğinin altındaydı ve
+   final ekranındaki tek ikincil eylem bu. Yalnız dar ekranda yükseltilir;
+   masaüstü/web ölçüsü (36px) aynı kalır. */
+@media (max-width: 760px) {
+  .gep-login { min-height: 44px; }
+}
+
 .gep-login:hover { color: rgba(235, 242, 255, 0.95); }
 .gep-login:focus-visible {
   outline: none;
