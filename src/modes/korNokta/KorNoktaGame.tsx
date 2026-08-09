@@ -17,8 +17,12 @@
  * cevaplar; cevabı yalnız o dedektifin tahmin ekranında anonim görünür. Puanlama
  * mesafe bazlı 0–5000 (takım başına); finalde toplamı yüksek takım kazanır.
  *
- * Yetki: faz ilerletme host-authoritative (advance_phase, expected-state guard);
- * soru-seçimi/cevap/tahmin yazmaları yalnız ilgili oyuncunun RPC'siyle olur.
+ * Yetki: faz ilerletme SUNUCU-otoriter. Süre dolunca odanın her üyesi
+ * `tevatur_kn_advance_if_due`yu çağırabilir; sunucu kilitli oda satırından
+ * okuduğu phaseEndsAt'ı kendi saatiyle doğrular ve expected-round/phase CAS'ı
+ * ile geçişin tam bir kez olmasını garanti eder (bkz. 20260813120000). Host-only
+ * `advance_phase` MANUEL/erken geçiş içindir ve bu bileşenden ÇAĞRILMAZ.
+ * Soru-seçimi/cevap/tahmin yazmaları yalnız ilgili oyuncunun RPC'siyle olur.
  */
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -72,6 +76,15 @@ const TEAM_COLORS: Record<KnTeam, string> = {
   blue: "#4f8bff",
   red:  "#ef4444",
 };
+
+/* ── Deadline watchdog gecikmeleri ──────────────────────────────────────────
+ * Süre dolduğunda ilerletmeyi kimin TETİKLEDİĞİ önemli değildir (sunucu her
+ * hâlükârda doğrular), ama normal durumda gereksiz RPC uçmasın diye host
+ * birincil tetikleyicidir; diğer üyeler yalnız host yanıt vermezse devreye
+ * girer. Host arka planda/kopukken maçı kurtaran şey bu ikinci penceredir.
+ * Rota Düello'daki `amHost ? WAIT : WAIT + FALLBACK` deseniyle aynı. */
+const ADVANCE_GRACE_HOST_MS  = 600;
+const ADVANCE_GRACE_OTHER_MS = 2_500;
 
 /* ── Supabase RPC hata şekli (PostgrestError: code/message/details/hint) ── */
 type KnRpcError =
@@ -215,23 +228,40 @@ export default function KorNoktaGame({
     onRoomUpdateRef.current = onRoomUpdate;
   }, [onRoomUpdate]);
 
-  /* ── Host faz timer'ı ── */
+  /* ── Deadline watchdog: "süre dolduysa ilerlet" ──
+   *
+   * ÖNCEDEN: yalnız host bir setInterval'de `advance_phase` çağırırdı ve sunucu
+   * phaseEndsAt'a HİÇ bakmazdı. Host telefonu kilitlediğinde / uygulamayı arka
+   * plana attığında JS timer'ları donduğu için o çağrı hiç gitmez ve maç DİĞER
+   * ÜÇ OYUNCU İÇİN DE takılırdı — tek arıza noktası.
+   *
+   * ŞİMDİ: odanın her üyesi (kayıtlı + misafir) `advance_if_due` çağırabilir.
+   * Yetki genişlemesi DEĞİLDİR: sunucu kilitli oda satırından okuduğu
+   * phaseEndsAt'ı kendi saatiyle doğrular, süre dolmadıysa hiçbir şey yapmaz;
+   * dolduysa da yalnız zaten yapacağı geçişi yapar. Erken atlama imkânsız.
+   *
+   * Host'un kendi yolu da buraya taşındı: böylece saati ileri kaymış bir host
+   * artık fazı herkes için erken kesemez (sunucu reddeder, watchdog 500 ms'de
+   * bir yeniden dener ve gerçek deadline'da geçer).
+   */
   const advanceInFlightRef = useRef(false);
-  const advancePhase = useCallback(
+  const advanceIfDue = useCallback(
     async (expectedRound: number, expectedPhase: KnPhase) => {
       if (advanceInFlightRef.current) return;
       advanceInFlightRef.current = true;
       try {
-        const { data, error } = await supabase.rpc("tevatur_kn_advance_phase", {
+        const { data, error } = await supabase.rpc("tevatur_kn_advance_if_due", {
           p_room_id:        room.id,
-          p_host_player_id: myId,
+          p_player_id:      myId,
           p_claim_token:    claimToken,
           p_expected_round: expectedRound,
           p_expected_phase: expectedPhase,
         });
         if (error) {
-          console.error("[KorNokta] advance_phase RPC failed", error);
+          console.error("[KorNokta] advance_if_due RPC failed", error);
         } else if (data?.id) {
+          // Süre dolmadıysa / yarışı kaybettiysek de TAZE oda döner (sunucu
+          // hata değil, değişmemiş satır verir) → bayat istemci kendini onarır.
           onRoomUpdateRef.current?.(data as TevaturRoom);
         }
       } finally {
@@ -246,14 +276,34 @@ export default function KorNoktaGame({
   const phaseEndsAt = state?.phaseEndsAt ?? null;
 
   useEffect(() => {
-    if (!isHost || !phase || phase === "final_results" || phaseEndsAt == null) return;
-    const id = window.setInterval(() => {
-      if (getSyncedNowMs() >= phaseEndsAt + 600) {
-        void advancePhase(roundIndex, phase);
+    if (!phase || phase === "final_results" || phaseEndsAt == null) return;
+    const graceMs = isHost ? ADVANCE_GRACE_HOST_MS : ADVANCE_GRACE_OTHER_MS;
+
+    const check = () => {
+      if (getSyncedNowMs() >= phaseEndsAt + graceMs) {
+        void advanceIfDue(roundIndex, phase);
       }
-    }, 500);
-    return () => window.clearInterval(id);
-  }, [isHost, phase, roundIndex, phaseEndsAt, advancePhase]);
+    };
+
+    // Mount / reconnect / her faz değişimi: interval'in ilk tick'ini bekleme.
+    // Uzun süre arka planda kalıp geri dönen istemci deadline'ı ANINDA görür.
+    check();
+    const id = window.setInterval(check, 500);
+
+    // Uyanma tetikleyicileri: arka plandan dönen sekmede timer'lar kısılmış
+    // ya da tamamen durmuş olabilir; bu üç olay watchdog'u hemen çalıştırır.
+    const onVisibility = () => { if (document.visibilityState !== "hidden") check(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", check);
+    window.addEventListener("online", check);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("online", check);
+    };
+  }, [isHost, phase, roundIndex, phaseEndsAt, advanceIfDue]);
 
   /* ── Sonraki turun 360 sahnesini düşük öncelikle ön-yükle: native'de remote
    *    URL'in HTTP cache'ini ısıtır; web'de same-origin → pratikte zararsız.
@@ -582,8 +632,8 @@ export default function KorNoktaGame({
    * Latest-write-wins gönderici. Aynı anda tek RPC tutar (guessInFlightRef);
    * uçuş biterken daha yeni konum kuyruğa girdiyse onu da gönderir → hızlı
    * tıklamada yalnız SON konum server'a yazılır. Faz/deadline'a DOKUNMAZ: yalnız
-   * game_state.guesses[team] güncellenir (skor + faz geçişi süre dolunca host
-   * advance_phase → apply_round ile bir kez olur — burada değil).
+   * game_state.guesses[team] güncellenir (skor + faz geçişi süre dolunca
+   * advance_if_due → apply_round ile TEK KEZ olur — burada değil).
    *
    * Hata:
    *   • deadline geçti / faz kapandı → server otoriter; kuyruk durur, sessiz.
