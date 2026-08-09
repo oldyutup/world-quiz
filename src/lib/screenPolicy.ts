@@ -9,7 +9,10 @@
  * İlk tüketici: arkadaş DM'i için sağ-alt toast bastırma. Aktif oyunda toast
  * gösterilmez (mesaj/unread yine kaydedilir); ana menü, profil/sosyal ekranlar
  * ve oyun LOBİLERİnde gösterilir. Lobi aktif oyun SAYILMAZ.
+ *
+ * İkinci tüketici: gelen davet linki mevcut odayı ezecek mi? (`roomModeForScreen`)
  */
+import type { RoomCodeModeKey } from "./roomCodeShared";
 
 export type AppScreen =
   | "home"
@@ -73,6 +76,45 @@ const GAMEPLAY_SCREENS: ReadonlySet<AppScreen> = new Set<AppScreen>([
 /** Şu an aktif bir oyun/round ekranında mıyız? Lobiler aktif oyun sayılmaz. */
 export function isGameplayActive(screen: AppScreen): boolean {
   return GAMEPLAY_SCREENS.has(screen);
+}
+
+/**
+ * ODA TAŞIYAN ekran → mod eşlemesi.
+ *
+ * `GAMEPLAY_SCREENS`ten AYRI bir liste, çünkü sorulan soru farklı: orada "round
+ * oynanıyor mu?" (DM toast'ı bastırılsın mı), burada "bu ekranda kaybedilecek
+ * bir ODA var mı?". Lobiler round DEĞİLDİR ama oda taşırlar — davet linki bir
+ * lobiyi de sessizce ezmemeli, o yüzden lobiler bu haritada VARDIR.
+ *
+ * Tek oyunculu ekranlar ve `harita-duel-game` (Harita Dedektifi düellosu; oda
+ * kodu / davet linki sistemi yoktur) KASTEN dışarıdadır.
+ *
+ * Yeni bir oda modu eklenirse buraya da eklenmeli; aksi hâlde o modun odası
+ * gelen bir davetle onaysız terk edilir.
+ */
+const ROOM_SCREEN_MODE: Partial<Record<AppScreen, RoomCodeModeKey>> = {
+  "duel-game":        "duel",
+  "flag-duel-game":   "flagDuel",
+  "wheel-duel-game":  "wheelDuel",
+  "route-duel-game":  "routeDuel",
+  "duel-group-game":  "duelGroup",
+  "wheel-group-game": "wheelGroup",
+  "flag-group-game":  "flagGroup",
+  "conquest-game":    "conquest",
+  "conquest-join":    "conquest",
+  "kornokta-create":  "korNokta",
+  "kornokta-join":    "korNokta",
+};
+
+/**
+ * Bu ekran bir oda taşıyor mu, taşıyorsa hangi modun odası?
+ *
+ * `null` → ekranda kaybedilecek oda yok (ana menü, tek oyunculu, oda listesi).
+ * Ekranda OLMAK odada olmayı garanti etmez (ör. oyuncu modu açtı ama henüz oda
+ * kurmadı); çağıran ayrıca kalıcı oturumu kontrol etmelidir.
+ */
+export function roomModeForScreen(screen: AppScreen): RoomCodeModeKey | null {
+  return ROOM_SCREEN_MODE[screen] ?? null;
 }
 
 /** Bu ekranda arkadaş DM'i için sağ-alt toast göstermek uygun mu? */

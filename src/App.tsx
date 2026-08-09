@@ -34,6 +34,7 @@ import {
   roomCodeErrorMessage,
   normalizeRoomCode,
   isProbablyValidRoomCode,
+  ROOM_CODE_MODE_LABELS,
   type RoomCodeModeKey,
 } from "./lib/roomCode";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
@@ -98,7 +99,9 @@ import type {
   LoginRequiredChoice,
   LoginRequiredIntent,
 } from "./components/LoginRequiredModal";
-import { modeFromInviteParam } from "./lib/inviteLink";
+import { modeFromInviteParam, INVITE_PARAM } from "./lib/inviteLink";
+import { decideInviteAdmission, decideAfterExit } from "./lib/inviteAdmission";
+import { requestRoomExit } from "./lib/roomExit";
 import { initInviteDeepLinks } from "./lib/deepLink";
 import { GUEST_SIGNUP_EVENT } from "./components/GuestEndPrompt";
 import {
@@ -121,7 +124,11 @@ import { SocialProvider } from "./components/SocialContext";
 import { isSafeInternalRoomPath } from "./lib/social";
 import { DmProvider } from "./components/DmContext";
 import { AccountModerationGate } from "./components/AccountModerationGate";
-import { isGameplayActive, type AppScreen as ScreenPolicyAppScreen } from "./lib/screenPolicy";
+import {
+  isGameplayActive,
+  roomModeForScreen,
+  type AppScreen as ScreenPolicyAppScreen,
+} from "./lib/screenPolicy";
 import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
@@ -2863,6 +2870,12 @@ function clearRecoveryUrl() {
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
+  /* `screen`in DAİMA güncel değeri. `admitInvite` kararını bir RPC'yi
+   * BEKLEDİKTEN SONRA verir; o ana kadar effect closure'ındaki `screen`
+   * bayatlamış olabilir (oyuncu bu arada başka ekrana geçmiş olabilir).
+   * "Oyuncu ŞU AN nerede?" sorusunun tek güvenilir kaynağı budur. */
+  const screenRef = useRef<AppScreen>("home");
+  useEffect(() => { screenRef.current = screen; }, [screen]);
   // Ana ekran teması App seviyesinde tutulur ki hem HomeScreen hem de sağ-üst
   // UserProfileDropdown aynı temayı (profil paneli skin'i için) okuyabilsin.
   const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
@@ -3643,12 +3656,156 @@ function clearPendingKorNoktaInvite() {
     return () => { cancelled = true; };
   }, [authLoading, profile?.id]);
 
+  /* ── DAVET KABUL KAPISI (audit M1 + M3) ──────────────────────────────────
+   *
+   * Davet linkinden gelen kod GÜVENİLMEYEN girdidir ve gelen davet, oyuncunun
+   * İÇİNDE OLDUĞU odayı sessizce ezmemelidir. Her iki kontrol de yönlendirme
+   * YAPILMADAN ÖNCE burada tek noktada uygulanır; her dalın kendi yönlendirme
+   * kapanışı (`route`) değişmeden korunur.
+   *
+   * SIRA ÖNEMLİ — önce doğrula, sonra onay iste: odanın var olmadığı bir davet
+   * için oyuncuya "oyunundan çıkmak ister misin?" diye SORULMAZ. Böylece
+   * "aktif oyun + geçersiz davet" senaryosunda oyun hiç rahatsız edilmez,
+   * yalnız bir hata modalı görünür.
+   */
+  const inviteInFlightRef = useRef<Set<string>>(new Set());
+  const [inviteConfirm, setInviteConfirm] = useState<{
+    code: string;
+    fromLabel: string;
+    toLabel: string;
+    /** Modun güvenli çıkışını bekler; ancak başarılıysa yönlendirir. */
+    onYes: () => Promise<void>;
+    onNo: () => void;
+  } | null>(null);
+  /** Çıkış el sıkışması sürüyor → diyalog kilitli (çift istek olmaz). */
+  const [inviteExiting, setInviteExiting] = useState(false);
+  /* Onaydan sonra: önce ana menüye dönülür (ürünün mevcut çıkış geçişi), eski
+   * oda bileşeni unmount olur, ANCAK ONDAN SONRA yeni davet işlenir. */
+  const [inviteAfterExit, setInviteAfterExit] = useState<{ run: () => void } | null>(null);
+
+  /** Ölü/iptal edilmiş bir davetin çıpalarını düşür — effect yeniden
+   *  koştuğunda aynı davet tekrar tetiklenmesin. */
+  const clearInviteAnchors = (mode: RoomCodeModeKey) => {
+    const param = INVITE_PARAM[mode];
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has(param)) {
+        url.searchParams.delete(param);
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch { /* history API yoksa sessiz geç */ }
+    try {
+      if (mode === "conquest") sessionStorage.removeItem("pending_conquest_invite_code");
+      const link = ONLINE_INVITE_LINKS.find((l) => l.param === param);
+      if (link) sessionStorage.removeItem(link.storageKey);
+    } catch { /* sessionStorage kapalı */ }
+    clearPendingGuestJoin();
+  };
+
+  /**
+   * Daveti kabul et → `route()`. Reddet → hata modalı / onay diyaloğu.
+   *
+   * M3: doğrulama MEVCUT sunucu yolunu yeniden kullanır (`resolveRoomCode` →
+   * `resolve_torble_room_code` RPC, 20260808120000 ile `anon`a da açık). Yeni
+   * paralel doğrulama mantığı YOK; manuel "Oda Kodu" alanıyla birebir aynı
+   * otorite.
+   *
+   * M1: oyuncu oda taşıyan bir ekrandaysa VE o modun kalıcı oturumu varsa,
+   * yönlendirme onaysız yapılmaz.
+   */
+  const admitInvite = (mode: RoomCodeModeKey, code: string, route: () => void) => {
+    const key = `${mode}:${code}`;
+    // Effect birden çok kez koşabilir (auth flip, nonce). Aynı davet için ikinci
+    // bir RPC / ikinci bir onay diyaloğu başlatma.
+    if (inviteInFlightRef.current.has(key)) return;
+    inviteInFlightRef.current.add(key);
+    const done = () => { inviteInFlightRef.current.delete(key); };
+
+    void (async () => {
+      // Doğrulama otoritesi: MEVCUT sunucu yolu. Kararın yorumu saf modülde.
+      const resolution = await resolveRoomCode(code);
+
+      // Oyuncunun KONUMU cevap geldikten SONRA okunur — bekleme sırasında
+      // ekran değişmiş olabilir (bkz. screenRef).
+      const currentRoomMode = roomModeForScreen(screenRef.current);
+      const decision = decideInviteAdmission({
+        mode,
+        code,
+        resolution,
+        currentRoomMode,
+        activeModes: resolveGuestLinkTargets().map((t) => t.mode),
+        currentRoomCode: currentRoomMode
+          ? readModeRoomSession(currentRoomMode)?.roomCode ?? null
+          : null,
+      });
+
+      if (decision.kind === "route") {
+        done();
+        route();
+        return;
+      }
+
+      if (decision.kind === "reject") {
+        // Nick ekranı AÇILMAZ, ekran DEĞİŞMEZ — yalnız mevcut Torble hata modalı.
+        clearInviteAnchors(mode);
+        setRoomCodeResult({ kind: "error", message: decision.message });
+        done();
+        return;
+      }
+
+      const leavingMode = decision.fromMode;
+      setInviteConfirm({
+        code,
+        fromLabel: ROOM_CODE_MODE_LABELS[leavingMode],
+        toLabel: ROOM_CODE_MODE_LABELS[mode],
+        /* ÇIKIŞ SEMANTİĞİ APP'TE DEĞİL, MODDA.
+         * App "güvenli çık" diye SORAR; lobi mi maç mı, forfeit mi leave mi,
+         * host devri nasıl olacak — hepsine mod kendi mevcut fonksiyonuyla
+         * karar verir (bkz. lib/roomExit.ts). App yalnız SONUCU bekler. */
+        onYes: async () => {
+          const post = decideAfterExit(await requestRoomExit(leavingMode));
+          done();
+
+          if (post.kind === "abort") {
+            // Çıkış BAŞARISIZ → oda dokunulmamış sayılır, davet İŞLENMEZ.
+            setRoomCodeResult({ kind: "error", message: post.message });
+            return;
+          }
+
+          setInviteAfterExit({ run: route });
+          setScreen("home");
+        },
+        onNo: () => {
+          done();
+          // Mevcut oyun HİÇ değişmez; yalnız davet çıpaları düşer ki effect
+          // yeniden koştuğunda aynı soru tekrar sorulmasın.
+          clearInviteAnchors(mode);
+        },
+      });
+    })();
+  };
+
+  /* Onaylanan davet: ana menüye dönüş TAMAMLANDIKTAN sonra işlenir.
+   * `screen === "home"` beklenmesi şart — böylece eski oda bileşeni gerçekten
+   * unmount olur (kendi temizliğini çalıştırır) ve yeni mod ondan SONRA mount
+   * edilir. Zamanlayıcı yok; sıralamayı render'ın kendisi garanti eder. */
+  useEffect(() => {
+    if (!inviteAfterExit) return;
+    if (screen !== "home") return;
+    const { run } = inviteAfterExit;
+    setInviteAfterExit(null);
+    run();
+  }, [inviteAfterExit, screen]);
+
   /* ── Invite-link routing ──────────────────────────────────────────────────
    * Kayıtlı kullanıcı doğrudan modun lobisine gider. MİSAFİR ise (giriş
    * yapmamış) mod misafire açıksa "Odaya Katıl" nick ekranına yönlendirilir —
    * kayıt ekranına ZORLANMAZ. Auth-load'un oturması beklenir; profile flip'i
    * effect'i yeniden koşturur. Kodlar sessionStorage'a yazılır çünkü bir OAuth
    * round-trip'i URL'i siler; dönüşte geri yazılır.
+   *
+   * Yönlendirmeler `admitInvite` üzerinden geçer (sunucu doğrulaması + aktif
+   * oda onayı). Kararı verilmemiş hiçbir davet ekran değiştirmez.
    */
   useEffect(() => {
     if (authLoading) return;
@@ -3656,10 +3813,15 @@ function clearPendingKorNoktaInvite() {
     const params = new URLSearchParams(window.location.search);
     const korNoktaCode = params.get("korNokta");
 
-    const conquestFromUrl = params.get("conquest")?.trim().toUpperCase() || null;
+    // m1: conquest de diğer sekiz mod ile AYNI normalizasyondan geçer
+    // (önceden yalnız trim+toUpperCase idi; noktalama temizlenmiyordu).
+    const conquestRaw = params.get("conquest");
+    const conquestFromUrl = conquestRaw ? normalizeRoomCode(conquestRaw) || null : null;
     const conquestFromStorage = (() => {
-      try { return sessionStorage.getItem("pending_conquest_invite_code"); }
-      catch { return null; }
+      try {
+        const stored = sessionStorage.getItem("pending_conquest_invite_code");
+        return stored ? normalizeRoomCode(stored) || null : null;
+      } catch { return null; }
     })();
     const conquestCode = conquestFromUrl ?? conquestFromStorage;
 
@@ -3678,15 +3840,19 @@ function clearPendingKorNoktaInvite() {
 
       if (profile?.username) {
         // Hand off to ConquestMode — it strips ?conquest= and joins.
-        try { sessionStorage.removeItem("pending_conquest_invite_code"); }
-        catch { /* ignore */ }
-        if (screen !== "conquest-join") setScreen("conquest-join");
+        admitInvite("conquest", conquestCode, () => {
+          try { sessionStorage.removeItem("pending_conquest_invite_code"); }
+          catch { /* ignore */ }
+          if (screen !== "conquest-join") setScreen("conquest-join");
+        });
       } else if (!guestJoin && !authOpen) {
         // Misafir: KAYIT ekranına değil, nick ekranına gider. Kuşatma odasına
         // katılma sunucuda misafire açıktır (conquest_register_player anon);
         // yalnız oda KURMA login gerektirir.
-        setPendingGuestJoin("conquest", conquestCode);
-        setGuestJoin({ mode: "conquest", code: conquestCode });
+        admitInvite("conquest", conquestCode, () => {
+          setPendingGuestJoin("conquest", conquestCode);
+          setGuestJoin({ mode: "conquest", code: conquestCode });
+        });
       }
       return;
     }
@@ -3694,15 +3860,19 @@ function clearPendingKorNoktaInvite() {
     if (korNoktaCode) {
       // KorNoktaMode içindeki auto-join effect'i ?korNokta= param'ını okuyup
       // katılmayı tetikler ve URL'den temizler.
+      const knClean = normalizeRoomCode(korNoktaCode);
       if (profile?.username) {
-        if (screen !== "kornokta-join") setScreen("kornokta-join");
+        admitInvite("korNokta", knClean, () => {
+          if (screen !== "kornokta-join") setScreen("kornokta-join");
+        });
       } else if (!guestJoin && !authOpen) {
         // Misafir: KAYIT ekranına DEĞİL, nick ekranına gider (Kuşatma ile aynı
         // yol). Kör Nokta odasına katılma 20260809120000 ile misafire açıldı;
         // yalnız oda KURMA login gerektirir.
-        const clean = normalizeRoomCode(korNoktaCode);
-        setPendingGuestJoin("korNokta", clean);
-        setGuestJoin({ mode: "korNokta", code: clean });
+        admitInvite("korNokta", knClean, () => {
+          setPendingGuestJoin("korNokta", knClean);
+          setGuestJoin({ mode: "korNokta", code: knClean });
+        });
       }
       return;
     }
@@ -3720,16 +3890,22 @@ function clearPendingKorNoktaInvite() {
       const code = fromUrl ?? fromStorage;
       if (!code) continue;
 
+      const linkMode = modeFromInviteParam(link.param);
+
       if (profile?.username) {
         // Giriş yapılmış: modu aç. OAuth URL'i sildiyse param'ı geri yaz
         // (useInviteJoin okuyup auto-join eder), sonra anchor'ı temizle.
-        try { sessionStorage.removeItem(link.storageKey); } catch { /* ignore */ }
-        if (!fromUrl && typeof window !== "undefined") {
-          const restored = new URL(window.location.href);
-          restored.searchParams.set(link.param, code);
-          window.history.replaceState({}, "", restored.toString());
-        }
-        if (screen !== link.screen) setScreen(link.screen);
+        const openMode = () => {
+          try { sessionStorage.removeItem(link.storageKey); } catch { /* ignore */ }
+          if (!fromUrl && typeof window !== "undefined") {
+            const restored = new URL(window.location.href);
+            restored.searchParams.set(link.param, code);
+            window.history.replaceState({}, "", restored.toString());
+          }
+          if (screen !== link.screen) setScreen(link.screen);
+        };
+        if (linkMode) admitInvite(linkMode, normalizeRoomCode(code), openMode);
+        else openMode();
       } else {
         // Misafir: kodu sakla (OAuth redirect'e ve iOS cold-start'a dayansın),
         // param'ı URL'e geri koy, sonra KAYIT ekranı yerine nick ekranını aç.
@@ -3739,12 +3915,14 @@ function clearPendingKorNoktaInvite() {
           restored.searchParams.set(link.param, code);
           window.history.replaceState({}, "", restored.toString());
         }
-        const inviteMode = modeFromInviteParam(link.param);
+        const inviteMode = linkMode;
         if (inviteMode && isGuestJoinableMode(inviteMode)) {
           if (!guestJoin && !authOpen) {
             const clean = normalizeRoomCode(code);
-            setPendingGuestJoin(inviteMode, clean);
-            setGuestJoin({ mode: inviteMode, code: clean });
+            admitInvite(inviteMode, clean, () => {
+              setPendingGuestJoin(inviteMode, clean);
+              setGuestJoin({ mode: inviteMode, code: clean });
+            });
           }
         } else if (!authOpen) {
           // Misafire kapalı mod → mevcut login akışı korunur.
@@ -4046,16 +4224,10 @@ useEffect(() => {
         />
       )}
 
-      {/* Oda Kodu: aynı kod birden fazla aktif modda → seçim; ya da (guest
-          login-devam akışında) hata bildirimi. Seçilince o modun MEVCUT katılma
-          akışına gider. */}
-      {roomCodeResult && (
-        <RoomCodeResultModal
-          data={roomCodeResult}
-          onPick={handleRoomCodePick}
-          onClose={() => setRoomCodeResult(null)}
-        />
-      )}
+      {/* Oda Kodu sonucu (seçim/hata) artık GLOBAL mount ediliyor — bkz.
+          renderInviteModals. AuthModal ile aynı tuzak: geçersiz bir davet
+          linki oyuncu OYUN EKRANINDAYKEN de hata göstermek zorunda, ama bu dal
+          yalnız home render edildiğinde çalışır. Burada tekrar mount EDİLMEZ. */}
 
       {/* Üst bar Hızlı Eşleş girişi — HomeScreen'deki QM kartıyla AYNI modal ve
           AYNI startQuickMatch akışı (auth gate + intent + yönlendirme). Yeni
@@ -4280,6 +4452,56 @@ useEffect(() => {
    *
    *  Oyuncu odadan ATILMAZ — modal oyun ekranının ÜSTÜNE açılır, kapanınca
    *  oyuncu bulunduğu yerde kalır. */
+
+  /** Davet yüzeyleri — TÜM ekranlarda mount edilir (renderAuthModals deseni).
+   *
+   *  İkisi de oyuncu bir OYUN EKRANINDAYKEN görünmek ZORUNDA:
+   *    • RoomCodeResultModal → geçersiz davet linkinin hata bildirimi
+   *    • ConfirmDialog       → aktif odayı terk etme onayı (audit M1)
+   *  Oyun ekranının ÜSTÜNE açılırlar; oyun arkada mount kalır, iptalde oyuncu
+   *  hiçbir şey kaybetmeden bulunduğu yerde devam eder. */
+  const renderInviteModals = () => (
+    <>
+      {roomCodeResult && (
+        <RoomCodeResultModal
+          data={roomCodeResult}
+          onPick={handleRoomCodePick}
+          onClose={() => setRoomCodeResult(null)}
+        />
+      )}
+      {inviteConfirm && (
+        <ConfirmDialog
+          title="Mevcut odadan çıkılsın mı?"
+          description={
+            `Şu an ${inviteConfirm.fromLabel} odasındasın. ` +
+            `${inviteConfirm.toLabel} odasına (${inviteConfirm.code}) katılmak için ` +
+            `mevcut oyundan çıkman gerekiyor.`
+          }
+          confirmLabel="Çık ve Katıl"
+          cancelLabel="Burada Kal"
+          destructive
+          busy={inviteExiting}
+          onConfirm={() => {
+            // Tek atış: çıkış sürerken ikinci istek gönderilmez.
+            if (inviteExiting) return;
+            setInviteExiting(true);
+            void inviteConfirm.onYes().finally(() => {
+              setInviteExiting(false);
+              setInviteConfirm(null);
+            });
+          }}
+          onCancel={() => {
+            // Çıkış başlamışsa iptal edilemez (yarım kalmış çıkış olmasın).
+            if (inviteExiting) return;
+            const act = inviteConfirm.onNo;
+            setInviteConfirm(null);
+            act();
+          }}
+        />
+      )}
+    </>
+  );
+
   const renderAuthModals = () => (
     <>
         {authOpen && (
@@ -4540,6 +4762,7 @@ useEffect(() => {
           {renderScreen()}
           {renderProfileEditModals()}
           {renderAuthModals()}
+          {renderInviteModals()}
         </DmProvider>
       </PresenceProvider>
     </SocialProvider>

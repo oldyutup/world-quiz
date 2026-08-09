@@ -27,6 +27,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import { supabase } from "../lib/supabase";
 import { LobbyInviteBar } from "./LobbyInviteBar";
 import LobbyChat from "./LobbyChat";
@@ -955,6 +956,14 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
       else { resetToLobby(); }
     } finally { leavingRef.current = false; }
   }, [onHome]);
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom("home")`
+   * modun kendi yolu: flag_group_leave_room (host devri sunucuda) + session
+   * temizliği + onHome. `leavingRef` çift çağrıyı zaten engelliyor. */
+  useRoomExitHandler("flagGroup", {
+    canExit: () => !!roomRef.current,
+    exit: () => leaveRoom("home"),
+  });
 
   /* ═══════════ RETURN TO LOBBY (per-player) ═══════════ */
   const returnToLobby = useCallback(async () => {

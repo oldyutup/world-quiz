@@ -68,6 +68,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import { supabase } from "../lib/supabase";
 import { DuelMapView } from "./WorldMap";
 import LobbyChat from "./LobbyChat";
@@ -1483,6 +1484,20 @@ const returnToRoom = useCallback(async () => {
     if (target === "home") onHome();
     else backToLobby();
   }, [room, backToLobby, onHome]);
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). YENİ mantık YOK —
+   * modun kendi iki yolu:
+   *   playing → forfeit("home")     : odadan ayrılır, kalanlar yarışa devam
+   *   diğer   → leaveAndGoHome()    : bu dosyanın zaten doğru olan referans
+   *                                   deseni (duel_group_leave_room → host
+   *                                   DEVRİ / oda silme sunucuda) */
+  useRoomExitHandler("duelGroup", {
+    canExit: () => !!room,
+    exit: async () => {
+      if (phase === "playing") await forfeit("home");
+      else await leaveAndGoHome();
+    },
+  });
 
   /* ─────────── RENDER ─────────── */
 

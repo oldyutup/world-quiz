@@ -27,6 +27,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import {
   calculateFlagDuelXp,
@@ -2089,6 +2090,15 @@ if (!code) {
     claimTokenRef.current = "";
     onHome();
   };
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). Bu modda TEK yol
+   * yeterli: `flag_duel_leave_room` phase-aware — status='playing' ise
+   * caller=loser/opp=winner forfeit yazar, 'waiting' ise host'ta odayı siler,
+   * non-host'ta kendi satırını siler. Yeni mantık yok. */
+  useRoomExitHandler("flagDuel", {
+    canExit: () => !!room,
+    exit: handleLeave,
+  });
 
   const backToLobby = async () => {
     await handleLeave();

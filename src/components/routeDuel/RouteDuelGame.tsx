@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildInviteUrl } from "../../lib/inviteLink";
+import { useRoomExitHandler } from "../../lib/roomExit";
 import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE } from "../../lib/guestSession";
 import type { Profile } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -653,6 +654,14 @@ export default function RouteDuelGame({
     });
     if (error) console.error("[RouteDuel] leave_room failed", error);
   }, []);
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom` modun
+   * kendi tam temizliği: session + route_duel_leave_room (host ayrımı
+   * sunucuda). Yeni mantık yok. */
+  useRoomExitHandler("routeDuel", {
+    canExit: () => !!roomRef.current,
+    exit: leaveRoom,
+  });
 
   async function startGame() {
     playSound("click");

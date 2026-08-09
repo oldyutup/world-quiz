@@ -19,6 +19,7 @@ import { getGuestName, setGuestName, linkGuestPlayerToAccount } from "../../lib/
 import { EmojiIcon } from "../../components/EmojiIcon";
 import type { Profile } from "../../lib/auth";
 import { playSound } from "../../lib/sound";
+import { useRoomExitHandler } from "../../lib/roomExit";
 import {
   getThemeBackgroundStyle,
   getThemeDataAttr,
@@ -819,6 +820,15 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
   const handleLeaveRoomFromGame = useCallback(async () => {
     await handleLeaveLobby();
   }, [handleLeaveLobby]);
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). Bu modda lobi ve
+   * savaş için ayrılma semantiği ZATEN aynı: `handleLeaveRoomFromGame` de
+   * `handleLeaveLobby`ye delege ediyor → conquest_leave_room (host ise oda
+   * status='closed', değilse self-delete; sunucuda). Yeni mantık yok. */
+  useRoomExitHandler("conquest", {
+    canExit: () => !!roomRowRef.current?.id && !!myPlayerIdRef.current,
+    exit: handleLeaveRoomFromGame,
+  });
 
   const handleStartGame = useCallback(async () => {
     if (!roomRow || !isHost) return;

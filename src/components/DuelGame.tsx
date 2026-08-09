@@ -31,6 +31,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import { supabase, type DuelRoom, type DuelPlayer, type DuelClaim } from "../lib/supabase";
 import {
   calculateCountryDuelXp,
@@ -2013,6 +2014,21 @@ gameEndedRef.current = false; startTimeRef.current = null;
     setPhase("lobby"); setErrorMsg(null); setStatusMsg(null);
   };
 
+  /* Davet kabulünde App'in istediği güvenli çıkış (bkz. lib/roomExit.ts).
+   * YENİ mantık YOK — modun kendi iki yolu kullanılır:
+   *   playing → forfeit("home")  : otoritatif bitiş yazılır, rakip anında
+   *                                "Kazandın" görür (75-100 s disconnect
+   *                                watchdog'unu beklemez)
+   *   diğer   → backToLobby()    : duel_leave_room (host ise oda cascade siler)
+   * Böylece App maçı yok eden bir leave_room çağrısı YAPMAZ. */
+  useRoomExitHandler("duel", {
+    canExit: () => !!room && phase !== "lobby",
+    exit: async () => {
+      if (phase === "playing") await forfeit("home");
+      else await backToLobby();
+    },
+  });
+
   /* ── joinRematchRoom — requester follows rematch_room_id pointer ── */
   const joinRematchRoom = useCallback(async (newRoomId: string) => {
     const oldName = me?.name ?? playerName;
@@ -2210,7 +2226,14 @@ setXpResult(null); xpAwardedRef.current = false;
       setQuitStep("idle");
       return;
     }
-    onHome();
+    /* waiting/finished'de odada HÂLÂ bir slotumuz olabilir. Eskiden burada
+     * doğrudan onHome() çağrılıyordu; player satırı odada kalıyor ve rakip
+     * hayalet bir oyuncuyla bekliyordu — waiting fazında hiçbir watchdog
+     * çalışmadığı için (heartbeat/monitör yalnız playing'de) bu satır asla
+     * temizlenmiyordu. backToLobby duel_leave_room'u çağırır (host ise oda
+     * cascade silinir) ve oturumu temizler; ANCAK ondan sonra ana menüye
+     * dönülür. DuelGroupGame.leaveAndGoHome ile aynı desen. */
+    void backToLobby().then(onHome);
   }}
 >
           <span>←</span><span className="back-label">Menü</span>

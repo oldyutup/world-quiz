@@ -38,6 +38,48 @@ export interface DeepLinkInvite {
   code: string;
 }
 
+/**
+ * AÇILIŞ TESLİMATI tekilleştirici — saf, Capacitor'sız, test edilebilir.
+ *
+ * iOS cold start'ta AYNI bağlantıyı iki kez teslim edebilir: bir kez
+ * `getLaunchUrl()` ile, bir kez de `appUrlOpen` olayı olarak. İkisi de
+ * işlenirse çift katılma isteği üretilir.
+ *
+ * ÖNCEKİ TASARIM YANLIŞTI: `mod:kod` anahtarı modül ömrü boyunca tutuluyor ve
+ * HİÇ sıfırlanmıyordu. Kullanıcı odadan çıkıp bir süre sonra AYNI linke
+ * gerçekten tekrar dokunduğunda olay sessizce yutuluyordu — uygulama öne
+ * geliyor ve hiçbir şey olmuyordu (audit M2).
+ *
+ * YENİ TASARIM — kapsamı DAR, zaman aşımı YOK:
+ *   • Yalnız "açılışı yapan URL" tutulur (mod:kod değil, ham URL).
+ *   • Koruma ilk `appUrlOpen` olayında TÜKETİLİR; sonraki dokunuşlara sarkmaz.
+ *   • Pencere ayrıca uygulama arka plana düştüğü an KESİN olarak kapanır.
+ *     Kullanıcının aynı linke tekrar dokunabilmesi için uygulamadan çıkması
+ *     zorunlu olduğundan, gerçek ikinci dokunuş her zaman temiz bir pencerede
+ *     gelir.
+ */
+export function createLaunchDedupe() {
+  let launchUrl: string | null = null;
+  return {
+    /** Cold start URL'i işlendi. */
+    noteLaunch(url: string): void {
+      launchUrl = url;
+    },
+    /** Gelen `appUrlOpen` işlensin mi? */
+    shouldHandleEvent(url: string): boolean {
+      if (launchUrl === null) return true;
+      const isLaunchEcho = launchUrl === url;
+      // Tek atışlık: eşleşsin ya da eşleşmesin, ilk olaydan sonra koruma düşer.
+      launchUrl = null;
+      return !isLaunchEcho;
+    },
+    /** Uygulama arka plana düştü → açılış penceresi kesin olarak bitti. */
+    noteBackgrounded(): void {
+      launchUrl = null;
+    },
+  };
+}
+
 /** Kodu web tarafındaki normalizasyonla aynı biçime getirir. */
 function normalize(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
@@ -145,22 +187,13 @@ export function initInviteDeepLinks(
   })();
   if (!isNative) return () => { /* web: no-op */ };
 
-  /** Aynı bağlantının iki kez işlenmesini engeller.
-   *
-   *  iOS'ta cold start'ta `getLaunchUrl()` ile `appUrlOpen` AYNI URL için
-   *  arka arkaya tetiklenebilir. Tekilleştirilmezse iki katılma isteği
-   *  üretilir. Anahtar mod+kod: aynı odaya ikinci kez yönlendirme yapılmaz,
-   *  ama BAŞKA bir odanın linki normal işlenir. */
-  let lastHandled = "";
+  /** Açılış teslimatı tekilleştiricisi (saf mantık yukarıda, test edilebilir). */
+  const dedupe = createLaunchDedupe();
 
-  const handle = (url: string, source: "launch" | "event") => {
+  const handle = (url: string) => {
     if (disposed) return;
     const invite = parseInviteFromUrl(url);
     if (!invite) return; // auth callback / yabancı host — bize ait değil
-    const key = `${invite.mode}:${invite.code}`;
-    if (key === lastHandled) return;
-    lastHandled = key;
-    void source;
     applyInviteToLocation(invite);
     onInvite(invite);
   };
@@ -172,19 +205,32 @@ export function initInviteDeepLinks(
       // 1) Uygulama TAMAMEN KAPALIYKEN bağlantıya basıldıysa: başlatan URL.
       try {
         const launch = await App.getLaunchUrl();
-        if (launch?.url) handle(launch.url, "launch");
+        if (launch?.url) {
+          dedupe.noteLaunch(launch.url);
+          handle(launch.url);
+        }
       } catch {
         /* getLaunchUrl desteklenmiyorsa yoksay */
       }
 
       // 2) Uygulama AÇIK / ARKA PLANDAYKEN gelen bağlantılar.
       const handleSub = await App.addListener("appUrlOpen", ({ url }) => {
-        handle(url, "event");
+        if (!dedupe.shouldHandleEvent(url)) return; // aynı OS teslimatı
+        handle(url);
       });
+
+      // Uygulama arka plana düştüğünde açılış penceresini KESİN olarak kapat.
+      // Gerçek bir ikinci dokunuş ancak uygulamadan çıkıldıktan sonra
+      // gelebileceği için, bu noktadan sonra aynı link yeniden işlenir.
+      const stateSub = await App.addListener("appStateChange", ({ isActive }) => {
+        if (!isActive) dedupe.noteBackgrounded();
+      });
+
       if (disposed) {
         void handleSub.remove();
+        void stateSub.remove();
       } else {
-        remove = () => { void handleSub.remove(); };
+        remove = () => { void handleSub.remove(); void stateSub.remove(); };
       }
     } catch {
       /* @capacitor/app yoksa sessizce devre dışı */

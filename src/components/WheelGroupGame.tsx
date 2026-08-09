@@ -39,6 +39,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
@@ -1413,6 +1414,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       console.error("[WheelGroup] leave_room RPC failed", error);
     }
   }
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom` modun
+   * kendi tam temizliği: session + timer'lar + wheel_group_leave_room (host
+   * DEVRİ + self-delete tek transaction'da, sunucuda). Yeni mantık yok. */
+  useRoomExitHandler("wheelGroup", {
+    canExit: () => !!roomRef.current,
+    exit: leaveRoom,
+  });
 
   async function startGame() {
     playSound("click");

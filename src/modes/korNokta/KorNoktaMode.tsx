@@ -44,6 +44,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildInviteUrl } from "../../lib/inviteLink";
+import { useRoomExitHandler } from "../../lib/roomExit";
 import LobbyChat from "../../components/LobbyChat";
 import type { Profile } from "../../lib/auth";
 import { useInviteJoin } from "../../lib/useInviteJoin";
@@ -714,6 +715,15 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
       console.error("[KorNokta] leave_room RPC failed", error);
     }
   }
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom` modun
+   * kendi yolu: session temizliği + tevatur_leave_room (host DEVRİ / oda
+   * silme / self-delete tek transaction'da, sunucuda). Bu modda lobi ve oyun
+   * aynı yüzeyde; ayrılma semantiği ikisinde de aynı. Yeni mantık yok. */
+  useRoomExitHandler("korNokta", {
+    canExit: () => !!roomRef.current,
+    exit: leaveRoom,
+  });
 
   /** Host: lobi → gameplay. Sahne planı client'ta kurulur (havuz client
    *  bundle'ında), server doğrular + game_state'i yazar; realtime UPDATE

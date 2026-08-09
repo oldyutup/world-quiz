@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
 import { buildInviteUrl } from "../lib/inviteLink";
+import { useRoomExitHandler } from "../lib/roomExit";
 import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
@@ -1822,6 +1823,14 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       console.error("[WheelDuel] leave_room RPC failed", error);
     }
   }
+
+  /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom` modun
+   * kendi tam temizliği: session + timer'lar + wheel_duel_leave_room (host
+   * ayrımı ve cascade sunucuda). Yeni mantık yok. */
+  useRoomExitHandler("wheelDuel", {
+    canExit: () => !!room,
+    exit: leaveRoom,
+  });
 
   async function startGame() {
     playSound("click");
