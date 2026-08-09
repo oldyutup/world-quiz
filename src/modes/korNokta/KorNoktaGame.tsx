@@ -67,7 +67,7 @@ import {
   type XpBreakdown,
 } from "../../lib/progression";
 import { recordGameComplete, recordOnlineMatchResult } from "../../lib/achievementStats";
-import { markGuestMatchId, isGuestMatchId } from "../../lib/guestSession";
+import { markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../../lib/guestSession";
 import GuestEndPrompt from "../../components/GuestEndPrompt";
 import "./KorNoktaGame.css";
 
@@ -413,9 +413,25 @@ export default function KorNoktaGame({
   }, [phase]);
 
   /* ── Maç sonu XP (her oyuncu kendi profili, idempotent RPC) ── */
-  const myProfileId = players.find(p => p.id === myId)?.profile_id ?? null;
+  const myRow = players.find(p => p.id === myId) ?? null;
+  const myProfileId = myRow?.profile_id ?? null;
   const [xpView, setXpView] = useState<KnXpView | null>(null);
   const xpAwardedRef = useRef(false);
+
+  /* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle (bkz. DuelGame) ──
+   * "Misafirim" için POZİTİF KANIT aranır: satır GELMİŞ olmalı ve profile_id'si
+   * null olmalı. Yalnız `!myProfileId`e bakmak yetmezdi — satır henüz gelmemişken
+   * de null olurdu ve KAYITLI oyuncunun maçı yanlışlıkla misafir işaretlenirdi.
+   *
+   * KorNoktaGame yalnız maç sürerken mount edilir (lobide değil), bu yüzden
+   * `!!phase` "maç başladı" için yeterli kanıttır. Lobide hesap açan misafir
+   * buraya hiç uğramaz → XP'sini hak eder. */
+  useEffect(() => {
+    noteGuestOriginMatch(room.id, {
+      matchStarted: !!phase,
+      isGuest: !!myRow && myProfileId == null,
+    });
+  }, [phase, room.id, myRow, myProfileId]);
 
   const myTeamForXp: KnTeam | null = state ? getKnTeam(state, myId) : null;
   const blueTotalForXp = state?.totals.blue ?? 0;

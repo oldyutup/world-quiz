@@ -183,7 +183,7 @@ import {
 } from "../../lib/progression";
 import { recordOnlineMatchResult, recordGameComplete } from "../../lib/achievementStats";
 import type { Profile } from "../../lib/auth";
-import { markGuestMatchId, isGuestMatchId } from "../../lib/guestSession";
+import { markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../../lib/guestSession";
 import {
   areTeammates,
   buildTeamSummaries,
@@ -1691,6 +1691,17 @@ export default function ConquestGame({
   const finishedPhase = gameState?.phase === "finished";
   const finishReason  = gameState?.finishReason ?? null;
   const winnerPlayerId = gameState?.winnerPlayerId ?? null;
+
+  /* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle (bkz. DuelGame) ──
+   * `matchKey` yalnız gameState.startedAt yazıldığında (yani maç GERÇEKTEN
+   * başladığında) dolar; lobide null'dur → lobide hesap açan oyuncu
+   * işaretlenmez ve XP'sini hak eder. */
+  useEffect(() => {
+    noteGuestOriginMatch(matchKey, {
+      matchStarted: !!matchKey,
+      isGuest: !isLoggedInPlayer || !profile?.id,
+    });
+  }, [matchKey, isLoggedInPlayer, profile?.id]);
 
   useEffect(() => {
     if (!finishedPhase) return;

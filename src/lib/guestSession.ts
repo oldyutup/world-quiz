@@ -381,6 +381,46 @@ export function clearGuestMatchIds(): void {
   }
 }
 
+/* ── M3: işareti BİTİŞTE değil, MAÇ BAŞLARKEN koy ───────────────────────────
+ * ESKİ DAVRANIŞ (yetersizdi): işaret yalnız maç bitiminde, oyuncu hâlâ misafir
+ * ise konuyordu. Oyuncu 4. turda hesap açarsa bitişte `profile` dolu olduğu
+ * için işaret HİÇ konmuyor ve MİSAFİRKEN oynanan maçın TAMAMI hesaba XP
+ * yazıyordu (ürün kuralı 9 ihlali). Sonuç ekranı dışında CTA olmadığı için
+ * pratikte ulaşılamıyordu; Aşama 1 conversion'ı her auth yoluna açtığı için
+ * artık ulaşılabilir — bu yüzden burada kapatılıyor.
+ *
+ * YENİ KURAL: maç GERÇEKTEN başladıysa ve oyuncu O AN misafirse, maç kimliği
+ * hemen işaretlenir. Sonrasında hesap açması işareti kaldırmaz → o maça XP
+ * yazılmaz.
+ *
+ * İKİ YANLIŞ İŞARETLEMEYİ BİLİNÇLİ OLARAK ELER:
+ *   • `matchStarted` false iken (lobi/kurulum) İŞARETLEMEZ. Misafir LOBİDE
+ *     hesap açıp sonra maça girerse maç kayıtlı başlar → XP hak eder (kural 10).
+ *   • `isGuest` false iken İŞARETLEMEZ → kayıtlı başlayan maç asla misafir
+ *     maçı sayılmaz.
+ *
+ * Bitişteki mevcut guard KALDIRILMADI: bu ikisi birbirinin yedeği (oyuncu
+ * maçın tamamını misafir oynarsa iki yol da aynı sonuca varır, işaret
+ * idempotenttir). */
+export function shouldMarkGuestOriginMatch(
+  matchId: string | null | undefined,
+  opts: { matchStarted: boolean; isGuest: boolean }
+): boolean {
+  if (!matchId) return false;
+  if (!opts.matchStarted) return false;
+  return opts.isGuest;
+}
+
+/** `shouldMarkGuestOriginMatch` + kalıcı işaret. Oyun bileşenleri maç
+ *  sürerken her render'da çağırabilir; idempotenttir. */
+export function noteGuestOriginMatch(
+  matchId: string | null | undefined,
+  opts: { matchStarted: boolean; isGuest: boolean }
+): void {
+  if (!shouldMarkGuestOriginMatch(matchId, opts)) return;
+  markGuestMatchId(matchId);
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    6) Misafir slotunu hesaba devretme
    ════════════════════════════════════════════════════════════════════════ */
@@ -483,36 +523,100 @@ export function clearModeRoomSession(mode: RoomCodeModeKey): void {
   }
 }
 
-/**
- * Misafir hesap açtıktan sonra odadaki slotunu yeni hesabına devreder.
- * Oturum bilgisini kendisi bulur; bulamazsa sessizce false döner (oyuncu
- * misafir olarak kalmaya devam eder, oyun akışı BOZULMAZ).
- */
-export async function linkActiveGuestSession(
-  mode: RoomCodeModeKey
-): Promise<boolean> {
-  const session = readModeRoomSession(mode);
-  if (!session) return false;
-  return linkGuestPlayerToAccount({
-    mode,
-    playerId: session.playerId,
-    claimToken: session.claimToken,
-  });
+/* ── Devir sonucu ───────────────────────────────────────────────────────────
+ * ESKİ SÖZLEŞME `Promise<boolean>` idi ve üç FARKLI durumu tek `false`'a
+ * eziyordu: "oturum yok", "sunucu reddetti", "ağ hatası". Çağıran taraf
+ * hangisinin olduğunu bilemediği için ne retry edebiliyor ne de teşhis
+ * koyabiliyordu (audit m1/m2).
+ *
+ *   linked     → satır artık bu hesaba ait (yeni devir VEYA zaten devredilmiş;
+ *                RPC idempotent `true` döndüğü için ikisi ayrılmaz — ve
+ *                çağıran için de farkı yoktur).
+ *   no-session → devredilecek yerel oturum yok. Hata DEĞİL.
+ *   rejected   → sunucu KESİN olarak hayır dedi (claim_mismatch,
+ *                not_a_guest_row, already_in_room…). Tekrar denemek anlamsız.
+ *   error      → taşıma/geçici hata. Tek kontrollü retry'dan sonra da
+ *                sürüyorsa çağıran DAHA SONRA tekrar deneyebilir. */
+export type GuestLinkStatus = "linked" | "no-session" | "rejected" | "error";
+
+export interface GuestLinkOutcome {
+  status: GuestLinkStatus;
+  /** Sunucu SQLSTATE'i (rejected) veya taşıma hata kodu. */
+  code?: string;
+  message?: string;
+  /** Kaç RPC denemesi yapıldı (1 veya 2). Teşhis içindir. */
+  attempts?: number;
 }
 
-/** `torble_link_guest_player` RPC'sinin istemci sarmalayıcısı.
- *
- *  Misafir oyun sonu ekranından hesap açtıktan SONRA çağrılır: odadaki aynı
- *  satır yeni hesaba bağlanır, oyuncu listesinde ikinci bir kişi oluşmaz.
- *  Başarısızlık ÖLÜMCÜL DEĞİLDİR — oyuncu misafir olarak kalmaya devam eder,
- *  oyun akışı bozulmaz. Bu yüzden hiç throw etmez.
- *
- *  XP/altın/görev AKTARMAZ; yalnız kimlik devri yapar. */
-export async function linkGuestPlayerToAccount(params: {
+/** `torble_link_guest_player`'ın KESİN "hayır" cevapları (migration
+ *  20260808120000 D + 20260809120000 B6). Bu kodlarda retry YAPILMAZ:
+ *    42501 auth_required / not_a_guest_row / claim_mismatch
+ *    22023 mode_invalid / claim_token_required
+ *    02000 player_not_found
+ *    P0001 already_in_room
+ *  Listede OLMAYAN her kod (ve kodsuz ağ hatası) geçici sayılır — bilinmeyen
+ *  bir kodu geçici saymak, kalıcı saymaktan daha güvenli: en fazla bir fazla
+ *  istek atılır, kalıcı saymak ise devri sessizce kaybettirirdi. */
+const GUEST_LINK_REJECT_CODES: ReadonlySet<string> = new Set([
+  "42501",
+  "22023",
+  "02000",
+  "P0001",
+]);
+
+export function isTransientLinkFailure(code: string | null | undefined): boolean {
+  if (!code) return true;
+  return !GUEST_LINK_REJECT_CODES.has(code);
+}
+
+/* ── Teşhis halkası ─────────────────────────────────────────────────────────
+ * "Sessiz yutma" yasak: her linked-olmayan sonuç konsola yazılır ve son N
+ * sonuç bellekte tutulur. Halka SINIRLI (bellek sızdırmaz) ve yalnız teşhis
+ * amaçlıdır — hiçbir akış buna bakarak karar VERMEZ. */
+export interface GuestLinkLogEntry extends GuestLinkOutcome {
+  mode: RoomCodeModeKey;
+  playerId: string;
+  at: number;
+}
+
+const GUEST_LINK_LOG_MAX = 20;
+const guestLinkLog: GuestLinkLogEntry[] = [];
+
+export function getGuestLinkDiagnostics(): readonly GuestLinkLogEntry[] {
+  return guestLinkLog;
+}
+
+function recordGuestLink(
+  mode: RoomCodeModeKey,
+  playerId: string,
+  outcome: GuestLinkOutcome
+): GuestLinkOutcome {
+  guestLinkLog.push({ ...outcome, mode, playerId, at: Date.now() });
+  if (guestLinkLog.length > GUEST_LINK_LOG_MAX) guestLinkLog.shift();
+
+  if (outcome.status !== "linked" && outcome.status !== "no-session") {
+    console.warn(
+      `[guestLink] ${mode} ${playerId.slice(0, 8)} → ${outcome.status}` +
+        (outcome.code ? ` (${outcome.code})` : "") +
+        (outcome.message ? `: ${outcome.message}` : "")
+    );
+  }
+  return outcome;
+}
+
+/* DEV'de tarayıcı konsolundan okunabilsin (manuel QA + kısa tarayıcı testi).
+ * Prod bundle'ına GİRMEZ. */
+if (import.meta.env?.DEV && typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__torbleGuestLink =
+    getGuestLinkDiagnostics;
+}
+
+/** Tek RPC denemesi. Throw ETMEZ; her yolu bir outcome'a çevirir. */
+async function attemptGuestLink(params: {
   mode: RoomCodeModeKey;
   playerId: string;
   claimToken: string;
-}): Promise<boolean> {
+}): Promise<GuestLinkOutcome> {
   try {
     const { supabase } = await import("./supabase");
     const { data, error } = await supabase.rpc("torble_link_guest_player", {
@@ -520,9 +624,149 @@ export async function linkGuestPlayerToAccount(params: {
       p_player_id: params.playerId,
       p_claim_token: params.claimToken,
     });
-    if (error) return false;
-    return data === true;
-  } catch {
-    return false;
+    if (error) {
+      const code = typeof error.code === "string" ? error.code : undefined;
+      return {
+        status: isTransientLinkFailure(code) ? "error" : "rejected",
+        code,
+        message: error.message,
+      };
+    }
+    // RPC ya `true` döner ya da raise eder; `true` olmayan cevap beklenmeyen
+    // bir durumdur — retry döngüsüne sokmamak için KESİN sayılır.
+    return data === true
+      ? { status: "linked" }
+      : { status: "rejected", message: "rpc_returned_non_true" };
+  } catch (err) {
+    return {
+      status: "error",
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
+}
+
+/** `torble_link_guest_player` RPC'sinin istemci sarmalayıcısı.
+ *
+ *  Odadaki AYNI satır yeni hesaba bağlanır; oyuncu listesinde ikinci bir kişi
+ *  OLUŞMAZ. Başarısızlık ÖLÜMCÜL DEĞİLDİR — oyuncu misafir olarak devam eder,
+ *  oyun akışı bozulmaz. Bu yüzden hiç throw etmez, outcome döner.
+ *
+ *  RETRY: yalnız `error` (geçici) sonucunda ve YALNIZ BİR KEZ. Devir idempotent
+ *  olduğu için tekrar denemek güvenlidir; `rejected` sonucunda tekrar denemek
+ *  ise yalnız gereksiz yük olurdu.
+ *
+ *  XP/altın/görev AKTARMAZ; yalnız kimlik devri yapar. */
+export async function linkGuestPlayerToAccount(params: {
+  mode: RoomCodeModeKey;
+  playerId: string;
+  claimToken: string;
+}): Promise<GuestLinkOutcome> {
+  let outcome = await attemptGuestLink(params);
+  if (outcome.status === "error") {
+    await new Promise((r) => setTimeout(r, GUEST_LINK_RETRY_DELAY_MS));
+    outcome = { ...(await attemptGuestLink(params)), attempts: 2 };
+  } else {
+    outcome.attempts = 1;
+  }
+  return recordGuestLink(params.mode, params.playerId, outcome);
+}
+
+/** Tek retry'ın bekleme süresi. Kısa: kullanıcı sonuç ekranında bekliyor. */
+const GUEST_LINK_RETRY_DELAY_MS = 600;
+
+/**
+ * Misafir hesap açtıktan sonra odadaki slotunu yeni hesabına devreder.
+ * Oturum bilgisini kendisi bulur; bulamazsa `no-session` döner (oyuncu misafir
+ * olarak kalmaya devam eder, oyun akışı BOZULMAZ).
+ */
+export async function linkActiveGuestSession(
+  mode: RoomCodeModeKey
+): Promise<GuestLinkOutcome> {
+  const session = readModeRoomSession(mode);
+  if (!session) return { status: "no-session" };
+  return linkGuestPlayerToAccount({
+    mode,
+    playerId: session.playerId,
+    claimToken: session.claimToken,
+  });
+}
+
+/* ── Auth-flip uzlaştırması: hangi slotlar devredilecek? ────────────────────
+ * Bu SAF fonksiyon, "kullanıcı authenticated oldu" anında devredilmeye aday
+ * TÜM yerel oturumları listeler. Ekrana, `authPromptReason`'a veya herhangi bir
+ * geçici UI state'ine BAKMAZ — C2'nin kökü buydu: OAuth redirect'i sayfayı
+ * baştan yüklediği için React state'i (ve `screen`) yok oluyor, ama
+ * localStorage'daki oturum SAĞ KALIYOR. Karar yalnız kalıcı veriye dayanır.
+ *
+ * KUŞATMA neden burada: kendi oturumunu React state'inde tutuyor, ama
+ * claim_token'ı `conquest:claim:<playerId>` altında KALICI olarak saklıyor.
+ * Bu anahtarları okuyunca Kuşatma da reload'dan sağ çıkan tek ortak yolu
+ * kullanır (audit I: iki sistemin drift etmesi riski). ConquestMode'daki
+ * yerinde tetikleyici KALDIRILMADI — o, devirden sonra satırı anında
+ * tazeleyip "Misafir" etiketini düşürüyor; bu ise reload sonrası ağdır.
+ *
+ * FAZLADAN ÇAĞRI ZARARSIZDIR: kayıtlı kullanıcının kendi satırı için RPC
+ * idempotent `true` döner; başkasının satırı için `rejected`. Yani liste
+ * "kesin misafir" olmak zorunda değil, "aday" olması yeter. */
+export interface GuestLinkTarget {
+  mode: RoomCodeModeKey;
+  playerId: string;
+  claimToken: string;
+}
+
+/** `conquestClaim.ts` ile PAYLAŞILAN anahtar öneki. Tek yerde durur ki iki
+ *  modül birbirinden habersiz kaymasın (drift = sessiz başarısızlık). */
+export const CONQUEST_CLAIM_KEY_PREFIX = "conquest:claim:";
+
+/** Aynı anda makul sayıda Kuşatma claim'i tutulabilir; odadan çıkışta
+ *  `forgetConquestClaim` siliyor, yine de üst sınır konur. */
+const CONQUEST_CLAIM_SCAN_MAX = 8;
+
+export function readStoredConquestClaims(): GuestLinkTarget[] {
+  const out: GuestLinkTarget[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(CONQUEST_CLAIM_KEY_PREFIX)) continue;
+      const playerId = key.slice(CONQUEST_CLAIM_KEY_PREFIX.length);
+      const claimToken = localStorage.getItem(key) ?? "";
+      if (!playerId || !claimToken) continue;
+      out.push({ mode: "conquest", playerId, claimToken });
+      if (out.length >= CONQUEST_CLAIM_SCAN_MAX) break;
+    }
+  } catch {
+    /* localStorage kapalı — aday yok */
+  }
+  return out;
+}
+
+export function resolveGuestLinkTargets(
+  readSession: (mode: RoomCodeModeKey) => ModeRoomSession | null =
+    readModeRoomSession,
+  readConquestClaims: () => GuestLinkTarget[] = readStoredConquestClaims
+): GuestLinkTarget[] {
+  const out: GuestLinkTarget[] = [];
+  const seen = new Set<string>();
+
+  const push = (t: GuestLinkTarget) => {
+    if (!t.playerId || !t.claimToken) return;
+    const key = `${t.mode}:${t.playerId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(t);
+  };
+
+  for (const mode of Object.keys(MODE_SESSION_KEYS) as RoomCodeModeKey[]) {
+    const session = readSession(mode);
+    if (!session) continue;
+    push({
+      mode,
+      playerId: session.playerId,
+      claimToken: session.claimToken,
+    });
+  }
+
+  for (const target of readConquestClaims()) push(target);
+
+  return out;
 }

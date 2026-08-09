@@ -16,7 +16,11 @@
  * access is intentionally not supported in this phase.
  */
 
-const KEY_PREFIX = "conquest:claim:";
+/* Önek `lib/guestSession.ts`te tanımlıdır: auth-flip uzlaştırması bu
+ * anahtarları TARAYARAK Kuşatma slotunu OAuth reload'undan sonra da devredebilsin
+ * diye iki modülün aynı öneki görmesi ZORUNLU. Burada ikinci bir literal
+ * tutmak = sessiz drift riski. */
+import { CONQUEST_CLAIM_KEY_PREFIX as KEY_PREFIX } from "../../lib/guestSession";
 
 export function generateConquestClaim(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

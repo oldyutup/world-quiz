@@ -633,8 +633,15 @@ ok(/setGuestJoin\(\{ mode: "korNokta", code: clean \}\)/.test(appSrc),
    "Kör Nokta davet linki misafiri nick ekranına götürüyor (login zorunlu değil)");
 ok(!/setAuthPromptReason\("kornokta-invite"\)/.test(appSrc),
    "eski 'Kör Nokta login zorunlu' davet dalı KALDIRILDI");
-ok(/"kornokta-join":\s*"korNokta"/.test(appSrc),
-   "kayıt sonrası slot devri için ekran→mod eşlemesi eklendi");
+// Slot devri artık EKRANDAN türetilmiyor: web OAuth redirect'i sayfayı baştan
+// yüklediği için dönüşte `screen` her zaman "home" oluyor ve eski
+// SCREEN_TO_ROOM_MODE eşlemesi hiçbir zaman tutmuyordu (audit C2). Aday listesi
+// kalıcı oturumdan çözülüyor; ayrıntılı sözleşme:
+// scripts/check-guest-conversion.ts
+ok(!/SCREEN_TO_ROOM_MODE\[/.test(appSrc),
+   "slot devri ekran→mod eşlemesine BAĞLI DEĞİL (kaldırıldı)");
+ok(/resolveGuestLinkTargets\(\)/.test(appSrc),
+   "kayıt sonrası slot devri kalıcı oturumdan çözülüyor (auth-flip uzlaştırması)");
 
 /* ════════════════════════════════════════════════════════════════════════
    7) KUŞATMA HAM OKUMA KİLİDİ + HOST DEVRİ (20260810120000)

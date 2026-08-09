@@ -268,19 +268,27 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
   const isHost  = !!me?.is_host;
   const myName  = me?.name ?? "";
 
-  /* ── MİSAFİR → KAYITLI HESAP slot devri (Kuşatma) ────────────────────────
-   * Diğer modlar oda oturumunu (player_id + claim_token) localStorage'da
-   * tuttuğu için devri App.tsx tetikleyebiliyor. Kuşatma ise oturumu React
-   * state'inde tutar ve claim_token'ı player_id'ye göre saklar — bu yüzden
-   * devir BURADAN tetiklenir.
+  /* ── MİSAFİR → KAYITLI HESAP slot devri (Kuşatma, YERİNDE tetikleyici) ───
+   * App.tsx'teki auth-flip uzlaştırması Kuşatma'yı da kapsıyor (claim
+   * anahtarlarını tarayarak) — bu effect ONUN YERİNE DEĞİL, ÜSTÜNE çalışır ve
+   * tek bir ek işi vardır: devirden hemen sonra satırı TAZELEYİP "Misafir"
+   * etiketini yeni tur başlamadan düşürmek. Uzlaştırma reload'dan sağ çıkan
+   * ağdır; bu ise ekran açıkken anlık geri bildirimdir. İkisi de aynı
+   * idempotent RPC'yi çağırdığı için çakışmaları zararsızdır.
    *
    * Koşul: giriş yapılmış + odadaki satırım hâlâ MİSAFİR satırı
    * (profile_id null). Sunucu ayrıca claim_token doğrular; başka birinin
    * slotu devralınamaz. Başarısızlık ölümcül değildir — oyuncu misafir
    * olarak devam eder.
    *
-   * XP AKTARMAZ: geçmiş misafir maçı, maç kimliğiyle işaretlendiği için
-   * (ConquestGame) devirden sonra da ödül yazılmaz; yeni turlar normal kazanır. */
+   * REF KİLİDİ YALNIZ KESİN SONUÇTA: eskiden ref denemeden ÖNCE set ediliyordu,
+   * yani tek bir geçici ağ hatası devri o oturum boyunca KALICI olarak
+   * kaybettiriyordu (audit m2). Artık `error` sonucunda kilit açılıyor ve bir
+   * sonraki render/realtime güncellemesi yeniden deniyor.
+   *
+   * XP AKTARMAZ: misafirken BAŞLAYAN maç, başlangıçta maç kimliğiyle
+   * işaretlendiği için (ConquestGame, noteGuestOriginMatch) devirden sonra da
+   * ödül yazılmaz; yeni maçlar normal kazanır. */
   const linkAttemptedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!profile?.id) return;
@@ -291,15 +299,22 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     const token = recallConquestClaim(me.id);
     if (!token) return;
 
+    const playerId = me.id;
+    const rid = me.room_id;
+
     void linkGuestPlayerToAccount({
       mode: "conquest",
-      playerId: me.id,
+      playerId,
       claimToken: token,
-    }).then((okLink) => {
-      const rid = me.room_id;
-      if (!okLink || !rid) return;
+    }).then((outcome) => {
+      // Geçici hata → kilidi AÇ ki tekrar denenebilsin.
+      if (outcome.status === "error") {
+        if (linkAttemptedRef.current === playerId) linkAttemptedRef.current = null;
+        return;
+      }
+      if (outcome.status !== "linked" || !rid) return;
       // Satırı tazele ki "Misafir" etiketi YENİ TURDAN ÖNCE kalksın.
-      void fetchConquestPlayers(rid, me.id).then(rows => {
+      void fetchConquestPlayers(rid, playerId).then(rows => {
         if (rows) setPlayerRows(rows);
       });
     });

@@ -107,7 +107,8 @@ import {
   setPendingGuestJoin,
   readPendingGuestJoin,
   clearPendingGuestJoin,
-  linkActiveGuestSession,
+  resolveGuestLinkTargets,
+  linkGuestPlayerToAccount,
   readModeRoomSession,
   clearModeRoomSession,
 } from "./lib/guestSession";
@@ -287,24 +288,11 @@ function clearPendingQuickMatch() {
  *  hayatta kaldığı için kullanılır; kısa ömürlü, tek seferlik tüketilir. */
 const PENDING_ROOM_CODE_KEY = "pending_room_code_join";
 
-/** Oyun ekranı → oda-kodu modu. Misafir hesap açtığında hangi modun oda
- *  oturumunun devredileceğini bulmak için kullanılır. Kör Nokta yok (misafir
- *  zaten katılamaz); Kuşatma yok (farklı claim mekanizması, V1'de devir yok). */
-const SCREEN_TO_ROOM_MODE: Partial<Record<AppScreen, RoomCodeModeKey>> = {
-  "duel-game":        "duel",
-  "flag-duel-game":   "flagDuel",
-  "wheel-duel-game":  "wheelDuel",
-  "route-duel-game":  "routeDuel",
-  "duel-group-game":  "duelGroup",
-  "wheel-group-game": "wheelGroup",
-  "flag-group-game":  "flagGroup",
-  // Kör Nokta artık misafire açık (20260809120000): oyuncu oyun sonu
-  // ekranından hesap açtığında odadaki AYNI satır yeni hesaba bağlanır.
-  // Kuşatma burada YOK çünkü devri ConquestMode kendi claim deposundan
-  // (recallConquestClaim) tetikler — bkz. ConquestMode linkAttemptedRef.
-  "kornokta-create":  "korNokta",
-  "kornokta-join":    "korNokta",
-};
+/* SCREEN_TO_ROOM_MODE KALDIRILDI (Aşama 1). Misafir slot devrinin hangi modda
+ * yapılacağı artık EKRANDAN türetilmiyor: web OAuth redirect'i sayfayı baştan
+ * yüklediği için dönüşte `screen` her zaman "home" oluyordu ve eşleme hiçbir
+ * zaman tutmuyordu (audit C2). Adaylar artık kalıcı oturumdan okunuyor —
+ * bkz. `resolveGuestLinkTargets` + App'teki auth-flip uzlaştırma effect'i. */
 
 function clearPendingRoomCode() {
   try { sessionStorage.removeItem(PENDING_ROOM_CODE_KEY); }
@@ -3263,17 +3251,17 @@ export default function App() {
     // kipinde başlasın.
     setAuthStartInSignup(false);
 
-    /* Misafir oyun-sonu ekranından hesap açtı: odadaki AYNI satırı yeni
-     * hesaba devret (sunucu claim_token'ı doğrular; başka bir misafirin
-     * slotu devralınamaz). Böylece oyuncu listesinde ikinci bir kişi
-     * OLUŞMAZ ve "Misafir" etiketi kalkar.
+    /* Misafir oyun-sonu ekranından hesap açtı: EKRAN DEĞİŞTİRİLMEZ, oyuncu
+     * sonuç ekranında kalır.
      *
-     * Ekran DEĞİŞTİRİLMEZ — oyuncu sonuç ekranında kalır.
-     * Başarısızlık ölümcül değildir: oyuncu misafir olarak devam eder.
-     * Bu çağrı XP/altın AKTARMAZ; yalnız kimlik devridir. */
+     * SLOT DEVRİ ARTIK BURADA TETİKLENMEZ. Eskiden `linkActiveGuestSession`
+     * tam bu satırda, `authPromptReason === "guest-signup"` koşuluna bağlı
+     * çağrılıyordu; o koşul yalnız modal İÇİNDE tamamlanan girişlerde doğruydu
+     * ve e-posta kaydı (doğrulama maili) ile web OAuth redirect'inde sayfa
+     * yeniden yüklendiği için HİÇ sağlanmıyordu (audit C1/C2/M1).
+     * Devir artık aşağıdaki auth-flip uzlaştırma effect'inin işi: hangi auth
+     * yolu kullanılırsa kullanılsın, `profile` dolduğu anda çalışır. */
     if (nextProfile?.username && authPromptReason === "guest-signup") {
-      const mode = SCREEN_TO_ROOM_MODE[screen];
-      if (mode) void linkActiveGuestSession(mode);
       setAuthPromptReason(null);
       localStorage.setItem("torble_welcome_seen", "true");
       return;
@@ -3608,6 +3596,52 @@ function clearPendingKorNoktaInvite() {
     window.addEventListener(GUEST_SIGNUP_EVENT, onRequest);
     return () => window.removeEventListener(GUEST_SIGNUP_EVENT, onRequest);
   }, []);
+
+  /* ── MİSAFİR → KAYITLI slot uzlaştırması (auth-flip) ─────────────────────
+   * TETİKLEYİCİ: `profile?.id`'nin dolması. Auth NİYETİ (authPromptReason),
+   * ekran veya modal akışı DEĞİL. Bu ayrım özelliğin tamamı:
+   *
+   *   • e-posta girişi        → modal içinde biter, profile dolar       ✔
+   *   • e-posta kaydı + mail  → kullanıcı sonra döner, profile dolar    ✔
+   *   • web Google/Apple OAuth→ sayfa BAŞTAN yüklenir, profile dolar    ✔
+   *   • native Apple/Google   → signInWithIdToken, profile dolar        ✔
+   *   • ileride eklenecek maç-içi CTA / başka giriş yolu                ✔
+   *
+   * Eski tasarım son ikisi dışında hiçbirinde çalışmıyordu (audit C1/C2/M1),
+   * çünkü kararı React state'ine bağlamıştı ve reload onu siliyordu. Burada
+   * karar YALNIZ localStorage'daki kalıcı oturuma bakar — reload'dan sağ çıkan
+   * tek şey o.
+   *
+   * GÜVENLİ: aday listesi "kesin misafir" olmak zorunda değil. Sunucu her
+   * çağrıda claim_token'ı doğruluyor, başkasının satırını `not_a_guest_row` ile
+   * reddediyor ve kendi satırımız için idempotent `true` dönüyor. Yani kayıtlı
+   * kullanıcının kendi oturumu için atılan fazladan istek zararsızdır.
+   *
+   * TEK ATIŞ DEĞİL, KESİN SONUÇ BAZLI: yalnız `linked`/`rejected`/`no-session`
+   * (kesin cevaplar) kilitlenir. Geçici ağ hatası (`error`) kilitlenmez —
+   * bir sonraki auth-flip'te yeniden denenir (audit m2). */
+  const guestLinkSettledRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (authLoading) return;
+    const uid = profile?.id;
+    if (!uid) return;
+
+    const targets = resolveGuestLinkTargets();
+    if (targets.length === 0) return;   // oturum yok → hiçbir iş yapılmaz
+
+    let cancelled = false;
+    void (async () => {
+      for (const target of targets) {
+        const key = `${uid}:${target.mode}:${target.playerId}`;
+        if (guestLinkSettledRef.current.has(key)) continue;
+        const outcome = await linkGuestPlayerToAccount(target);
+        if (cancelled) return;
+        if (outcome.status !== "error") guestLinkSettledRef.current.add(key);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [authLoading, profile?.id]);
 
   /* ── Invite-link routing ──────────────────────────────────────────────────
    * Kayıtlı kullanıcı doğrudan modun lobisine gider. MİSAFİR ise (giriş
@@ -4054,142 +4088,13 @@ useEffect(() => {
         />
       )}
 
-      {authOpen && (
-  <AuthModal
-    isNative={IS_NATIVE_APP}
-    startInForgot={authStartInForgot}
-    startInSignup={authStartInSignup}
-    onNeedsUsername={(userId) => {
-      // Native first-login social user with no handle. Hide the auth modal and
-      // hand off to the NicknameModal, KEEPING pendingOnlineTarget +
-      // authPromptReason so the nickname success routes them onward.
-      setPendingNicknameUserId(userId);
-      setAuthOpen(false);
-    }}
-    headerNote={
-      authPromptReason === "conquest-invite"
-        ? "Kuşatma moduna katılmak için giriş yapmalısın."
-        : authPromptReason === "kornokta-invite" || authPromptReason === "kornokta-join"
-        ? "Kör Nokta moduna katılmak için giriş yapmalısın."
-        : authPromptReason === "kornokta-create"
-        ? "Kör Nokta odası kurmak için giriş yapmalısın."
-        : authPromptReason === "duel-gate"
-        ? "Düello oynamak için giriş yapmalısın."
-        : authPromptReason === "multi-gate"
-        ? "Çok oyunculu modlara katılmak için giriş yapmalısın."
-        : authPromptReason === "kusatma-gate"
-        ? "Kuşatma oynamak için giriş yapmalısın."
-        : authPromptReason === "daily-quest"
-        ? "Günün Görevi'ni oynamak ve ödülünü almak için giriş yapmalısın."
-        : authPromptReason === "guest-signup"
-        ? "Hesap oluştur: odadaki yerini korursun ve bundan sonraki turlarda kazandığın XP, altın ve başarılar hesabına işlenir."
-        : undefined
-    }
-    hideGuest={
-      authPromptReason === "kornokta-invite" ||
-      authPromptReason === "kornokta-create" ||
-      authPromptReason === "kornokta-join" ||
-      authPromptReason === "duel-gate" ||
-      authPromptReason === "multi-gate" ||
-      authPromptReason === "kusatma-gate" ||
-      authPromptReason === "daily-quest" ||
-      // Misafir zaten oyunun içinde; "Misafir olarak devam et" anlamsız olurdu.
-      authPromptReason === "guest-signup"
-    }
-    onClose={() => {
-      setAuthOpen(false);
-      setAuthStartInForgot(false);
-      setAuthStartInSignup(false);
-      // Dismissing the conquest auth prompt drops the pending invite so
-      // a reload doesn't pester the user with the same login modal.
-      if (authPromptReason === "conquest-invite") {
-        clearPendingConquestInvite();
-      }
-      if (authPromptReason === "kornokta-invite") {
-        clearPendingKorNoktaInvite();
-      }
-      if (
-        authPromptReason === "duel-gate" ||
-        authPromptReason === "multi-gate" ||
-        authPromptReason === "kusatma-gate"
-      ) {
-        clearPendingOnlineInvites();
-        clearPendingOnlineTarget();
-        // Dismissing the gate also drops any Hızlı Eşleş intent, so a later
-        // manual entry to the same mode doesn't suddenly auto-search.
-        clearQuickMatchIntent();
-        // …ve varsa üst bar/mobil "Oda Kodu" bekleyen kodunu (guest akışı).
-        clearPendingRoomCode();
-      }
-      // Auth iptal edildi → bekleyen Günün Görevi niyeti temizlenir (reload
-      // aynı modalı tekrar açmasın).
-      if (authPromptReason === "daily-quest") {
-        clearPendingDailyQuest();
-      }
-      setPendingOnlineTarget(null);
-      setAuthPromptReason(null);
-      localStorage.setItem("torble_welcome_seen", "true");
-    }}
-    onGuest={() => {
-      setProfile(null);
-      if (authPromptReason === "conquest-invite") {
-        clearPendingConquestInvite();
-      }
-      if (authPromptReason === "kornokta-invite") {
-        clearPendingKorNoktaInvite();
-      }
-      // Online gate'lerde "Misafir" butonu zaten gizli (hideGuest); yine de
-      // temiz kalsın diye pending hedef ve davet anchor'ları düşürülür.
-      if (
-        authPromptReason === "duel-gate" ||
-        authPromptReason === "multi-gate" ||
-        authPromptReason === "kusatma-gate"
-      ) {
-        clearPendingOnlineInvites();
-        clearPendingOnlineTarget();
-        clearQuickMatchIntent();
-        clearPendingRoomCode();
-      }
-      if (authPromptReason === "daily-quest") {
-        clearPendingDailyQuest();
-      }
-      setPendingOnlineTarget(null);
-      setAuthPromptReason(null);
-      localStorage.setItem("torble_welcome_seen", "true");
-    }}
-    onAuthSuccess={(nextProfile) => {
-      // Menüden "Oda Kur / Odaya Katıl" seçip login olan kullanıcıyı
-      // hedeflediği Kör Nokta ekranına / online moduna taşı. Davet linki
-      // ("kornokta-invite") burada ele alınmaz: invite-link effect'i
-      // profile?.id flip'iyle yeniden koşar ve auto-join'i kendisi tetikler.
-      setProfile(nextProfile);
-      completeAuthRouting(nextProfile);
-    }}
-  />
-)}
-
-      {pendingNicknameUserId && (
-        <NicknameModal
-          userId={pendingNicknameUserId}
-          onSuccess={(nextProfile) => {
-            // Handle chosen → set profile, close, and continue the SAME pending
-            // online / Kör Nokta routing the AuthModal success path would run.
-            setProfile(nextProfile);
-            setPendingNicknameUserId(null);
-            completeAuthRouting(nextProfile);
-          }}
-          onCancel={() => {
-            // Abort (not "skip"): sign back out and return to logged-out home.
-            // Never routes into an online flow without a handle.
-            void handleLogout();
-            setPendingNicknameUserId(null);
-            clearPendingOnlineInvites();
-            clearPendingOnlineTarget();
-            setPendingOnlineTarget(null);
-            setAuthPromptReason(null);
-          }}
-        />
-      )}
+      {/* Auth + nickname modalları artık SocialProvider altında GLOBAL mount
+          ediliyor (bkz. renderAuthModals) — profil düzenleme modallarıyla aynı
+          desen. ÖNCEDEN yalnız bu home dalında render ediliyorlardı; oyun
+          ekranları kendi JSX'leriyle ERKEN return ettiği için misafirin
+          oyun-sonu "Hesap Oluştur" CTA'sı (GuestEndPrompt, 8 oyun bileşeni)
+          authOpen bayrağını true yapıyor ama HİÇBİR modal render edilmiyordu.
+          Burada tekrar mount EDİLMEZ. */}
     </>
   );
   if (screen === "duel-game") {
@@ -4365,6 +4270,157 @@ useEffect(() => {
   // altında GLOBAL mount edilir; tetikleyici ister home dropdown'ı ister
   // herhangi bir lobi/oyun ekranındaki PlayerProfileTrigger olsun, hepsi aynı
   // açılış state'lerini (setProfileEditOpen vb.) paylaşır → tek modal yüzeyi.
+  /** Auth + nickname modalları — TÜM ekranlarda mount edilir.
+   *
+   *  Misafirin oyun-sonu "Hesap Oluştur" CTA'sı (GuestEndPrompt) global olayı
+   *  yayınlıyor, App `authOpen`i true yapıyor — ama oyuncu bir OYUN ekranındayken
+   *  renderScreen() kendi dalıyla ERKEN return ettiği için modal HİÇ render
+   *  edilmiyordu; CTA sessizce ölüydü ve misafir → kayıtlı devri hiç
+   *  başlayamıyordu. renderProfileEditModals ile AYNI desen: global mount.
+   *
+   *  Oyuncu odadan ATILMAZ — modal oyun ekranının ÜSTÜNE açılır, kapanınca
+   *  oyuncu bulunduğu yerde kalır. */
+  const renderAuthModals = () => (
+    <>
+        {authOpen && (
+    <AuthModal
+      isNative={IS_NATIVE_APP}
+      startInForgot={authStartInForgot}
+      startInSignup={authStartInSignup}
+      onNeedsUsername={(userId) => {
+        // Native first-login social user with no handle. Hide the auth modal and
+        // hand off to the NicknameModal, KEEPING pendingOnlineTarget +
+        // authPromptReason so the nickname success routes them onward.
+        setPendingNicknameUserId(userId);
+        setAuthOpen(false);
+      }}
+      headerNote={
+        authPromptReason === "conquest-invite"
+          ? "Kuşatma moduna katılmak için giriş yapmalısın."
+          : authPromptReason === "kornokta-invite" || authPromptReason === "kornokta-join"
+          ? "Kör Nokta moduna katılmak için giriş yapmalısın."
+          : authPromptReason === "kornokta-create"
+          ? "Kör Nokta odası kurmak için giriş yapmalısın."
+          : authPromptReason === "duel-gate"
+          ? "Düello oynamak için giriş yapmalısın."
+          : authPromptReason === "multi-gate"
+          ? "Çok oyunculu modlara katılmak için giriş yapmalısın."
+          : authPromptReason === "kusatma-gate"
+          ? "Kuşatma oynamak için giriş yapmalısın."
+          : authPromptReason === "daily-quest"
+          ? "Günün Görevi'ni oynamak ve ödülünü almak için giriş yapmalısın."
+          : authPromptReason === "guest-signup"
+          ? "Hesap oluştur: odadaki yerini korursun ve bundan sonraki turlarda kazandığın XP, altın ve başarılar hesabına işlenir."
+          : undefined
+      }
+      hideGuest={
+        authPromptReason === "kornokta-invite" ||
+        authPromptReason === "kornokta-create" ||
+        authPromptReason === "kornokta-join" ||
+        authPromptReason === "duel-gate" ||
+        authPromptReason === "multi-gate" ||
+        authPromptReason === "kusatma-gate" ||
+        authPromptReason === "daily-quest" ||
+        // Misafir zaten oyunun içinde; "Misafir olarak devam et" anlamsız olurdu.
+        authPromptReason === "guest-signup"
+      }
+      onClose={() => {
+        setAuthOpen(false);
+        setAuthStartInForgot(false);
+        setAuthStartInSignup(false);
+        // Dismissing the conquest auth prompt drops the pending invite so
+        // a reload doesn't pester the user with the same login modal.
+        if (authPromptReason === "conquest-invite") {
+          clearPendingConquestInvite();
+        }
+        if (authPromptReason === "kornokta-invite") {
+          clearPendingKorNoktaInvite();
+        }
+        if (
+          authPromptReason === "duel-gate" ||
+          authPromptReason === "multi-gate" ||
+          authPromptReason === "kusatma-gate"
+        ) {
+          clearPendingOnlineInvites();
+          clearPendingOnlineTarget();
+          // Dismissing the gate also drops any Hızlı Eşleş intent, so a later
+          // manual entry to the same mode doesn't suddenly auto-search.
+          clearQuickMatchIntent();
+          // …ve varsa üst bar/mobil "Oda Kodu" bekleyen kodunu (guest akışı).
+          clearPendingRoomCode();
+        }
+        // Auth iptal edildi → bekleyen Günün Görevi niyeti temizlenir (reload
+        // aynı modalı tekrar açmasın).
+        if (authPromptReason === "daily-quest") {
+          clearPendingDailyQuest();
+        }
+        setPendingOnlineTarget(null);
+        setAuthPromptReason(null);
+        localStorage.setItem("torble_welcome_seen", "true");
+      }}
+      onGuest={() => {
+        setProfile(null);
+        if (authPromptReason === "conquest-invite") {
+          clearPendingConquestInvite();
+        }
+        if (authPromptReason === "kornokta-invite") {
+          clearPendingKorNoktaInvite();
+        }
+        // Online gate'lerde "Misafir" butonu zaten gizli (hideGuest); yine de
+        // temiz kalsın diye pending hedef ve davet anchor'ları düşürülür.
+        if (
+          authPromptReason === "duel-gate" ||
+          authPromptReason === "multi-gate" ||
+          authPromptReason === "kusatma-gate"
+        ) {
+          clearPendingOnlineInvites();
+          clearPendingOnlineTarget();
+          clearQuickMatchIntent();
+          clearPendingRoomCode();
+        }
+        if (authPromptReason === "daily-quest") {
+          clearPendingDailyQuest();
+        }
+        setPendingOnlineTarget(null);
+        setAuthPromptReason(null);
+        localStorage.setItem("torble_welcome_seen", "true");
+      }}
+      onAuthSuccess={(nextProfile) => {
+        // Menüden "Oda Kur / Odaya Katıl" seçip login olan kullanıcıyı
+        // hedeflediği Kör Nokta ekranına / online moduna taşı. Davet linki
+        // ("kornokta-invite") burada ele alınmaz: invite-link effect'i
+        // profile?.id flip'iyle yeniden koşar ve auto-join'i kendisi tetikler.
+        setProfile(nextProfile);
+        completeAuthRouting(nextProfile);
+      }}
+    />
+  )}
+  
+        {pendingNicknameUserId && (
+          <NicknameModal
+            userId={pendingNicknameUserId}
+            onSuccess={(nextProfile) => {
+              // Handle chosen → set profile, close, and continue the SAME pending
+              // online / Kör Nokta routing the AuthModal success path would run.
+              setProfile(nextProfile);
+              setPendingNicknameUserId(null);
+              completeAuthRouting(nextProfile);
+            }}
+            onCancel={() => {
+              // Abort (not "skip"): sign back out and return to logged-out home.
+              // Never routes into an online flow without a handle.
+              void handleLogout();
+              setPendingNicknameUserId(null);
+              clearPendingOnlineInvites();
+              clearPendingOnlineTarget();
+              setPendingOnlineTarget(null);
+              setAuthPromptReason(null);
+            }}
+          />
+        )}
+    </>
+  );
+
   const renderProfileEditModals = () =>
     profile ? (
       <>
@@ -4483,6 +4539,7 @@ useEffect(() => {
         <DmProvider profile={profile} suppressDmToasts={isGameplayActive(screen)}>
           {renderScreen()}
           {renderProfileEditModals()}
+          {renderAuthModals()}
         </DmProvider>
       </PresenceProvider>
     </SocialProvider>

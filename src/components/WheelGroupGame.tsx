@@ -43,7 +43,7 @@ import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
-import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../lib/guestSession";
 import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { useEscapePass } from "../lib/useEscapePass";
@@ -1066,6 +1066,14 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
       else playSound("lose", { restart: true });
     }
   }, [phase, room, finalLeaderboard]);
+
+  /* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle (bkz. DuelGame) ── */
+  useEffect(() => {
+    noteGuestOriginMatch(room?.current_match_id, {
+      matchStarted: phase === "playing",
+      isGuest: !isLoggedInPlayer || !profile?.id,
+    });
+  }, [phase, room?.current_match_id, isLoggedInPlayer, profile?.id]);
 
   /* ── XP award (once per match_id, only logged-in users) ── */
   useEffect(() => {

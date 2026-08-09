@@ -52,7 +52,7 @@ import {
   type CountryEntry,
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
-import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../lib/guestSession";
 import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
@@ -687,6 +687,16 @@ useEffect(() => {
   }
   // Beraberlikte ses yok (DuelGame ile aynı davranış)
 }, [phase, myScore, oppScore, room?.finished_reason, room?.forfeited_player_id, myId]);
+  /* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle ────────────────
+   * Gerekçe DuelGame'dekiyle aynı. `matchIdRef` bir ref olduğu için effect'i
+   * tetiklemez; `phase` "playing"e geçtiğinde id çoktan yazılmış olur. */
+useEffect(() => {
+  noteGuestOriginMatch(matchIdRef.current, {
+    matchStarted: phase === "playing",
+    isGuest: !isLoggedInPlayer || !profile?.id,
+  });
+}, [phase, isLoggedInPlayer, profile?.id]);
+
   /* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
 useEffect(() => {
   if (phase !== "finished") return;

@@ -30,7 +30,7 @@ import LobbyChat from "./LobbyChat";
 import WorldMap from "./WorldMap";
 import XpGainBar from "./XpGainBar";
 import type { Profile } from "../lib/auth";
-import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../lib/guestSession";
 import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { useEscapePass } from "../lib/useEscapePass";
@@ -941,6 +941,15 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
      Idempotency anahtarı: room.current_match_id (rövanşta yenilenir).
   ─────────────────────────────────────────────────────────── */
   const isLoggedInPlayer = !!profile?.username;
+
+  /* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle (bkz. DuelGame) ── */
+  useEffect(() => {
+    noteGuestOriginMatch(room?.current_match_id, {
+      matchStarted: phase === "playing",
+      isGuest: !isLoggedInPlayer || !profile?.id,
+    });
+  }, [phase, room?.current_match_id, isLoggedInPlayer, profile?.id]);
+
   useEffect(() => {
     if (phase !== "finished" || !room) return;
     if (xpAwardedRef.current) return;

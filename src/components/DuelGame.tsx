@@ -54,7 +54,7 @@ import {
 } from "../lib/sound";
 import { NAME_TO_TOPOID, normalizeInput, getContinentIds, type Continent } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
-import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId } from "../lib/guestSession";
+import { getGuestName, GUEST_CANNOT_CREATE_MESSAGE, markGuestMatchId, isGuestMatchId, noteGuestOriginMatch } from "../lib/guestSession";
 import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
@@ -521,6 +521,18 @@ useEffect(() => {
   else if (finalScores.my < finalScores.opp) playSound("lose", { restart: true });
   // Equal scores → draw, no sound (intentional)
 }, [phase, finalScores, room?.winner_player_id, room?.forfeited_player_id]);
+/* ── M3: maça MİSAFİR olarak başlandıysa HEMEN işaretle ──────────────────
+ * Bitişteki guard tek başına yetmez: oyuncu maç ORTASINDA hesap açarsa bitişte
+ * `profile` dolu olur, işaret hiç konmaz ve misafirken oynanan maçın tamamı
+ * hesaba XP yazardı. Kural tek yerde: lib/guestSession#shouldMarkGuestOriginMatch
+ * (lobide işaretlemez → lobide hesap açan oyuncu XP'sini hak eder). */
+useEffect(() => {
+  noteGuestOriginMatch(room?.id, {
+    matchStarted: phase === "playing",
+    isGuest: !isLoggedInPlayer || !profile?.id,
+  });
+}, [phase, room?.id, isLoggedInPlayer, profile?.id]);
+
 /* ── XP: oyun bitince bir kez yaz (sadece giriş yapmış kullanıcı) ── */
 useEffect(() => {
   if (phase !== "finished" || !finalScores) return;
