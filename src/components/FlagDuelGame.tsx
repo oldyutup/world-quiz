@@ -268,6 +268,9 @@ type FlagDuelRoom = DuelRoom & {
   /** Manuel oda createRoom RPC'sinde set edilir; quick_match için
    *  20260620120000 migration'ı sonrası candidate (waiter) id. */
   host_player_id:  string | null;
+  /** Maçın bayrak sırası — host maç başlarken BİR KEZ yazar, sunucu sıradaki
+   *  bayrağı buradan seçer (20260813130000). Eski satırlarda null. */
+  flag_sequence:   string[] | null;
 };
 
 function makeCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
@@ -344,6 +347,22 @@ interface FlagDuelRpcError { code?: string; message?: string; details?: string }
 function describeFlagDuelRpcError(err: FlagDuelRpcError | null | undefined): string {
   if (!err) return "İşlem başarısız.";
   const m = (err.message ?? "") + " " + (err.details ?? "");
+  const code = (err.code ?? "").toUpperCase();
+  // Fonksiyon/şema bulunamadı → migration canlıya uygulanmamış olabilir.
+  // PostgREST: PGRST202 (şema cache'inde yok), Postgres: 42883.
+  if (
+    code === "PGRST202" || code === "42883" ||
+    m.includes("Could not find the function") ||
+    m.includes("schema cache")
+  ) {
+    return "Bayrak Düello veritabanı güncel değil (migration eksik olabilir). Yöneticiye bildir.";
+  }
+  if (m.includes("not_a_member"))             return "Bu odanın oyuncusu değilsin.";
+  if (m.includes("flag_sequence_required") ||
+      m.includes("flag_sequence_invalid")  ||
+      m.includes("flag_sequence_duplicate")||
+      m.includes("flag_sequence_too_long"))   return "Bayrak sırası hazırlanamadı. Tekrar dene.";
+  if (m.includes("room_not_open"))            return "Oda artık bu işleme uygun değil.";
   if (m.includes("code_taken"))               return "Bu kod kullanımda. Tekrar dene.";
   if (m.includes("registered_username_taken")) return "Bu kullanıcı adı kayıtlı bir hesaba ait. Başka bir ad seç veya hesabına giriş yap.";
   if (m.includes("display_name_forbidden"))   return "Bu kullanıcı adı kullanılamaz. Lütfen farklı bir ad seç.";
@@ -391,10 +410,24 @@ const isRealAnswer   = (c: DuelClaim) => !isPassClaim(c) && !isTimeoutClaim(c);
 /* faz */
 type DuelPhase = "lobby" | "creating" | "searching" | "waiting" | "playing" | "finished";
 
-/* ─── ZAMAN AYARLARI ─── */
+/* ─── ZAMAN AYARLARI ───
+ *  Bu üçlü sunucuda da sabittir (20260813130000: flag_duel_flag_timeout_seconds
+ *  / flag_duel_reveal_delay_ms / flag_duel_pass_reveal_ms). Otoriter geçiş
+ *  sunucudadır; buradaki değerler YALNIZ (a) UI geri sayımı ve (b) watchdog'un
+ *  "ne zaman sormaya değer" tahmini içindir. Drift'i
+ *  scripts/check-flag-duel-advance-if-due.ts iki tarafı okuyup kilitler. */
 const FLAG_TIMEOUT_SEC   = 10;   // her bayrak için süre
 const REVEAL_DELAY_MS    = 2000; // cevaptan/timeouttan sonra cevap gösterim süresi
 const PASS_REVEAL_MS     = 700;  // ikisi de pas geçince geçiş süresi
+
+/* ─── Deadline watchdog gecikmeleri ──────────────────────────────────────────
+ *  Süre dolduğunda ilerletmeyi kimin TETİKLEDİĞİ önemli değildir (sunucu her
+ *  hâlükârda kendi saatiyle doğrular), ama normal durumda gereksiz RPC uçmasın
+ *  diye host birincil tetikleyicidir; rakip yalnız host yanıt vermezse devreye
+ *  girer. Host arka planda/kopukken maçı kurtaran şey bu ikinci penceredir.
+ *  Kör Nokta (20260813120000) ve Rota Düello ile aynı desen. */
+const ADVANCE_GRACE_HOST_MS  = 600;
+const ADVANCE_GRACE_OTHER_MS = 2_500;
 
 /* ─── HIZLI EŞLEŞ ─── */
 /** Polling tick aralığı. RPC tarafı 45 sn expires_at kullanıyor. */
@@ -905,8 +938,9 @@ useEffect(() => {
 }, [onSpendGold]);
 
   /* havuzu hazırla — zorluk eğrisi total_rounds boyunca yayılır (blok tier
-   * YOK). Host bu sıralı havuzu .find(ilk kullanılmamış) ile yürüttüğü için
-   * tur sırası ortak/adil kalır ve tüm oda için kolaydan zora ilerler.
+   * YOK). Sıra maç başında sunucuya yazılır (persistFlagSequence) ve sıradaki
+   * bayrağı oradan SUNUCU seçer; bu yerel havuz artık yalnız (a) diziyi bir
+   * kez üretmek ve (b) `current_flag` kodunu CountryEntry'ye çözmek için var.
    * Bayrak'ta ülke dışlanmaz; mikro devletler/adalar geç tier'larda çıkar.
    * span = total_rounds (yoksa varsayılan 10); golden round eğrinin p=1
    * kuyruğundan (en zor) devam eder. */
@@ -919,146 +953,105 @@ useEffect(() => {
   }, []);
 
   /* ════════════════════════════════════════════════════════════════
-     HOST: TURU İLERLET
+     HOST: BAYRAK SIRASINI SUNUCUYA YAZ
+     ────────────────────────────────────────────────────────────────
+     Eskiden sıradaki bayrak YALNIZ host'un RAM'indeydi (flagPoolRef): host
+     arka plana düşünce kimse turu ilerletemiyordu. Artık host, maç BAŞLARKEN
+     (yani kesin ayaktayken) sıranın tamamını bir kez yazar; gerisini sunucu
+     yürütür.
+
+     İçerik kuralı DEĞİŞMEDİ: yazılan dizi aynı buildProgressionQueue
+     çıktısıdır — zorluk eğrisi, bölge filtresi, tier dağılımı aynı.
+     Host-only'dir: bugün de bayrağı fiilen host seçiyordu, yetki genişlemesi
+     yok.
+
+     Hata YUTULUR (throw etmez): dizi yazılamazsa maç yine de başlar, sadece
+     sunucu otomatiği devreye giremez — yani en kötü ihtimalde BUGÜNKÜ
+     davranışa düşeriz, daha kötüsüne değil.
   ════════════════════════════════════════════════════════════════ */
-  const advanceRoundAsHost = useCallback(async (reason: "answered" | "both_passed" | "timeout") => {
+  const persistFlagSequence = useCallback(
+    async (roomId: string, pool: CountryEntry[]): Promise<boolean> => {
+      if (!isHostRef.current) return false;
+      // Sunucu 512 eleman sınırı koyuyor (kaçak veri kanalı olmasın diye);
+      // en uzun maç 20 tur + altın turlar, 512 fazlasıyla yeter.
+      const codes = pool.map(f => f.code).slice(0, 512);
+      if (codes.length === 0) return false;
+
+      const { error } = await supabase.rpc("flag_duel_set_flag_sequence", {
+        p_room_id:        roomId,
+        p_host_player_id: myIdRef.current,
+        p_claim_token:    claimTokenRef.current,
+        p_flag_sequence:  codes,
+      });
+      if (error) {
+        dbgErr("flag_duel_set_flag_sequence failed", error);
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  /* ════════════════════════════════════════════════════════════════
+     TURU İLERLET — SUNUCU OTORİTESİ (host SPOF'u burada kalkıyor)
+     ────────────────────────────────────────────────────────────────
+     ÖNCEDEN: `advanceRoundAsHost` `if (!isHostRef.current) return;` ile
+     başlar, sıradaki bayrağı host'un kendi RAM'indeki havuzdan seçer ve
+     host-only `flag_duel_set_next_round` / `flag_duel_finalize_game`
+     RPC'lerini çağırırdı. Bu üç şey birleşince host'un tarayıcısı maçın tek
+     arıza noktasıydı: uygulama arka plana düşünce timer'lar donuyor, TIMEOUT
+     claim'i hiç yazılmıyor, tur asla ilerlemiyor ve maç HER İKİ oyuncu için
+     de kilitleniyordu.
+
+     ŞİMDİ: odanın her üyesi `flag_duel_advance_if_due` çağırabilir. Yetki
+     genişlemesi DEĞİLDİR — sunucu (20260813130000):
+       • deadline'ı KİLİTLİ oda satırından okur (current_flag_at + 10 sn) ve
+         kendi now()'ı ile karşılaştırır; istemcinin saati karara girmez,
+       • sıradaki bayrağı persist edilmiş `flag_sequence`ten seçer; istemci
+         bayrak öneremez,
+       • kazananı gerçek claim'leri sayarak kendi belirler,
+       • CAS (expected round + flag) + satır kilidi ile çift ilerlemeyi
+         imkânsız kılar.
+     Yani rakibin yaptırabildiği tek geçiş, sunucunun o an zaten yapacağı
+     geçiştir. Erken atlatma mümkün değildir.
+  ════════════════════════════════════════════════════════════════ */
+  const advanceIfDue = useCallback(async (expectedRound: number, expectedFlag: string | null) => {
     if (advancingRef.current) return;
-    if (!isHostRef.current) return;
     const r = roomRef.current;
     if (!r) return;
     advancingRef.current = true;
-
     try {
-      const { data: freshClaims } = await supabase
-        .from("duel_claims").select("*").eq("room_id", r.id);
-      const cs = (freshClaims ?? []) as DuelClaim[];
-
-      const usedFlagCodes = new Set<string>();
-      cs.forEach(c => {
-        if (isPassClaim(c) || isTimeoutClaim(c)) {
-          // PASS:R{n}:{flagCode}:{playerId} → parts[2] = flagCode
-          // TIMEOUT:R{n}:{flagCode}          → parts[2] = flagCode
-          const parts = c.country_code.split(":");
-          if (parts.length >= 3) usedFlagCodes.add(parts[2]);
-        } else {
-          usedFlagCodes.add(c.country_code);
-        }
+      const { data, error } = await supabase.rpc("flag_duel_advance_if_due", {
+        p_room_id:        r.id,
+        p_player_id:      myIdRef.current,
+        p_claim_token:    claimTokenRef.current,
+        p_expected_round: expectedRound,
+        p_expected_flag:  expectedFlag,
       });
-
-      const pool = flagPoolRef.current;
-      const inGolden = r.is_golden_round && r.current_round > r.total_rounds;
-
-      // ── BOTH_PASSED: tur sayacı artmaz, sadece bayrak ve timer değişir ──
-      if (reason === "both_passed") {
-        if (!inGolden) {
-          // Normal tur: kotayı fresh claims üzerinden kontrol et
-          const passByFlag = new Map<string, Set<string>>();
-          cs.filter(isPassClaim).forEach(c => {
-            const parts = c.country_code.split(":");
-            if (parts.length >= 4) {
-              const roundNum = parseInt(parts[1].slice(1), 10);
-              if (roundNum <= r.total_rounds) {
-                const flagCode = parts[2];
-                if (!passByFlag.has(flagCode)) passByFlag.set(flagCode, new Set());
-                passByFlag.get(flagCode)!.add(c.player_id);
-              }
-            }
-          });
-          const completedPassCount = [...passByFlag.values()].filter(p => p.size >= 2).length;
-          if (completedPassCount > passQuota(r.total_rounds)) {
-            dbgErr("both_passed: pas kotası aşıldı, atlandı");
-            return;
-          }
+      if (error) {
+        dbgErr("flag_duel_advance_if_due failed", error);
+        return;
+      }
+      // Süre dolmadıysa / yarışı kaybettiysek de TAZE oda döner (sunucu hata
+      // değil, değişmemiş satır verir) → bayat istemci kendini onarır.
+      if (data && (data as FlagDuelRoom).id) {
+        const fresh = data as FlagDuelRoom;
+        roomRef.current = fresh;
+        setRoom(fresh);
+        // Maçı bitiren çağrı BİZSEK, sonuç ekranına geçmek için realtime
+        // UPDATE'ini beklemeyelim — realtime gecikirse/düşerse oyuncu bitmiş
+        // bir maçın oyun ekranında asılı kalırdı. Realtime handler'ıyla aynı
+        // üç işi yapar; iki yol da idempotenttir.
+        if (fresh.status === "finished" && phaseRef.current !== "finished") {
+          clearSession();
+          rematchRpcSentRef.current = false;
+          setPhase("finished");
         }
-        const nextFlag = pool.find(f => !usedFlagCodes.has(f.code));
-        if (!nextFlag) { dbgErr("both_passed: bayrak havuzu tükendi"); return; }
-        // RPC: round değişmez, yalnız flag yenilenir
-        const { error: setErr } = await supabase.rpc("flag_duel_set_next_round", {
-          p_room_id:         r.id,
-          p_host_player_id:  myIdRef.current,
-          p_claim_token:     claimTokenRef.current,
-          p_next_round:      r.current_round,
-          p_next_flag:       nextFlag.code,
-          p_is_golden_round: r.is_golden_round,
-        });
-        if (setErr) dbgErr("flag_duel_set_next_round (both_passed) failed", setErr);
-        return;
       }
-
-      // ── ANSWERED / TIMEOUT: tur ilerle ──────────────────────────────────
-      const nextFlag = pool.find(f => !usedFlagCodes.has(f.code));
-      const nextRoundNum = r.current_round + 1;
-
-      if (!inGolden && nextRoundNum > r.total_rounds) {
-        const realCs = cs.filter(isRealAnswer);
-        const counts: Record<string, number> = {};
-        realCs.forEach(c => {
-          counts[c.player_id] = (counts[c.player_id] ?? 0) + 1;
-        });
-        const { data: freshPlayers } = await supabase
-          .from("duel_players").select("id").eq("room_id", r.id);
-        const ids = (freshPlayers ?? []).map(p => p.id);
-        const sA = counts[ids[0]] ?? 0;
-        const sB = counts[ids[1]] ?? 0;
-
-        if (sA === sB) {
-          // Skor eşit → altın tura geç (round+1, is_golden=true)
-          if (!nextFlag) { dbgErr("enter_golden: bayrak havuzu tükendi"); return; }
-          const { error: setErr } = await supabase.rpc("flag_duel_set_next_round", {
-            p_room_id:         r.id,
-            p_host_player_id:  myIdRef.current,
-            p_claim_token:     claimTokenRef.current,
-            p_next_round:      nextRoundNum,
-            p_next_flag:       nextFlag.code,
-            p_is_golden_round: true,
-          });
-          if (setErr) dbgErr("flag_duel_set_next_round (enter_golden) failed", setErr);
-          return;
-        }
-
-        const winner = sA > sB ? ids[0] : ids[1];
-        const { error: finErr } = await supabase.rpc("flag_duel_finalize_game", {
-          p_room_id:          r.id,
-          p_host_player_id:   myIdRef.current,
-          p_claim_token:      claimTokenRef.current,
-          p_winner_player_id: winner,
-        });
-        if (finErr) dbgErr("flag_duel_finalize_game (final_score) failed", finErr);
-        return;
-      }
-
-      if (inGolden && reason === "answered") {
-        const goldenClaims = cs.filter(
-          c => isRealAnswer(c) && c.country_code === r.current_flag
-        );
-        const goldenWinnerClaim = goldenClaims[goldenClaims.length - 1];
-        const { error: finErr } = await supabase.rpc("flag_duel_finalize_game", {
-          p_room_id:          r.id,
-          p_host_player_id:   myIdRef.current,
-          p_claim_token:      claimTokenRef.current,
-          p_winner_player_id: goldenWinnerClaim?.player_id ?? null,
-        });
-        if (finErr) dbgErr("flag_duel_finalize_game (golden_answered) failed", finErr);
-        return;
-      }
-
-      if (!nextFlag) { dbgErr("normal_advance: bayrak havuzu tükendi"); return; }
-      const { error: setErr } = await supabase.rpc("flag_duel_set_next_round", {
-        p_room_id:         r.id,
-        p_host_player_id:  myIdRef.current,
-        p_claim_token:     claimTokenRef.current,
-        p_next_round:      nextRoundNum,
-        p_next_flag:       nextFlag.code,
-        p_is_golden_round: inGolden,
-      });
-      if (setErr) dbgErr("flag_duel_set_next_round (normal_advance) failed", setErr);
-    } catch (e) {
-      dbgErr("advanceRoundAsHost failed", e);
     } finally {
-      setTimeout(() => { advancingRef.current = false; }, 1000);
+      advancingRef.current = false;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players]);
+  }, []);
 
   // ─── REMATCH FONKSİYONLARI ───────────────────────────────────────────
   
@@ -1091,6 +1084,11 @@ const runHostRematchReset = useCallback(async () => {
   }
 
   rematchRpcSentRef.current = true;
+  // Rövanş aynı oda satırında oynanır ve accept_rematch tüm claim'leri siler
+  // → "kullanılmış bayrak" kümesi boşalır. Yeni sırayı reset'ten ÖNCE yaz ki
+  // sunucu ilk turdan itibaren otoriter olsun.
+  await persistFlagSequence(currentRoom.id, pool);
+
   const { error } = await supabase.rpc("flag_duel_accept_rematch", {
     p_room_id:        currentRoom.id,
     p_host_player_id: myIdRef.current,
@@ -1124,7 +1122,7 @@ const runHostRematchReset = useCallback(async () => {
   };
   roomRef.current = optimistic;
   setRoom(optimistic);
-}, [buildPool]);
+}, [buildPool, persistFlagSequence]);
 
 useEffect(() => {
   runHostRematchResetRef.current = runHostRematchReset;
@@ -1280,7 +1278,14 @@ const declineRematch = useCallback(() => {
       // QM-flag branch'inde okunmuyor — yine de geçerli bir UUID gönderiyoruz.
       claimTokenRef.current = crypto.randomUUID();
       saveSession(r.id, r.code, playerId, claimTokenRef.current);
-      buildPool(r.region);
+      const qmPool = buildPool(r.region);
+
+      // Hızlı Eşleş'te oda RPC tarafından ZATEN 'playing' olarak doğar (lobi
+      // yok, started_at = now()+3s). Bu yüzden bayrak sırası burada, host
+      // odaya girer girmez yazılır — 3 sn'lik geri sayım penceresi bunun için
+      // fazlasıyla yeterlidir. Yazılamazsa maç yine oynanır; yalnız sunucu
+      // otomatiği devreye giremez (bugünkü davranış).
+      if (isMeHost) void persistFlagSequence(r.id, qmPool);
 
       // Quick match countdown başlat (started_at - now() farkı). started_at
       // server tarafında now()+3s; client clock drift olunca buffer negatif
@@ -1314,7 +1319,7 @@ const declineRematch = useCallback(() => {
       setErrorMsg(null);
       setPhase("playing");
     },
-    [buildPool],
+    [buildPool, persistFlagSequence],
   );
 
   // Forward ref pattern: quickMatchTick içinden cancel'a erişim için
@@ -1572,10 +1577,9 @@ const declineRematch = useCallback(() => {
     if (r.status === "playing") {
       if (flagPoolRef.current.length === 0) buildPool(r.region);
       if (phaseRef.current !== "playing") setPhase("playing");
-      if (isHostRef.current && !r.current_flag && r.current_round === 1) {
-  roomRef.current = r; // ✅ önce ref'i güncelle
-  advanceRoundAsHost("both_passed");
-}
+      // Bayraksız 'playing' odası (eski onarım yolu) artık HOST'a bağlı değil:
+      // sunucu advance_if_due içinde diziden ilk kullanılmamış bayrağı seçip
+      // kendisi düzeltiyor. Watchdog zaten çalışıyor, burada iş yok.
     }
 
     if (r.status === "finished") {
@@ -1628,48 +1632,14 @@ const declineRematch = useCallback(() => {
       )
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "duel_claims", filter: `room_id=eq.${roomId}` },
-        async (payload) => {
+        (payload) => {
+          // Claim'i HER iki istemci de görür (cevap/pas/timeout reveal'ı buna
+          // bağlı). Buradan SONRASI eskiden `if (!isHostRef.current) return;`
+          // ile host'a kilitliydi ve turu host ilerletirdi — SPOF'un üçüncü
+          // ayağı buydu. Artık ilerletmeyi deadline watchdog'u + sunucu
+          // yapıyor; bu handler yalnız yerel state'i tazeliyor.
           const c = payload.new as DuelClaim;
           setClaims(prev => prev.some(x => x.id === c.id) ? prev : [...prev, c]);
-
-          if (!isHostRef.current) return;
-          const r = roomRef.current;
-          if (!r) return;
-          const currentFlagCode = r.current_flag;
-          if (!currentFlagCode) return;
-
-          // 1) Doğru cevap geldi → 2 sn göster, ilerlet
-          if (isRealAnswer(c) && c.country_code === currentFlagCode) {
-            await new Promise(res => setTimeout(res, REVEAL_DELAY_MS));
-            await advanceRoundAsHost("answered");
-            return;
-          }
-
-          // 2) TIMEOUT claim'i geldi (host kendi atmış olur) → cevabı 2 sn
-          //    göster, sonra ilerlet
-          if (c.country_code === `TIMEOUT:R${r.current_round}:${currentFlagCode}`) {
-            await new Promise(res => setTimeout(res, REVEAL_DELAY_MS));
-            await advanceRoundAsHost("timeout");
-            return;
-          }
-
-          // 3) Pas geldi → mevcut bayrak için ikisi de pas mı?
-          const currentPassPrefix = `PASS:R${r.current_round}:${currentFlagCode}:`;
-          if (c.country_code.startsWith(currentPassPrefix)) {
-            const { data: latestClaims } = await supabase
-              .from("duel_claims")
-              .select("*")
-              .eq("room_id", r.id);
-            const passers = new Set(
-              ((latestClaims ?? []) as DuelClaim[])
-                .filter(x => x.country_code.startsWith(currentPassPrefix))
-                .map(x => x.player_id)
-            );
-            if (passers.size >= 2) {
-              await new Promise(res => setTimeout(res, PASS_REVEAL_MS));
-              await advanceRoundAsHost("both_passed");
-            }
-          }
         }
       )
       .subscribe();
@@ -1743,21 +1713,20 @@ const declineRematch = useCallback(() => {
   }, [phase]);
 
   /* ════════════════════════════════════════════════════════════════
-     BAYRAK ZAMANLAYICISI
+     BAYRAK ZAMANLAYICISI (yalnız GÖRSEL geri sayım)
      - Her iki client da room.current_flag_at'e bakar → senkron sayaç
      - Süre bitince yerel olarak input KİLİTLENİR ama cevap reveal EDİLMEZ
        (rakip hâlâ yazıyor olabilir; cevabı görmek cheat olur)
-     - Süre dolunca SADECE host DB'ye "TIMEOUT" claim'i atar.
-       Bu claim her iki client'ta da realtime ile görünür → roundResolved=true
-       olur ve cevap o zaman gösterilir.
+     - TIMEOUT claim'ini ARTIK BU EFFECT YAZMAZ. Eskiden yalnız host yazardı;
+       host arka plandayken hiç yazılmıyor ve maç kilitleniyordu. Şimdi süre
+       dolduğunu SUNUCU tespit edip claim'i kendisi yazıyor (advance_if_due,
+       AŞAMA 1) — aşağıdaki watchdog onu tetikliyor.
   ════════════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (phase !== "playing") return;
-    // Rematch sonrası realtime UPDATE gelene kadar room.status='finished' kalabilir;
-    // o boşlukta eski current_flag_at ile timer çalıştırma → eski "Süren doldu"
-    // state'i yeni tura sızar ve host eski tur için flag_duel_submit_claim
-    // (TIMEOUT) çağırır → 'room_not_playing' (400). Status playing olana kadar
-    // ölçüm yapmıyoruz.
+    // Rematch sonrası realtime UPDATE gelene kadar room.status='finished'
+    // kalabilir; o boşlukta eski current_flag_at ile sayaç çalıştırma → eski
+    // "Süren doldu" state'i yeni tura sızmasın.
     if (room?.status !== "playing") return;
     if (!room?.current_flag_at) {
       setTimeLeft(FLAG_TIMEOUT_SEC);
@@ -1768,45 +1737,17 @@ const declineRematch = useCallback(() => {
     const startMs = new Date(room.current_flag_at).getTime();
     const totalMs = FLAG_TIMEOUT_SEC * 1000;
     let cancelled = false;
-    let timeoutClaimSent = false;
 
-    const tick = async () => {
+    const tick = () => {
       if (cancelled) return;
       const elapsed   = getSyncedNowMs() - startMs;
       const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
       setTimeLeft(remaining);
 
       if (elapsed >= totalMs) {
-        // Süre doldu: input kilitle (cevap GÖSTERME!)
+        // Süre doldu: input kilitle (cevap GÖSTERME!). Turu kapatma kararı
+        // sunucunun.
         if (!timedOut) setTimedOut(true);
-
-        // Sadece host bir kez TIMEOUT claim'i atar — bu claim her iki client'a
-        // realtime ile gelir ve cevabı orada açar.
-        if (isHostRef.current && !timeoutClaimSent && !roundResolved) {
-          const r = roomRef.current;
-          // Belt-and-suspenders: room state stale ise (rematch gap, finished maç)
-          // TIMEOUT claim atma — RPC zaten 'room_not_playing' raise eder.
-          if (r && r.current_flag && r.status === "playing") {
-            const alreadyAnswered = claimsRef.current.some(c =>
-              c.country_code === r.current_flag &&
-              !c.country_code.startsWith("PASS:") &&
-              !c.country_code.startsWith("TIMEOUT:")
-            );
-            const alreadyTimedOut = claimsRef.current.some(c =>
-              c.country_code === `TIMEOUT:R${r.current_round}:${r.current_flag}`
-            );
-            if (!alreadyAnswered && !alreadyTimedOut) {
-              timeoutClaimSent = true;
-              const { error: tErr } = await supabase.rpc("flag_duel_submit_claim", {
-                p_room_id:      r.id,
-                p_player_id:    myIdRef.current,
-                p_claim_token:  claimTokenRef.current,
-                p_country_code: `TIMEOUT:R${r.current_round}:${r.current_flag}`,
-              });
-              if (tErr) dbgErr("flag_duel_submit_claim (TIMEOUT) failed", tErr);
-            }
-          }
-        }
         return;
       }
 
@@ -1817,6 +1758,84 @@ const declineRematch = useCallback(() => {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, room?.current_flag_at, roundResolved]);
+
+  /* ════════════════════════════════════════════════════════════════
+     DEADLINE WATCHDOG — "süre dolduysa ilerlet"
+     ────────────────────────────────────────────────────────────────
+     Her istemci çalıştırır (host da, rakip de). `dueAtMs` YALNIZ "ne zaman
+     sormaya değer" tahminidir; kararı sunucu verir. İki aşama:
+       • tur çözülmemiş  → current_flag_at + 10 sn  (sunucu TIMEOUT claim'i yazar)
+       • tur çözülmüş    → çözülme anı + reveal      (sunucu turu ilerletir)
+     Stagger: host 600 ms, rakip 2500 ms. Host ayaktayken akış bugünkü gibi
+     hissedilir; host kaybolduğunda rakip ~2,5 sn sonra devralır.
+  ════════════════════════════════════════════════════════════════ */
+  const watchdogDueAtMs = useMemo(() => {
+    if (!room || room.status !== "playing" || !room.current_flag) return null;
+
+    // 1) Tur çözüldü mü? Çözülme anı SUNUCU verisidir (claim.created_at).
+    if (winnerOfThisRound)  return new Date(winnerOfThisRound.created_at).getTime()  + REVEAL_DELAY_MS;
+    if (timeoutOfThisRound) return new Date(timeoutOfThisRound.created_at).getTime() + REVEAL_DELAY_MS;
+    if (bothPassed) {
+      const prefix = `PASS:R${room.current_round}:${room.current_flag}:`;
+      const last = claims
+        .filter(c => c.country_code.startsWith(prefix))
+        .reduce((max, c) => Math.max(max, new Date(c.created_at).getTime()), 0);
+      if (last > 0) return last + PASS_REVEAL_MS;
+    }
+
+    // 2) Çözülmedi → bayrak süresi.
+    if (!room.current_flag_at) return null;
+    return new Date(room.current_flag_at).getTime() + FLAG_TIMEOUT_SEC * 1000;
+  }, [room, claims, winnerOfThisRound, timeoutOfThisRound, bothPassed]);
+
+  const watchdogRound = room?.current_round ?? null;
+  const watchdogFlag  = room?.current_flag  ?? null;
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (watchdogDueAtMs == null || watchdogRound == null) return;
+    const graceMs = isHost ? ADVANCE_GRACE_HOST_MS : ADVANCE_GRACE_OTHER_MS;
+
+    // Geri çekilme (backoff). Normalde sunucu ilk denemede ilerletir ve bu
+    // effect yeni tur state'iyle yeniden kurulur → sayaç sıfırlanır. Sunucunun
+    // ilerletemediği bir durum varsa (flag_sequence yazılamamış eski oda, havuz
+    // tükenmiş) 500 ms'lik döngü maçın sonuna kadar boşa RPC atardı; birkaç
+    // denemeden sonra aralık açılır. Uyanma olayları sayacı sıfırlar, yani
+    // arka plandan dönen istemci HER ZAMAN anında bir deneme yapar.
+    let attempts = 0;
+    let lastAttemptMs = 0;
+
+    const check = () => {
+      const now = getSyncedNowMs();
+      if (now < watchdogDueAtMs + graceMs) return;
+      const minGapMs = attempts < 6 ? 0 : attempts < 20 ? 2_000 : 10_000;
+      if (lastAttemptMs && now - lastAttemptMs < minGapMs) return;
+      attempts += 1;
+      lastAttemptMs = now;
+      void advanceIfDue(watchdogRound, watchdogFlag);
+    };
+
+    const checkNow = () => { attempts = 0; lastAttemptMs = 0; check(); };
+
+    // Mount / reconnect / her tur değişimi: interval'in ilk tick'ini bekleme.
+    // Uzun süre arka planda kalıp geri dönen istemci deadline'ı ANINDA görür.
+    check();
+    const id = window.setInterval(check, 500);
+
+    // Uyanma tetikleyicileri: arka plandan dönen sekmede timer'lar kısılmış ya
+    // da tamamen durmuş olabilir; bu üç olay watchdog'u hemen çalıştırır.
+    const onVisibility = () => { if (document.visibilityState !== "hidden") checkNow(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", checkNow);
+    window.addEventListener("online", checkNow);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", checkNow);
+      window.removeEventListener("online", checkNow);
+    };
+  }, [phase, isHost, watchdogDueAtMs, watchdogRound, watchdogFlag, advanceIfDue]);
 
   /* ════════════════════════════════════════════════════════════════
      ODA KUR
@@ -1987,6 +2006,11 @@ if (!code) {
     const pool = flagPoolRef.current.length > 0 ? flagPoolRef.current : buildPool(room.region);
     const firstFlag = pool[0];
     if (!firstFlag) return;
+
+    // Bayrak sırasını START'TAN ÖNCE yaz: host'un kesin ayakta olduğu an
+    // burasıdır. Böylece maç 'playing'e geçtiği anda sunucu turu tek başına
+    // yürütebilecek durumdadır — start ile seed arasında SPOF penceresi kalmaz.
+    await persistFlagSequence(room.id, pool);
 
     const { error } = await supabase.rpc("flag_duel_start_game", {
       p_room_id:        room.id,
