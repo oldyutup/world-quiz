@@ -75,9 +75,6 @@ import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useSocialOptional } from "./SocialContext";
 import {
   getWheelPool,
-  pickProgressionTopoId,
-  expectedWheelTargets,
-  targetIndexProgress,
   getContinentIds,
   TOPOID_TO_DISPLAY,
   type Continent,
@@ -106,6 +103,12 @@ const TOTAL_SLOTS = 10;
 const MAX_PLAYER_OPTIONS: number[] = [3, 4, 5, 6, 7, 8, 9, 10];
 
 const FEEDBACK_MS    = 1000; // Doğru claim sonrası yeni hedef gelmeden bekleme
+/** advance_if_due watchdog gecikmeleri. Host kısa → akış bugünküyle aynı
+ *  hissedilir; diğer oyuncular uzun → host ayaktayken gereksiz RPC atılmaz,
+ *  host kaybolduğunda ~2,5 sn içinde devralınır. Vadeyi sunucu doğrular;
+ *  bu değerler yalnız "kim önce dener" sırasıdır. */
+const ADVANCE_GRACE_HOST_MS  = 600;
+const ADVANCE_GRACE_OTHER_MS = 2500;
 const WRONG_FLASH_MS = 600;  // Yanlış tıklama kırmızı flash süresi (lokal)
 const PENALTY_MS     = 1000; // Cezalı modda yanlış tık tıklama kilidi süresi
 
@@ -448,6 +451,8 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   /* ── Refs for transitions / guards ────────────────────────── */
   const prevTargetRef = useRef<string | null>(null);
   const endingRef = useRef<boolean>(false);
+  /** advance_if_due çağrıları üst üste binmesin. */
+  const advancingRef = useRef<boolean>(false);
   const wrongFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClaimedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -722,7 +727,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
    *  "Pas Bekleniyor…" durumuna geçirir; realtime echo gelince DB-sourced
    *  bilgi onu doğrular. Eşik dolduysa server aynı RPC içinde
    *  current_target_topoid'i null'a düşürür → host'taki mevcut
-   *  pickNextTarget effect'i yeni hedefi seçer. */
+   *  sunucu bir sonraki advance_if_due'da yeni hedefi verir. */
   const requestPass = useCallback(async () => {
     const r = roomRef.current;
     if (!r) return;
@@ -770,47 +775,6 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
 
   /** Host: yeni hedef seç. Atomic guard server-side
    *  (status='playing' + current_target_topoid IS NULL). */
-  const pickNextTarget = useCallback(async () => {
-    const r = roomRef.current;
-    if (!r) return;
-    if (r.status !== "playing") return;
-    if (r.host_player_id !== myIdRef.current) return;
-    if (r.current_target_topoid) return;
-
-    const pool = buildTargetPool(r.region);
-    const used = new Set(r.used_target_topoids ?? []);
-    const remaining = pool.filter(id => !used.has(id));
-
-    if (remaining.length === 0) {
-      await finishGameRef.current?.("pool");
-      return;
-    }
-
-    // Progression: zorluk geçen SÜREYE göre DEĞİL, tamamlanan ortak hedef
-    // sırasına göre artar (brief A). `used.size` host-otoriter + tüm grup için
-    // aynı → hızlı/yavaş oynamak zorluğu değiştirmez, sıra ortak/adil kalır.
-    // `duration_seconds` yalnız rampa uzunluğunu belirler; saat difficulty
-    // hesabına GİRMEZ.
-    const progress = targetIndexProgress(
-      used.size,
-      expectedWheelTargets(Number(r.duration_seconds) || 0),
-    );
-    const next = pickProgressionTopoId(remaining, progress);
-    if (!next) {
-      await finishGameRef.current?.("pool");
-      return;
-    }
-
-    const { error } = await supabase.rpc("wheel_group_pick_target", {
-      p_room_id:        r.id,
-      p_host_player_id: myIdRef.current,
-      p_claim_token:    myClaimTokenRef.current,
-      p_target:         next,
-    });
-    if (error) {
-      console.error("[WheelGroup] pick_target RPC failed", error);
-    }
-  }, [buildTargetPool]);
 
   const finishGame = useCallback(async (reason: "timeout" | "pool" | "alone") => {
     const r = roomRef.current;
@@ -946,20 +910,103 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
   }, [phase, room?.started_at, room?.duration_seconds]);
 
   /* ═══════════════════════════════════════════════════════════
-     HOST: pick next target after FEEDBACK_MS when target=null
+     SUNUCU OTORİTESİ — vadesi gelen geçişi HER ÜYE tetikleyebilir
+     ───────────────────────────────────────────────────────────
+     Yetki genişlemesi DEĞİLDİR: sunucu deadline'ı kilitli oda satırından
+     okur, sıradaki hedefi persist edilmiş diziden seçer (istemci hedef
+     öneremez) ve her UPDATE kendi CAS guard'ını taşır.
+     Pas eşiği BURADA ELE ALINMAZ — `wheel_group_vote_pass` onu zaten
+     sunucu tarafında işliyor (20260703120000).
   ═══════════════════════════════════════════════════════════ */
-  useEffect(() => {
-    if (!isHost) return;
-    if (phase !== "playing") return;
-    if (!room) return;
-    if (room.current_target_topoid) return;
-    if (timeLeft <= 0) return;
+  /* ═══════════════════════════════════════════════════════════
+     SIRA ARTIK SUNUCUDA ÜRETİLİR — istemci ne GÖNDERİR ne OKUR
+     ───────────────────────────────────────────────────────────
+     Önceki sürümde sıra istemcide üretilip RPC ile yazılıyordu;
+     host OLMAYAN bir üye maçın TAM hedef sırasını belirleyip oda
+     satırından okuyabiliyordu (yetki genişlemesi + bilgi sızıntısı).
+     20260814150000 ile sıra sunucuda kanonik katalogdan üretilir ve
+     PRIVATE bir tabloda tutulur; ilk `advance_if_due` çağrısı onu
+     tembel + atomik kurar (FAZ 0).
 
-    const t = setTimeout(() => { pickNextTarget(); }, FEEDBACK_MS);
-    return () => clearTimeout(t);
-    // timeLeft kasıtlı dışarıda — her tick'te effect yeniden çalışırsa setTimeout
-    // sonsuza kadar reset olur.
-  }, [isHost, phase, room?.id, room?.current_target_topoid, pickNextTarget]);
+     Host-only hedef seçme effect'i de kaldırıldı: sıradaki hedefi
+     artık YALNIZ sunucu seçer.
+  ═══════════════════════════════════════════════════════════ */
+
+  const advanceIfDue = useCallback(async () => {
+    if (advancingRef.current) return;
+    const r = roomRef.current;
+    if (!r) return;
+    advancingRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc("wheel_group_advance_if_due", {
+        p_room_id:         r.id,
+        p_player_id:       myIdRef.current,
+        p_claim_token:     myClaimTokenRef.current,
+        p_expected_target: r.current_target_topoid ?? null,
+      });
+      if (error) {
+        console.error("[WheelGroup] advance_if_due failed", error);
+        return;
+      }
+      if (data) setRoom(data as WheelGroupRoom);
+    } finally {
+      advancingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (!room || room.status !== "playing") return;
+
+    const graceMs = isHost ? ADVANCE_GRACE_HOST_MS : ADVANCE_GRACE_OTHER_MS;
+    let attempts = 0;
+    let lastAttemptMs = 0;
+
+    const check = () => {
+      const now = getSyncedNowMs();
+      const r = roomRef.current;
+      if (!r || r.status !== "playing") return;
+
+
+      const startMs = r.started_at ? new Date(r.started_at).getTime() : null;
+      const endsAtMs = startMs != null ? startMs + Number(r.duration_seconds) * 1000 : null;
+      const refillAtMs = !r.current_target_topoid && r.updated_at
+        ? new Date(r.updated_at).getTime() + FEEDBACK_MS
+        : null;
+
+      const dueAtMs = refillAtMs != null
+        ? Math.min(refillAtMs, endsAtMs ?? refillAtMs)
+        : endsAtMs;
+      if (dueAtMs == null || now < dueAtMs + graceMs) return;
+
+      const minGapMs = attempts < 6 ? 0 : attempts < 20 ? 2_000 : 10_000;
+      if (lastAttemptMs && now - lastAttemptMs < minGapMs) return;
+      attempts += 1;
+      lastAttemptMs = now;
+      void advanceIfDue();
+    };
+
+    const checkNow = () => { attempts = 0; lastAttemptMs = 0; check(); };
+
+    check();
+    const id = window.setInterval(check, 500);
+    const onVisibility = () => { if (document.visibilityState !== "hidden") checkNow(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", checkNow);
+    window.addEventListener("online", checkNow);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", checkNow);
+      window.removeEventListener("online", checkNow);
+    };
+  }, [
+    phase, isHost, advanceIfDue,
+    room?.id, room?.status, room?.started_at, room?.duration_seconds,
+    room?.current_target_topoid, room?.updated_at,
+  ]);
+
 
   /* ═══════════════════════════════════════════════════════════
      HOST: finish on timer expiry (server-authoritative)
@@ -1444,10 +1491,7 @@ export default function WheelGroupGame({ onHome, profile }: Props) {
     setXpResult(null);
     xpAwardedRef.current = false;
 
-    // Tek RPC: tüm oyuncuların skorlarını 0'a çek + room satırını 'playing'
-    // fazına geçir. started_at server-side now() ile yazılır (clock skew kapanır).
-    // match_seq / current_match_id rotation server-side; mevcut semantik korunur
-    // (yalnız status='finished' geçişinde bump, waiting → playing'de aynı kalır).
+
     const { data: updated, error } = await supabase.rpc(
       "wheel_group_start_game",
       {

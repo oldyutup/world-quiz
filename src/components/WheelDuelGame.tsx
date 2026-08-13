@@ -62,9 +62,6 @@ import { useRosterProfiles } from "../lib/useRosterProfiles";
 import { useSocialOptional } from "./SocialContext";
 import {
   getWheelPool,
-  pickProgressionTopoId,
-  expectedWheelTargets,
-  targetIndexProgress,
   getContinentIds,
   TOPOID_TO_DISPLAY,
   type Continent,
@@ -91,6 +88,12 @@ function quickMatchBracket(searchSeconds: number): number {
 }
 
 const FEEDBACK_MS = 1200;   // Doğru bilinince hedef bu kadar süre kapalı kalır (host pick gecikmesi)
+/** advance_if_due watchdog gecikmeleri. Host kısa → akış bugünküyle aynı
+ *  hissedilir; rakip uzun → host ayaktayken gereksiz RPC atmaz, host
+ *  kaybolduğunda ~2,5 sn içinde devralır. Sunucu zaten vadeyi kendi
+ *  doğruluyor; bu değerler yalnız "kim önce dener" sırasıdır. */
+const ADVANCE_GRACE_HOST_MS  = 600;
+const ADVANCE_GRACE_OTHER_MS = 2500;
 const WRONG_FLASH_MS = 600; // Yanlış tıklama kırmızı flash süresi (lokal)
 
 // Mikro / haritada tıklanamaz ülkeler artık merkezî WHEEL_INELIGIBLE_CODES
@@ -403,6 +406,9 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   /* ── Refs for transitions / guards ────────────────────────── */
   const prevTargetRef = useRef<string | null>(null);
   const endingRef = useRef<boolean>(false);
+  /** advance_if_due çağrıları üst üste binmesin (500 ms'lik watchdog + uyanma
+   *  olayları aynı anda tetikleyebilir). */
+  const advancingRef = useRef<boolean>(false);
   const wrongFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastClaimedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -575,50 +581,6 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       .filter((id): id is string => !!id);
   }, []);
 
-  const pickNextTarget = useCallback(async () => {
-    const r = roomRef.current;
-    if (!r) return;
-    if (r.status !== "playing") return;
-    if (r.host_player_id !== myIdRef.current) return;
-    if (r.current_target_topoid) return;
-
-    const pool = buildTargetPool(r.region);
-    const used = new Set(r.used_target_topoids ?? []);
-    const remaining = pool.filter(id => !used.has(id));
-
-    if (remaining.length === 0) {
-      // Havuz tükendi → erken bitir
-      await finishGameRef.current?.("pool");
-      return;
-    }
-
-    // Progression: zorluk geçen SÜREYE göre DEĞİL, odada tamamlanan ortak hedef
-    // sırasına göre artar (brief A). `used.size` host-otoriter + tüm oda için
-    // aynı → hızlı/yavaş oynamak zorluğu değiştirmez, sıra ortak/adil kalır.
-    // `duration_seconds` yalnız rampa uzunluğunu belirler (beklenen hedef
-    // sayısı); saat difficulty hesabına GİRMEZ.
-    const progress = targetIndexProgress(
-      used.size,
-      expectedWheelTargets(Number(r.duration_seconds) || 0),
-    );
-    const next = pickProgressionTopoId(remaining, progress);
-    if (!next) {
-      await finishGameRef.current?.("pool");
-      return;
-    }
-
-    // RPC server tarafında aynı atomik guard'ı uygular (status=playing +
-    // current_target IS NULL). pas alanları RPC tarafından temizlenir.
-    const { error } = await supabase.rpc("wheel_duel_pick_target", {
-      p_room_id:        r.id,
-      p_host_player_id: myIdRef.current,
-      p_claim_token:    myClaimTokenRef.current,
-      p_target:         next,
-    });
-    if (error) {
-      console.error("[WheelDuel] pick_target RPC failed", error);
-    }
-  }, [buildTargetPool]);
 
   const finishGame = useCallback(async (reason: "timeout" | "pool") => {
     const r = roomRef.current;
@@ -765,25 +727,126 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   }, [phase, room?.started_at, room?.duration_seconds]);
 
   /* ───────────────────────────────────────────────────────────
-     HOST: pick next target after FEEDBACK_MS when target=null
+     SUNUCU OTORİTESİ — vadesi gelen geçişi HER ÜYE tetikleyebilir
+     ───────────────────────────────────────────────────────────
+     Yetki genişlemesi DEĞİLDİR. Sunucu (20260814120000):
+       • maç sonu deadline'ını KİLİTLİ oda satırından okur
+         (started_at + duration_seconds) — istemcinin saati karara girmez,
+       • sıradaki hedefi SUNUCUDA üretilmiş özel sıradan seçer —
+         istemci hedef ÖNEREMEZ,
+       • pas eşiğini `pass_requested_by` dizisinden kendi sayar,
+       • kazananı skorlardan kendi hesaplar (finish_game ile aynı kural),
+       • CAS + satır kilidi ile çift ilerlemeyi imkânsız kılar.
+     Yani rakibin yaptırabildiği tek geçiş, sunucunun o an zaten yapacağı
+     geçiştir; erken atlatma mümkün değildir.
   ─────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════
+     SIRA ARTIK SUNUCUDA ÜRETİLİR — istemci ne GÖNDERİR ne OKUR
+     ───────────────────────────────────────────────────────────
+     Önceki sürümde sıra istemcide üretilip RPC ile yazılıyordu;
+     host OLMAYAN bir üye maçın TAM hedef sırasını belirleyip oda
+     satırından okuyabiliyordu (yetki genişlemesi + bilgi sızıntısı).
+     20260814150000 ile sıra sunucuda kanonik katalogdan üretilir ve
+     PRIVATE bir tabloda tutulur; ilk `advance_if_due` çağrısı onu
+     tembel + atomik kurar (FAZ 0).
+
+     Host-only hedef seçme effect'i de kaldırıldı: sıradaki hedefi
+     artık YALNIZ sunucu seçer. İki kaynak aynı anda seçerse zorluk
+     eğrisi bozulur ve host yeniden tek arıza noktası olurdu.
+  ═══════════════════════════════════════════════════════════ */
+
+  const advanceIfDue = useCallback(async () => {
+    if (advancingRef.current) return;
+    const r = roomRef.current;
+    if (!r) return;
+    advancingRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc("wheel_duel_advance_if_due", {
+        p_room_id:         r.id,
+        p_player_id:       myIdRef.current,
+        p_claim_token:     myClaimTokenRef.current,
+        p_expected_target: r.current_target_topoid ?? null,
+      });
+      if (error) {
+        console.error("[WheelDuel] advance_if_due failed", error);
+        return;
+      }
+      // Sunucu HER ZAMAN taze oda satırını döner (no-op olsa bile) → bayat
+      // istemci aynı gidiş-dönüşte kendini onarır.
+      if (data) setRoom(data as WheelDuelRoom);
+    } finally {
+      advancingRef.current = false;
+    }
+  }, []);
+
+  /* Watchdog: host kısa, rakip uzun gecikmeyle dener. Host ayaktayken akış
+   * bugünküyle aynı hissedilir; host kaybolduğunda rakip devralır. */
   useEffect(() => {
-    if (!isHost) return;
     if (phase !== "playing") return;
-    if (!room) return;
-    if (room.current_target_topoid) return;
-    if (timeLeft <= 0) return;
+    if (!room || room.status !== "playing") return;
 
-    const t = setTimeout(() => {
-      pickNextTarget();
-    }, FEEDBACK_MS);
+    const graceMs = isHost ? ADVANCE_GRACE_HOST_MS : ADVANCE_GRACE_OTHER_MS;
+    let attempts = 0;
+    let lastAttemptMs = 0;
 
-    return () => clearTimeout(t);
-    // deps: timeLeft ve bare `room` KASTEN dışarıda. Timer her 200ms'de
-    // timeLeft'i güncellediği için bunu deps'e koyarsak setTimeout sürekli
-    // iptal olur ve 1200ms hiç tamamlanmaz. room?.id + room?.current_target_topoid
-    // pick döngüsü için yeterli sinyal.
-  }, [isHost, phase, room?.id, room?.current_target_topoid, pickNextTarget]);
+    const check = () => {
+      const now = getSyncedNowMs();
+      const r = roomRef.current;
+      if (!r || r.status !== "playing") return;
+
+
+      // Vade: hedef yoksa geri bildirim penceresi (updated_at çıpası),
+      // hedef varsa yalnız maç sonu deadline'ı ilgilendiriyor.
+      const startMs = r.started_at ? new Date(r.started_at).getTime() : null;
+      const endsAtMs = startMs != null ? startMs + Number(r.duration_seconds) * 1000 : null;
+      const refillAtMs = !r.current_target_topoid && r.updated_at
+        ? new Date(r.updated_at).getTime() + FEEDBACK_MS
+        : null;
+      const passReady =
+        !!r.current_target_topoid &&
+        r.pass_target_topoid === r.current_target_topoid &&
+        (r.pass_requested_by ?? []).length >= 2;
+
+      const dueAtMs = passReady
+        ? now
+        : refillAtMs != null
+          ? Math.min(refillAtMs, endsAtMs ?? refillAtMs)
+          : endsAtMs;
+      if (dueAtMs == null || now < dueAtMs + graceMs) return;
+
+      // Geri çekilme: sunucunun ilerletemediği bir durumda (dizisi olmayan
+      // eski oda) 500 ms'lik döngü boşa RPC atmasın.
+      const minGapMs = attempts < 6 ? 0 : attempts < 20 ? 2_000 : 10_000;
+      if (lastAttemptMs && now - lastAttemptMs < minGapMs) return;
+      attempts += 1;
+      lastAttemptMs = now;
+      void advanceIfDue();
+    };
+
+    const checkNow = () => { attempts = 0; lastAttemptMs = 0; check(); };
+
+    check();
+    const id = window.setInterval(check, 500);
+    // Arka plandan dönen sekmede timer'lar kısılmış olabilir; bu üç olay
+    // watchdog'u ANINDA çalıştırır.
+    const onVisibility = () => { if (document.visibilityState !== "hidden") checkNow(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", checkNow);
+    window.addEventListener("online", checkNow);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", checkNow);
+      window.removeEventListener("online", checkNow);
+    };
+  }, [
+    phase, isHost, advanceIfDue,
+    room?.id, room?.status, room?.started_at, room?.duration_seconds,
+    room?.current_target_topoid, room?.updated_at,
+    room?.pass_target_topoid, room?.pass_requested_by?.length,
+  ]);
+
 
   /* ───────────────────────────────────────────────────────────
      HOST: finish on timer expiry
@@ -1356,6 +1419,7 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       setPlayers((ps ?? []) as WheelDuelPlayer[]);
       saveRoomSession(room.id, room.code, playerId);
 
+
       // Quick match countdown başlat (started_at - now() fark). started_at
       // server tarafında now()+3s; client clock drift olunca buffer negatif
       // veya fazlasıyla büyük görünebilir → synced clock kullanıyoruz.
@@ -1868,6 +1932,8 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     // anında tetiklenmesine yol açıyor.
     // Not: started_at değeri RPC tarafında server now() ile yazılır;
     // client'ın gönderdiği startedAt artık kullanılmıyor (clock-skew kapanır).
+
+
     const { data: updated, error } = await supabase.rpc(
       "wheel_duel_start_game",
       {
