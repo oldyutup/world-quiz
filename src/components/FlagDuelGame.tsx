@@ -58,6 +58,7 @@ import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { flagDuelServerTimeMs } from "../lib/flagDuelTime";
 import { PlayerAvatar } from "./PlayerAvatar";
 import GoldIcon from "./GoldIcon";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
@@ -1773,13 +1774,17 @@ const declineRematch = useCallback(() => {
     if (!room || room.status !== "playing" || !room.current_flag) return null;
 
     // 1) Tur çözüldü mü? Çözülme anı SUNUCU verisidir (claim.created_at).
-    if (winnerOfThisRound)  return new Date(winnerOfThisRound.created_at).getTime()  + REVEAL_DELAY_MS;
-    if (timeoutOfThisRound) return new Date(timeoutOfThisRound.created_at).getTime() + REVEAL_DELAY_MS;
+    //    duel_claims.created_at SAAT DİLİMİ EKİ TAŞIMAZ (timestamp, timestamptz
+    //    DEĞİL) → flagDuelServerTimeMs ile UTC olarak ayrıştırılır. Düz
+    //    `new Date(...)` bunu yerel saat sayar ve UTC batısında dueAt'i saatlerce
+    //    ileri kaydırıp bu watchdog'u hiç tetiklenmez hâle getirirdi.
+    if (winnerOfThisRound)  return flagDuelServerTimeMs(winnerOfThisRound.created_at)  + REVEAL_DELAY_MS;
+    if (timeoutOfThisRound) return flagDuelServerTimeMs(timeoutOfThisRound.created_at) + REVEAL_DELAY_MS;
     if (bothPassed) {
       const prefix = `PASS:R${room.current_round}:${room.current_flag}:`;
       const last = claims
         .filter(c => c.country_code.startsWith(prefix))
-        .reduce((max, c) => Math.max(max, new Date(c.created_at).getTime()), 0);
+        .reduce((max, c) => Math.max(max, flagDuelServerTimeMs(c.created_at)), 0);
       if (last > 0) return last + PASS_REVEAL_MS;
     }
 
