@@ -54,8 +54,17 @@ const CizimTestDevPage =
     ? lazy(() => import("./dev/CizimTestDevPage"))
     : null;
 
+// Dev-only Kuşatma MOBİL gameplay ölçüm harness'i (sahte maç state'i; ağ yok).
+// Gerçek mobil shell bileşenlerini mount eder, böylece layout iterasyonu canlı
+// oda gerektirmez. Aynı koruma: prod build'de bu dal ve chunk hiç oluşmaz.
+const ConquestMobileDevPage =
+  import.meta.env.DEV && window.location.pathname === "/conquest-mobile-dev"
+    ? lazy(() => import("./dev/ConquestMobileDevPage"))
+    : null;
+
 const DevPage =
-  History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage ?? CizimTestDevPage;
+  History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage
+  ?? CizimTestDevPage ?? ConquestMobileDevPage;
 
 // Herkese açık hukuki/destek sayfaları (/tr/privacy, /en/support, /privacy …).
 // Üretimde de çalışır (dev sayfalarının aksine env-gate YOK). Eşleşme yoksa

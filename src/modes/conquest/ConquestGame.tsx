@@ -163,6 +163,11 @@ import MobileBottomSheet, {
 import MobileToastSlot, {
   type MobileToastSpec,
 } from "./mobile/MobileToastSlot";
+import ConquestMapViewport from "./mobile/ConquestMapViewport";
+import MobileJokerRail from "./mobile/MobileJokerRail";
+import MobileRotateHint from "./mobile/MobileRotateHint";
+import { buildMobileJokerEntries, type HeldBonusRegion } from "./mobile/mobileJokers";
+import { useGameplayOrientation } from "../../lib/useGameplayOrientation";
 import ConquestEventFeed from "./ConquestEventFeed";
 import ConquestVolumeControl from "./ConquestVolumeControl";
 import { useConquestEventFeed } from "./useConquestEventFeed";
@@ -480,6 +485,16 @@ export default function ConquestGame({
   // Both branches render the same TurkeyConquestMap / ConquestChallengePanel /
   // ConquestActionPanel; only the surrounding chrome differs.
   const { isMobile, orientation } = useIsMobile();
+
+  // Kuşatma gameplay landscape-first. Native app'te (@capacitor/screen-
+  // orientation) ekran landscape'e kilitlenir; bu ekran sökülünce unlock
+  // edilir ve iOS Info.plist politikasına + cihazın fiziksel duruşuna geri
+  // döner — yani telefonu kendisi çevirmemiş oyuncu lobiye portre olarak
+  // döner. Web'de kanca hiçbir şey yapmaz; oradaki çözüm rotate ipucu.
+  //
+  // Yalnız GAMEPLAY ekranı mount olduğu sürece aktif: bu bileşen lobi/oda
+  // ekranlarında render edilmez, dolayısıyla lobby hiç kilitlenmez.
+  const gameplayOrientation = useGameplayOrientation(isMobile);
 
   // Portre mobilde oyun alt-sayfası (bottom sheet handle) altta durur; global
   // bildirim toast'larını onun üzerine kaldır (oyun aksiyonlarını örtmesin).
@@ -5487,6 +5502,53 @@ export default function ConquestGame({
     </div>
   );
 
+  // ── Landscape dock mode ───────────────────────────────────────────
+  // In landscape the board is width-limited, so a permanent side column
+  // is a permanent tax on the map.  Only phases whose content the player
+  // must READ or TAP get a column; the move phase — where the player is
+  // looking at the board, not at text — collapses it and floats a small
+  // control card instead, roughly doubling the rendered board.
+  const landscapeDockMode: "panel" | "compact" =
+    phase === "challenge" || phase === "defense_duel" || phase === "finished"
+      ? "panel"
+      : "compact";
+
+  // Same phase subtree, floated over the board's corner instead of docked.
+  const landscapeFloatNode = (
+    <div className="mcq-float-panel" data-phase={phase} data-turn={turnAttr}>
+      {phasePanelContent}
+    </div>
+  );
+
+  // ── Joker rail (mobile) ───────────────────────────────────────────
+  // "Which advantages do I hold right now?" — previously answerable only
+  // by decoding two 12px chips on a score pill.  Bonus regions the local
+  // player owns are resolved here (ConquestGame is the only place that
+  // has region ownership AND the active assignment together).
+  const myHeldBonusRegions: HeldBonusRegion[] = myPlayerId
+    ? Object.entries(gameState.roundBonuses ?? {}).flatMap(([regionId, type]) => {
+        const owned = mapRegionStates.find(
+          rs => rs.regionId === regionId && rs.ownerPlayerId === myPlayerId,
+        );
+        if (!owned) return [];
+        const def = mapConfig.regions.find(r => r.id === regionId);
+        return [{
+          regionId,
+          regionLabel: def?.displayLabel ?? def?.name ?? regionId,
+          type:        type as ConquestRegionBonusType,
+        }];
+      })
+    : [];
+
+  const myJokerEntries = myPlayerId
+    ? buildMobileJokerEntries({
+        bonus:           playerBonuses?.[myPlayerId],
+        hasOpenShield:   openShieldOwners.has(myPlayerId),
+        hasHiddenShield: hiddenShieldOwners.has(myPlayerId),
+        heldRegions:     myHeldBonusRegions,
+      })
+    : [];
+
   // Signal banner is position:fixed + pointer-events:none, so it can sit
   // alongside the rest of the mobile overlays without participating in
   // sheet/dock layout. Same node served to both portrait and landscape.
@@ -5826,8 +5888,48 @@ export default function ConquestGame({
               ? <MobileBonusStrip entries={bonusGuideEntries} />
               : undefined
           }
-          map={mapNode}
-          dock={orientation === "landscape" ? landscapeDockNode : undefined}
+          jokerRail={
+            myJokerEntries.length > 0
+              ? <MobileJokerRail
+                  entries={myJokerEntries}
+                  variant={orientation === "landscape" ? "rail" : "row"}
+                />
+              : undefined
+          }
+          /* Pinch / pan / double-tap live in a wrapper so TurkeyConquestMap
+             keeps its authored viewBox and its desktop behaviour untouched.
+             Disabled while a modal-ish phase owns the screen, so a stray
+             drag can't zoom the board behind an overlay. */
+          map={
+            <ConquestMapViewport enabled={phase !== "finished"}>
+              {mapNode}
+            </ConquestMapViewport>
+          }
+          dockMode={landscapeDockMode}
+          dock={
+            orientation === "landscape" && landscapeDockMode === "panel"
+              ? landscapeDockNode
+              : undefined
+          }
+          floating={
+            orientation === "landscape" && landscapeDockMode === "compact"
+              ? landscapeFloatNode
+              : undefined
+          }
+          boardNote={
+            orientation === "portrait"
+              ? <MobileRotateHint
+                  visible={
+                    (phase === "challenge" || phase === "action")
+                    // Native'de kilit isteği havadayken ipucu göstermek
+                    // yanıltıcı olur: ekran zaten bir an sonra dönecek.
+                    // Kilit REDDEDİLİRSE ("failed") ipucu doğru cevaptır.
+                    && gameplayOrientation.status !== "locking"
+                  }
+                  matchKey={roomId ?? "match"}
+                />
+              : undefined
+          }
           overlays={
             orientation === "portrait"
               ? mobileOverlaysNode

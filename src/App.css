@@ -28581,3 +28581,886 @@ html.is-native-app .gj-overlay {
   border-radius: 8px;
   box-shadow: 0 0 0 2px var(--accent-glow);
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   KUŞATMA — MOBİL GAMEPLAY, LANDSCAPE-FIRST (Step 10)
+   ════════════════════════════════════════════════════════════════════════
+   Kapsam mühürü: bu bloktaki HER seçici ya `.mcq-*` sınıfına (yalnız
+   MobileConquestLayout'un bastığı DOM'da var — masaüstü ağacında hiç
+   mount edilmez) ya da `.mcq-shell*` torununa dayanır. Masaüstü Kuşatma
+   ekranı ve LOBİ (ConquestLobby / ConquestSetup / .cq-lobby-*) bu bloktan
+   HİÇBİR kural almaz.
+
+   Çözülen kök problem: landscape'te tahta GENİŞLİK-sınırlı. Harita oranı
+   ~2.24:1, yuva oranı ~1.7:1 → fazla yükseklik zaten letterbox'a gidiyor,
+   yani haritayı yalnız SÜTUN GENİŞLİĞİ büyütür. Bu yüzden:
+     • kalıcı sağ dock yalnız okunacak/dokunulacak içeriği olan fazlarda
+       durur (soru / düello / final), hamle fazında kalkar;
+     • skor listesi ve joker rayı haritanın kullanamadığı letterbox
+       bandına yüzer, yani varsayılan zoom'da tahtadan alan çalmaz;
+     • üst chrome tek 34px'lik şeride iner.
+════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1) Harita görüntü alanı: pinch / pan / çift-dokunuş ─────────────
+   Jest katmanı TurkeyConquestMap'e DOKUNMAZ; kırpma dış kutuda, dönüşüm
+   iç katmanda. `touch-action: none` olmasaydı tarayıcının kendi kaydırma
+   /zoom'u parmakla yarışırdı. */
+.mcq-mapvp {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  /* Sürükleme sırasında metin/etiket seçilmesin. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+.mcq-mapvp-inner {
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/* Yakınlaşınca imleç/parmağın "kavradığı" his — dokunmada görünmez ama
+   masaüstü dev sayfasında davranışı okunur kılar. */
+.mcq-mapvp[data-zoomed="true"] { cursor: grab; }
+.mcq-mapvp[data-zoomed="true"]:active { cursor: grabbing; }
+
+/* Sığdır butonu — yalnız yakınlaşmışken. Haritanın üstünde yüzer,
+   safe-area'yı hesaba katar. */
+.mcq-mapvp-reset {
+  position: absolute;
+  right: calc(8px + env(safe-area-inset-right, 0px));
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #e8eefb;
+  background: rgba(10, 14, 26, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+  z-index: 6;
+}
+.mcq-mapvp-reset:active { transform: scale(0.94); }
+
+/* Yakınlaşınca etiketler fiziksel olarak büyür (dönüşüm SVG'yi de
+   ölçekler) — istenen davranış: yakınlaş, oku. Kontur kalınlığını
+   sabit tutmuyoruz; ölçekle birlikte büyümesi doğal görünüyor. */
+
+/* ── 2) LANDSCAPE kabuk ──────────────────────────────────────────── */
+.mcq-shell--landscape {
+  grid-template-rows:    auto minmax(0, 1fr);
+  grid-template-areas:
+    "header header"
+    "main   dock";
+}
+/* Hamle/sonuç fazı: sağ sütun tamamen kalkar, harita tam genişliğe
+   yayılır. Ölçüm (844×390): tahta 606×271 → 844×377. */
+.mcq-shell--landscape.mcq-shell--dock-compact {
+  grid-template-columns: minmax(0, 1fr) 0;
+}
+.mcq-shell--landscape.mcq-shell--dock-panel {
+  grid-template-columns: minmax(0, 1fr) min(238px, 30vw);
+}
+.mcq-shell--landscape .mcq-header-slot { grid-area: header; }
+.mcq-shell--landscape .mcq-map-slot    { grid-area: main; min-height: 0; position: relative; }
+.mcq-shell--landscape .mcq-dock-slot   { grid-area: dock; min-height: 0; }
+
+/* Üst chrome tek ince şerit. Bilgi silinmez (geri / tur / gold / ses /
+   yardım hepsi durur) — yalnız dikey pay küçülür: 43px → 34px. */
+.mcq-shell--landscape .mcq-header {
+  min-height: 34px;
+  padding: max(2px, env(safe-area-inset-top, 0px)) 8px 2px;
+  gap: 6px;
+  background: linear-gradient(180deg, rgba(13, 18, 30, 0.96), rgba(13, 18, 30, 0.82));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.mcq-shell--landscape .mcq-header-back {
+  width: 30px; height: 30px; font-size: 17px; border-radius: 9px;
+}
+.mcq-shell--landscape .mcq-header-round {
+  font-size: 11.5px; padding: 2px 9px;
+}
+.mcq-shell--landscape .mcq-header-actions { gap: 5px; }
+.mcq-shell--landscape .mcq-header-volume,
+.mcq-shell--landscape .mcq-header-help {
+  width: 28px; height: 28px; font-size: 13px;
+}
+.mcq-shell--landscape .cq-gold-chip--mobile {
+  padding: 2px 7px; font-size: 11px;
+}
+
+/* ── 3) Tahta üstü yüzen katman ─────────────────────────────────────
+   Roster ve joker rayı haritanın letterbox bandında durur. Katman
+   pointer-events: none; yalnız gerçek kontroller tıklanabilir olur,
+   böylece boş cam alanı harita jestlerini yutmaz. */
+.mcq-board-overlays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.mcq-board-overlays > * { pointer-events: auto; }
+
+.mcq-roster-float {
+  position: absolute;
+  top: 4px;
+  left: calc(6px + env(safe-area-inset-left, 0px));
+  right: 6px;
+  max-width: 100%;
+}
+/* Joker rayı ALT-SOL: haritanın kullanamadığı alt letterbox bandına
+   yatay olarak oturur. İlk denemede sol kenarda DİKEYDİ ve Trakya /
+   İstanbul / Marmara etiketlerini kapatıyordu — tahtayı örten bir
+   "yardımcı" panel, tahtayı kahraman yapma amacının tam tersi.
+   Yatay dizilim ayrıca jokerleri "elimdeki kartlar" gibi okutur. */
+/* TEK alt şerit: jokerler solda, faz kontrolleri sağda. Haritanın
+   kullanamadığı alt letterbox bandına oturur; kart yerine şerit
+   olduğu için doğu bölgelerinin (Malatya / Antep / Hatay / Mardin)
+   üstünü kapatmaz — hamle fazında tıklanacak hedefler onlar. */
+.mcq-bottom-bar {
+  position: absolute;
+  left: calc(6px + env(safe-area-inset-left, 0px));
+  right: calc(6px + env(safe-area-inset-right, 0px));
+  bottom: calc(5px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.mcq-bottom-bar > * { pointer-events: auto; }
+.mcq-joker-float { flex: 0 0 auto; max-width: 60%; display: flex; align-items: flex-end; }
+.mcq-phase-float {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  max-width: 100%;
+}
+
+/* Roster: landscape'te yatay tek satır. Dock'tan çıkarıldığı için soru
+   paneli artık dock'un TAM yüksekliğini alıyor (şıkların "katlama
+   altında kalması" hatasının kökü buydu). */
+.mcq-shell--landscape .mcq-roster-float .mcq-strip {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 4px;
+  padding: 3px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(8, 11, 22, 0.72);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  max-height: none;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip::-webkit-scrollbar { display: none; }
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: none;
+  padding: 3px 8px 3px 6px;
+  border-radius: 8px;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill-top { gap: 4px; }
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill-name {
+  font-size: 11px;
+  max-width: 62px;
+}
+/* Kâhin görüsü satırın yarısını yiyordu; kendi genişliğine çivilenir. */
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill--kahin {
+  max-width: 148px;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill--kahin .mcq-strip__pill-name {
+  max-width: 52px;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill--kahin .mcq-strip__pill-points {
+  font-size: 11px;
+  max-width: 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill-stats {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 0;
+}
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill-points { font-size: 13px; line-height: 1; }
+.mcq-shell--landscape .mcq-roster-float .mcq-strip__pill-regions { font-size: 9.5px; }
+
+/* ── 4) Dock: yalnız faz paneli ─────────────────────────────────── */
+.mcq-shell--landscape .mcq-dock-slot {
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 11, 22, 0.86);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px))
+           calc(8px + env(safe-area-inset-right, 0px) * 0);
+  padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  overflow: hidden;
+}
+.mcq-shell--landscape .mcq-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border-top: 0;
+  padding-top: 0;
+}
+.mcq-shell--landscape.mcq-shell--dock-compact .mcq-dock-slot { display: none; }
+
+/* ── 5) Soru paneli dock içinde: şıklar KATLAMA ALTINDA KALMAZ ─────
+   Skor listesi dock'tan çıkıp haritaya yüzdüğü için panel artık dock'un
+   tam yüksekliğini alıyor. Üstüne: gövde kaydırılır, cevap satırı
+   (input + Gönder) ve sayaç dibe yapışır — klavye açıldığında bile
+   gönder butonu ekranda kalır. */
+.mcq-shell--landscape .mcq-dock-panel { gap: 5px; }
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-title {
+  font-size: 13px;
+  line-height: 1.22;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-prompt {
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-flag {
+  font-size: 30px;
+  margin: 1px 0;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-choice-grid {
+  grid-template-columns: 1fr;
+  gap: 5px;
+  margin-top: 3px;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-choice-btn {
+  min-height: 40px;          /* dokunma hedefi: 36 → 40 */
+  padding: 6px 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+/* Cevap satırı dibe yapışır. `position: sticky` kaydırılabilir dock
+   gövdesinin içinde çalışır; arkasına dock rengi konur ki altından
+   geçen şık metni okunmasın. */
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-answer-form {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 0 2px;
+  background: linear-gradient(180deg, rgba(8, 11, 22, 0), rgba(8, 11, 22, 0.92) 28%);
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-answer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* iOS odakta sayfayı zoom'lamasın — DESIGN.md "16px Taban Kuralı". */
+  font-size: max(16px, 1rem);
+  min-height: 38px;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-submit-btn {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  margin-left: 0;
+}
+/* Sayaç dock gövdesinin TEPESİNE yapışır. Klavye açıkken dock ~120px'e
+   iner ve sayaç kaydırma alanının dışına çıkıyordu; brief "timer görünür
+   olmalı" diyor. Üstte sticky + altta sticky cevap satırı = her zaman
+   ekranda olan iki çıpa. */
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-timer {
+  /* `order: -1` sayacı panelin EN ÜSTÜNE alır; sticky de kaydırınca
+     orada tutar. Yalnız sticky yetmiyordu: klavye açıkken kaydırma
+     hiç başlamadan sayaç zaten katlamanın altında kalıyordu. */
+  order: -1;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 4px;
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+
+/* Klavye açık landscape (~200px görünür yükseklik): soru gövdesi
+   sıkışır ki sayaç + cevap satırı + en az bir satır soru aynı anda
+   görünsün. */
+@media (max-height: 320px) and (orientation: landscape) {
+  .mcq-shell--landscape .mcq-dock-panel .cq-challenge-flag {
+    font-size: 22px;
+    margin: 0;
+  }
+  .mcq-shell--landscape .mcq-dock-panel .cq-challenge-title {
+    font-size: 12px;
+    line-height: 1.18;
+  }
+  .mcq-shell--landscape .mcq-dock-panel .cq-challenge-prompt { font-size: 10.5px; }
+  .mcq-shell--landscape .mcq-dock-panel .cq-challenge-type-chip { display: none; }
+  .mcq-shell--landscape .mcq-header { min-height: 28px; }
+  .mcq-shell--landscape .mcq-roster-float { display: none; }
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-status-chip { display: none; }
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-type-chip {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+.mcq-shell--landscape .mcq-dock-panel .cq-challenge-feedback { font-size: 11.5px; }
+
+/* Klavye açıkken panel biraz genişler: yazarken okunacak şey paneldir.
+   `:has()` desteklenmeyen tarayıcıda kural düşer, düzen aynı kalır. */
+.mcq-shell--landscape.mcq-shell--dock-panel:has(.mcq-dock-slot input:focus) {
+  grid-template-columns: minmax(0, 1fr) min(322px, 44vw);
+}
+
+/* ── 6) Hamle fazı: haritanın üstünde kompakt kart ────────────────
+   Tek net birincil eylem (Pas Geç) + sayaç. İkincil ipuçları (Gizli
+   Operasyon açıklaması vb.) küçülür ama SİLİNMEZ. */
+.mcq-float-panel {
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(8, 11, 22, 0.9);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.75);
+}
+.mcq-float-panel .cq-action-panel,
+.mcq-float-panel .cq-round-result-panel,
+.mcq-float-panel .cq-challenge-panel {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  max-height: none;
+  animation: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  gap: 5px;
+}
+/* Şerit dizilimi: [oyuncu rozeti] [ipucu] [Pas Geç] tek satırda;
+   sayaç şeridin altına ince bir çizgi olarak yapışır. */
+.mcq-shell--landscape .mcq-float-panel {
+  position: relative;
+  padding: 7px 9px 9px;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-panel,
+.mcq-shell--landscape .mcq-float-panel .cq-round-result-panel {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+}
+/* Oyuncu rozeti + sayaç: sabit genişlikte, asla sıkışmaz. Sıkışınca
+   "HAMLE SENDE" etiketi iki satıra kırılıp ipucunun üstüne biniyordu. */
+.mcq-shell--landscape .mcq-float-panel .cq-action-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-holder-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-holder-tag { white-space: nowrap; }
+/* Bonus ipuçları (Gizli Operasyon / Mancınık / Sis) esneyen orta sütun. */
+.mcq-shell--landscape .mcq-float-panel .cq-action-hint--bonus,
+.mcq-shell--landscape .mcq-float-panel .cq-action-error {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-buttons {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-hint {
+  /* İpucu SİLİNMEZ, yalnız iki satıra sığdırılır; tamamı title
+     özniteliğinde ve ekran okuyucuda kalır. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.28;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-action-skip-btn,
+.mcq-shell--landscape .mcq-float-panel .cq-round-skip-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 118px;
+  min-height: 40px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+/* Sayaç şeridin alt kenarına — dikey pay yemez. */
+.mcq-shell--landscape .mcq-float-panel .cq-challenge-timer {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 3px;
+  height: 3px;
+  margin: 0;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-round-result-panel {
+  align-items: center;
+  text-align: left;
+}
+.mcq-shell--landscape .mcq-float-panel .cq-rrc-subtitle,
+.mcq-shell--landscape .mcq-float-panel .cq-rrc-hint {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mcq-float-panel .cq-action-head { gap: 4px; }
+.mcq-float-panel .cq-action-line { font-size: 12px; }
+.mcq-float-panel .cq-action-hint { font-size: 11.5px; line-height: 1.3; }
+.mcq-float-panel .cq-action-holder-chip { padding: 3px 8px; }
+.mcq-float-panel .cq-action-holder-name { font-size: 12px; }
+.mcq-float-panel .cq-action-skip-btn,
+.mcq-float-panel .cq-round-skip-btn {
+  min-height: 40px;
+  width: 100%;
+  padding: 0 12px;
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.mcq-float-panel .cq-challenge-timer { height: 4px; }
+.mcq-float-panel .cq-rrc-icon     { font-size: 20px; margin-bottom: 0; }
+.mcq-float-panel .cq-rrc-title    { font-size: 13.5px; }
+.mcq-float-panel .cq-rrc-subtitle { font-size: 11.5px; max-width: none; }
+.mcq-float-panel .cq-rrc-hint     { font-size: 11px; }
+
+/* ── 7) JOKER RAYI — "burada özel bir şey var" ────────────────────
+   Koyu atlas dili korunur: cam yüzey + ince kategori rengi kenar.
+   Neon yok; renk yalnız ANLAM taşır (savunma / saldırı / bilgi /
+   ekonomi) ve her zaman ikon + etiketle birlikte gelir. */
+.mcq-joker-rail { position: relative; }
+.mcq-joker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 5px;
+}
+.mcq-joker-rail--rail .mcq-joker-list {
+  flex-direction: row;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mcq-joker-rail--rail .mcq-joker-list::-webkit-scrollbar { display: none; }
+.mcq-joker-rail--row .mcq-joker-list {
+  flex-direction: row;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mcq-joker-rail--row .mcq-joker-list::-webkit-scrollbar { display: none; }
+
+.mcq-joker-btn {
+  position: relative;
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(9, 13, 24, 0.86);
+  border: 1px solid var(--mcq-joker-line, rgba(255, 255, 255, 0.16));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 4px 14px -6px rgba(0, 0, 0, 0.8),
+    0 0 0 1px var(--mcq-joker-halo, rgba(255, 255, 255, 0.04)) inset;
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), border-color 140ms;
+}
+.mcq-joker-btn:active { transform: scale(0.94); }
+.mcq-joker-btn[data-open="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+/* Kategori kenarı — anlam rengi, kimlik rengi DEĞİL (Tek Ses Kuralı). */
+.mcq-joker-btn[data-cat="savunma"] { --mcq-joker-line: rgba(203, 213, 225, 0.55); --mcq-joker-halo: rgba(203, 213, 225, 0.07); }
+.mcq-joker-btn[data-cat="saldiri"] { --mcq-joker-line: rgba(253, 186, 116, 0.62); --mcq-joker-halo: rgba(253, 186, 116, 0.08); }
+.mcq-joker-btn[data-cat="bilgi"]   { --mcq-joker-line: rgba(196, 181, 253, 0.66); --mcq-joker-halo: rgba(196, 181, 253, 0.08); }
+.mcq-joker-btn[data-cat="ekonomi"] { --mcq-joker-line: rgba(252, 211, 77, 0.60);  --mcq-joker-halo: rgba(252, 211, 77, 0.08); }
+
+.mcq-joker-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+}
+.mcq-joker-icon img { width: 24px; height: 24px; }
+/* Durum rozeti ("hazır" / "+5sn" / "2×") — küçük ama okunur, ikonun
+   üstüne değil köşesine oturur ki ikon hiç kapanmasın. */
+.mcq-joker-state {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 999px;
+  color: #0b1020;
+  background: var(--mcq-joker-line, rgba(230, 237, 243, 0.9));
+  border: 1px solid rgba(8, 11, 22, 0.85);
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcq-joker-detail {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: min(228px, 44vw);
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(10, 14, 26, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.8);
+  z-index: 8;
+}
+.mcq-joker-rail--row .mcq-joker-detail {
+  left: 0;
+  top: calc(100% + 6px);
+  width: min(300px, calc(100vw - 24px));
+}
+.mcq-joker-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.mcq-joker-detail-title {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+.mcq-joker-detail-state {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(226, 234, 247, 0.9);
+  white-space: nowrap;
+}
+.mcq-joker-detail-close {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.mcq-joker-detail-desc {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.38;
+  color: rgba(214, 224, 240, 0.92);
+}
+
+/* Landscape'te alt bant ~34-44px; buton 40px'e iner ama dokunma hedefi
+   hâlâ kabul edilebilir (ikon 20px + 10px iç boşluk). */
+.mcq-shell--landscape .mcq-joker-btn { width: 40px; height: 40px; border-radius: 11px; }
+.mcq-shell--landscape .mcq-joker-icon { font-size: 18px; }
+.mcq-shell--landscape .mcq-joker-icon img { width: 21px; height: 21px; }
+.mcq-shell--landscape .mcq-joker-state { font-size: 8px; max-width: 44px; }
+
+/* ── 8) Haritadaki joker/marker görünürlüğü (mobil) ───────────────
+   Şikayet: "haritadaki özel öğeler fark edilmiyor". Emblem/motif
+   telefon ölçeğinde filigran gibi kalıyordu. Kontrast ve boyut
+   yükseltilir; parıltı DEĞİL, okunurluk. `.mcq-shell` altına
+   kapsandığı için masaüstü SVG'si aynı kalır.
+   `!important`: yukarıdaki `@media (max-width: 600px)` bloğu da
+   `!important` kullanıyor; eşit özgüllükte kazanmanın tek yolu bu. */
+.mcq-shell .cq-map-bonus-icon {
+  font-size: 17px !important;
+}
+.mcq-shell .cq-map-bonus-chip-bg {
+  r: 13 !important;
+  stroke-width: 1.9px !important;
+}
+.mcq-shell .cq-map-bonus-chip-inner {
+  r: 8.6 !important;
+  stroke-width: 1.1px !important;
+}
+/* Bölge-içi emblem: bonus bölgeleri "burada bir şey var" diye
+   okunmalı. Opaklık 0.74 → 0.9. */
+.mcq-shell .cq-map-bonus-emblem .cq-map-bonus-img { opacity: 0.9 !important; }
+.mcq-shell .cq-map-bonus-emblem .cq-map-bonus-icon { opacity: 0.88 !important; }
+.mcq-shell .cq-map-bonus-motif { opacity: 0.78 !important; }
+.mcq-shell .cq-map-bonus-motif-glyph { stroke-width: 2.4 !important; }
+/* Kategori aurası kalınlaşır — bonuslu bölgenin sınırı uzaktan seçilir. */
+.mcq-shell .cq-map-bonus-aura {
+  stroke-width: 2.6px !important;
+  opacity: 0.95 !important;
+}
+
+/* Landscape'te harita etiketleri: mevcut mobil büyütmeler yalnız
+   `@media (max-width: 600px)` altında yaşıyor, yani 844px geniş bir
+   landscape telefonda HİÇ uygulanmıyordu — etiketler masaüstü
+   ölçüsünde kalıyordu. Kabuk seçicisiyle landscape'e de verilir. */
+.mcq-shell--landscape .cq-map-label       { display: block; font-size: 21px; }
+.mcq-shell--landscape .cq-map-owner-label { display: block; font-size: 15px; }
+.mcq-shell--landscape .cq-map-points-layer{ display: block; }
+.mcq-shell--landscape .cq-map-point-badge-text { font-size: 15px !important; }
+.mcq-shell--landscape .cq-map-point-badge-ring {
+  r: 11 !important;
+  stroke-width: 1.7px !important;
+}
+
+/* Skor pill'indeki bonus chip'leri: gold rozetiyle ÜST ÜSTE BİNİYORDU
+   (before ölçümünde "34" ile "+20g" çakışıyordu). Chip'ler pill'in
+   dışına, sağ-üst köşeye taşınır ve büyütülür. */
+.mcq-shell .mcq-strip__pill { overflow: visible; }
+.mcq-shell .mcq-strip__pill-chips {
+  top: -5px;
+  right: -4px;
+  gap: 2px;
+}
+.mcq-shell .mcq-strip__pill-chip {
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  border-radius: 6px;
+  background: rgba(10, 14, 26, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.8);
+}
+.mcq-shell .mcq-strip__pill-chip img { width: 13px; height: 13px; }
+
+/* ── 9) PORTRE: ölü dikey alanı geri al ──────────────────────────
+   Ölçüm (390×844, before): başlık 55 + skor 53.5 + bonus 48.1 +
+   sheet 262.6 = 419px chrome; harita mürekkebi 384×172 = viewport'un
+   %20.1'i, üstüne haritanın altında/üstünde ~350px boş lacivert.
+   Kök sebep: 2.05:1 harita 390px genişlikte yalnız ~190px yüksek
+   olabiliyor. Çözüm zoom (artık var) + chrome'u sıkmak. */
+.mcq-shell--portrait .mcq-header {
+  min-height: 40px;
+  padding: max(4px, env(safe-area-inset-top, 0px)) 10px 4px;
+}
+.mcq-shell--portrait .mcq-header-back { width: 34px; height: 34px; font-size: 18px; }
+.mcq-shell--portrait .mcq-header-round { font-size: 12px; padding: 3px 10px; }
+
+/* Portre bonus şeridi: ayrı 48px'lik satır, haritadaki emblemlerle
+   aynı bilgiyi tekrar ediyordu. Yükseklik düşürülür; bilgi durur. */
+.mcq-shell--portrait .mcq-bonus-slot .mcq-bonus-chip {
+  padding: 4px 9px 4px 5px;
+}
+.mcq-shell--portrait .mcq-bonus-chip-label { font-size: 11px; }
+
+/* Portre haritası: `aspect-ratio` kilidi kaldırılır. Yuva ne kadar
+   yer veriyorsa harita o kutuyu alır; SVG kendi `xMidYMid meet`
+   oranıyla içine sığar. Böylece yakınlaştırma için gerçek bir tuval
+   olur ve pan sınırları tüm yuvayı kullanır. */
+.app.duel-screen.cq-screen .mcq-shell--portrait .mcq-map-slot .mcq-mapvp {
+  width: 100%;
+  height: 100%;
+}
+.app.duel-screen.cq-screen .mcq-shell--portrait .mcq-map-slot .cq-turkey-map-wrap {
+  aspect-ratio: auto;
+  height: 100%;
+}
+
+/* Boşluk YUKARIDAN AŞAĞIYA taşınır. Ölçüm: harita 190px, yuva 639px →
+   ~224px boşluk. `align-items: center` bunu ikiye bölüyordu ve üstteki
+   yarısı ekranın ortasında kocaman bir lacivert delik olarak görünüyordu
+   (alttaki yarısını sheet zaten örtüyor). Harita üste yaslanınca boşluğun
+   tamamı sheet'in altına gider; ekran header → skor → bonus → HARİTA
+   diye sıkı okunur. */
+.app.duel-screen.cq-screen .mcq-shell--portrait .mcq-map-slot {
+  align-items: flex-start;
+  padding-top: 6px;
+  position: relative;
+}
+.app.duel-screen.cq-screen .mcq-shell--portrait .mcq-map-slot .mcq-mapvp {
+  height: auto;
+  aspect-ratio: 1005 / 490;
+  max-height: 100%;
+}
+
+/* Joker satırı: haritanın hemen altındaki ölü banda oturur. */
+.mcq-joker-portrait {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: calc(6px + (100vw - 16px) / 2.051 + 10px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.mcq-joker-portrait > * { pointer-events: auto; }
+
+/* Skor pill'leri: 390px'e beş pill sıkıştırılınca isimler "Zeyn…" /
+   "Meh…" diye kırpılıyordu. Pill'ler artık ESNEMEZ; şerit yatay
+   kaydırılır ve her isim okunur kalır. */
+.mcq-shell--portrait .mcq-strip__pill {
+  flex: 0 0 auto;
+  min-width: 78px;
+  max-width: 120px;
+}
+.mcq-shell--portrait .mcq-strip__pill-name {
+  font-size: 11.5px;
+}
+/* Gold rozeti kendi satırına düşer ki puanla çakışmasın. */
+.mcq-shell--portrait .mcq-strip__pill-stats { flex-wrap: wrap; row-gap: 0; }
+
+/* ── 10) Telefonu çevir ipucu ────────────────────────────────────
+   Engelleyici değil: portre tam oynanabilir kalır. İnce cam şerit,
+   7sn sonra kendi kapanır, dokununca gider. */
+.mcq-rotate-hint {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Konum artık `.mcq-board-note` sarmalayıcısında; ipucu ne haritayı
+     ne de soru sheet'ini kapatır. */
+  position: static;
+  transform: none;
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 28px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  background: rgba(20, 16, 8, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 26px -10px rgba(0, 0, 0, 0.8);
+  color: #f6d9a4;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: mcqRotateHintIn 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mcq-rotate-hint-glyph { font-size: 14px; }
+.mcq-rotate-hint-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcq-rotate-hint-close { opacity: 0.6; font-size: 11px; }
+/* Tahtanın altındaki ölü bantta, joker satırının hemen altında. */
+.mcq-board-note {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: calc(6px + (100vw - 16px) / 2.051 + 62px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.mcq-board-note > * { pointer-events: auto; }
+
+@keyframes mcqRotateHintIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcq-rotate-hint { animation: none; }
+  .mcq-mapvp-inner { transition: none !important; }
+}
+
+/* ── 11) "Kuşatma başlıyor" giriş kartı — kompakt ────────────────
+   Landscape'te kart haritanın üst yarısını (yaklaşık %45'ini)
+   kaplıyordu. Bilgi korunur; kutu küçülür ve tahtanın üstünde
+   kalan bant içine oturur. */
+/* Giriş kartı ("Kuşatma başlıyor") ZATEN kompakt: `.mcq-toast-slot
+   .mcq-toast.cq-game-intro-overlay` kuralı onu 280px'e sabitliyor
+   (844×390'da ekranın ~%6.5'i). Burada eklenecek bir şey yok.
+
+   DÜZELTİLEN şey konum: toast yuvası landscape'te sağda `min(260px,
+   36vw)` dock payı ayırıyordu — bu, dock 238px'e indiği ve HAMLE
+   fazında tamamen kalktığı için artık yanlış. Kart hamle fazında
+   gereksiz yere sola kayıyordu. Pay gerçek dock'a bağlanır. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .mcq-shell--dock-panel ~ .mcq-toast-slot {
+    right: calc(min(238px, 30vw) + env(safe-area-inset-right, 0px));
+  }
+  .mcq-shell--dock-compact ~ .mcq-toast-slot {
+    right: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* ── 12) Harita kutusunu mobil kabukta ÇİVİLE ────────────────────
+   Bulgu (ölçümle): `@media (min-width: 601px)` altındaki masaüstü
+   kalibrasyonu — `.cq-turkey-map-wrap { transform: translateY(-8%)
+   scale(0.72) !important }` — 844px genişliğindeki bir LANDSCAPE
+   TELEFONDA da eşleşiyor. Step-4'ün nötrleyicisi (`.mcq-map-slot
+   .cq-turkey-map-wrap`) onunla aynı özgüllükte (0,5,0) olduğu için
+   kaskad kaynak sırasına düşüyordu ve sonuç kırılgandı: ölçümde
+   tahta yuvasından taşıyor, doğu ucu (Van / Hakkari) dock'un altında
+   kalıp kırpılıyordu.
+
+   Burada bir sınıf daha ekleyerek (0,6,0) tartışmayı bitiriyoruz:
+   mobil kabuğun içinde harita kutusu HER ZAMAN yuvanın tamamıdır.
+   Masaüstü DOM'unda `.mcq-shell` hiç yok — kalibrasyon orada aynen
+   çalışmaya devam eder. */
+.app.duel-screen.cq-screen.cq-game-screen .mcq-shell .cq-turkey-map-wrap {
+  transform: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.app.duel-screen.cq-screen.cq-game-screen .mcq-shell .cq-turkey-map-svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  display: block;
+  overflow: hidden;
+}
