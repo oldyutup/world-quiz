@@ -9,7 +9,9 @@
    IA: the first screen shows four equal cards — Tek Oyunculu /
    Düello / Çok Oyunculu / Oda Kodu ile Katıl. Tapping one of the
    first three opens a bottom sheet listing that category's modes
-   (Kuşatma is the featured card atop the Çok Oyunculu sheet); the
+   (KÖR NOKTA is the featured card atop the Çok Oyunculu sheet; Kuşatma
+   sits below it as a passive "Yakında" row — telefonda kapalı, bkz.
+   lib/screenPolicy → CONQUEST_MOBILE_ENABLED); the
    fourth opens the RoomCodeSheet directly. Oda Kodu used to be a
    sub-row welded onto the Çok Oyunculu card — it is now its own
    peer card, same surface, same size, same handler.
@@ -25,9 +27,12 @@
 
    Purely presentational: every action routes through the same
    callbacks the desktop mode cards use — onPlay maps to App's
-   setScreen via HomeScreen's onSelect, and Kuşatma opens the same
+   setScreen via HomeScreen's onSelect, and Kör Nokta opens the same
    select modal (with its existing auth handling). No gameplay
-   logic, no new AppScreen ids, no invite-link changes.
+   logic, no new AppScreen ids, no invite-link changes. Kuşatma'nın
+   telefonda kapatılması BURADA bitmez: App/router seviyesinde de
+   engellenir (screenPolicy.isScreenLockedOnSurface), yani oda kodu,
+   davet linki ve deep link yolları da kapalıdır.
 
    Kör Nokta IS surfaced here (Çok Oyunculu sheet): its 360 scenes
    load remotely / on-demand on native (resolveAssetUrl + prune),
@@ -44,6 +49,7 @@ import { useDmOptional } from "./DmContext";
 import { useToastSurfaceOffset } from "../lib/useToastOffset";
 import { useDailyQuestStatus, MOBILE_DAILY_QUEST_HOME_VISIBLE } from "../lib/dailyQuest";
 import { RoomCodeSheet, type RoomCodeSubmitOutcome } from "./RoomCodeJoin";
+import { CONQUEST_MOBILE_ENABLED } from "../lib/screenPolicy";
 import {
   CONQUEST_QUICK_MATCH_ENABLED,
   QUICK_MATCH_CONQUEST_ROUNDS,
@@ -149,8 +155,13 @@ interface SheetMode {
   icon: string;
   title: string;
   desc: string;
-  /** Kuşatma: rendered as the amber hero card at the top of its sheet. */
+  /** Kör Nokta: rendered as the amber hero card at the top of its sheet. */
   featured?: boolean;
+  /** Bu yüzeyde henüz oynanamayan mod (Kuşatma, telefonda): satır aynı tasarım
+   *  ailesinde kalır ama pasifleşir — "Yakında" rozeti, chevron/CTA yok,
+   *  tıklama yok. `onTap` KORUNUR: politika anahtarı (CONQUEST_MOBILE_ENABLED)
+   *  açıldığında satır hiçbir değişiklik gerektirmeden tekrar canlanır. */
+  soon?: boolean;
   onTap: () => void;
 }
 
@@ -208,7 +219,25 @@ function MobileSheet({
         </header>
         <div className="mh-rows">
           {category.modes.map(m =>
-            m.featured ? (
+            m.soon ? (
+              /* Bu yüzeyde kapalı mod (Kuşatma, telefonda). Aynı .mh-row
+                 yüzeyi + pasif varyant: buton `disabled`, chevron yerine
+                 "Yakında" rozeti, onTap HİÇ çağrılmaz. */
+              <button
+                key={m.title}
+                type="button"
+                className="mh-row mh-row--soon"
+                disabled
+                aria-disabled="true"
+              >
+                <span className="mh-row-icon" aria-hidden="true">{m.icon}</span>
+                <span className="mh-row-text">
+                  <span className="mh-row-title">{m.title}</span>
+                  <span className="mh-row-desc">{m.desc}</span>
+                </span>
+                <span className="mh-row-soon">Yakında</span>
+              </button>
+            ) : m.featured ? (
               <button
                 key={m.title}
                 type="button"
@@ -280,9 +309,13 @@ const DUEL_DESC = "Seviyene yakın bir rakiple birebir eşleş. Bekledikçe sevi
 
 /** Rail order is fixed: Kuşatma first, then the three live duels. The sheet
  *  still OPENS with Ülke Yaz selected (a playable mode) — see the sheet's
- *  initial `mode` state and the auto-center effect that scrolls it into view. */
+ *  initial `mode` state and the auto-center effect that scrolls it into view.
+ *
+ *  Kuşatma bu sheet'te (telefon yüzeyi) kapalıdır: mevcut "Yakında" rozeti +
+ *  pasif CTA deseni aynen kullanılır. Masaüstü Hızlı Eşleş modalı ayrı bir
+ *  bileşendir (QuickMatchModal) ve DEĞİŞMEZ. */
 const QM_MODES: QmModeDef[] = [
-  { mode: "conquest", icon: "🛡️", label: "Kuşatma",       desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED },
+  { mode: "conquest", icon: "🛡️", label: "Kuşatma",       desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED && CONQUEST_MOBILE_ENABLED },
   { mode: "wheel",    icon: "🎯", label: "Çark 1v1",      desc: DUEL_DESC, enabled: true },
   { mode: "country",  icon: "🌍", label: "Ülke Yaz 1v1",  desc: DUEL_DESC, enabled: true },
   { mode: "flag",     icon: "🚩", label: "Bayrak 1v1",    desc: DUEL_DESC, enabled: true },
@@ -731,11 +764,17 @@ export default function MobileHome({
       title: "Çok Oyunculu",
       tagline: "Oda kur, arkadaşlarınla oyna.",
       modes: [
-        { icon: "🛡️", title: "Kuşatma", desc: "Doğru bil, hamle yap, ele geçir!", featured: true, onTap: onOpenConquest },
-        { icon: "🕵️", title: "Kör Nokta",     desc: "Takımına güven, raporları çöz, konumu bul.", onTap: onOpenKorNokta },
+        /* ÖNE ÇIKAN artık Kör Nokta: aynı amber hero kartı (.mh-feature),
+           aynı "Öne Çıkan" rozeti, aynı "Oyna" CTA'sı — yalnız içerik değişti.
+           Tıklama mevcut Kör Nokta akışına (KorNoktaSelectModal) girer. */
+        { icon: "🕵️", title: "Kör Nokta",     desc: "Takımına güven, raporları çöz, konumu bul.", featured: true, onTap: onOpenKorNokta },
         { icon: "🌍", title: "Ülke Yaz Grup", desc: "Arkadaşlarınla aynı odada yarış.", onTap: () => onPlay("duel-group-game") },
         { icon: "🚩", title: "Bayrak Grup",   desc: "Aynı bayrağı gör, ilk bilen kazanır.", onTap: () => onPlay("flag-group-game") },
         { icon: "🎯", title: "Çark Grup",     desc: "Grup halinde çark yarışı.",        onTap: () => onPlay("wheel-group-game") },
+        /* Kuşatma telefonda KAPALI (bkz. screenPolicy → CONQUEST_MOBILE_ENABLED).
+           MobileHome zaten yalnız telefon yüzeyinde görünür, o yüzden burada
+           doğrudan politika anahtarına bakılır. Masaüstü menüsü etkilenmez. */
+        { icon: "🛡️", title: "Kuşatma", desc: "Doğru bil, hamle yap, ele geçir!", soon: !CONQUEST_MOBILE_ENABLED, onTap: onOpenConquest },
         /* Eshle — bağımsız oyunumuz; Torble içi ekran DEĞİL, harici link.
            ↗ dışarı çıkışı işaretler; window.open noopener/noreferrer ile güvenli. */
         { icon: "🎨", title: "Eshle ↗",       desc: "Çiz, hatırla, eşle!", onTap: () => window.open("https://eshle.io", "_blank", "noopener,noreferrer") },

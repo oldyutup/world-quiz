@@ -127,8 +127,13 @@ import { AccountModerationGate } from "./components/AccountModerationGate";
 import {
   isGameplayActive,
   roomModeForScreen,
+  isScreenLockedOnSurface,
+  isRoomModeLockedOnSurface,
+  isConquestAllowed,
+  type AppSurface,
   type AppScreen as ScreenPolicyAppScreen,
 } from "./lib/screenPolicy";
+import { useIsMobile } from "./lib/useIsMobile";
 import { PresenceProvider } from "./components/PresenceContext";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { FriendsButton } from "./components/FriendsButton";
@@ -716,8 +721,14 @@ interface HomeProps {
   onThemeChange: (t: HomeTheme) => void;
   /** Günün Görevi girişi (mobil kart) — App auth gate + modal açılışını yapar. */
   onOpenDailyQuest: () => void;
+  /** Kuşatma BU yüzeyde oynanabilir mi? (screenPolicy.isConquestAllowed)
+   *  Masaüstü web'de her zaman true → kart bugünkü hâliyle kalır. Telefonda
+   *  false: kart mevcut `available:false` desenine düşer (soluk kart + "Yakında"
+   *  rozeti + pasif buton). Bu yol asıl olarak TELEFON LANDSCAPE'i kapatır —
+   *  orada genişlik 600px'i aştığı için MobileHome değil, bu ızgara görünür. */
+  conquestAvailable: boolean;
 }
-function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onConquestAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange, onOpenDailyQuest }: HomeProps) {
+function HomeScreen({ onSelect, profile, onStartQuickMatch, onSubmitRoomCode, onKorNoktaAuthRequired, onConquestAuthRequired, onOpenRanking, onOpenProfile, profileOpen, homeTheme, onThemeChange, onOpenDailyQuest, conquestAvailable }: HomeProps) {
 const [showCountryMenu, setShowCountryMenu] = useState(false);
 const [showFlagMenu, setShowFlagMenu] = useState(false);
 const [showRouteMenu, setShowRouteMenu] = useState(false);
@@ -733,7 +744,9 @@ const [showKorNoktaMenu, setShowKorNoktaMenu] = useState(false);
   { id: "silhouette-game", icon: "map", iconPath: "/assets/icons/home/silhouette-mode.png", title: "Silüet Modu", desc: "Ülkeleri şekillerinden tanıyabilir misin?", available: true },
   { id: "route-game", icon: "compass", iconPath: "/assets/icons/home/route-mode.png", title: "Rota Modu", desc: "Hedef ülkeye en kısa rotadan ulaş!", available: true },
   { id: "wheel-game", icon: "target", iconPath: "/assets/icons/home/wheel-mode.png", title: "ÇARK MODU", desc: "Çarkın seçtiği ülkeyi herkesten önce bul!", available: true },
-  { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Doğru bil, hamle yap, ele geçir!", available: true },
+  /* Kuşatma: masaüstü web'de available=true (bugünkü davranış birebir aynı).
+     Telefon yüzeyinde available=false → mevcut "Yakında" rozeti + pasif buton. */
+  { id: "conquest-game", icon: "shield", iconPath: "/assets/icons/home/conquest-mode.png", title: "KUŞATMA", desc: "Doğru bil, hamle yap, ele geçir!", available: conquestAvailable },
   { id: "kornokta-create", icon: "detective", iconPath: "/assets/icons/home/blind-spot.png", title: "KÖR NOKTA", desc: "Takımına güven, raporları çöz, konumu bul.", available: true },
   { id: "cizim-test", icon: "palette", iconPath: "/assets/icons/home/eshle-icon.png", title: "ESHLE", desc: "Çiz, hatırla, arkadaşının çizimleriyle eşleştir!", available: true, external: { href: "https://eshle.io", cta: "Eshle’yi Oyna" } },
 ];
@@ -2876,6 +2889,23 @@ export default function App() {
    * "Oyuncu ŞU AN nerede?" sorusunun tek güvenilir kaynağı budur. */
   const screenRef = useRef<AppScreen>("home");
   useEffect(() => { screenRef.current = screen; }, [screen]);
+
+  /* ── Yüzey politikası (Kuşatma telefonda "Yakında") ───────────────────────
+   * Tek kaynak: lib/screenPolicy. Burada yalnız "hangi yüzeydeyiz?" hesaplanır;
+   * "hangi mod kapalı?" kararı politika katmanındadır.
+   *   • native kabuk (IS_NATIVE_APP) → her zaman telefon
+   *   • useIsMobile                  → dar portrait VEYA kısa landscape
+   * Masaüstü web ikisinde de false ⇒ bu blok masaüstünde hiçbir şeyi
+   * değiştirmez (kilit fonksiyonları sabit false döner). */
+  const { isMobile } = useIsMobile();
+  const surface = useMemo<AppSurface>(
+    () => ({ isNativeApp: IS_NATIVE_APP, isMobileViewport: isMobile }),
+    [isMobile],
+  );
+  const conquestAvailable = isConquestAllowed(surface);
+  /* Telefonda Kuşatma'ya girmeye çalışıldı (menü kartı, oda kodu, davet linki,
+   * hızlı eşleş…): giriş engellenir ve tek bir bilgilendirme gösterilir. */
+  const [conquestSoonOpen, setConquestSoonOpen] = useState(false);
   // Ana ekran teması App seviyesinde tutulur ki hem HomeScreen hem de sağ-üst
   // UserProfileDropdown aynı temayı (profil paneli skin'i için) okuyabilsin.
   const [homeTheme, setHomeTheme] = useState<HomeTheme>(readStoredHomeTheme);
@@ -3009,6 +3039,12 @@ export default function App() {
    * Wired as HomeScreen's onSelect, so desktop mode-cards, the choice modals and
    * the mobile bottom-sheet all funnel through here. */
   const navigateOnline = (target: AppScreen) => {
+    /* Yüzey kilidi auth kapısından ÖNCE gelir: telefonda Kuşatma'ya giden hiçbir
+     * menü/modal/hızlı-eşleş yolu ekran değiştirmez ve giriş de istemez. */
+    if (isScreenLockedOnSurface(target, surface)) {
+      setConquestSoonOpen(true);
+      return;
+    }
     const reason = ONLINE_GATED_SCREENS[target];
     if (reason && !profile?.username) {
       setPendingOnlineTarget(target);
@@ -3060,6 +3096,16 @@ export default function App() {
    * routeToResolvedRoom YALNIZ giriş yapmış kullanıcı için çağrılır (resolver
    * authenticated). Kullanıcı kodu tekrar yazmaz. */
   const routeToResolvedRoom = (mode: RoomCodeModeKey, code: string) => {
+    /* Yüzey kilidi (Kuşatma telefonda kapalı) — oda koduyla, davet linkiyle ya
+     * da misafir nick ekranından gelinmiş olması fark etmez: bu SON yönlendirme
+     * noktasıdır, kilitli modda ekran değiştirilmez. */
+    if (isRoomModeLockedOnSurface(mode, surface)) {
+      setRoomCodeResult(null);
+      clearPendingRoomCode();
+      clearPendingConquestInvite();
+      setConquestSoonOpen(true);
+      return;
+    }
     // Mode ekranı yüzeyi devralsın: açık home modallarını kapat.
     setRoomCodeResult(null);
     setLeaderboardOpen(false);
@@ -3099,6 +3145,16 @@ export default function App() {
    *   • Misafirse ve mod login-only ise (Kör Nokta) → giriş istenir.
    * Böylece oda kodu, davet linki ve ambiguous seçimi AYNI kararı kullanır. */
   const enterResolvedRoom = (mode: RoomCodeModeKey, code: string) => {
+    /* Kilitli mod (telefonda Kuşatma): misafire nick ekranı da AÇILMAZ — kod
+     * doğru olsa bile bu yüzeyde girilecek bir oda yok. */
+    if (isRoomModeLockedOnSurface(mode, surface)) {
+      setRoomCodeResult(null);
+      clearPendingRoomCode();
+      clearPendingGuestJoin();
+      clearPendingConquestInvite();
+      setConquestSoonOpen(true);
+      return;
+    }
     if (profile?.username) {
       routeToResolvedRoom(mode, code);
       return;
@@ -3232,6 +3288,13 @@ export default function App() {
    * auth policy is preserved verbatim. Logged-out players hit the auth modal;
    * after login/OAuth the intent survives and the target game auto-starts. */
   const startQuickMatch = (intent: QuickMatchIntent) => {
+    /* Kilitli hedef (telefonda Kuşatma): niyet hiç kurulmaz — böylece
+     * sessionStorage'da bekleyen bir "eşleşme" kalmaz ve login sonrası
+     * yönlendirme de tetiklenmez. */
+    if (isScreenLockedOnSurface(QUICK_MATCH_SCREEN[intent.mode], surface)) {
+      setConquestSoonOpen(true);
+      return;
+    }
     setQuickMatchIntent(intent);
     try { sessionStorage.setItem(PENDING_QUICK_MATCH_KEY, JSON.stringify(intent)); }
     catch { /* sessionStorage disabled — best effort */ }
@@ -3825,6 +3888,17 @@ function clearPendingKorNoktaInvite() {
     })();
     const conquestCode = conquestFromUrl ?? conquestFromStorage;
 
+    if (conquestCode && !conquestAvailable) {
+      /* Telefonda Kuşatma kapalı: davet linki / deep link ekran DEĞİŞTİRMEZ.
+       * Çıpa (sessionStorage) düşürülür ve ?conquest= URL'den silinir, yoksa
+       * her açılışta aynı engel tekrar tetiklenir. Sunucuya hiçbir katılma
+       * isteği gitmez (admitInvite bile çağrılmaz). */
+      clearPendingConquestInvite();
+      clearPendingGuestJoin();
+      setConquestSoonOpen(true);
+      return;
+    }
+
     if (conquestCode) {
       // Persist so we survive an OAuth redirect.
       try { sessionStorage.setItem("pending_conquest_invite_code", conquestCode); }
@@ -3957,6 +4031,10 @@ function clearPendingKorNoktaInvite() {
       const pendingGuest = readPendingGuestJoin();
       if (pendingGuest) {
         if (profile?.username) {
+          clearPendingGuestJoin();
+        } else if (isRoomModeLockedOnSurface(pendingGuest.mode, surface)) {
+          // Bu yüzeyde kapalı mod (telefonda Kuşatma): bağlam düşürülür ki
+          // cold start'ta nick ekranı tekrar açılmasın.
           clearPendingGuestJoin();
         } else if (isGuestJoinableMode(pendingGuest.mode)) {
           setGuestJoin({ mode: pendingGuest.mode, code: pendingGuest.code });
@@ -4095,7 +4173,23 @@ useEffect(() => {
   setAuthOpen(true);
 }, [authLoading, profile]);
 
+  /* ── Yüzey kilidi: SON kapı ───────────────────────────────────────────────
+   * Ekran state'i her nasıl olursa olsun kilitli bir ekrana geldiyse (yeni bir
+   * giriş yolu eklenmiş, auth sonrası yönlendirme, cihaz/pencere telefon
+   * ölçüsüne düşmüş…) oyuncu sessizce ana ekrana alınır ve bilgilendirme
+   * gösterilir. Render tarafında da guard var (aşağıda), böylece kilitli mod
+   * TEK KARE bile mount edilmez — istek/auto-join tetiklenmez. */
+  useEffect(() => {
+    if (!isScreenLockedOnSurface(screen, surface)) return;
+    setScreen("home");
+    setConquestSoonOpen(true);
+  }, [screen, surface]);
+
   const renderScreen = () => {
+  /* Kilitli ekran ASLA render edilmez (yukarıdaki effect ekranı home'a alır).
+     Kuşatma bileşeni mount edilmediği için mount-time auto-join/abonelik de
+     çalışmaz. Masaüstünde isScreenLockedOnSurface her zaman false döner. */
+  if (isScreenLockedOnSurface(screen, surface)) return null;
   // Şifre yenileme bağlantısı açıldıysa her şeyin ÜSTÜNDE güvenli yeni-şifre
   // ekranını göster (normal home/giriş akışına düşürme). Yalnızca geçerli
   // recovery oturumunda form çalışır.
@@ -4202,6 +4296,7 @@ useEffect(() => {
         homeTheme={homeTheme}
         onThemeChange={setHomeTheme}
         onOpenDailyQuest={handleOpenDailyQuest}
+        conquestAvailable={conquestAvailable}
       />
 
       {leaderboardOpen && (
@@ -4502,6 +4597,31 @@ useEffect(() => {
     </>
   );
 
+  /** Telefonda Kuşatma'ya giriş denendiğinde tek bilgilendirme. TÜM ekranlarda
+   *  mount edilir (renderInviteModals deseni): davet linki uygulama herhangi bir
+   *  ekrandayken de gelebilir. Yalnız bilgilendirir — engelin kendisi politika
+   *  + router katmanındadır. Masaüstünde hiç açılmaz (kilit orada false). */
+  const renderConquestSoonModal = () => (
+    conquestSoonOpen ? (
+      <div className="modal-backdrop" onClick={() => setConquestSoonOpen(false)}>
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-emoji" aria-hidden="true">🛡️</div>
+          <h2 className="modal-title">Kuşatma Yakında</h2>
+          <p className="modal-context">
+            Kuşatma şimdilik yalnızca bilgisayarda oynanabiliyor. Mobil sürümü
+            üzerinde çalışıyoruz — çok yakında burada!
+          </p>
+          <button
+            className="modal-btn"
+            onClick={() => { playSound("click"); setConquestSoonOpen(false); }}
+          >
+            Tamam
+          </button>
+        </div>
+      </div>
+    ) : null
+  );
+
   const renderAuthModals = () => (
     <>
         {authOpen && (
@@ -4763,6 +4883,7 @@ useEffect(() => {
           {renderProfileEditModals()}
           {renderAuthModals()}
           {renderInviteModals()}
+          {renderConquestSoonModal()}
         </DmProvider>
       </PresenceProvider>
     </SocialProvider>

@@ -11,6 +11,9 @@
  * ve oyun LOBİLERİnde gösterilir. Lobi aktif oyun SAYILMAZ.
  *
  * İkinci tüketici: gelen davet linki mevcut odayı ezecek mi? (`roomModeForScreen`)
+ *
+ * Üçüncü tüketici: bir mod BU YÜZEYDE (telefon / masaüstü) açılabilir mi?
+ * (`isScreenLockedOnSurface` — bkz. aşağıdaki yüzey politikası bölümü)
  */
 import type { RoomCodeModeKey } from "./roomCodeShared";
 
@@ -120,4 +123,67 @@ export function roomModeForScreen(screen: AppScreen): RoomCodeModeKey | null {
 /** Bu ekranda arkadaş DM'i için sağ-alt toast göstermek uygun mu? */
 export function areDmToastsAllowed(screen: AppScreen): boolean {
   return !isGameplayActive(screen);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   YÜZEY POLİTİKASI — bu mod BU cihazda/yüzeyde açılabilir mi?
+
+   Tek karar noktası. UI (menü kartı), yönlendirme (oda kodu / davet
+   linki / hızlı eşleş) ve router (render) katmanlarının hepsi buradan
+   geçer; böylece bir yüzeyde kapatılan mod için "kartı gizledik ama
+   davet linkiyle hâlâ giriliyor" boşluğu kalmaz.
+═══════════════════════════════════════════════════════════════ */
+
+/** Uygulamanın çalıştığı yüzey.
+ *
+ *  `isNativeApp`      → Capacitor kabuğu (iOS/Android app). Viewport ne olursa
+ *                       olsun telefon sayılır.
+ *  `isMobileViewport` → useIsMobile eşiği: dar portrait VEYA kısa landscape.
+ *                       Telefon landscape'te (ör. 844×390) masaüstü mod ızgarası
+ *                       göründüğü için bu bayrak orayı da kapsar.
+ *  Masaüstü web'de ikisi de false'tur → hiçbir kilit uygulanmaz. */
+export interface AppSurface {
+  isNativeApp: boolean;
+  isMobileViewport: boolean;
+}
+
+/** Telefon yüzeyi mi? (native kabuk her zaman telefon sayılır) */
+export function isMobileSurface(surface: AppSurface): boolean {
+  return surface.isNativeApp || surface.isMobileViewport;
+}
+
+/** ÜRÜN KARARI (2026-08-13): Kuşatma şimdilik TELEFONDA oynanmaz — mobil app ve
+ *  mobil web'de "Yakında", masaüstü web'de tamamen AÇIK. Gameplay/lobi kodunun
+ *  tek satırı silinmedi: bu anahtar `true` yapıldığında mobil giriş yollarının
+ *  hepsi (menü kartı, oda kodu, davet linki, hızlı eşleş, router) olduğu gibi
+ *  geri gelir. */
+export const CONQUEST_MOBILE_ENABLED = false;
+
+/** Bu yüzeyde Kuşatma açılabilir mi? */
+export function isConquestAllowed(surface: AppSurface): boolean {
+  return CONQUEST_MOBILE_ENABLED || !isMobileSurface(surface);
+}
+
+/** Telefonda kilitli ekranlar — şimdilik yalnız Kuşatma'nın üç ekranı:
+ *  oda kurma/savaş, açık oda listesi ve kod/davet ile katılma. */
+const CONQUEST_SCREENS: ReadonlySet<AppScreen> = new Set<AppScreen>([
+  "conquest-game",
+  "conquest-rooms",
+  "conquest-join",
+]);
+
+/** Bu ekran bu yüzeyde kilitli mi? Router/render seviyesindeki SON kapı:
+ *  hangi yoldan gelinirse gelinsin (menü, davet, deep link, auth sonrası
+ *  yönlendirme) kilitli ekran render EDİLMEZ. */
+export function isScreenLockedOnSurface(screen: AppScreen, surface: AppSurface): boolean {
+  return CONQUEST_SCREENS.has(screen) && !isConquestAllowed(surface);
+}
+
+/** Bu oda modu bu yüzeyde kilitli mi? Oda kodu çözümleyicisi ve davet linki
+ *  yolu ekran değil MOD taşıdığı için ayrı sorulur. */
+export function isRoomModeLockedOnSurface(
+  mode: RoomCodeModeKey,
+  surface: AppSurface,
+): boolean {
+  return mode === "conquest" && !isConquestAllowed(surface);
 }
