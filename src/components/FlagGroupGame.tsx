@@ -12,17 +12,22 @@
  *   • "Lobiye Dön": per-player (Kuşatma modeli). Dönmeyen oyuncu "Sonuç
  *     ekranında" olarak dimmed görünür; host herkes dönmeden başlatamaz.
  *
- * Bayrağı her client BAĞIMSIZ seçmez: host tek otoriter sıra sağlayıcıdır
- * (flag_group_advance_flag → room.current_flag). Tüm client'lar current_flag'i
- * global CODE_TO_ENTRY ile render eder (kendi rastgele havuzuna bağlı değil).
+ * BAYRAK SIRASI SUNUCUDA (20260814170000 — host SPOF'u kaldıran migration):
+ * maçın tam sırası `flag_group_generate_sequence` ile SUNUCUDA üretilir ve
+ * PRIVATE `flag_group_room_sequences` tablosunda tutulur. Hiçbir istemci (host
+ * dâhil) diziyi OKUYAMAZ ve sıradaki bayrağı ÖNEREMEZ. İstemci yalnız
+ * `room.current_flag`i global CODE_TO_ENTRY ile render eder.
+ *
+ * İLERLETME: odanın HER üyesi `flag_group_advance_if_due` çağırabilir (deadline
+ * watchdog). Geçiş anını, pas/claim/timeout ayrımını, sonraki bayrağı ve
+ * finalize kararını SUNUCU verir; CAS (`p_expected_flag_seq`) + oda satır kilidi
+ * çift ilerlemeyi imkânsız kılar. Host arka plana düşse de maç akmaya devam eder.
  *
  * PAS TUR TÜKETMEZ (1v1 paritesi): her gösterilen bayrak monoton `flag_seq`
  * kimliği taşır; atomik çözüm anahtarı (room, game_seq, flag_seq). Çoğunluk pas
  * derse mevcut bayrak `pass:<flag>` sentinel'iyle çözülür ama SERVER
- * (flag_group_advance_flag) current_round'u DEĞİŞTİRMEDEN yeni bir bayrak (yeni
- * flag_seq) getirir — final turda bile oyun bitmez. Round yalnız gerçek claim
- * veya timeout ile ilerler. Round vs finalize kararı client'a değil server'a
- * aittir (mevcut çözüm satırı kilit altında okunur).
+ * current_round'u DEĞİŞTİRMEDEN yeni bir bayrak (yeni flag_seq) getirir — final
+ * turda bile oyun bitmez. Round yalnız gerçek claim veya timeout ile ilerler.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import GuestEndPrompt from "./GuestEndPrompt";
@@ -37,9 +42,6 @@ import {
   NAME_TO_ENTRY,
   CODE_TO_ENTRY,
   normalizeInput,
-  getFlagPool,
-  buildProgressionQueue,
-  type Continent,
   type CountryEntry,
 } from "../data/countries";
 import { validateUsername, type Profile } from "../lib/auth";
@@ -52,11 +54,9 @@ import {
   buildLeaderboard,
   resolveWinners,
   allPlayersReady,
-  pickNextFlagCode,
   isPassClaim,
   isScoringClaim,
   requiredPassVotes,
-  shownFlagCodes,
   type LeaderRow,
 } from "./flagGroupLogic";
 
@@ -114,8 +114,21 @@ interface FGPassVote {
 /* ─── Sabitler ─── */
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 10;
+/* Bayrak süresi + cevap gösterim süresi. Bu ikisi SUNUCUDA da sabittir
+   (20260814170000: flag_group_flag_timeout_seconds / flag_group_reveal_delay_ms).
+   Otoriter geçiş sunucudadır; buradaki değerler YALNIZ (a) UI geri sayımı ve
+   (b) watchdog'un "ne zaman sormaya değer" tahmini içindir. Drift'i
+   scripts/check-flag-group-advance-if-due.ts iki tarafı okuyup kilitler. */
 const FLAG_TIMEOUT_SEC = 10;   // her bayrak için süre (1v1 ile aynı)
 const REVEAL_DELAY_MS  = 2000; // cevap/timeout sonrası cevap gösterim süresi
+
+/* ─── Deadline watchdog gecikmeleri ──────────────────────────────────────────
+   Geçişi kimin TETİKLEDİĞİ önemli değildir (sunucu her hâlükârda kendi saatiyle
+   doğrular), ama normalde gereksiz RPC uçmasın diye host birincil tetikleyicidir;
+   diğer üyeler yalnız host yanıt vermezse devreye girer. Host arka planda/kopukken
+   maçı kurtaran şey bu ikinci penceredir. Bayrak 1v1 / Kör Nokta ile aynı desen. */
+const ADVANCE_GRACE_HOST_MS  = 600;
+const ADVANCE_GRACE_OTHER_MS = 2_500;
 /* Geri sayım sesi: countdown20.mp3 ~19.5 sn; tur 10 sn olduğundan son 5 sn'lik
    bölümü sondan hizalayarak çalarız (bkz. sound.ts + Çizim Test paritesi). */
 const COUNTDOWN_AUDIO_SECONDS = 19.5;
@@ -296,11 +309,8 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  /* host bayrak-sırası + gösterilen bayraklar */
-  const flagSeqCodesRef = useRef<string[]>([]);
-  const usedFlagsRef = useRef<Set<string>>(new Set());
-  const advanceHandledRef = useRef<string>("");   // roundKey (bir kez ilerlet)
-  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* ilerletme guard'ları (bayrak sırası ARTIK SUNUCUDA — bkz. 20260814170000) */
+  const advancingRef = useRef(false);             // in-flight advance_if_due guard
   // Geri sayım sesi guard'ı: gösterilen bayrak kimliği (game_seq+flag_seq).
   // "G:F" = silahlı (henüz çalmadı), "G:F:played" = bu bayrakta bir kez çalındı,
   // "" = ses durdurulmuş. Pas AYNI turda flag_seq'i artırdığı için bu anahtar
@@ -315,18 +325,6 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
 
   const myId = myIdRef.current;
   const myPlayer = players.find(p => p.id === myId) ?? null;
-
-  /* ─── host sequence builder ─── */
-  const buildHostSequence = useCallback((region: string, totalRounds: number, exclude: Set<string>) => {
-    const cont = denormalizeRegion(region) as Continent | "world";
-    const pool = getFlagPool(cont, "all");
-    const curve = buildProgressionQueue(pool, totalRounds).map(e => e.code);
-    // İlk `totalRounds` bayrak zorluk eğrisini takip eder; kuyruk (tüm havuz)
-    // reconnect/timeout güvenlik ağıdır (asla tekrar göstermeyiz → used set).
-    const seq = [...curve, ...pool.map(e => e.code)];
-    flagSeqCodesRef.current = seq;
-    usedFlagsRef.current = new Set(exclude);
-  }, []);
 
   /* ─── türetilmiş tur durumu ─── */
   const currentFlag: CountryEntry | null = useMemo(() => {
@@ -422,9 +420,9 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
       const claims0 = (cs as FGClaim[] | null) ?? [];
       setRoom(room0); setPlayers((ps as FGPlayer[]) ?? []); setIsHost(!!myRow.is_host); setClaims(claims0);
       if (room0.status === "playing") {
-        gameEndedRef.current = false; advanceHandledRef.current = "";
-        if (myRow.is_host) buildHostSequence(room0.region, room0.total_rounds,
-          new Set([...(room0.current_flag ? [room0.current_flag] : []), ...shownFlagCodes(claims0)]));
+        gameEndedRef.current = false;
+        // Bayrak sırası SUNUCUDA (flag_group_room_sequences) — reconnect'te
+        // istemcinin kuracağı hiçbir şey yok, watchdog devralır.
         setPhase("playing");
       } else if (room0.status === "finished") {
         gameEndedRef.current = true; setFinalLeaderboard(buildLeaderboard((ps as FGPlayer[]) ?? [], claims0));
@@ -447,16 +445,13 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
           const r = payload.new as FGRoom;
           setRoom(r);
           if (r.status === "playing" && phaseRef.current !== "playing") {
-            // Yeni maç başladı — eski state temizliği + (host) sıra kurulumu.
+            // Yeni maç başladı — eski state temizliği. Bayrak sırası SUNUCUDA
+            // üretilir (start_game), istemcide kurulacak bir şey YOK.
             setClaims([]);
             setPassVotes([]);
             setFinalLeaderboard(null);
             setReturned(false);
             gameEndedRef.current = false;
-            advanceHandledRef.current = "";
-            // Sıra host'un startGame'inde kurulur; realtime clobber ETMESİN.
-            if (isHostRef.current && flagSeqCodesRef.current.length === 0)
-              buildHostSequence(r.region, r.total_rounds, new Set(r.current_flag ? [r.current_flag] : []));
             setPhase("playing");
           }
           if (r.status === "finished" && !gameEndedRef.current) {
@@ -524,15 +519,13 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
       const { data: r } = await supabase.from("flag_group_rooms").select("*").eq("id", roomId).single();
       if (r && r.status === "playing" && phaseRef.current === "waiting") {
         setClaims([]); setPassVotes([]); setFinalLeaderboard(null); setReturned(false);
-        gameEndedRef.current = false; advanceHandledRef.current = "";
-        if (isHostRef.current && flagSeqCodesRef.current.length === 0)
-          buildHostSequence((r as FGRoom).region, (r as FGRoom).total_rounds, new Set((r as FGRoom).current_flag ? [(r as FGRoom).current_flag!] : []));
+        gameEndedRef.current = false;
         setRoom(r as FGRoom);
         setPhase("playing");
       }
     }, 2000);
     return () => clearInterval(t);
-  }, [phase, room?.id, buildHostSequence]);
+  }, [phase, room?.id]);
 
   /* Server-clock sync (playing) */
   useEffect(() => {
@@ -613,62 +606,6 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundKey, isPlaying]);
 
-  /* ═══════════ BAYRAK İLERLETME (host otoriter, SERVER karar verir) ═══════════
-     Host, mevcut bayrak çözüldükten sonra flag_group_advance_flag'i çağırır ve
-     YALNIZ bir aday sonraki bayrak verir. Round'un ilerleyip ilerlemeyeceğine
-     (pas → aynı tur, claim/timeout → +1, son tur → finalize) SERVER karar verir;
-     client "shouldAdvanceRound" göndermez. Non-host YALNIZ son-tur host-kaybı
-     güvenlik ağı olarak finalize eder — ve YALNIZ tur claim/timeout ile bittiyse
-     (PAS ise host aynı tur altında yeni bayrak getireceği için finalize ETMEZ). */
-  useEffect(() => {
-    if (phase !== "playing" || !room) return;
-    if (!roundResolved) return;
-    const rk = roundKey;
-    if (advanceHandledRef.current === rk) return;
-
-    const isHostNow = isHostRef.current;
-    if (isHostNow) {
-      advanceTimerRef.current = setTimeout(() => { void runAdvance(rk, true); }, REVEAL_DELAY_MS);
-    } else {
-      // Non-host güvenlik ağı: yalnız SON tur + PAS DEĞİL (claim/timeout) → finalize.
-      // Paslanan son tur host tarafından yeni bayrağa taşınır; non-host bitirmemeli.
-      const isLastRound = room.current_round >= room.total_rounds;
-      if (!isLastRound || roundPassed) return;
-      advanceTimerRef.current = setTimeout(() => { void runAdvance(rk, false); }, REVEAL_DELAY_MS + 4000);
-    }
-    return () => { if (advanceTimerRef.current) { clearTimeout(advanceTimerRef.current); advanceTimerRef.current = null; } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, roundResolved, roundKey, room?.current_round]);
-
-  const runAdvance = useCallback(async (rk: string, isHostNow: boolean) => {
-    if (phaseRef.current !== "playing") return;
-    const r = roomRef.current;
-    if (!r || r.status !== "playing") return;
-    advanceHandledRef.current = rk;
-
-    if (!isHostNow) {
-      // Son-tur host-kaybı güvenlik ağı (idempotent; host zaten bitirdiyse no-op).
-      const { error } = await supabase.rpc("flag_group_finalize_game", {
-        p_room_id: r.id, p_player_id: myIdRef.current, p_claim_token: claimTokenRef.current,
-      });
-      if (error) dbgErr("flag_group_finalize_game (safety net) failed", error);
-      return;
-    }
-
-    // Host: aday sonraki bayrağı seç (havuzdan, tekrar yok). null → havuz tükendi;
-    // server bunu finalize sinyali olarak yorumlar. Round vs finalize kararı
-    // SERVER'da (advance_flag) mevcut çözüm satırı kilit altında okunarak verilir.
-    usedFlagsRef.current.add(r.current_flag ?? "");
-    const next = pickNextFlagCode(flagSeqCodesRef.current, usedFlagsRef.current);
-    if (next) usedFlagsRef.current.add(next);
-    const { data, error } = await supabase.rpc("flag_group_advance_flag", {
-      p_room_id: r.id, p_host_player_id: myIdRef.current, p_claim_token: claimTokenRef.current,
-      p_flag_seq: r.flag_seq, p_next_flag: next,
-    });
-    if (error) { dbgErr("flag_group_advance_flag failed", error); advanceHandledRef.current = ""; return; }
-    if (data) setRoom(data as FGRoom);
-  }, []);
-
   /* ═══════════ KICKED detection (waiting/finished) ═══════════ */
   useEffect(() => {
     if (!room || !myIdRef.current || !players.length) return;
@@ -706,10 +643,129 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
     setFinalLeaderboard(buildLeaderboard(pl, cl));
   }, [players, claims]);
 
+  /* ═══════════ BAYRAK İLERLETME — SUNUCU OTORİTESİ (host SPOF'u kalktı) ═══════
+     ÖNCEDEN: yalnız host ilerletebiliyordu. Sıradaki bayrağı host'un RAM'indeki
+     (Math.random ile kurulmuş, hiçbir yerde persist EDİLMEYEN) havuzundan seçip
+     host-only `flag_group_advance_flag`i çağırıyordu; non-host'un tek yedeği
+     "SON tur + pas DEĞİL" dar koşuluyla `finalize_game`di. Üçü birleşince host'un
+     tarayıcısı maçın tek arıza noktasıydı: arka plana düşünce timer'lar donuyor,
+     tur ASLA ilerlemiyor ve maç TÜM oyuncular için kilitleniyordu.
+
+     ŞİMDİ: odanın her üyesi `flag_group_advance_if_due` çağırabilir. Yetki
+     genişlemesi DEĞİLDİR — sunucu (20260814170000):
+       • geçiş anını KİLİTLİ oda satırından okur (çözüm varsa claim.created_at +
+         2000 ms; yoksa current_flag_at + 10 sn + 2000 ms) ve kendi now()'ıyla
+         karşılaştırır; istemcinin saati karara GİRMEZ,
+       • sıradaki bayrağı PRIVATE `flag_group_room_sequences` dizisinden seçer —
+         istemci bayrak ÖNEREMEZ ve diziyi OKUYAMAZ,
+       • pas/claim/timeout ayrımını ve finalize kararını kendi verir,
+       • CAS (`p_expected_flag_seq`) + satır kilidi ile çift ilerlemeyi
+         imkânsız kılar.
+     Yani bir üyenin yaptırabildiği tek geçiş, sunucunun o an ZATEN yapacağı
+     geçiştir; erken çağrı hiçbir mutation üretmez (no-op). */
+  const advanceIfDue = useCallback(async (expectedFlagSeq: number) => {
+    if (advancingRef.current) return;
+    if (phaseRef.current !== "playing") return;
+    const r = roomRef.current;
+    if (!r || r.status !== "playing") return;
+    advancingRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc("flag_group_advance_if_due", {
+        p_room_id: r.id,
+        p_player_id: myIdRef.current,
+        p_claim_token: claimTokenRef.current,
+        p_expected_flag_seq: expectedFlagSeq,
+      });
+      if (error) { dbgErr("flag_group_advance_if_due failed", error); return; }
+      // Vakti gelmediyse / yarışı kaybettiysek de TAZE oda döner (sunucu hata
+      // değil, değişmemiş satır verir) → bayat istemci kendini onarır.
+      if (data && (data as FGRoom).id) {
+        const fresh = data as FGRoom;
+        roomRef.current = fresh;
+        setRoom(fresh);
+        // Maçı bitiren çağrı BİZSEK realtime UPDATE'ini beklemeyelim: realtime
+        // gecikirse/düşerse oyuncu bitmiş maçın oyun ekranında asılı kalırdı.
+        // Realtime handler'ıyla aynı işi yapar; iki yol da idempotenttir.
+        if (fresh.status === "finished" && !gameEndedRef.current) {
+          gameEndedRef.current = true;
+          if (rafRef.current) cancelAnimationFrame(rafRef.current);
+          void freezeLeaderboard(fresh.id);
+          setReturned(false);
+          setPhase("finished");
+        }
+      }
+    } finally {
+      advancingRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freezeLeaderboard]);
+
+  /* ═══════════ DEADLINE WATCHDOG (HER istemcide çalışır) ═══════════
+     `dueAtMs` YALNIZ "ne zaman sormaya değer" tahminidir; kararı sunucu verir.
+     İki aşama, sunucudaki kuralın aynası:
+       • tur çözülmemiş → current_flag_at + 10 sn + reveal (sunucu turu geçirir)
+       • tur çözülmüş   → çözülme anı (claim.created_at) + reveal
+     Stagger: host 600 ms, diğer üyeler 2500 ms. Host ayaktayken akış bugünküyle
+     aynı hissedilir; host kaybolduğunda ilk uyanan üye ~2,5 sn sonra devralır. */
+  const watchdogDueAtMs = useMemo(() => {
+    if (!room || room.status !== "playing" || !room.current_flag) return null;
+    // flag_group_claims.created_at `timestamptz`tir → düz Date parse UTC-güvenli
+    // (Bayrak 1v1'deki `timestamp` TZ tuzağı BURADA YOK).
+    if (currentResolution) return new Date(currentResolution.created_at).getTime() + REVEAL_DELAY_MS;
+    if (!room.current_flag_at) return null;
+    return new Date(room.current_flag_at).getTime() + FLAG_TIMEOUT_SEC * 1000 + REVEAL_DELAY_MS;
+  }, [room, currentResolution]);
+
+  const watchdogFlagSeq = room?.flag_seq ?? null;
+
+  useEffect(() => {
+    if (phase !== "playing") return;
+    if (watchdogDueAtMs == null || watchdogFlagSeq == null) return;
+    const graceMs = isHost ? ADVANCE_GRACE_HOST_MS : ADVANCE_GRACE_OTHER_MS;
+
+    // Geri çekilme (backoff): normalde sunucu ilk denemede ilerletir ve bu effect
+    // yeni flag_seq ile yeniden kurulur → sayaç sıfırlanır. Sunucunun ilerletemediği
+    // bir durum varsa (havuz tükenmiş eski oda) 500 ms'lik döngü boşa RPC atardı.
+    // Uyanma olayları sayacı sıfırlar → arka plandan dönen istemci ANINDA dener.
+    let attempts = 0;
+    let lastAttemptMs = 0;
+
+    const check = () => {
+      const now = getSyncedNowMs();
+      if (now < watchdogDueAtMs + graceMs) return;
+      const minGapMs = attempts < 6 ? 0 : attempts < 20 ? 2_000 : 10_000;
+      if (lastAttemptMs && now - lastAttemptMs < minGapMs) return;
+      attempts += 1;
+      lastAttemptMs = now;
+      void advanceIfDue(watchdogFlagSeq);
+    };
+
+    const checkNow = () => { attempts = 0; lastAttemptMs = 0; check(); };
+
+    // Mount / reconnect / her bayrak değişimi: interval'in ilk tick'ini bekleme.
+    check();
+    const id = window.setInterval(check, 500);
+
+    // Uyanma tetikleyicileri: arka plandan dönen sekmede timer'lar kısılmış ya da
+    // tamamen durmuş olabilir; bu üç olay watchdog'u hemen çalıştırır.
+    const onVisibility = () => { if (document.visibilityState !== "hidden") checkNow(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", checkNow);
+    window.addEventListener("online", checkNow);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", checkNow);
+      window.removeEventListener("online", checkNow);
+    };
+  }, [phase, isHost, watchdogDueAtMs, watchdogFlagSeq, advanceIfDue]);
+
+
   function resetToLobby() {
     setRoom(null); setPlayers([]); setClaims([]); setPassVotes([]); setIsHost(false);
     setFinalLeaderboard(null); setReturned(false); setErrorMsg(null); setStatusMsg(null);
-    setQuitModal(false); gameEndedRef.current = false; advanceHandledRef.current = "";
+    setQuitModal(false); gameEndedRef.current = false;
     setPhase("lobby");
   }
 
@@ -778,12 +834,7 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
         setClaims((cs as FGClaim[]) ?? []);
         saveRoomSession(targetRoom.id, targetRoom.code, saved.playerId, saved.claimToken);
         if (targetRoom.status === "playing") {
-          gameEndedRef.current = false; advanceHandledRef.current = "";
-          if (myRow.is_host) buildHostSequence(
-            targetRoom.region, targetRoom.total_rounds,
-            new Set([...(targetRoom.current_flag ? [targetRoom.current_flag] : []),
-                     ...shownFlagCodes((cs as FGClaim[] | null) ?? [])]),
-          );
+          gameEndedRef.current = false;
           setPhase("playing");
         } else if (targetRoom.status === "finished") {
           gameEndedRef.current = true; void freezeLeaderboard(targetRoom.id); setPhase("finished");
@@ -840,16 +891,15 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
     if (players.length < MIN_PLAYERS) { setErrorMsg(`En az ${MIN_PLAYERS} oyuncu gerekli.`); return; }
     if (!allPlayersReady(players)) { setErrorMsg("Tüm oyuncuların lobiye dönmesi bekleniyor."); return; }
 
-    buildHostSequence(r.region, r.total_rounds, new Set());
-    const first = pickNextFlagCode(flagSeqCodesRef.current, usedFlagsRef.current);
-    if (!first) { setErrorMsg("Bu bölgede yeterli bayrak yok."); return; }
-    usedFlagsRef.current.add(first);
-
+    // İlk bayrak + tüm maç sırası SUNUCUDA üretilir (flag_group_start_game →
+    // flag_group_generate_sequence → PRIVATE flag_group_room_sequences).
+    // `p_first_flag` yalnız eski istemcilerle imza uyumu için duruyor ve sunucu
+    // tarafından OKUNMUYOR → istemci bayrak seçemez.
     const { data, error } = await supabase.rpc("flag_group_start_game", {
-      p_room_id: r.id, p_host_player_id: myIdRef.current, p_claim_token: claimTokenRef.current, p_first_flag: first,
+      p_room_id: r.id, p_host_player_id: myIdRef.current, p_claim_token: claimTokenRef.current, p_first_flag: null,
     });
     if (error) { dbgErr("flag_group_start_game failed", error); setErrorMsg(describeFlagGroupRpcError(error)); return; }
-    setClaims([]); setPassVotes([]); gameEndedRef.current = false; advanceHandledRef.current = "";
+    setClaims([]); setPassVotes([]); gameEndedRef.current = false;
     if (data) setRoom(data as FGRoom);
     setPhase("playing");
   };
@@ -974,7 +1024,7 @@ export default function FlagGroupGame({ onHome, profile }: Props) {
       p_room_id: r.id, p_player_id: myIdRef.current, p_claim_token: claimTokenRef.current,
     });
     if (error) { dbgErr("flag_group_return_to_lobby failed", error); setReturned(false); return; }
-    setClaims([]); setPassVotes([]); setFinalLeaderboard(null); gameEndedRef.current = false; advanceHandledRef.current = "";
+    setClaims([]); setPassVotes([]); setFinalLeaderboard(null); gameEndedRef.current = false;
     setErrorMsg(null); setPhase("waiting");
   }, []);
 
