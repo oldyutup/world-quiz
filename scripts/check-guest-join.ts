@@ -33,7 +33,7 @@ import {
   clearGuestMatchIds,
 } from "../src/lib/guestSession";
 import { INVITE_PARAM, modeFromInviteParam } from "../src/lib/inviteLink";
-import { parseInviteFromUrl } from "../src/lib/deepLink";
+import { parseInviteFromUrl, createLaunchDedupe } from "../src/lib/deepLink";
 // auth.ts bunu re-export eder; saf modülden import ediyoruz ki Node altında
 // supabase/PNG bağımlılık zinciri yüklenmesin.
 import { validateUsername } from "../src/lib/displayName";
@@ -387,8 +387,23 @@ eq(parseInviteFromUrl("https://torble.com/?duel=AB12C3XXXX"),
    "6'dan uzun kod ilk 6 karaktere kırpılır (taşma yok)");
 
 const deepLinkSrc = readFileSync(join(here, "../src/lib/deepLink.ts"), "utf8");
-ok(/lastHandled/.test(deepLinkSrc),
-   "aynı bağlantı iki kez işlenmez (cold-start + appUrlOpen tekilleştirmesi)");
+
+/* Açılış tekilleştirmesi artık SEMBOL ADIYLA değil DAVRANIŞLA denetleniyor.
+ * 88db19e, modül ömrü boyunca tutulan ve hiç sıfırlanmayan `lastHandled`
+ * anahtarını kaldırıp yerine tek-atışlık `createLaunchDedupe()` koydu (eski
+ * tasarım, kullanıcı bir süre sonra AYNI linke gerçekten tekrar dokunduğunda
+ * olayı sessizce yutuyordu). Buradaki eski `/lastHandled/` grep'i davranış
+ * doğruyken bozuluyordu. Tam matris: scripts/check-invite-admission.ts. */
+{
+  const dedupe = createLaunchDedupe();
+  const launched = "https://torble.com/?duel=AB12C3";
+  dedupe.noteLaunch(launched); // cold start: getLaunchUrl işledi
+  ok(dedupe.shouldHandleEvent(launched) === false,
+     "aynı bağlantı iki kez işlenmez (cold-start + appUrlOpen tekilleştirmesi)");
+  dedupe.noteBackgrounded();
+  ok(dedupe.shouldHandleEvent(launched) === true,
+     "arka plandan sonra aynı linke GERÇEK ikinci dokunuş işlenir (koruma sarkmaz)");
+}
 ok(/isTrustedInviteHost/.test(deepLinkSrc), "host allowlist uygulanıyor");
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -629,8 +644,18 @@ const knGame = readFileSync(join(here, "../src/modes/korNokta/KorNoktaGame.tsx")
 ok(/<GuestEndPrompt/.test(knGame), "Kör Nokta sonuç ekranında hesap oluşturma bölümü var");
 
 // App yönlendirmesi: misafir Kör Nokta davetinde KAYIT ekranına zorlanmamalı.
-ok(/setGuestJoin\(\{ mode: "korNokta", code: clean \}\)/.test(appSrc),
+// 88db19e dalı `admitInvite` (aktif oda önceliği + sunucu doğrulaması) içine
+// aldı ve yerel değişkeni `clean` → `knClean` yaptı; SÖZLEŞME değişmedi.
+// Bu yüzden yerel değişken ADI değil, dalın yaptığı iş denetleniyor.
+const knInviteBranch =
+  appSrc.split("if (korNoktaCode) {")[1]?.split("for (const link of ONLINE_INVITE_LINKS)")[0] ?? "";
+ok(knInviteBranch.length > 0, "App.tsx'te Kör Nokta davet dalı bulunabiliyor");
+ok(/setGuestJoin\(\{ mode: "korNokta", code: \w+ \}\)/.test(knInviteBranch),
    "Kör Nokta davet linki misafiri nick ekranına götürüyor (login zorunlu değil)");
+ok(/setPendingGuestJoin\("korNokta", \w+\)/.test(knInviteBranch),
+   "misafir daveti çıpalanıyor (OAuth redirect / cold-start'ta kod kaybolmaz)");
+ok(/admitInvite\("korNokta", \w+/.test(knInviteBranch),
+   "Kör Nokta daveti admitInvite'tan geçiyor (aktif oda önceliği korunuyor)");
 ok(!/setAuthPromptReason\("kornokta-invite"\)/.test(appSrc),
    "eski 'Kör Nokta login zorunlu' davet dalı KALDIRILDI");
 // Slot devri artık EKRANDAN türetilmiyor: web OAuth redirect'i sayfayı baştan
