@@ -146,6 +146,12 @@ export function tallyVotes(
 interface SubscribeArgs {
   roomId:   string;
   isHost:   boolean;
+  /**
+   * GÜVENLİK (T-02): gelen bir broadcast'in adı geçen oyuncusu, DB'den bilinen
+   * (conquest_players) oyuncu listesinde var mı?  Sağlanmazsa doğrulama
+   * atlanır (eski davranış) — çağıranın vermesi beklenir.
+   */
+  isKnownPlayer?: (playerId: string) => boolean;
   /** Read latest local snapshot.  Used so the host can respond to a
    *  newcomer's snapshot request without us holding the state. */
   getState: () => ConquestLobbyBroadcastState;
@@ -170,33 +176,79 @@ export interface ConquestLobbyBroadcastHandle {
 export function subscribeLobbyBroadcast(
   args: SubscribeArgs,
 ): ConquestLobbyBroadcastHandle {
-  const { roomId, isHost, getState, handlers } = args;
+  const { roomId, isHost, isKnownPlayer, getState, handlers } = args;
 
   const channel: RealtimeChannel = supabase.channel(
     `conquest-lobby:${roomId}`,
     { config: { broadcast: { self: false } } },
   );
 
+  /* ── GÜVENLİK (T-02) — bu kanal PUBLIC'tir ────────────────────────────────
+     `conquest-lobby:<roomId>` konusuna, publishable key'i taşıyan herkes
+     katılıp payload yayınlayabilir; payload'da gönderen kimliği YOKTUR.
+     Kanalı `private: true` yapmak çözüm DEĞİLDİR — `private` bayrağını istemci
+     kendi seçer, saldırgan aynı konuya `private:false` ile katılmaya devam
+     eder (canlı probe ile doğrulandı). Bu yüzden kanalı kapatmak yerine
+     PAYLOAD'A GÜVENİ AZALTIYORUZ.
+
+     Oyun/territory/skor state'i bu kanaldan GEÇMEZ (o, private `conquest:`
+     sinyal kanalı + RPC otoritesindedir) — burada yalnız lobi state'i vardır:
+     bonusDistribution, votes, readyPlayerIds.
+
+     Üç kapı — HEPSİ "host lobi state'inin sahibidir" ilkesine dayanır:
+       1) snapshot → HOST'ta yok sayılır. Host zaten kaynak-otoritedir: yalnız
+          non-host'lar `request_snapshot` gönderir (aşağıdaki subscribe), host
+          ise kendi state'ini yayınlar. Host'un dışarıdan toplu state alması
+          için MEŞRU bir durum yoktur → dışarıdan state ezme host'ta kapanır.
+          Non-host'lar host'un snapshot'ını uygulamaya DEVAM eder; host maç içi
+          oy-kapasitesi zorlamasında (ConquestMode:627) ve mod değişiminde
+          (:1128) snapshot yeniden yayınladığı için bu akış BOZULMAZ.
+       2) mode_change → HOST'ta yok sayılır. Ayarın sahibi host'tur ve bu değer
+          başlayan maça giriyor (ConquestMode: lobbyExtra → settings), yani
+          dışarıdan çevrilmesi gerçek bir maç-etkisiydi. Non-host'lar host'un
+          yayınını uygulamaya devam eder → görünür davranış aynı kalır.
+       3) vote/ready/clear_votes → adı geçen playerId DB'den bilinen oyuncu
+          listesinde değilse yok sayılır (hayalet oyuncu enjeksiyonu kapanır).
+
+     KALAN KABUL EDİLEN RİSK: bir non-host istemcinin YEREL lobi görünümü hâlâ
+     karıştırılabilir (kendi ekranında yanlış oy/mod görebilir). Maça giren
+     ayarı host taşıdığı ve maç state'i RPC otoritesinde olduğu için bu, maç
+     bütünlüğüne ULAŞMAZ. Tam eliminasyon lobi state'ini DB'ye taşımayı
+     gerektirir → bilinçli olarak sonraki tura ertelendi.
+     ──────────────────────────────────────────────────────────────────────── */
+  const knownPlayer = (playerId: unknown): boolean => {
+    if (typeof playerId !== "string" || playerId.length === 0) return false;
+    // Doğrulayıcı verilmediyse eski davranış korunur (regresyon yok).
+    return isKnownPlayer ? isKnownPlayer(playerId) : true;
+  };
+
   channel
     .on("broadcast", { event: "snapshot" }, ({ payload }) => {
       const p = payload as SnapshotPayload | undefined;
-      if (p?.state) handlers.onSnapshot(p.state);
+      if (!p?.state) return;
+      if (isHost) return;            // (1) host kendi state'ini dışarıdan almaz
+      handlers.onSnapshot(p.state);
     })
     .on("broadcast", { event: "mode_change" }, ({ payload }) => {
       const p = payload as ModeChangePayload | undefined;
-      if (p) handlers.onModeChange(p.bonusDistribution);
+      if (!p) return;
+      if (isHost) return;            // (2) host kendi ayarını dışarıdan almaz
+      handlers.onModeChange(p.bonusDistribution);
     })
     .on("broadcast", { event: "vote_toggle" }, ({ payload }) => {
       const p = payload as VoteTogglePayload | undefined;
-      if (p) handlers.onVoteToggle(p);
+      if (!p || !knownPlayer(p.playerId)) return;   // (3)
+      handlers.onVoteToggle(p);
     })
     .on("broadcast", { event: "clear_votes" }, ({ payload }) => {
       const p = payload as ClearVotesPayload | undefined;
-      if (p) handlers.onClearVotes(p.playerId);
+      if (!p || !knownPlayer(p.playerId)) return;   // (3)
+      handlers.onClearVotes(p.playerId);
     })
     .on("broadcast", { event: "ready_for_next" }, ({ payload }) => {
       const p = payload as ReadyForNextPayload | undefined;
-      if (p) handlers.onReadyForNext(p);
+      if (!p || !knownPlayer(p.playerId)) return;   // (3)
+      handlers.onReadyForNext(p);
     })
     .on("broadcast", { event: "clear_ready" }, () => {
       handlers.onClearReady();

@@ -346,9 +346,35 @@ export default function LobbyChat({
       });
   }, [roomCode, minCreatedAt]);
 
-  /* ── 2) Realtime: HEM broadcast HEM postgres_changes ──
-     Broadcast: anında çalışır, replication ayarı gerektirmez.
-     postgres_changes: yedek + diğer tab'tan açılan istemciler için.
+  /* ── 2) Realtime: YALNIZ postgres_changes ──
+     GÜVENLİK (T-01): broadcast "msg" ALICISI BİLİNÇLİ OLARAK KALDIRILDI.
+     `chat-<roomCode>` PUBLIC bir Realtime konusudur — publishable key'i (her
+     bundle'da var) taşıyan HERKES, giriş yapmamış olsa bile bu konuya katılıp
+     istediği payload'ı yayınlayabilir. Payload'da gönderen kimliği YOKTUR:
+     `player_name` tamamen saldırganın kontrolündedir. Alıcı tarafta payload'a
+     güvenmek, `*_send_message` RPC'lerinin BİLE BİLE kurduğu korumayı
+     (player_name istemciden ALINMAZ, sunucuda `<mode>_players.name`'den
+     türetilir) atlatıyordu; ayrıca DB'ye satır yazılmadığı için antispam,
+     `assert_profile_moderation_active` ve rapor/moderasyon yolu da devre dışı
+     kalıyordu. Blok listesi ada göre çalıştığından saldırgan adı değiştirerek
+     bloğu da aşabiliyordu.
+
+     Kanalı `private: true` yapmak ÇÖZÜM DEĞİLDİR: `private` bayrağını istemci
+     kendi seçer; saldırgan aynı konuya `private:false` ile katılmaya devam
+     eder (canlı probe ile doğrulandı). Bu yüzden çözüm "kanalı kapatmak"
+     değil, "payload'a hiç güvenmemek"tir.
+
+     Mesajlar artık YALNIZ iki server-otoriter kaynaktan gelir:
+       (a) ilk DB geçmişi yüklemesi (yukarıdaki 1. adım)
+       (b) postgres_changes INSERT — RLS destekli, gerçek satır
+     `duel_messages`'a INSERT/UPDATE/DELETE anon+authenticated'dan geri
+     alınmıştır (20260615120000) → her satır yalnız SECURITY DEFINER
+     `*_send_message` RPC'sinden doğar ve `player_name` sunucuda türetilir.
+
+     GÖNDERİM (channel.send) BİLEREK KORUNDU: sahadaki eski App Store
+     binary'leri hâlâ broadcast'i dinliyor; göndermeye devam etmek onların
+     anlık teslimini bozmaz. Yeni istemci gelen broadcast'i render ETMEZ,
+     bu yüzden gönderimi sürdürmek yeni istemci için bir risk taşımaz.
   */
   useEffect(() => {
     const chan = supabase.channel(`chat-${roomCode}`, {
@@ -356,10 +382,6 @@ export default function LobbyChat({
     });
 
     chan
-      .on("broadcast", { event: "msg" }, payload => {
-        const msg = payload.payload as DuelMessage;
-        addMessage(msg);
-      })
       .on(
         "postgres_changes",
         {

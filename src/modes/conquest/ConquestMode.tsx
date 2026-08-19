@@ -189,6 +189,11 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
   const [lobbyExtra, setLobbyExtra] = useState<ConquestLobbyBroadcastState>(EMPTY_LOBBY_BROADCAST_STATE);
   const lobbyExtraRef    = useRef<ConquestLobbyBroadcastState>(lobbyExtra);
   useEffect(() => { lobbyExtraRef.current = lobbyExtra; }, [lobbyExtra]);
+  // GÜVENLİK (T-02): public lobi kanalından gelen playerId'leri DB'den bilinen
+  // oyuncu listesine karşı doğrulamak için. Ref, realtime callback'lerindeki
+  // stale-closure tuzağını önler (aynı desen: lobbyExtraRef).
+  const playerRowsRef    = useRef<ConquestPlayerRow[]>(playerRows);
+  useEffect(() => { playerRowsRef.current = playerRows; }, [playerRows]);
   const lobbyChannelRef  = useRef<ConquestLobbyBroadcastHandle | null>(null);
 
   // Refs that mirror state — read inside realtime callbacks where stale
@@ -544,6 +549,12 @@ export default function ConquestMode({ initialPhase, profile, onHome, autoQuickM
     const handle = subscribeLobbyBroadcast({
       roomId:   roomRow.id,
       isHost:   !!me?.is_host,
+      // GÜVENLİK (T-02): lobi kanalı PUBLIC. Gelen vote/ready/clear_votes
+      // olaylarının adı geçen oyuncusu, DB'den (conquest_players) bilinen
+      // listede yoksa yok sayılır. Ref üzerinden okunur → liste değiştikçe
+      // kanal yeniden kurulmaz (effect deps'i bilinçli olarak dar).
+      isKnownPlayer: (playerId) =>
+        playerRowsRef.current.some(p => p.id === playerId),
       getState: () => lobbyExtraRef.current,
       handlers: {
         onSnapshot:    (state) => setLobbyExtra(state),
