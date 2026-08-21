@@ -29,6 +29,7 @@ import { useInviteJoin } from "../../lib/useInviteJoin";
 import { getSyncedNowMs, initServerClockSync } from "../../lib/serverClock";
 import { readStoredHomeTheme, getThemeBackgroundStyle } from "../../lib/themeBackgrounds";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
+import { useMobileSurface } from "../../lib/useIsMobile";
 import { useSocialOptional } from "../SocialContext";
 import { buildKeyToTopoId } from "../RouteGame";
 import RouteDuelLobby from "./RouteDuelLobby";
@@ -928,13 +929,17 @@ export default function RouteDuelGame({
   // yine kullanıcının aktif ana ekran temasından gelir.
   const homeTheme = readStoredHomeTheme();
   const isPreGamePhase = phase !== "playing" && phase !== "finished";
+  // Telefonda oyun sırasında üstteki iki panelden ilki yalnız çıkış
+  // düğmesine iner; kurulum/lobide oda kodu paylaşılan şey olduğu için
+  // tam header korunur. Masaüstünde her fazda eskisi gibi.
+  const slimHeader = useMobileSurface() && phase === "playing";
   const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
   const themeDataAttr = isPreGamePhase ? "dark-space" : undefined;
 
   return (
     <div className="app duel-screen rd-screen" style={themeBgStyle} data-theme={themeDataAttr}>
       {/* ════════ HEADER ════════ */}
-      <div className="duel-header">
+      <div className={"duel-header" + (slimHeader ? " rd-header--slim" : "")}>
         <button
           className="back-btn"
           onClick={() => {
@@ -952,19 +957,28 @@ export default function RouteDuelGame({
           <span className="back-label">Menü</span>
         </button>
 
-        <div className="duel-header-center">
-          <span className="duel-mode-label">🧭 Rota · Online 1v1</span>
-          {room && phase !== "setup" && (
-            <>
-              <span className="duel-code-badge">#{room.code}</span>
-              <span className="duel-region-badge">
-                {roundsLabel(room.total_rounds)} · {routeLengthLabel(room.route_length)}
-              </span>
-            </>
-          )}
-        </div>
+        {/* Mod etiketi + oda kodu + tur/uzunluk rozeti: telefonda oyun
+            sırasında düşer. Üç rozet 390px'de ikinci satıra sarıyor ve
+            klavyenin zaten sıkıştırdığı haritadan ~40px alıyordu; hiçbiri
+            oyun sırasında karar verdirmiyor. slimHeader false olan her
+            durumda (masaüstü, kurulum, lobi, sonuç) markup aynı. */}
+        {!slimHeader && (
+          <>
+            <div className="duel-header-center">
+              <span className="duel-mode-label">🧭 Rota · Online 1v1</span>
+              {room && phase !== "setup" && (
+                <>
+                  <span className="duel-code-badge">#{room.code}</span>
+                  <span className="duel-region-badge">
+                    {roundsLabel(room.total_rounds)} · {routeLengthLabel(room.route_length)}
+                  </span>
+                </>
+              )}
+            </div>
 
-        <div style={{ width: 80 }} />
+            <div style={{ width: 80 }} />
+          </>
+        )}
       </div>
 
       {/* ════════ SETUP ════════ */}

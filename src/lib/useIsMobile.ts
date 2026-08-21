@@ -14,6 +14,8 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { Capacitor } from "@capacitor/core";
+import { isMobileSurface } from "./screenPolicy";
 
 const PORTRAIT_QUERY =
   "(max-width: 600px) and (orientation: portrait), (max-width: 600px) and (min-height: 501px)";
@@ -61,4 +63,25 @@ export function useIsMobile(): UseIsMobileResult {
     isMobile:    snapshot !== "desktop",
     orientation: snapshot === "mobile-landscape" ? "landscape" : "portrait",
   };
+}
+
+/** Capacitor native shell, resolved once at module eval — same guard as the
+ *  IS_NATIVE_APP const in App.tsx (a missing bridge in dev/SSR must not throw). */
+const IS_NATIVE_APP = (() => {
+  try { return Capacitor.isNativePlatform(); } catch { return false; }
+})();
+
+/**
+ * "Am I on a phone?" as a plain boolean.
+ *
+ * No new detection: this is screenPolicy's existing `isMobileSurface()`
+ * predicate with its two inputs already filled in — the native shell (any
+ * viewport) OR the useIsMobile viewport threshold. Components that only need
+ * the boolean (map overlays, the Rota play header) use this instead of
+ * assembling an AppSurface by hand; the rule itself still lives in exactly one
+ * place. Desktop web is false in both terms, so every caller is a no-op there.
+ */
+export function useMobileSurface(): boolean {
+  const { isMobile } = useIsMobile();
+  return isMobileSurface({ isNativeApp: IS_NATIVE_APP, isMobileViewport: isMobile });
 }

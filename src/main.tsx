@@ -62,9 +62,16 @@ const ConquestMobileDevPage =
     ? lazy(() => import("./dev/ConquestMobileDevPage"))
     : null;
 
+// Dev-only telefon harita etkileşimi harness'i (Çark tıklaması, Rota kamerası,
+// Rota oyun ekranı yerleşimi). Sahte state; ağ yok. Aynı koruma: prod'a girmez.
+const MobileMapDevPage =
+  import.meta.env.DEV && window.location.pathname === "/mobile-map-dev"
+    ? lazy(() => import("./dev/MobileMapDevPage"))
+    : null;
+
 const DevPage =
   History360TestPage ?? KorNoktaRealTestPage ?? PanoramaTestPage
-  ?? CizimTestDevPage ?? ConquestMobileDevPage;
+  ?? CizimTestDevPage ?? ConquestMobileDevPage ?? MobileMapDevPage;
 
 // Herkese açık hukuki/destek sayfaları (/tr/privacy, /en/support, /privacy …).
 // Üretimde de çalışır (dev sayfalarının aksine env-gate YOK). Eşleşme yoksa

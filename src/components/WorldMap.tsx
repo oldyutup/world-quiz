@@ -7,6 +7,7 @@ import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { FeatureCollection, Geometry, Feature } from "geojson";
 import { TOPOID_TO_DISPLAY } from "../data/countries";
+import { useMobileSurface } from "../lib/useIsMobile";
 
 /* ─────────────────────────────────────────────────
    SHARED TOPO CACHE
@@ -71,6 +72,9 @@ interface MapProps {
 
 interface ComputedFeature {
   id: string; d: string; area: number; cx: number; cy: number; display: string;
+  /** Projected bounds of the feature's dominant polygon — see dominantBounds().
+   *  Only populated by RouteMapView, the one view that frames a single country. */
+  bounds?: [[number, number], [number, number]];
 }
 
 const MIN_LABEL = 120;
@@ -147,6 +151,22 @@ const LABEL_OFFSET: Record<string, [number, number]> = {
 const ZOOM_MIN  = 1;
 const ZOOM_MAX  = 12;
 const ZOOM_STEP = 1.4;
+
+/**
+ * Travel allowed between pointerdown and pointerup before a gesture counts as
+ * a pan rather than a country tap — CSS px, Manhattan (|dx| + |dy|).
+ *
+ * A mouse keeps the original 5 px, so desktop behaviour is byte-for-byte what
+ * it was. A finger is not a cursor: its contact patch shifts by several pixels
+ * as it presses and lifts, so a deliberate tap on an iPhone routinely reports
+ * 6-12 px of travel. At 5 px a large share of real taps were being discarded
+ * as drags — that is why the Çark map felt unclickable on device. 14 px still
+ * sits far below a drag the user can actually see (tens of px), so genuine
+ * pans are not reclassified as clicks.
+ */
+function tapSlop(pointerType: string): number {
+  return pointerType === "mouse" ? 5 : 14;
+}
 
 /** Keyboard zoom presets — must stay within [ZOOM_MIN, ZOOM_MAX].
  *  Keys 0 and 1 are handled separately as full resets to the world view.
@@ -397,6 +417,70 @@ function fitRegion(
   return { k, tx: w / 2 - cx * k, ty: h / 2 - cy * k };
 }
 
+/**
+ * Projected bounds of a feature's DOMINANT polygon.
+ *
+ * geoPath.bounds() on a country boxes ALL of its parts, so France reaches
+ * French Guiana, the USA reaches Hawaii, Norway reaches Svalbard. Framing a
+ * camera on that box zooms out to half the planet — measured on this data,
+ * France's full box is 60.5 px wide against 10.7 px for the mainland, a 5.6x
+ * error. That is exactly the "unrelated region" symptom Rota showed on device.
+ *
+ * Each of those countries has one polygon carrying nearly all of its area, and
+ * that mainland is what a player pictures when they read "Bulgaristan ile
+ * komşu ülke yaz", so we measure that polygon alone. Single-polygon countries
+ * (the majority) take the cheap path unchanged.
+ */
+type GeoPathFn = ReturnType<typeof geoPath>;
+function dominantBounds(pg: GeoPathFn, f: Feature<Geometry>): [[number, number], [number, number]] {
+  const g = f.geometry;
+  if (g && g.type === "MultiPolygon") {
+    let best: [[number, number], [number, number]] | null = null;
+    let bestArea = -1;
+    for (const coordinates of g.coordinates) {
+      const poly = { type: "Polygon" as const, coordinates };
+      const a = pg.area(poly);
+      if (a > bestArea) { bestArea = a; best = pg.bounds(poly); }
+    }
+    if (best) return best;
+  }
+  return pg.bounds(f);
+}
+
+/** How much wider than the country itself the focus frame should be. 2.8 puts
+ *  the country across roughly a third of the frame, so the ring of neighbours
+ *  a Rota player has to choose from is always on screen. */
+const FOCUS_CONTEXT  = 2.8;
+/** Ceiling for the focus camera. Small countries would otherwise pin to
+ *  ZOOM_MAX and leave the player staring at a single border with no headroom
+ *  left to pinch in. At 9, Bulgaria frames ~49 deg lon x 30 deg lat — the
+ *  Balkans plus Italy, Türkiye, Ukraine and Poland. */
+const FOCUS_ZOOM_MAX = 9;
+
+/**
+ * Transform that frames ONE country plus its surroundings.
+ *
+ * Only the current country is ever passed in: framing the target as well would
+ * hand the player the answer, so the camera never sees it.
+ */
+function fitCountry(
+  b: [[number, number], [number, number]], w: number, h: number,
+): { k: number; tx: number; ty: number } | null {
+  const bw = b[1][0] - b[0][0];
+  const bh = b[1][1] - b[0][1];
+  if (!isFinite(bw) || !isFinite(bh) || bw <= 0 || bh <= 0) return null;
+  const cx = (b[0][0] + b[1][0]) / 2;
+  const cy = (b[0][1] + b[1][1]) / 2;
+  // Never zoom out past the framing the map opens on: a current country the
+  // size of Russia should settle at the default view, not shrink below it.
+  const floor = initialTransform(w, h).k;
+  const k = clamp(
+    Math.min(w / (bw * FOCUS_CONTEXT), h / (bh * FOCUS_CONTEXT)),
+    floor, FOCUS_ZOOM_MAX,
+  );
+  return { k, tx: w / 2 - cx * k, ty: h / 2 - cy * k };
+}
+
 export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeIds, resetKey, region, onCountryClick, wrongId, preserveUserView }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
@@ -412,6 +496,9 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
   const [dims, setDims]         = useState({ w: 0, h: 0 });
   const [loading, setLoading]   = useState(true);
   const [mapTheme, setMapTheme] = useMapTheme();
+  // Phone surface (native shell or phone viewport). Drives the map overlays
+  // only — every desktop branch below is untouched.
+  const isMobileMap = useMobileSurface();
 
   const xfRef   = useRef({ k: 1, tx: 0, ty: 0 });
   const [xf, setXf] = useState({ k: 1, tx: 0, ty: 0 });
@@ -639,7 +726,7 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
     if (!wasDragRef.current) {
       const ddx = Math.abs(e.clientX - downPosRef.current.x);
       const ddy = Math.abs(e.clientY - downPosRef.current.y);
-      if (ddx + ddy > 5) wasDragRef.current = true;
+      if (ddx + ddy > tapSlop(e.pointerType)) wasDragRef.current = true;
     }
     const { k } = xfRef.current;
     const { tx, ty } = clampPan(
@@ -704,7 +791,9 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
 
   const themeDef = MAP_THEMES[mapTheme];
   return (
-    <div ref={containerRef} className={`map-container-inner map-theme-${mapTheme}`} style={themeDef.vars as React.CSSProperties}>
+    <div ref={containerRef}
+      className={`map-container-inner map-theme-${mapTheme}${isMobileMap ? " is-mobile-map" : ""}`}
+      style={themeDef.vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Dünya haritası"
@@ -753,12 +842,22 @@ export default function WorldMap({ guessedISOs, lastGuessed, showLabels, activeI
             })}
         </g>
       </svg>
-      <div className="zoom-controls">
-        <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k * ZOOM_STEP)} aria-label="Yakınlaştır">+</button>
-        <div className="zoom-divider" />
-        <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
-      </div>
-      <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      {/* Zoom buttons and the drag/scroll hint are desktop-only. On a phone
+          they sat as 44x44 hit targets in the map's bottom-left corner, where
+          document.elementFromPoint() in onPU resolved taps to the button
+          instead of a country path, and their "+"/"-" text was long-pressable
+          into the iOS selection overlay. Pinch and drag cover both on touch,
+          and the hint's "Scroll: zoom" advice has no meaning there. */}
+      {!isMobileMap && (
+        <>
+          <div className="zoom-controls">
+            <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k * ZOOM_STEP)} aria-label="Yakınlaştır">+</button>
+            <div className="zoom-divider" />
+            <button className="zoom-btn" onClick={() => applyZoom(xfRef.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
+          </div>
+          <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+        </>
+      )}
       {themeDef.attribution && <div className="map-attribution">{themeDef.attribution}</div>}
       <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>
@@ -905,6 +1004,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   const [dims2, setDims2]         = useState({ w: 0, h: 0 });
   const [loading2, setLoading2]   = useState(true);
   const [mapTheme, setMapTheme]   = useMapTheme();
+  const isMobileMap = useMobileSurface();
 
   const xf2Ref  = useRef({ k: 1, tx: 0, ty: 0 });
   const [xf2, setXf2] = useState({ k: 1, tx: 0, ty: 0 });
@@ -915,6 +1015,11 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
   dims2Ref.current = dims2;
   const pointers2Ref = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinch2Ref = useRef<{ initialDist: number; initialK: number; initialTx: number; initialTy: number } | null>(null);
+  // Camera-follow state. `userMoved2Ref` releases auto-follow the moment the
+  // player takes the camera over by hand; `lastFocus2Ref` is the country the
+  // camera is currently framing, so a new one always re-fits.
+  const userMoved2Ref = useRef(false);
+  const lastFocus2Ref = useRef<string>("");
 
   const measure2 = useCallback(() => {
     const el = containerRef.current;
@@ -950,7 +1055,12 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
       if (!d) return;
       const area     = pg.area(f);
       const [cx, cy] = pg.centroid(f);
-      next.push({ id, d, area, cx: isNaN(cx) ? 0 : cx, cy: isNaN(cy) ? 0 : cy, display: TOPOID_TO_DISPLAY[id] ?? "" });
+      next.push({
+        id, d, area,
+        cx: isNaN(cx) ? 0 : cx, cy: isNaN(cy) ? 0 : cy,
+        display: TOPOID_TO_DISPLAY[id] ?? "",
+        bounds: dominantBounds(pg, f),
+      });
     });
     setComputed2(next);
   }, [loading2, dims2]);
@@ -965,6 +1075,41 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     setXf2(init);
   }, [dims2]);
 
+  /* ── Mobile focus camera ──────────────────────────────────────────────
+     The player is asked for a neighbour of the CURRENT country, so that is
+     what the camera frames — the target is never fed in, or the framing would
+     leak the answer. Desktop is excluded: its map is wide enough that the
+     world view already shows the region, and its behaviour must not change.
+
+     Fires on a new current country (every accepted move and every new round),
+     and on a dims change — the keyboard opening or closing resizes the map
+     area, and the framing has to be recomputed against what is actually
+     visible. That second trigger is suppressed once the player has panned or
+     pinched, so the camera never fights them; the next country takes it back. */
+  const focusTopoId = keyToTopoId[routeKeys[routeKeys.length - 1] ?? startKey] ?? "";
+  useEffect(() => {
+    if (!isMobileMap) return;
+    if (dims2.w === 0 || computed2.length === 0 || !focusTopoId) return;
+    const isNewCountry = lastFocus2Ref.current !== focusTopoId;
+    if (!isNewCountry && userMoved2Ref.current) return;
+
+    // Largest feature wins for ids shared by several polygons (W. Sahara is
+    // folded into Morocco's id, Somaliland into Somalia's).
+    let cf: ComputedFeature | undefined;
+    for (const c of computed2) {
+      if (c.id !== focusTopoId || !c.bounds) continue;
+      if (!cf || c.area > cf.area) cf = c;
+    }
+    if (!cf?.bounds) return;
+    const fit = fitCountry(cf.bounds, dims2.w, dims2.h);
+    if (!fit) return;
+
+    lastFocus2Ref.current = focusTopoId;
+    userMoved2Ref.current = false;
+    xf2Ref.current = fit;
+    setXf2({ ...fit });
+  }, [isMobileMap, focusTopoId, computed2, dims2]);
+
   /* zoom */
   const applyZoom2 = useCallback((newK: number, focalX?: number, focalY?: number) => {
     const old = xf2Ref.current;
@@ -974,6 +1119,7 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
     const ratio = k / old.k;
     const { tx, ty } = clampPan(fx - ratio*(fx-old.tx), fy - ratio*(fy-old.ty), k, dims2.w, dims2.h);
     const next  = { k, tx, ty };
+    userMoved2Ref.current = true;
     xf2Ref.current = next; setXf2({ ...next });
   }, [dims2]);
 
@@ -1038,10 +1184,17 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
       const r = newK / pinch2Ref.current.initialK;
       const { tx, ty } = clampPan(fx - r*(fx - pinch2Ref.current.initialTx), fy - r*(fy - pinch2Ref.current.initialTy), newK, dims2.w, dims2.h);
       const next = { k: newK, tx, ty };
+      userMoved2Ref.current = true;
       xf2Ref.current = next; setXf2({ ...next });
       return;
     }
     if (!drag2Ref.current) return;
+    // Same slop as a country tap: a finger resting on the map jitters a few
+    // px, and that must not read as "the player took over the camera".
+    if (Math.abs(e.clientX - drag2Ref.current.sx) + Math.abs(e.clientY - drag2Ref.current.sy)
+        > tapSlop(e.pointerType)) {
+      userMoved2Ref.current = true;
+    }
     const { k } = xf2Ref.current;
     const { tx, ty } = clampPan(
       drag2Ref.current.tx0 + e.clientX - drag2Ref.current.sx,
@@ -1087,7 +1240,9 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
 
   const themeDef = MAP_THEMES[mapTheme];
   return (
-    <div ref={containerRef} className={`map-container-inner map-theme-${mapTheme}`} style={themeDef.vars as React.CSSProperties}>
+    <div ref={containerRef}
+      className={`map-container-inner map-theme-${mapTheme}${isMobileMap ? " is-mobile-map" : ""}`}
+      style={themeDef.vars as React.CSSProperties}>
       <svg ref={svgRef} viewBox={`0 0 ${dims2.w} ${dims2.h}`} className="world-svg"
         style={{ width: "100%", height: "100%", cursor: drag2Ref.current ? "grabbing" : "grab", touchAction: "none" }}
         aria-label="Rota haritası"
@@ -1145,13 +1300,19 @@ export function RouteMapView({ routeKeys, startKey, targetKey, keyToTopoId }: Ro
         </g>
       </svg>
 
-      {/* Zoom controls */}
-      <div className="zoom-controls">
-        <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k * ZOOM_STEP)} aria-label="Yakınlaştır">+</button>
-        <div className="zoom-divider" />
-        <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
-      </div>
-      <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+      {/* Zoom controls — desktop only; see the same guard in WorldMap. On a
+          phone they ate map height the keyboard had already squeezed, and
+          pinch/drag cover both. */}
+      {!isMobileMap && (
+        <>
+          <div className="zoom-controls">
+            <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k * ZOOM_STEP)} aria-label="Yakınlaştır">+</button>
+            <div className="zoom-divider" />
+            <button className="zoom-btn" onClick={() => applyZoom2(xf2Ref.current.k / ZOOM_STEP)} aria-label="Uzaklaştır">&#8722;</button>
+          </div>
+          <div className="map-hint">Sürükle: hareket &nbsp;|&nbsp; Scroll: zoom</div>
+        </>
+      )}
       {themeDef.attribution && <div className="map-attribution">{themeDef.attribution}</div>}
       <MapThemePicker active={mapTheme} onChange={setMapTheme} />
     </div>

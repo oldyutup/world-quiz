@@ -1107,6 +1107,23 @@ a.mode-card-btn { text-decoration: none; }
   .map-container-inner .map-theme-toggle svg { width: 22px; height: 22px; }
 }
 
+/* Phone map surface. WorldMap / RouteMapView tag their container with
+   `is-mobile-map` from the shared useMobileSurface() helper, so this is the
+   same predicate the JS uses — no second breakpoint to keep in sync.
+
+   Two things are wanted here and only here: a long press anywhere over the
+   map must not summon the iOS selection / callout overlay (players hold a
+   finger on a country while they think, and the "+"/"-" glyphs were prime
+   selection bait), and tapping a country must not flash the grey WebKit tap
+   highlight. Both properties inherit, so the SVG and the overlays that sit on
+   it are covered. Desktop never receives the class. */
+.map-container-inner.is-mobile-map {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ─── Main-menu background theme picker (reuses .map-theme-* visuals) ─── */
 .home-theme-picker {
   position: fixed;
@@ -27762,6 +27779,44 @@ html.is-native-app .social-bar .notif-bell { display: none; }
 }
 .rd-result-actions-row .wheel-ghost-btn {
   width: 100%;
+}
+
+/* ── Telefon + oyun: ince çıkış şeridi ──
+   İlk header'ın içinden mod etiketi/oda kodu/tur rozeti React tarafında
+   düşürülür (bkz. RouteDuelGame slimHeader); geriye kalan tek çocuk geri
+   düğmesi olduğu için dikey dolgu da inceltilir. Toplam ~50px → ~40px, ve
+   390px'de ikinci satıra sarma tamamen ortadan kalkar. */
+.duel-header.rd-header--slim {
+  padding: 3px 8px;
+  justify-content: flex-start;
+}
+
+/* ── Telefon: klavye açıkken haritaya azami yükseklik ──
+   Capacitor Keyboard resize:'native' klavye açılınca webview'i küçültür.
+   .rd-play-screen içinde .rd-hud ve .route-bottom `flex:0 0 auto`, harita
+   `flex:1 1 0` → kaybedilen yüksekliğin TAMAMINI harita öder. Ziyaret
+   zinciri sarmayla iki satıra kadar büyüyüp 80px'e çıkabiliyordu; telefonda
+   tek satıra sabitlenip yatay kaydırılır. Hemen üstündeki "N adım · Şu an:
+   X" satırı mevcut ülkeyi zaten yazıyor, yani bilgi kaybı yok.
+   Yalnız .rd-play-screen: çevrimdışı Rota (.route-screen) etkilenmez. */
+@media (max-width: 600px), (max-height: 500px) and (orientation: landscape) {
+  .rd-play-screen .route-bottom { gap: 4px; padding: 6px 10px 8px; }
+  .rd-play-screen .route-path-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    min-height: 0;
+    max-height: none;
+    padding: 4px 8px;
+  }
+  .rd-play-screen .route-action-row { min-height: 0; }
+}
+
+/* Native kabukta alt panel home indicator'ın üstünde kalır. iOS klavye
+   açıkken bu inset'i 0'a çeker, yani tam da alana en çok ihtiyaç duyulan
+   anda dolgu kendiliğinden kaybolur. Web'de env() 0 → değişiklik yok. */
+html.is-native-app .rd-play-screen .route-bottom {
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Dar ekran (390/430px) — HUD sarar, taşma yok ── */
