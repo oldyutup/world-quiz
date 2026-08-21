@@ -45,6 +45,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildInviteUrl } from "../../lib/inviteLink";
 import { useRoomExitHandler } from "../../lib/roomExit";
+import { resolveKnLeaveNotices, knLeaveNoticeText } from "./korNoktaLeaveNotice";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import LobbyChat from "../../components/LobbyChat";
 import type { Profile } from "../../lib/auth";
 import { useInviteJoin } from "../../lib/useInviteJoin";
@@ -95,12 +97,26 @@ const TEAM_SLOTS = 5;
 /** Oyun başlatılabilen toplam oyuncu sayıları (eşit takım). */
 const VALID_TEAM_COUNTS = [4, 6, 8, 10];
 
+/** Seçilebilir tur sayıları — masaüstü web, mobil web ve iOS'ta AYNI.
+ *
+ *  15 ve 20 seçiciden kaldırıldı (2026-08-21 ürün kararı): bir Kör Nokta turu
+ *  ~2 dakika sürüyor, 20 tur bir oturumda bitirilemiyordu. 3 eklendi.
+ *
+ *  SUNUCU BU LİSTEYİ YANSITMAZ ve yansıtmamalı: güncellemeyi almamış eski
+ *  istemciler hâlâ 15/20 gönderiyor ve sunucu onları kabul etmeye devam ediyor
+ *  (bkz. 20260821140000 — izin verilen küme daraltılmadı, yalnız 3 eklendi).
+ *  Aynı sebeple 15/20 taşıyan MEVCUT odalar okunmaya devam eder; aşağıdaki
+ *  `roundLabel` bu yüzden listede olmayan değerleri de yazabiliyor. */
 const ROUND_OPTIONS: { label: string; value: number }[] = [
+  { label: "3 tur",  value: 3  },
   { label: "5 tur",  value: 5  },
   { label: "10 tur", value: 10 },
-  { label: "15 tur", value: 15 },
-  { label: "20 tur", value: 20 },
 ];
+
+/** Seçenekte olmayan (eski oda) değerleri de gösterebilen etiket. */
+function roundLabel(value: number): string {
+  return ROUND_OPTIONS.find(o => o.value === value)?.label ?? `${value} tur`;
+}
 
 const DEFAULT_ROUND_COUNT = 10;
 /** Legacy DB kolonu: fotoğraf süresi ayarı UI'dan kaldırıldı ama
@@ -391,6 +407,66 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
    *  yalnız game_state.returnedPlayerIds. Böylece reconnect/refresh'te herkes
    *  yanlışlıkla "lobiye dönmüş" görünmez; kanonik durum korunur. */
   const iReturnedToLobby = !!myIdRef.current && returnedSet.has(myIdRef.current);
+
+  /** Maç SUNUCUDA terkedildi mi? (status='finished' + finished_reason).
+   *  Kalan oyuncuların terminal ekranı yalnız buna bakar — hiçbir istemci
+   *  "oyuncu çıktı" broadcast'i karar veremez. */
+  const knAbandoned =
+    !!room && room.status === "finished" && room.finished_reason === "abandoned";
+
+  /* ── DEVAM EDEN MAÇTA AYRILMA BİLDİRİMİ ───────────────────────────────
+     3v3+ maçta biri çıkıp takım hâlâ oynanabilir kaldığında (>= minimum
+     viable) maç sürer; kalan oyunculara kısa, engellemeyen bir bilgi
+     toast'ı düşer. 2v2'de maç zaten terminal olur → orada toast YOK,
+     terkediş ekranı gösterilir.
+
+     Kararın kendisi (ve neden `room.status` yerine `game_state.teams`in
+     tazeliğine baktığı) korNoktaLeaveNotice.ts'te — orada test ediliyor.
+     Burada yalnız sunucudan okunan durum toplanır ve toast'a bağlanır. */
+  const toast = useSocialOptional()?.toast;
+  const knRosterRef    = useRef<Map<string, string>>(new Map());
+  const knAnnouncedRef = useRef<Set<string>>(new Set());
+  const knNoticeRoomRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const gs = knGameState;
+    if (!room || !gs) return;
+
+    // Oda değiştiyse (ya da yeni maç kurulduysa) hafızayı sıfırla.
+    if (knNoticeRoomRef.current !== room.id) {
+      knNoticeRoomRef.current = room.id;
+      knRosterRef.current = new Map();
+      knAnnouncedRef.current = new Set();
+    }
+
+    const { notices, markAnnounced } = resolveKnLeaveNotices({
+      status:        room.status,
+      livePlayerIds: players.map(p => p.id),
+      teamIds:       [...gs.teams.blue, ...gs.teams.red],
+      knownRoster:   knRosterRef.current,
+      announced:     knAnnouncedRef.current,
+      myId:          myIdRef.current,
+    });
+    for (const id of markAnnounced) knAnnouncedRef.current.add(id);
+    for (const n of notices) toast?.(knLeaveNoticeText(n.name));
+
+    // Kadroyu hatırla (SİLME: ayrılanın adı toast için gerekli).
+    for (const p of players) knRosterRef.current.set(p.id, p.name);
+  }, [room, players, knGameState, toast]);
+
+  /** Ayrılan oyuncunun adı. Sunucu satırı sildiği için `players`ta YOKTUR;
+   *  ad, terk anında game_state.abandonedBy'a yazılır. Şekil savunmacı okunur
+   *  (eski/eksik state ekranı patlatmasın). */
+  const knAbandonedName: string = (() => {
+    const gs = room?.game_state as { abandonedBy?: { name?: unknown } } | null | undefined;
+    const n = gs?.abandonedBy?.name;
+    return typeof n === "string" && n.trim() ? n : "Bir oyuncu";
+  })();
+
+  /** Onay YALNIZ canlı maç için gerekir: lobiden çıkmak yıkıcı değil. */
+  const knMatchActive = !!room && room.status === "playing" && !!knGameState;
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   /** game_state dolu + status playing/finished + BEN dönmedim → oyun ekranı.
    *  "Lobiye Dön" dedimse (returnedPlayerIds'te id'm var) oyun bitmiş olsa da
@@ -690,8 +766,14 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
     setPhase("lobby");
   }
 
-  /** Lobiden çıkış. Server RPC üç dalı tek transaction'da yönetir:
-   *  host transfer / oda silme / self DELETE (wheel_group pattern'i). */
+  /** Odadan/maçtan çıkış — TEK yol.
+   *
+   *  `tevatur_kn_leave_match` kararı SUNUCUDA oda durumundan türetir:
+   *  lobide ve bitmiş maçta mevcut `tevatur_leave_room`a aynen devreder
+   *  (host devri / oda silme / self-delete DEĞİŞMEDİ), yalnız 'playing'
+   *  odada gerçek terk uygular — takımı kırpar, yaşayabilirliğe bakar,
+   *  gerekiyorsa maçı terminal duruma çeker. İstemci "maçı bitir" diye bir
+   *  şey SÖYLEMEZ; yalnız "ben çıkıyorum" der. */
   async function leaveRoom() {
     const currentRoom = roomRef.current;
     const currentMyId = myIdRef.current;
@@ -706,13 +788,13 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
 
     if (!currentRoom) return;
 
-    const { error } = await supabase.rpc("tevatur_leave_room", {
+    const { error } = await supabase.rpc("tevatur_kn_leave_match", {
       p_room_id:     currentRoom.id,
       p_player_id:   currentMyId,
       p_claim_token: currentClaim,
     });
     if (error) {
-      console.error("[KorNokta] leave_room RPC failed", error);
+      console.error("[KorNokta] kn_leave_match RPC failed", error);
     }
   }
 
@@ -1021,6 +1103,9 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           className="back-btn"
           onClick={() => {
             playSound("click");
+            // Canlı maçta çıkış TAKIMI ETKİLER → önce onay. Lobide ve bitmiş
+            // maçta davranış değişmez (yıkıcı değil, onay sorulmaz).
+            if (knMatchActive) { setLeaveConfirmOpen(true); return; }
             if (room) void leaveRoom();
             onHome();
           }}
@@ -1199,8 +1284,38 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
         </div>
       )}
 
+      {/* ════════ TERKEDİLMİŞ MAÇ — kalan oyuncuların terminal ekranı ════════
+          Sunucu maçı 'finished' + 'abandoned' yazdıysa gameplay HİÇ mount
+          edilmez: donmuş bir faz ekranı göstermek yerine ne olduğu söylenir.
+          KorNoktaGame unmount olduğu için faz sayaçları ve advance_if_due
+          yoklaması da kendiliğinden durur. */}
+      {!showLoginGuard && phase === "lobby" && room && knInGame && knAbandoned && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card" style={{ maxWidth: 460, textAlign: "center" }}>
+            <div style={{ fontSize: 40, lineHeight: 1 }}>🚪</div>
+            <h2 className="duel-lobby-title">Maç sona erdi</h2>
+            <p className="duel-lobby-desc">
+              <strong>{knAbandonedName}</strong> oyundan ayrıldı.
+              <br />
+              Takımda yeterli oyuncu kalmadığı için oyun sona erdi.
+            </p>
+            <p className="duel-lobby-desc" style={{ opacity: 0.7, fontSize: "0.85rem" }}>
+              Bu maç yarım kaldığı için kazanan yazılmadı; XP ve ödül verilmedi.
+            </p>
+            <button
+              type="button"
+              className="btn btn-accent kn-wide-btn"
+              style={{ width: "100%", minHeight: 44 }}
+              onClick={() => { playSound("click"); void leaveRoom(); onHome(); }}
+            >
+              ← Ana Menü
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ════════ GAMEPLAY — Kör Nokta tur döngüsü ════════ */}
-      {!showLoginGuard && phase === "lobby" && room && knInGame && (
+      {!showLoginGuard && phase === "lobby" && room && knInGame && !knAbandoned && (
         <KorNoktaGame
           room={room}
           players={players}
@@ -1210,6 +1325,7 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           onRoomUpdate={applyRoomUpdate}
           onReturnToLobby={handleReturnToLobby}
           onExit={() => {
+            if (knMatchActive) { setLeaveConfirmOpen(true); return; }
             void leaveRoom();
             onHome();
           }}
@@ -1313,6 +1429,16 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
                         onChange={e => updateRoundCount(Number(e.target.value))}
                         style={{ height: 34, fontSize: 12.5, padding: "0 26px 0 10px", opacity: isHost ? 1 : 0.7, cursor: isHost ? "pointer" : "not-allowed" }}
                       >
+                        {/* Eski istemcinin kurduğu 15/20 turluk bir odaya
+                            katıldıysak o değer listede YOKTUR: `value` hiçbir
+                            option'la eşleşmez ve tarayıcı sessizce ilk
+                            seçeneği (3 tur) gösterir — oda gerçekte 20 turken.
+                            Mevcut değeri, listede değilse, kendi option'ıyla
+                            gösteriyoruz. Host başka bir değere geçtiğinde bu
+                            seçenek kaybolur; geri dönülemez olması kasıtlı. */}
+                        {!ROUND_OPTIONS.some(o => o.value === room.round_count) && (
+                          <option value={room.round_count}>{roundLabel(room.round_count)}</option>
+                        )}
                         {ROUND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                       <span className="duel-select-caret">▾</span>
@@ -1446,6 +1572,35 @@ export default function KorNoktaMode({ onHome, profile, initialAction }: Props) 
           </div>
         )}
         </>
+      )}
+
+      {/* ════════ AKTİF MAÇTAN ÇIKIŞ ONAYI ════════
+          Paylaşılan ConfirmDialog (App'in davet-çıkış onayıyla aynı bileşen).
+          window.confirm KULLANILMAZ: native webview'de sistem diyaloğu
+          uygulamanın dilinden ve temasından kopuk çıkar. */}
+      {leaveConfirmOpen && (
+        <ConfirmDialog
+          title="Oyundan çıkmak istediğine emin misin?"
+          description="Aktif maçtan ayrılırsan takımın etkilenebilir."
+          confirmLabel="Oyundan Çık"
+          cancelLabel="Vazgeç"
+          destructive
+          busy={leaving}
+          onConfirm={() => {
+            if (leaving) return;   // tek atış — çift leave gönderilmez
+            setLeaving(true);
+            void leaveRoom().finally(() => {
+              setLeaving(false);
+              setLeaveConfirmOpen(false);
+              onHome();
+            });
+          }}
+          onCancel={() => {
+            // VAZGEÇ: hiçbir state değişmez, oyuncu oyunda kalır.
+            if (leaving) return;
+            setLeaveConfirmOpen(false);
+          }}
+        />
       )}
 
       {/* ════════ KICK CONFIRM MODAL ════════ */}
