@@ -4,14 +4,25 @@
  * Offline Rota Modu'nun harita görünümü ve etkileşimi AYNEN yeniden
  * kullanılır: RouteMapView + .route-* sınıfları + yazılı komşu-ülke girişi.
  * Üstüne online HUD gelir: Tur x/y (uzatmada "UZATMA"), başlangıç→hedef,
- * kalan süre (sunucu saatine senkron), Ben/Rakip skoru, rakip bağlantı durumu.
+ * Ben/Rakip skoru, rakip bağlantı durumu.
+ *
+ * SÜRE SINIRI YOKTUR (2026-08-21 ürün kararı, 20260822120000 ile sunucuda da).
+ * Oyunun amacı "hedefe rakipten önce ulaşmak"; hız zaten doğal olarak
+ * belirleyici. Geri sayım ne GÖSTERİLİR ne de bir kurala bağlıdır: geçen süre
+ * turu bitiremez, maçı bitiremez, hamleyi reddettiremez. `room.round_deadline`
+ * bu dosyada HİÇ OKUNMAZ (kolon yalnız eski istemci uyumu için duruyor).
+ * Tur YALNIZ biri hedefe ulaşınca biter.
  *
  * Optimistic UI + sunucu-otoriter uzlaşma:
  *   • Geçerli görünen hamle lokal path'e ANINDA eklenir (hız hissi).
  *   • route_duel_submit_move sunucuda konum+komşuluğu yeniden doğrular;
- *     reddederse (expired/round_over/not_neighbor/...) lokal path sunucu
- *     satırına GERİ SARILIR — puan/tur/kazanan asla client'ta yazılmaz.
+ *     reddederse (round_over/not_neighbor/...) lokal path sunucu satırına
+ *     GERİ SARILIR — puan/tur/kazanan asla client'ta yazılmaz.
  *   • Tur kimliği (game_seq:current_round) değişince lokal path sıfırlanır.
+ *
+ * KOMPAKT HUD (telefon): `compact` true iken geri düğmesi HUD'un İÇİNDE, ilk
+ * öğe olarak çizilir ve üstteki ayrı .duel-header hiç mount edilmez (bkz.
+ * RouteDuelGame). Tek şerit: [←] [Tur x/y] [BAŞLANGIÇ → HEDEF] [ad s–s ad].
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouteMapView } from "../WorldMap";
@@ -28,7 +39,11 @@ import {
   type RouteDuelRoom,
   type RouteDuelPlayer,
 } from "../../lib/routeDuelShared";
-import { deriveOppConnectionView, isServerConfirmedDisconnect } from "../../lib/routeDuelConnection";
+import {
+  deriveOppConnectionView,
+  isServerConfirmedDisconnect,
+  parseServerTimestampMs,
+} from "../../lib/routeDuelConnection";
 
 export interface RouteDuelMoveResult {
   accepted: boolean;
@@ -45,6 +60,11 @@ interface Props {
   /** Rakibin son görülme yaşı (sn) — HUD bağlantı durumu. null = bilinmiyor. */
   oppStaleSeconds: number | null;
   onSubmitMove: (countryKey: string) => Promise<RouteDuelMoveResult>;
+  /** Telefon: geri düğmesi HUD'un içine iner, ayrı .duel-header mount EDİLMEZ.
+   *  Masaüstünde false → HUD ve header eskisi gibi ayrı kalır. */
+  compact?: boolean;
+  /** `compact` iken HUD içindeki geri düğmesinin eylemi (çıkış onayı açar). */
+  onExit?: () => void;
 }
 
 export default function RouteDuelPlay({
@@ -54,6 +74,8 @@ export default function RouteDuelPlay({
   keyToTopoId,
   oppStaleSeconds,
   onSubmitMove,
+  compact = false,
+  onExit,
 }: Props) {
   const startKey = room.round_start_key ?? "";
   const targetKey = room.round_target_key ?? "";
@@ -112,20 +134,29 @@ export default function RouteDuelPlay({
     if (okTimerRef.current) clearTimeout(okTimerRef.current);
   }, []);
 
-  /* ── Sunucu-senkron zamanlayıcı (geri sayım + kalan süre) ── */
+  /* ── Tur başlangıç senkronu (3 sn ortak geri sayım) ──
+     SÜRE SINIRI DEĞİL: iki oyuncunun aynı anda başlamasını sağlar. Tik yalnız
+     geri sayım penceresi açıkken atar; tur başlayınca interval SÖKÜLÜR. Eskiden
+     200 ms'lik tik maç boyunca dönüyor ve saniyede 5 kez RouteMapView'i yeniden
+     çizdiriyordu (telefonda ölçülebilir maliyet) — kaldıracak bir sayaç yok. */
+  const startedMs = parseServerTimestampMs(room.round_started_at) ?? 0;
   const [nowMs, setNowMs] = useState(() => getSyncedNowMs());
+  const counting = startedMs > nowMs;
   useEffect(() => {
+    if (!counting) return;
     const id = setInterval(() => setNowMs(getSyncedNowMs()), 200);
     return () => clearInterval(id);
-  }, []);
+  }, [counting]);
+  /* Yeni tur geldiğinde (roundKey değişimi) saat yeniden okunmalı — aksi hâlde
+     `counting` bir önceki turun son değerinde donar ve interval hiç kurulmaz. */
+  useEffect(() => { setNowMs(getSyncedNowMs()); }, [roundKey, startedMs]);
 
-  const startedMs = room.round_started_at ? new Date(room.round_started_at).getTime() : 0;
-  const deadlineMs = room.round_deadline ? new Date(room.round_deadline).getTime() : 0;
   const countdownLeft = startedMs > nowMs ? Math.ceil((startedMs - nowMs) / 1000) : 0;
-  const timeLeft = deadlineMs > 0 ? Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000)) : 0;
 
   const roundWinnerId = room.round_winner_player_id;
-  const roundOver = roundWinnerId !== null || (deadlineMs > 0 && nowMs >= deadlineMs);
+  /* Tur YALNIZ biri hedefe ulaşınca biter. `round_deadline` OKUNMAZ: geçen
+     süre ne turu ne maçı bitirir (sunucu tarafı 20260822120000). */
+  const roundOver = roundWinnerId !== null;
   const iWonRound = roundWinnerId !== null && roundWinnerId === me?.id;
   const overtime = isOvertimeRound(room.current_round, room.total_rounds);
 
@@ -144,7 +175,10 @@ export default function RouteDuelPlay({
 
   /* ── Hamle gönderimi (lokal doğrulama → optimistic → sunucu uzlaşması) ── */
   const handleGuess = useCallback(async () => {
-    if (roundOver || countdownLeft > 0 || timeLeft <= 0) return;
+    // Kapı YALNIZ tur durumu: bitmiş tur ve başlamamış tur. Süreye bağlı kapı
+    // YOK — eskiden `timeLeft <= 0` vardı ve `round_deadline` ayrıştırılamaz
+    // ya da saat kaymışsa girişi sessizce ÖLDÜRÜYORDU.
+    if (roundOver || countdownLeft > 0) return;
     if (submittingRef.current) return;
     const norm = normalizeInput(input);
     if (!norm) return;
@@ -181,8 +215,6 @@ export default function RouteDuelPlay({
         setLocalPath(prevPath);
         if (res.reason === "round_over" || res.reason === "dup") {
           showErr("Tur sona erdi.");
-        } else if (res.reason === "expired") {
-          showErr("Süre doldu.");
         } else if (res.reason === "not_started") {
           showErr("Tur henüz başlamadı.");
         } else if (res.reason === "not_neighbor") {
@@ -208,7 +240,7 @@ export default function RouteDuelPlay({
       submittingRef.current = false;
     }
   }, [
-    input, currentKey, displayPath, roundOver, countdownLeft, timeLeft,
+    input, currentKey, displayPath, roundOver, countdownLeft,
     onSubmitMove, showErr, showOk,
   ]);
 
@@ -234,13 +266,26 @@ export default function RouteDuelPlay({
      disconnected = SUNUCU kopuşu onayladı (finished_reason='disconnect')
      → ancak o zaman kırmızı "Bağlantı koptu". */
   const oppConnection = deriveOppConnectionView(oppStaleSeconds, isServerConfirmedDisconnect(room));
-  const timerDanger = timeLeft <= 10 && !roundOver && countdownLeft === 0;
 
   return (
     <div className="route-screen rd-play-screen">
-      {/* ══ ONLINE HUD ══ */}
-      <div className="rd-hud">
+      {/* ══ ONLINE HUD ══
+          Tek şerit. Telefonda (`compact`) geri düğmesi BURADA yaşar; üstte
+          ayrı bir .duel-header YOKTUR (bkz. RouteDuelGame). Süre göstergesi
+          KALDIRILDI — oyunun süre kuralı yok. */}
+      <div className={"rd-hud" + (compact ? " rd-hud--compact" : "")}>
         <div className="rd-hud-left">
+          {compact && (
+            <button
+              type="button"
+              className="rd-hud-back"
+              onClick={onExit}
+              aria-label="Ana Menü"
+              title="Ana Menü"
+            >
+              ←
+            </button>
+          )}
           <span className={"rd-round-chip" + (overtime ? " rd-round-chip--ot" : "")}>
             {overtime ? "⚔️ UZATMA" : `Tur ${room.current_round} / ${room.total_rounds}`}
           </span>
@@ -249,10 +294,6 @@ export default function RouteDuelPlay({
             <span className="route-arrow-big">→</span>
             <span className="route-target-label">{targetDisplay}</span>
           </span>
-        </div>
-
-        <div className={"rd-timer" + (timerDanger ? " danger" : "")}>
-          {countdownLeft > 0 ? "—" : `${timeLeft}s`}
         </div>
 
         <div className="rd-hud-right">
@@ -397,18 +438,16 @@ export default function RouteDuelPlay({
           tetikleyebilir — host birincil, diğeri gecikmeli güvenlik ağı) ══ */}
       {roundOver && (
         <div className="rd-roundend-banner" role="status">
-          {roundWinnerId ? (
-            iWonRound ? (
-              <span className="rd-roundend win">
-                🏁 Turu kazandın! <strong>+1 puan</strong>
-              </span>
-            ) : (
-              <span className="rd-roundend lose">
-                {opp?.name ?? "Rakip"} hedefe önce ulaştı — turu aldı.
-              </span>
-            )
+          {/* `roundOver` artık YALNIZ kazanan varken true → "süre doldu"
+              (puansız berabere tur) durumu ARTIK OLUŞAMAZ; o dal kaldırıldı. */}
+          {iWonRound ? (
+            <span className="rd-roundend win">
+              🏁 Turu kazandın! <strong>+1 puan</strong>
+            </span>
           ) : (
-            <span className="rd-roundend draw">⏱ Süre doldu — bu turda kimse puan alamadı.</span>
+            <span className="rd-roundend lose">
+              {opp?.name ?? "Rakip"} hedefe önce ulaştı — turu aldı.
+            </span>
           )}
           <span className="rd-roundend-next">Sonraki tur hazırlanıyor…</span>
         </div>

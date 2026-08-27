@@ -27606,18 +27606,31 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   animation: targetPulse 2s ease-in-out infinite;
 }
 
-.rd-timer {
-  font-family: var(--font-head);
-  font-size: 1.3rem;
-  min-width: 56px;
-  text-align: center;
+/* (KALDIRILDI) .rd-timer / .rd-timer.danger — Rota Düello'nun oyun içi süre
+   sınırı yok (20260821150000). Geri sayım ne çizilir ne de bir kural taşır;
+   HUD'un o yeri artık oyuncu adları + skora aittir. */
+
+/* ── Telefon: geri düğmesi HUD'un İÇİNDE (tek şerit) ──
+   Ayrı .duel-header mount EDİLMEZ (bkz. RouteDuelGame compactPlayHud), yani
+   bu düğme ekranın en üst etkileşimli öğesidir: safe-area/Dynamic Island
+   dolgusu .rd-hud--compact üzerinden gelir. */
+.rd-hud-back {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
   color: var(--text);
-  font-variant-numeric: tabular-nums;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
 }
-.rd-timer.danger {
-  color: var(--amber);
-  animation: targetPulse 1s ease-in-out infinite;
-}
+.rd-hud-back:active { background: var(--border); }
 
 .rd-hud-right {
   display: flex;
@@ -27781,15 +27794,54 @@ html.is-native-app .social-bar .notif-bell { display: none; }
   width: 100%;
 }
 
-/* ── Telefon + oyun: ince çıkış şeridi ──
-   İlk header'ın içinden mod etiketi/oda kodu/tur rozeti React tarafında
-   düşürülür (bkz. RouteDuelGame slimHeader); geriye kalan tek çocuk geri
-   düğmesi olduğu için dikey dolgu da inceltilir. Toplam ~50px → ~40px, ve
-   390px'de ikinci satıra sarma tamamen ortadan kalkar. */
-.duel-header.rd-header--slim {
-  padding: 3px 8px;
-  justify-content: flex-start;
+/* ── Telefon + oyun: TEK KOMPAKT HUD ──
+   Build 8'de burada `.duel-header.rd-header--slim` vardı: ayrı header DOM'da
+   kalıyor, yalnız inceliyordu. İki şerit de aynı var(--surface) zemini ve
+   aynı 2px alt kenarlığı taşıdığı için ekranın tepesinde geri düğmesi +
+   ~40px BOŞ KOYU BANT görünüyordu. Artık header telefon+oyunda hiç mount
+   edilmiyor (RouteDuelGame compactPlayHud) ve geri düğmesi HUD'un ilk öğesi.
+   Kazanılan ~40-50px doğrudan haritaya gider (.route-map-area flex:1 1 0).
+
+   Şerit TEK SATIR: sol [← · Tur x/y · rota], sağ [ad s–s ad]. Sarma kapalı;
+   dar cihazda ortadaki rota metni kısalır, satır İKİYE ÇIKMAZ — dikey alan
+   haritanın. */
+.rd-hud--compact {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 6px 10px;
 }
+
+/* ── ÇİFT SAFE-AREA INSET DÜZELTMESİ (native) ──
+   `html.is-native-app` bloğu inset'i HEM `.app` HEM `.route-screen` köklerine
+   veriyor. O kuralın notu "hiçbiri aynı anda .app değil → çift dolgu yok"
+   diyor ve ÇEVRİMDIŞI Rota için doğru (orada .route-screen kökün kendisi).
+   Rota DÜELLO'da ise oyun ekranı .app.duel-screen.rd-screen'in İÇİNDE
+   `.route-screen.rd-play-screen` olarak yaşıyor → inset İKİ KEZ uygulanıyordu
+   (iPhone'da ~59px + ~59px). Sahadaki "geri düğmesinin altındaki koyu boş
+   şerit" büyük ölçüde buydu.
+   Dış kabuk (.app) inset'in TEK sahibi kalır; iç .route-screen sıfırlanır. */
+html.is-native-app .rd-play-screen {
+  padding-top: 0;
+}
+.rd-hud--compact .rd-hud-left {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.rd-hud--compact .rd-goal {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rd-hud--compact .rd-hud-right {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+/* Bağlantı rozetinin YAZISI kompakt şeritte düşer; renkli nokta kalır
+   (durum bilgisi korunur, ~90px yatay alan geri kazanılır). */
+.rd-hud--compact .rd-conn { font-size: 0; gap: 0; }
+.rd-hud--compact .rd-conn .rd-conn-dot { width: 7px; height: 7px; }
 
 /* ── Telefon: klavye açıkken haritaya azami yükseklik ──
    Capacitor Keyboard resize:'native' klavye açılınca webview'i küçültür.
@@ -27827,14 +27879,20 @@ html.is-native-app .rd-play-screen .route-bottom {
   }
   .rd-hud-left { gap: 6px; }
   .rd-goal { font-size: 0.82rem; }
-  .rd-timer {
-    font-size: 1.1rem;
-    min-width: 44px;
-    order: 0;
-  }
+  /* (KALDIRILDI) .rd-timer — süre göstergesi yok. */
   .rd-score-pill { max-width: 60vw; }
   .rd-score-name { max-width: 6ch; }
   .rd-roundend-banner { padding: 10px 14px; }
+
+  /* Kompakt şeritte skor hapı sağda dar alana oturur; adlar kısalır ama
+     "ad s–s ad" bilgisinin TAMAMI tek satırda durur. */
+  .rd-hud--compact .rd-score-pill {
+    max-width: none;
+    padding: 2px 8px;
+    gap: 4px;
+  }
+  .rd-hud--compact .rd-score-name { max-width: 7ch; }
+  .rd-hud--compact .rd-round-chip { padding: 2px 7px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import WorldMap, { RouteMapView } from "../components/WorldMap";
 import RouteDuelPlay from "../components/routeDuel/RouteDuelPlay";
 import { buildKeyToTopoId } from "../components/RouteGame";
+import { useMobileSurface } from "../lib/useIsMobile";
 import { TOPOID_TO_DISPLAY } from "../data/countries";
 import type { RouteDuelRoom, RouteDuelPlayer } from "../lib/routeDuelShared";
 import "../App.css";
@@ -81,8 +82,13 @@ function RouteScene() {
   );
 }
 
-/* ── Rota Duel oyun ekranı: ince header + rd-hud + harita + giriş ── */
+/* ── Rota Duel oyun ekranı: TEK kompakt HUD + harita + giriş ──
+   Üretimdeki karar birebir yansıtılır (RouteDuelGame compactPlayHud):
+   telefon + oyun → ayrı .duel-header HİÇ mount edilmez, geri düğmesi HUD'un
+   içindedir. Masaüstü genişliğinde header geri gelir. Ölçüm scripti
+   (check-route-duel-mobile-hud.mjs) bu sayfayı iframe'de sürer. */
 function PlayScene() {
+  const compact = useMobileSurface();
   const keyToTopoId = useMemo(buildKeyToTopoId, []);
   const now = Date.now();
   const room: RouteDuelRoom = {
@@ -91,7 +97,9 @@ function PlayScene() {
     game_seq: 1, current_round: 2,
     round_start_key: "Bulgaria", round_target_key: "Portugal", round_pair_key: "BG>PT",
     round_started_at: new Date(now - 5000).toISOString(),
-    round_deadline: new Date(now + 90000).toISOString(),
+    // Legacy inert alan: yeni istemci OKUMAZ. Geçmişe koyulması bile
+    // davranışı değiştirmemeli (harness bunu da kanıtlar).
+    round_deadline: new Date(now - 30000).toISOString(),
     round_winner_player_id: null, round_decided_at: null,
     used_pair_keys: [], rematch_requested_by: [], match_seq: 1,
     current_match_id: "m1", room_source: "manual",
@@ -106,22 +114,30 @@ function PlayScene() {
     joined_at: new Date(now - 60000).toISOString(),
     last_seen_at: new Date(now).toISOString(),
   });
-  // Gerçek ekran iskeleti: .duel-screen > ince .duel-header + .rd-play-screen.
   return (
     <div className="app duel-screen rd-screen">
-      <div className="duel-header rd-header--slim">
-        <button className="back-btn" title="Ana Menü">
-          <span>←</span>
-          <span className="back-label">Menü</span>
-        </button>
-      </div>
+      {!compact && (
+        <div className="duel-header">
+          <button className="back-btn" title="Ana Menü">
+            <span>←</span>
+            <span className="back-label">Menü</span>
+          </button>
+          <div className="duel-header-center">
+            <span className="duel-mode-label">🧭 Rota · Online 1v1</span>
+            <span className="duel-code-badge">#TEST</span>
+          </div>
+          <div style={{ width: 80 }} />
+        </div>
+      )}
       <RouteDuelPlay
         room={room}
-        me={mk("me", "Ben", 1)}
-        opp={mk("opp", "Rakip", 0)}
+        me={mk("me", "enes1", 0)}
+        opp={mk("opp", "enes", 0)}
         keyToTopoId={keyToTopoId}
         oppStaleSeconds={2}
         onSubmitMove={async () => ({ accepted: true, finished: false, won: false })}
+        compact={compact}
+        onExit={() => { window.__mapTest && (window.__mapTest.lastCountryId = "EXIT"); }}
       />
     </div>
   );
@@ -131,9 +147,6 @@ function PlayScene() {
 function HeaderScene() {
   return (
     <div style={{ position: "absolute", inset: 0, background: "var(--bg)" }}>
-      <div className="duel-header rd-header--slim" id="slim-header">
-        <button className="back-btn"><span>←</span><span className="back-label">Menü</span></button>
-      </div>
       <div className="duel-header" id="full-header">
         <button className="back-btn"><span>←</span><span className="back-label">Menü</span></button>
         <div className="duel-header-center">

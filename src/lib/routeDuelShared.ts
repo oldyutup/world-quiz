@@ -9,7 +9,10 @@
  * aynı olmalıdır (drift = bug):
  *   • total_rounds ∈ {3, 5, 10, 15}
  *   • route_length ∈ {'5', '7', '7plus'} → ara ülke {5} / {7} / {8, 9}
- *   • geri sayım 3 sn, tur süresi 60 sn (sunucu-otoriter; client yalnız gösterir)
+ *   • geri sayım 3 sn (tur BAŞLANGIÇ senkronu — süre sınırı DEĞİL)
+ *   • OYUN İÇİ SÜRE SINIRI YOKTUR (20260821150000): tur yalnız biri hedefe
+ *     ulaşınca biter; geçen süre turu/maçı bitiremez, hamleyi reddettiremez.
+ *   • kazanandan sonra 3.2 sn sunucu-otoriter tur-sonu reveal penceresi
  *   • chat anahtarı 'route_duel:<code>' (mod-izole namespaced key)
  */
 
@@ -102,8 +105,13 @@ export function roundsLabel(rounds: number): string {
 }
 
 /* ── Zamanlama sabitleri (sunucu-otoriter değerlerin AYNASI; otorite DB) ── */
+/** Tur BAŞLANGIÇ senkronu — iki oyuncu aynı anda başlasın diye. Süre sınırı
+ *  DEĞİL: dolduğunda hiçbir şey bitmez, yalnız giriş açılır. */
 export const ROUTE_DUEL_COUNTDOWN_SECONDS = 3;
-export const ROUTE_DUEL_ROUND_SECONDS = 60;
+/** Kazanan yazıldıktan sonra turun ekranda kaldığı reveal süresi (ms).
+ *  Sunucudaki settle guard'la BİREBİR (20260821150000). Oyun süresi DEĞİL. */
+export const ROUTE_DUEL_ROUND_SETTLE_MS = 3200;
+/* (KALDIRILDI) ROUTE_DUEL_ROUND_SECONDS — oyun içi süre sınırı yok. */
 
 /* ── Sırasız çift anahtarı — SQL'deki least|greatest ile birebir ── */
 export function routePairKey(a: string, b: string): string {

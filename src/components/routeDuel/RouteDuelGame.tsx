@@ -66,12 +66,13 @@ const PLAYER_ID_KEY = "torble_route_duel_player_id";
 const ROOM_KEY = "torble_route_duel_room";
 const CLAIM_TOKEN_KEY = "torble_route_duel_claim_token";
 
-/** Tur sonucu banner'ının ekranda kalma süresi; sonrasında host advance eder. */
+/** Tur sonucu banner'ının ekranda kalma süresi; sonrasında host advance eder.
+ *  Sunucudaki reveal penceresiyle (20260821150000, 3200 ms) BİREBİR aynı —
+ *  otorite sunucu, bu yalnız gereksiz erken RPC'yi kısan istemci aynası. */
 const ROUND_RESULT_MS = 3200;
 /** Host advance edemezse (takıldı/koptu) diğer oyuncunun güvenlik-ağı gecikmesi. */
 const ADVANCE_FALLBACK_MS = 8000;
-/** Timeout turunda deadline sonrası advance gecikmesi (banner kısa görünür). */
-const TIMEOUT_ADVANCE_MS = 1600;
+/* (KALDIRILDI) TIMEOUT_ADVANCE_MS — süre aşımıyla tur ilerletme kuralı yok. */
 /* Bağlantı göstergesi + kopuş-isteği eşikleri routeDuelConnection.ts'te
  * (saf/testli): amber "Bağlantı zayıf…" 12 sn (4 kaçırılmış beat), sunucu
  * kontrolü isteği 20 sn. KIRMIZI "Bağlantı koptu" yalnız sunucu onayıyla
@@ -183,6 +184,10 @@ export default function RouteDuelGame({
   const [players, setPlayers] = useState<RouteDuelPlayer[]>([]);
   const roomRef = useRef<RouteDuelRoom | null>(null);
   useEffect(() => { roomRef.current = room; }, [room]);
+  /* Faz aynası — stable callback'ler (handleBackButton) fazı bayat closure
+   * yerine buradan okur; roomRef ile aynı desen. */
+  const phaseRef = useRef<Phase>(phase);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   const myIdRef = useRef<string>("");
   const myClaimTokenRef = useRef<string>("");
@@ -411,10 +416,20 @@ export default function RouteDuelGame({
   }, [phase, room?.id]);
 
   /* ═══════════════ TUR İLERLETME TETİKLEYİCİSİ ═══════════════
-     Sunucu kuralı: advance yalnız tur bittiyse çalışır (kazanan VAR ya da
-     deadline geçti) — erken atlama sunucuda imkânsız. Host birincil
-     tetikleyici; host takılırsa diğer oyuncu gecikmeli güvenlik ağı.
-     Çift çağrı zararsız (ikincisi 'round_not_over' alır). */
+     Sunucu kuralı (20260821150000): tur YALNIZ kazanan yazıldıysa ilerler ve
+     kazanandan sonra 3.2 sn'lik reveal penceresi SUNUCUDA zorlanır. Zamana
+     dayalı ilerleme YOK → geçen süre bir turu/maçı ASLA bitiremez.
+
+     Bu yüzden buradaki tetikleyici de artık YALNIZ kazanana bakar; eski
+     `deadline geçti` dalı KALDIRILDI. O dal gameplay otoritesini istemci
+     duvar saatine bağlıyordu: `getSyncedNowMs()` sunucu probe'u çözülmeden
+     sessizce bare Date.now()'a düşer (serverClock.ts), saati ileri giden
+     cihaz turu erkenden "bitmiş" sayıp advance'i zincirliyordu.
+
+     Host birincil tetikleyici; host takılırsa diğer oyuncu gecikmeli güvenlik
+     ağı (SPOF yok). Çift/yarışan çağrı zararsız: sunucu oda kilidi altında
+     serileştirir, ikincisi 'round_not_over' alır. Erken çağrı da güvenlidir —
+     reveal penceresi dolmadan sunucu reddeder, sonraki tik yeniden dener. */
   const advanceInFlightRef = useRef(false);
   useEffect(() => {
     if (phase !== "playing" || !room) return;
@@ -425,20 +440,20 @@ export default function RouteDuelGame({
       if (!r || r.status !== "playing") return;
       if (advanceInFlightRef.current) return;
 
-      const now = getSyncedNowMs();
-      const deadlineMs = r.round_deadline ? new Date(r.round_deadline).getTime() : 0;
-      const decidedMs = r.round_decided_at ? new Date(r.round_decided_at).getTime() : 0;
-      const amHost = r.host_player_id === myIdRef.current;
+      // Kazanan YOKSA yapacak iş yok: süreyle ilerleme kaldırıldı.
+      if (!r.round_winner_player_id) return;
 
-      let due = false;
-      if (r.round_winner_player_id && decidedMs > 0) {
-        const wait = amHost ? ROUND_RESULT_MS : ROUND_RESULT_MS + ADVANCE_FALLBACK_MS;
-        due = now >= decidedMs + wait;
-      } else if (deadlineMs > 0 && now >= deadlineMs) {
-        const wait = amHost ? TIMEOUT_ADVANCE_MS : TIMEOUT_ADVANCE_MS + ADVANCE_FALLBACK_MS;
-        due = now >= deadlineMs + wait;
-      }
-      if (!due) return;
+      // `round_decided_at` sunucu damgası; UTC-güvenli ayrıştırılır (düz
+      // new Date() saat dilimi eki olmayan biçimde yerel saat sayardı).
+      const decidedMs = parseServerTimestampMs(r.round_decided_at);
+      if (decidedMs === null) return;
+
+      const now = getSyncedNowMs();
+      const amHost = r.host_player_id === myIdRef.current;
+      // Nihai kapı SUNUCUDA (3.2 sn reveal penceresi). Buradaki bekleme yalnız
+      // gereksiz RPC gürültüsünü kısar; erken çağrı zaten güvenle reddedilir.
+      const wait = amHost ? ROUND_RESULT_MS : ROUND_RESULT_MS + ADVANCE_FALLBACK_MS;
+      if (now < decidedMs + wait) return;
 
       advanceInFlightRef.current = true;
       void supabase
@@ -655,6 +670,19 @@ export default function RouteDuelGame({
     });
     if (error) console.error("[RouteDuel] leave_room failed", error);
   }, []);
+
+  /* Geri/Ana Menü — TEK davranış, İKİ yüzey: masaüstü/lobi .duel-header
+   * düğmesi ve telefonda HUD içindeki kompakt düğme. Aktif maçta önce çıkış
+   * onayı açılır (çıkan forfeit sayılır); diğer fazlarda doğrudan çıkılır. */
+  const handleBackButton = useCallback(() => {
+    playSound("click");
+    if (phaseRef.current === "playing") {
+      setQuitModal(true);
+      return;
+    }
+    if (roomRef.current) void leaveRoom();
+    onHome();
+  }, [leaveRoom, onHome]);
 
   /* Davet kabulünde güvenli çıkış (bkz. lib/roomExit.ts). `leaveRoom` modun
    * kendi tam temizliği: session + route_duel_leave_room (host ayrımı
@@ -929,57 +957,50 @@ export default function RouteDuelGame({
   // yine kullanıcının aktif ana ekran temasından gelir.
   const homeTheme = readStoredHomeTheme();
   const isPreGamePhase = phase !== "playing" && phase !== "finished";
-  // Telefonda oyun sırasında üstteki iki panelden ilki yalnız çıkış
-  // düğmesine iner; kurulum/lobide oda kodu paylaşılan şey olduğu için
-  // tam header korunur. Masaüstünde her fazda eskisi gibi.
-  const slimHeader = useMobileSurface() && phase === "playing";
+  /* Telefon + oyun: üstteki AYRI .duel-header HİÇ MOUNT EDİLMEZ.
+     Build 8'de bu blok "ince şerit"e indirilmişti ama DOM'da kalıyordu; iki
+     ayrı .duel-header/.rd-hud şeridi de aynı var(--surface) zeminine ve aynı
+     2px alt kenarlığa sahip olduğu için ekranın tepesinde ~40px'lik BOŞ KOYU
+     BANT olarak okunuyordu ve haritayı eziyordu (klavye açıkken en kötüsü).
+     Artık geri düğmesi HUD'un İÇİNDE (RouteDuelPlay compact) → tek şerit,
+     kazanılan yüksekliğin tamamı haritaya gider.
+     Kurulum/lobi/sonuç ve TÜM masaüstü fazları eskisi gibi header'lı. */
+  const compactPlayHud = useMobileSurface() && phase === "playing";
   const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
   const themeDataAttr = isPreGamePhase ? "dark-space" : undefined;
 
   return (
     <div className="app duel-screen rd-screen" style={themeBgStyle} data-theme={themeDataAttr}>
-      {/* ════════ HEADER ════════ */}
-      <div className={"duel-header" + (slimHeader ? " rd-header--slim" : "")}>
-        <button
-          className="back-btn"
-          onClick={() => {
-            playSound("click");
-            if (phase === "playing") {
-              setQuitModal(true);
-              return;
-            }
-            if (room) void leaveRoom();
-            onHome();
-          }}
-          title="Ana Menü"
-        >
-          <span>←</span>
-          <span className="back-label">Menü</span>
-        </button>
+      {/* ════════ HEADER ════════
+          `compactPlayHud` iken HİÇ ÇİZİLMEZ — geri düğmesi .rd-hud'un ilk
+          öğesi olur. Diğer TÜM durumlarda (masaüstü her faz + telefonda
+          kurulum/lobi/sonuç) markup birebir eskisi gibidir. */}
+      {!compactPlayHud && (
+        <div className="duel-header">
+          <button
+            className="back-btn"
+            onClick={handleBackButton}
+            title="Ana Menü"
+          >
+            <span>←</span>
+            <span className="back-label">Menü</span>
+          </button>
 
-        {/* Mod etiketi + oda kodu + tur/uzunluk rozeti: telefonda oyun
-            sırasında düşer. Üç rozet 390px'de ikinci satıra sarıyor ve
-            klavyenin zaten sıkıştırdığı haritadan ~40px alıyordu; hiçbiri
-            oyun sırasında karar verdirmiyor. slimHeader false olan her
-            durumda (masaüstü, kurulum, lobi, sonuç) markup aynı. */}
-        {!slimHeader && (
-          <>
-            <div className="duel-header-center">
-              <span className="duel-mode-label">🧭 Rota · Online 1v1</span>
-              {room && phase !== "setup" && (
-                <>
-                  <span className="duel-code-badge">#{room.code}</span>
-                  <span className="duel-region-badge">
-                    {roundsLabel(room.total_rounds)} · {routeLengthLabel(room.route_length)}
-                  </span>
-                </>
-              )}
-            </div>
+          <div className="duel-header-center">
+            <span className="duel-mode-label">🧭 Rota · Online 1v1</span>
+            {room && phase !== "setup" && (
+              <>
+                <span className="duel-code-badge">#{room.code}</span>
+                <span className="duel-region-badge">
+                  {roundsLabel(room.total_rounds)} · {routeLengthLabel(room.route_length)}
+                </span>
+              </>
+            )}
+          </div>
 
-            <div style={{ width: 80 }} />
-          </>
-        )}
-      </div>
+          <div style={{ width: 80 }} />
+        </div>
+      )}
 
       {/* ════════ SETUP ════════ */}
       {(phase === "setup" || phase === "creating") && (
@@ -1187,6 +1208,8 @@ export default function RouteDuelGame({
           keyToTopoId={keyToTopoId}
           oppStaleSeconds={oppStaleSeconds}
           onSubmitMove={submitMove}
+          compact={compactPlayHud}
+          onExit={handleBackButton}
         />
       )}
 

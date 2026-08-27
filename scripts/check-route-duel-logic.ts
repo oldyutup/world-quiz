@@ -36,7 +36,13 @@ function eq(a: unknown, b: unknown, label: string) {
 ════════════════════════════════════════════════════════════════════════ */
 
 const COUNTDOWN_MS = 3000;
-const ROUND_MS = 60000;
+/** Kazanandan sonra sunucunun zorladığı tur-sonu reveal penceresi.
+ *  20260821150000 ile SUNUCUYA taşındı (eskiden yalnız istemcideydi). */
+const SETTLE_MS = 3200;
+/** `round_deadline` artık OYUN KURALI DEĞİL: yalnız eski istemcilerin
+ *  `timeLeft > 0` kapısı için yazılan 6 saatlik inert değer. Bu ayna onu
+ *  hiçbir kararda KULLANMAZ — kullanılmadığı test ediliyor. */
+const LEGACY_DEADLINE_MS = 6 * 60 * 60 * 1000;
 
 interface SimPlayer {
   id: string;
@@ -102,7 +108,7 @@ function beginRound(room: SimRoom, nextRound: number, nowMs: number) {
   room.roundTarget = r.target;
   room.roundPair = r.pair;
   room.roundStartedMs = nowMs + COUNTDOWN_MS;
-  room.roundDeadlineMs = nowMs + COUNTDOWN_MS + ROUND_MS;
+  room.roundDeadlineMs = nowMs + LEGACY_DEADLINE_MS;
   room.roundWinnerId = null;
   room.roundDecidedMs = 0;
   room.usedPairKeys.push(r.pair);
@@ -185,7 +191,7 @@ function submitMove(room: SimRoom, playerId: string, countryKey: string, nowMs: 
 
   if (room.roundWinnerId !== null) return { accepted: false, finished: false, won: false, reason: "round_over" };
   if (nowMs < room.roundStartedMs) return { accepted: false, finished: false, won: false, reason: "not_started" };
-  if (nowMs >= room.roundDeadlineMs) return { accepted: false, finished: false, won: false, reason: "expired" };
+  // (KALDIRILDI) deadline aşımı → "expired". Oyun içi süre sınırı yok.
 
   if (player.currentKey === null) throw new Error("round_not_initialized");
   if (countryKey === player.currentKey) return { accepted: false, finished: false, won: false, reason: "same_country" };
@@ -221,8 +227,10 @@ function advanceRound(room: SimRoom, callerId: string, nowMs: number): string | 
   if (room.status === "finished") return null; // idempotent
   if (room.status !== "playing") return "room_not_playing";
 
-  const roundOver = room.roundWinnerId !== null || nowMs >= room.roundDeadlineMs;
-  if (!roundOver) return "round_not_over";
+  // Tur YALNIZ kazananla biter (zaman aşımı yolu YOK) ve kazanandan sonra
+  // 3.2 sn'lik reveal penceresi dolmadan hiçbir çağıran ilerletemez.
+  if (room.roundWinnerId === null) return "round_not_over";
+  if (nowMs < room.roundDecidedMs + SETTLE_MS) return "round_not_over";
 
   const scores = room.players.map(p => p.score);
   const hi = Math.max(...scores);
@@ -359,9 +367,11 @@ function playRoundWonBy(room: SimRoom, winnerId: string, nowMs: number): number 
     if (!res.accepted) throw new Error(`move rejected: ${res.reason}`);
     t += 300;
   }
-  const err = advanceRound(room, room.hostId, t + 1000);
+  // Reveal penceresi (SETTLE_MS) dolmadan ilerletilemez — sunucu kuralı.
+  const at = t + SETTLE_MS + 100;
+  const err = advanceRound(room, room.hostId, at);
   if (err) throw new Error(`advance failed: ${err}`);
-  return t + 1000;
+  return at;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -514,28 +524,56 @@ console.log("· 7. İlk tamamlayan kazanır; ikinci completion skoru değiştirm
   eq(room.roundWinnerId, "H", "kazanan sabit kalır");
 }
 
-console.log("· 8. Erken tur atlama imkânsız; timeout puansız ilerler");
+console.log("· 8. Zaman turu/maçı BİTİREMEZ; ilerleme yalnız kazanan + settle ile");
 {
   const room = createRoom({ hostProfileId: null, totalRounds: 5, routeLength: "5", rng: seededRng(9) });
   joinRoom(room, "G", null, "Guest");
   startGame(room, "H", 0);
   const midRound = room.roundStartedMs + 5000;
-  eq(advanceRound(room, "H", midRound), "round_not_over", "kazanan yok + süre dolmadı → advance reddedilir");
+  eq(advanceRound(room, "H", midRound), "round_not_over", "kazanan yok → advance reddedilir");
 
-  // Timeout: kimse bitiremedi → puansız ilerleme.
-  const afterDeadline = room.roundDeadlineMs + 1000;
-  eq(submitMove(room, "H", NEIGHBOR_GRAPH[room.roundStart!][0], afterDeadline).reason, "expired",
-    "deadline sonrası hamle 'expired' (sunucu saati; client kronometresi değil)");
-  // Timeout ilerlemesi HOST'A BAĞIMLI DEĞİL: non-host (G) tetikler.
-  eq(advanceRound(room, "G", afterDeadline), null,
-    "timeout sonrası advance kabul (non-host tetikledi; host client'ına bağımlılık YOK)");
+  // ── OYUN İÇİ SÜRE YOK ──────────────────────────────────────────────────
+  // Eski sözleşmede burada 60 sn'lik deadline vardı: sonrasında hamle
+  // 'expired' oluyor ve advance turu PUANSIZ ilerletiyordu. O yol tamamen
+  // kaldırıldı (20260821150000) — sahadaki "maç 10-15 sn'de kendiliğinden
+  // bitiyor" bu zincirden geliyordu.
+  const wayLater = room.roundStartedMs + 10 * 60 * 1000;   // 10 dakika sonra
+  eq(submitMove(room, "H", NEIGHBOR_GRAPH[room.roundStart!][0], wayLater).accepted, true,
+    "10 dk sonra bile hamle KABUL (süre dolması diye bir şey yok)");
+  eq(advanceRound(room, "G", wayLater), "round_not_over",
+    "kazanan yokken geçen süre turu ilerletemez (non-host da tetikleyemez)");
+  eq(room.currentRound, 1, "tur 1'de kaldı — zaman turu atlatmadı");
+  eq(room.status, "playing", "maç HÂLÂ oynanıyor (zaman maçı bitirmedi)");
+
+  // Legacy 6 saatlik deadline hiçbir kararda kullanılmıyor: onu geçmişe
+  // çekmek bile davranışı DEĞİŞTİRMEZ.
+  room.roundDeadlineMs = wayLater - 1000;
+  eq(advanceRound(room, "H", wayLater), "round_not_over",
+    "bayat legacy deadline ilerlemeyi YÖNETMİYOR");
+  eq(room.status, "playing", "bayat legacy deadline maçı BİTİRMİYOR");
+
+  // ── SETTLE / REVEAL PENCERESİ (eski istemci koruması) ──────────────────
+  const path = bfsPath(room.roundStart!, room.roundTarget!);
+  let t = wayLater;
+  for (let i = 1; i < path.length; i++) { submitMove(room, "H", path[i], t); t += 200; }
+  ok(room.roundWinnerId === "H", "kazanan sunucu state'ine yazıldı");
+
+  // Eski istemci kazananı görür görmez advance çağırır → REDDEDİLİR.
+  eq(advanceRound(room, "H", room.roundDecidedMs), "round_not_over",
+    "kazanandan HEMEN sonra advance reddedilir (reveal atlanamaz)");
+  eq(advanceRound(room, "G", room.roundDecidedMs + SETTLE_MS - 1), "round_not_over",
+    "pencerenin 1 ms altı da reddedilir");
+  eq(room.currentRound, 1, "reveal penceresinde tur atlamadı");
+
+  // Pencere dolunca HERHANGİ bir oyuncu ilerletebilir (host SPOF yok).
+  const after = room.roundDecidedMs + SETTLE_MS;
+  eq(advanceRound(room, "G", after), null,
+    "pencere dolunca non-host ilerletebilir (host'a bağımlılık YOK)");
   eq(room.currentRound, 2, "tur 2'ye geçti");
-  eq(room.players.every(p => p.score === 0), true, "timeout turunda KİMSE puan almadı");
-  eq(room.claims.length, 0, "timeout turu claim üretmedi");
+  eq(room.players.find(p => p.id === "H")!.score, 1, "kazanan puanı aldı");
 
-  // Duplicate advance (iki client'ın yarışı / retry): yeni tur bitmeden
-  // ikinci çağrı 'round_not_over' alır → aynı tur İKİ kez ilerlemez.
-  eq(advanceRound(room, "H", afterDeadline + 200), "round_not_over",
+  // Duplicate advance: yeni tur bitmeden ikinci çağrı reddedilir.
+  eq(advanceRound(room, "H", after + 200), "round_not_over",
     "ikinci advance çağrısı reddedilir (duplicate ilerleme YOK)");
   eq(room.currentRound, 2, "tur numarası 2'de sabit (çift advance işlemedi)");
 }
@@ -570,10 +608,13 @@ console.log("· 10. Eşitlik uzatmaya gider; ilk uzatma galibi maçı kazanır")
   ok(!room.usedPairKeys.slice(0, -1).includes(room.roundPair!), "uzatma rotası da kullanılmamış rota");
   eq(matchOutcomeAfterRound(10, 10, 5, 5), "continue", "saf kural: eşitlik → continue");
 
-  // Uzatma turu da timeout olursa → yeni uzatma turu.
-  const afterDl = room.roundDeadlineMs + 500;
-  eq(advanceRound(room, "H", afterDl), null, "uzatma timeout → yeni uzatma turu");
-  eq(room.currentRound, 12, "ikinci uzatma turu");
+  // Uzatma turu ZAMANLA bitmez: kimse hedefe ulaşmadıkça oyuncular oynamaya
+  // devam eder. (Eski sözleşmede burada timeout → yeni uzatma turu vardı;
+  // uzatmayı sonsuz "timeout zinciri"ne çeviren yol da bu idi.)
+  const wayLater = room.roundStartedMs + 10 * 60 * 1000;
+  eq(advanceRound(room, "H", wayLater), "round_not_over",
+    "uzatmada geçen süre turu ilerletmez");
+  eq(room.currentRound, 11, "uzatma turu 11'de kaldı");
   eq(room.status, "playing", "eşitlik sürdükçe sudden-death devam");
 
   // İlk uzatma galibiyeti maçı bitirir.

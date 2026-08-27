@@ -310,21 +310,33 @@ async function run() {
     const doc = f.contentDocument, win = f.contentWindow;
     const q = sel => doc.querySelector(sel);
 
-    ok("rota/oyun: ince header yalnız geri düğmesi içeriyor",
-       !!q(".duel-header.rd-header--slim .back-btn"), q(".back-btn") ? "var" : "yok");
-    ok("rota/oyun: header'da mod etiketi/oda kodu/tur rozeti YOK",
+    // Build 8'de burada "ince header" ölçülüyordu. O blok ARTIK HİÇ
+    // ÇİZİLMİYOR: telefonda oyun sırasında tek şerit var (.rd-hud) ve geri
+    // düğmesi onun içinde. Aşağıdaki iddialar yeni sözleşmeyi kilitler.
+    ok("rota/oyun: mod etiketi/oda kodu/tur rozeti şeritte YOK",
        !q(".duel-mode-label") && !q(".duel-code-badge") && !q(".duel-region-badge"),
        [q(".duel-mode-label"), q(".duel-code-badge"), q(".duel-region-badge")].filter(Boolean).length + " kaldı");
-    const hdrH = q(".duel-header").getBoundingClientRect().height;
-    ok("rota/oyun: ince header 44px'in altında", hdrH < 44, hdrH.toFixed(1) + "px");
 
     ok("rota/oyun: durum paneli (rd-hud) DURUYOR", !!q(".rd-hud"), q(".rd-hud") ? "var" : "yok");
     ok("rota/oyun: rd-hud tur bilgisini gösteriyor",
        q(".rd-round-chip") && /Tur 2 \\/ 5/.test(q(".rd-round-chip").textContent), q(".rd-round-chip") ? q(".rd-round-chip").textContent : "yok");
     ok("rota/oyun: rd-hud başlangıç→hedef gösteriyor",
        !!q(".rd-goal .route-start-label") && !!q(".rd-goal .route-target-label"), "var");
-    ok("rota/oyun: rd-hud süre gösteriyor", !!q(".rd-timer"), q(".rd-timer") ? q(".rd-timer").textContent : "yok");
+    ok("rota/oyun: SÜRE GÖSTERGESİ YOK (oyun içi süre sınırı kaldırıldı)",
+       !q(".rd-timer"), q(".rd-timer") ? "hâlâ var: " + q(".rd-timer").textContent : "yok");
     ok("rota/oyun: rd-hud skor gösteriyor", !!q(".rd-score-pill"), "var");
+    ok("rota/oyun: TEK HUD — ayrı .duel-header mount edilmiyor",
+       !q(".duel-header"), q(".duel-header") ? "hâlâ var" : "yok");
+    ok("rota/oyun: geri düğmesi HUD'un İÇİNDE",
+       !!q(".rd-hud .rd-hud-back"), q(".rd-hud .rd-hud-back") ? "var" : "yok");
+    ok("rota/oyun: HUD tek şerit (sarma yok)",
+       q(".rd-hud").getBoundingClientRect().height < 56,
+       q(".rd-hud").getBoundingClientRect().height.toFixed(1) + "px");
+    ok("rota/oyun: harita HUD'un hemen altında (üstte boş koyu bant yok)",
+       q(".route-map-area").getBoundingClientRect().top
+         - q(".rd-hud").getBoundingClientRect().bottom < 2,
+       (q(".route-map-area").getBoundingClientRect().top
+         - q(".rd-hud").getBoundingClientRect().bottom).toFixed(1) + "px boşluk");
     ok("rota/oyun: rd-hud bağlantı durumu gösteriyor", !!q(".rd-conn"), q(".rd-conn") ? q(".rd-conn").textContent : "yok");
 
     ok("rota/oyun: haritada +/- zoom kontrolü yok",
@@ -353,16 +365,26 @@ async function run() {
        q(".route-path-chips").getBoundingClientRect().height.toFixed(1) + "px");
   }
 
-  /* ═══════════ 6. HEADER: İNCE vs TAM ═══════════ */
+  /* ═══════════ 6. HEADER: masaüstünde TAM, telefon+oyunda YOK ═══════════ */
   {
+    // Telefon + oyun: header hiç yok (ölçüm 5'te doğrulandı). Masaüstü
+    // genişliğinde aynı sahne header'ı GERİ getirmeli ve içeriğini korumalı.
+    const wide = await frame("play", 1280, 800);
+    const wdoc = wide.contentDocument;
+    ok("header: masaüstünde .duel-header geri geliyor",
+       !!wdoc.querySelector(".duel-header"), wdoc.querySelector(".duel-header") ? "var" : "yok");
+    ok("header: masaüstü içeriği korunuyor (oda kodu)",
+       !!wdoc.querySelector(".duel-header .duel-code-badge"), "oda kodu duruyor");
+    ok("header: masaüstünde de süre göstergesi YOK",
+       !wdoc.querySelector(".rd-timer"), "yok");
+    ok("header: masaüstünde HUD içi geri düğmesi YOK (ayrı header var)",
+       !wdoc.querySelector(".rd-hud-back"), "yok");
+
     const f = await frame("header", 390, 844);
     const doc = f.contentDocument;
-    const slim = doc.getElementById("slim-header").getBoundingClientRect().height;
     const full = doc.getElementById("full-header").getBoundingClientRect().height;
-    ok("header: ince varyant tam varyanttan alçak", slim < full,
-       slim.toFixed(1) + "px vs " + full.toFixed(1) + "px");
     ok("header: tam varyant masaüstü içeriğini koruyor",
-       !!doc.querySelector("#full-header .duel-code-badge"), "oda kodu duruyor");
+       !!doc.querySelector("#full-header .duel-code-badge") && full > 0, full.toFixed(1) + "px");
   }
 
   return out;
