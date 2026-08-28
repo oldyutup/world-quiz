@@ -8935,6 +8935,36 @@ a.mode-card-btn { text-decoration: none; }
 .wd-score-val  { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .wd-score-sep  { opacity: 0.5; font-size: 13px; }
 .wd-map { flex: 1; min-height: 0; }
+
+/* ─── Çark Düello: oyun içi claim uyarısı ─────────────────────────────
+   Doğru cevabın SUNUCUYA İŞLENEMEDİĞİ durumlar (yetki/oturum hatası, ağ
+   hatası) eskiden tamamen sessizdi; oyuncuya "hedef ülke tıklanmıyor" gibi
+   görünüyordu. Bu şerit o sessizliği bitirir.
+
+   pointer-events:none ZORUNLU: uyarı haritanın üstünde durur ve KENDİSİ yeni
+   bir "tıklanamıyor" kaynağı olamaz (build 8'de +/- zoom düğmelerinin
+   elementFromPoint'i çalması tam olarak bu sınıftan bir hataydı). */
+.wd-claim-notice {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 8;
+  pointer-events: none;
+  max-width: min(420px, calc(100% - 24px));
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: rgba(120, 26, 26, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+@media (max-width: 520px) {
+  .wd-claim-notice { font-size: 12px; padding: 8px 12px; bottom: 10px; }
+}
 /* Çark 1v1'e özel: harita kontrollerini ekran dibinden uzaklaştır.
    HUD üstte olduğu için alt kenar hedef HUD/Pas Geç ile çakışmaz; ancak
    yeni oyuncular kartı ve mobil safe-area ile kontroller dibe yapışıyordu.

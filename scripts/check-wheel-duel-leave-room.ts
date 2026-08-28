@@ -235,6 +235,12 @@ create table public.wheel_duel_room_sequences (
   created_at timestamptz not null default now()
 );
 -- QM kuyruğu: gövdesi repoda YOK, country_duel_queue (20260701120000) şekli model.
+-- ⚠ MODELDİR, KANIT DEĞİL. Canlıda VAR olduğu kanıtlanmış kolonlar yalnız:
+--   profile_id / player_id (20260814180000 ön koşulu), matched_room_id
+--   (20260814160000 UPDATE'i), created_at (üretim hatasının HINT'i).
+--   updated_at CANLIDA YOKTUR — 20260827140000'in ilk üretim denemesi tam da
+--   buradan kopyalanan varsayım yüzünden 42703 ile düştü. Yeni migration/test
+--   yazarken bu DDL'i kanıt olarak KULLANMAYIN.
 -- FK'si canlıda DOĞRULANDI: matched_room_id -> wheel_duel_rooms ON DELETE SET NULL.
 create table public.wheel_duel_queue (
   profile_id uuid primary key,

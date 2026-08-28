@@ -37,6 +37,7 @@ import { useInviteJoin } from "../lib/useInviteJoin";
 import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { decideQuickMatchJoin } from "../lib/quickMatchFreshness";
 import {
   supabase,
   type WheelDuelRoom,
@@ -318,6 +319,11 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   const inviteOverrideCodeRef = useRef<string | null>(null);
   const inviteOverrideNameRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /* Oyun içi claim uyarısı — doğru cevabın SUNUCUYA İŞLENEMEDİĞİ durumları
+   * görünür kılar. Haritanın üstünde durur ama pointer-events:none'dır:
+   * uyarının kendisi ASLA yeni bir "tıklanamıyor" kaynağı olamaz. */
+  const [claimNotice, setClaimNotice] = useState<string | null>(null);
+  const claimNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [hostClosedRoom, setHostClosedRoom] = useState(false);
 
@@ -604,6 +610,20 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     }
   }, []);
 
+  /** Oyun içi claim uyarısını göster (4 sn sonra kendiliğinden kaybolur). */
+  const showClaimNotice = useCallback((msg: string) => {
+    setClaimNotice(msg);
+    if (claimNoticeTimerRef.current) clearTimeout(claimNoticeTimerRef.current);
+    claimNoticeTimerRef.current = setTimeout(() => {
+      setClaimNotice(null);
+      claimNoticeTimerRef.current = null;
+    }, 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (claimNoticeTimerRef.current) clearTimeout(claimNoticeTimerRef.current);
+  }, []);
+
   const handleMapClick = useCallback(
     async (topoId: string) => {
       const r = roomRef.current;
@@ -639,20 +659,56 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
         p_target:      topoId,
       });
 
+      // ── DOĞRU CEVAP YOLU ARTIK SESSİZ DEĞİL ─────────────────────────────
+      // Build 9 gerçek-cihaz raporu: "telefonda DOĞRU ülkeye basılamıyor, ama
+      // yanlış ülkeler basılabiliyor". Harita katmanı ölçüldü ve temiz çıktı
+      // (scripts/check-wheel-target-tap.mjs): hedef, merkezinden de sınırından
+      // da, guessed/last/wrong sınıflarıyla da seçilebiliyor. Asimetrinin
+      // kaynağı BURASI: yanlış cevap TAMAMEN lokaldir (her zaman kırmızı flash
+      // verir), doğru cevap ise sunucuya gider ve BU DALIN HER HATA BİÇİMİ
+      // GÖRÜNMEZDİ — RPC hatası da, claimed:false de sessiz `return` idi.
+      // Oyuncuya bu, tam olarak "hedef ülke tıklanmıyor" gibi görünür.
       if (error) {
         console.error("[WheelDuel] claim_target RPC failed", error);
+        const label = `${error.code ?? ""} ${error.message ?? ""}`;
+        const sessionInvalid =
+          error.code === "42501" ||
+          /unauthorized|player_room_mismatch/i.test(label);
+        showClaimNotice(
+          sessionInvalid
+            ? "Bu maçtaki oturumun geçersiz: doğru cevabın sunucuya işlenemiyor. Menüye dönüp yeniden katıl."
+            : "Cevabın sunucuya ulaşmadı. Tekrar dokun.",
+        );
         return;
       }
 
       const res = (data ?? {}) as { claimed?: boolean; new_score?: number | null };
       if (!res.claimed) {
-        // Yarışı kaybettin (rakip kapmış) veya hedef bayatlamış — sessizce no-op
+        // Sunucu hedefi kabul etmedi: ya rakip önce kaptı, ya BENDEKİ oda
+        // satırı bayat (realtime kaçtı → HUD sunucunun artık aktif saymadığı
+        // bir hedefi gösteriyor). İkincisi kalıcı bir "doğru ülke tıklanmıyor"
+        // hissi yaratır, çünkü guard hep aynı bayat hedefle geçer. Odayı
+        // sunucudan tazeleyip HUD'u otoriteyle hizalıyoruz → kendini onarır.
+        const { data: fresh } = await supabase
+          .from("wheel_duel_rooms")
+          .select("*")
+          .eq("id", r.id)
+          .maybeSingle();
+        if (fresh) {
+          const freshRoom = fresh as WheelDuelRoom;
+          setRoom(freshRoom);
+          roomRef.current = freshRoom;
+          if (freshRoom.current_target_topoid === topoId) {
+            // Hedef HÂLÂ aktif ama claim tutmadı → gerçek bir sunucu reddi.
+            showClaimNotice("Cevabın sunucuya ulaşmadı. Tekrar dokun.");
+          }
+        }
         return;
       }
 
       playSound("correct");
     },
-    [],
+    [showClaimNotice],
   );
 
   /* ── Sync refs with state ── */
@@ -1358,6 +1414,48 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   const joinQuickMatchRoom = useCallback(
     async (roomId: string, playerId: string, opponentName?: string) => {
       if (quickMatchJoinedRef.current) return;
+
+      // ══ ÖNCE DOĞRULA, SONRA BAĞLAN ═══════════════════════════════════════
+      // "HIZLI EŞLEŞ" = "bana ŞU AN geçerli bir maç bul", ASLA "eski oturumu
+      // sürdür". Bayat durum localStorage'da DEĞİL sunucudadır:
+      // `wheel_duel_cancel_quick_match` matched satırları bilerek bırakır, bu
+      // yüzden bitmiş bir maçın `matched_room_id`si kuyrukta kalır ve
+      // quickMatchTick'in SELECT-first guard'ı onu "eşleşmem" sanar.
+      // İki katman: (1) startQuickMatch'te wheel_duel_reset_quick_match ile
+      // satır koşulsuz silinir, (2) burada oda TAZE olduğu kanıtlanmadan
+      // arama state'ine DOKUNULMAZ — reset RPC'si ağ hatasıyla düşse bile
+      // bitmiş/terk edilmiş/silinmiş oda ASLA açılmaz.
+      // (Bayrak Düello ve Ülke Yaz'daki kanıtlanmış desenin aynısı.)
+      const { data: preRoom, error: preErr } = await supabase
+        .from("wheel_duel_rooms")
+        .select("*")
+        .eq("id", roomId)
+        .maybeSingle();
+
+      if (preErr || !preRoom) {   // decideQuickMatchJoin: "room_unreadable"
+        // Oda okunamadı / silinmiş → aramayı BOZMA; sonraki tick tekrar dener
+        // ve gerçek bir eşleşme hâlâ gelebilir. (Eski davranış burada kullanıcıyı
+        // setup'a düşürüp aramayı öldürüyordu.)
+        console.warn("[WD/quick-match] oda okunamadı, arama sürüyor", preErr);
+        return;
+      }
+
+      const candidate = preRoom as WheelDuelRoom;
+      // Tazelik kararı paylaşılan SAF modülde (lib/quickMatchFreshness.ts) —
+      // testli ve Rota Düello ile ORTAK.
+      const verdict = decideQuickMatchJoin({
+        room: candidate,
+        syncedNowMs: getSyncedNowMs(),
+      });
+      if (verdict.action !== "join") {
+        console.warn("[WD/quick-match] bayat matched_room_id yok sayıldı", {
+          reason: verdict.reason, status: candidate.status, started_at: candidate.started_at,
+        });
+        // Arama state'ine dokunulmaz: interval'ler döner, İptal düğmesi çalışır.
+        return;
+      }
+
+      // ══ Taze maç kanıtlandı → artık bağlan ════════════════════════════════
       quickMatchJoinedRef.current = true;
 
       // Polling/heartbeat'i durdur
@@ -1373,39 +1471,25 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
 
       myIdRef.current = playerId;
 
-      // ── RLS hardening: claim_token enjeksiyonu ──────────────────────────
-      // wheel_duel_quick_match RPC'sine imza değişikliği yapmadık; player
-      // satırını o RPC ekledi ama wheel_duel_player_claims'a token yazılmadı.
-      // M2 RPC'leri (pass/claim/rematch/leave) claim_token istiyor, bu yüzden
-      // burada taze bir token üretip claims tablosuna INSERT ediyoruz. Bu
-      // INSERT anon/authenticated için açık (M1 policy). Best-effort: hata
-      // verirse pas/claim akışları "unauthorized" yer; quick match yine
-      // çalışır ama gameplay bozulur → log + UI mesajı.
+      // ── Hızlı Eşleş claim token'ı (ARTIK YETKİ KAYNAĞI DEĞİL) ───────────
+      // Tarihsel olarak burada üretilen token, QM oyuncusunun TEK kimlik
+      // kanıtıydı. 20260814180000 claim dalını gerçek misafirlere daralttı
+      // (`guest_id is not null`); QM oyuncu satırları ise KİMLİKSİZ doğuyor
+      // (canlı doğrulandı: profile_id NULL + guest_id NULL) → bu token QM'de
+      // yapısal olarak ETKİSİZ. Yetki artık sunucuda kalıcıdır
+      // (20260827140000: wheel_duel_quick_match_owners).
+      //
+      // Yazım geriye dönük uyum için korunur (eski istemci/oda-kodu yollarıyla
+      // aynı şekil), ama BAŞARISIZLIĞI ARTIK MAÇI ETKİLEMEZ: kullanıcıyı
+      // korkutan hata bandı yerine sessiz log. (Bu banner, bayat odaya yeniden
+      // girildiğinde primary-key çakışmasıyla düzenli olarak tetikleniyordu.)
       const quickMatchClaimToken = freshClaimToken();
       myClaimTokenRef.current = quickMatchClaimToken;
       const { error: claimErr } = await supabase
         .from("wheel_duel_player_claims")
         .insert({ player_id: playerId, claim_token: quickMatchClaimToken });
       if (claimErr) {
-        console.error("[WheelDuel] quick-match claim insert failed", claimErr);
-        setErrorMsg(
-          "Oturum güvenlik kaydı yazılamadı. Maç devam etse de bazı işlemler hata verebilir.",
-        );
-      }
-
-      const { data: roomData, error: roomErr } = await supabase
-        .from("wheel_duel_rooms")
-        .select("*")
-        .eq("id", roomId)
-        .maybeSingle();
-
-      if (roomErr || !roomData) {
-        console.error("[WheelDuel] joinQuickMatchRoom: room fetch failed", roomErr);
-        // Soft fallback: searching ekranına dön
-        quickMatchJoinedRef.current = false;
-        setErrorMsg("Eşleşilen oda bulunamadı, tekrar dene.");
-        setPhase("setup");
-        return;
+        console.warn("[WheelDuel] quick-match claim insert failed (yetki için gerekli değil)", claimErr);
       }
 
       const { data: ps } = await supabase
@@ -1414,7 +1498,7 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
         .eq("room_id", roomId)
         .order("joined_at", { ascending: true });
 
-      const room = roomData as WheelDuelRoom;
+      const room = candidate;   // yukarıda tazeliği KANITLANMIŞ satır
       setRoom(room);
       setPlayers((ps ?? []) as WheelDuelPlayer[]);
       saveRoomSession(room.id, room.code, playerId);
@@ -1599,6 +1683,26 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     setSearchSeconds(0);
     setCountdownSeconds(0);
     setPhase("searching");
+
+    // ── Önceki maçtan kalan wheel_duel_queue satırını KOŞULSUZ sil ─────────
+    // `wheel_duel_cancel_quick_match` yalnız matched_room_id=NULL satırları
+    // siler (canlı eşleşmede karşı tarafın realtime UPDATE'ini bozmamak için
+    // — bu tasarım doğru). Bitmiş bir maçın satırı ise matched_room_id DOLU
+    // kalır ve quickMatchTick'in SELECT-first guard'ı onu bu aramanın sonucu
+    // sanıp ESKİ odayı açar. `clearWheelDuelSession()` buna çare değildir:
+    // bayat durum SUNUCUDADIR. Diğer dört modun (Bayrak, Ülke Yaz, Kuşatma,
+    // Rota) hepsinde bu reset zaten var; Çark tek eksikti.
+    // RPC yoksa/başarısızsa akış durmaz: joinQuickMatchRoom'daki stale-room
+    // guard ikinci katman olarak eski odayı yine de reddeder.
+    try {
+      const { error: resetErr } = await supabase.rpc(
+        "wheel_duel_reset_quick_match",
+        { p_profile_id: profile.id },
+      );
+      if (resetErr) console.warn("[WheelDuel] reset_quick_match RPC error:", resetErr);
+    } catch (e) {
+      console.warn("[WheelDuel] reset_quick_match RPC threw:", e);
+    }
 
     // Saniye sayacı (UI display + bracket)
     quickMatchSecondsRef.current = setInterval(() => {
@@ -2672,6 +2776,12 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
                   <span className="wd-player-score">{oppScore}</span>
                 </div>
               </div>
+
+              {claimNotice && (
+                <div className="wd-claim-notice" role="status" aria-live="polite">
+                  {claimNotice}
+                </div>
+              )}
 
               <WorldMap
                 guessedISOs={usedSet}

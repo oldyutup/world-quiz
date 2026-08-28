@@ -7,9 +7,16 @@
  *
  * SÖZLEŞME (20260802120000_route_duel_init.sql ile hizalı; otorite SUNUCU):
  *   • Heartbeat 3 sn'de bir route_duel_heartbeat ile last_seen_at = now()
- *     yazar (sunucu saati; client saati asla yazılmaz).
- *   • Sunucu kopuş eşiği 20 sn (route_duel_handle_disconnect içindeki guard).
- *     Client yalnız "kontrol et" der; erken çağrı sunucuda sessiz no-op.
+ *     yazar (sunucu saati; client saati asla yazılmaz). BAĞLANTI SAĞLIĞI
+ *     GAMEPLAY'DEN AYRIDIR: hiç ülke göndermeyen ama açık/bağlı oyuncunun
+ *     damgası da her beat'te tazelenir → boşta durmak ASLA kopuş sayılmaz.
+ *     (Build 9 hatası: beat `void supabase.rpc(...)` ile yazılmıştı ve hiç
+ *     gönderilmiyordu; geriye tek sinyal olarak submit_move kalıyordu.)
+ *   • Sunucu kopuş kararı İKİ KANITLIDIR (20260827120000): rakibin
+ *     last_seen_at'i ≥ 20 sn bayat OLACAK **ve** bu bayatlık ≥ 10 sn
+ *     KESİNTİSİZ gözlenmiş olacak. Rakipten gelen tek bir heartbeat pencereyi
+ *     siler → grace içinde reconnect maçı kaybettirmez. Client yalnız
+ *     "kontrol et" der; erken çağrı sunucuda sessiz no-op.
  *   • Gösterge DÖRT durumlu: unknown ("Bağlanıyor…", nötr) → connected
  *     ("Bağlı", yeşil) → reconnecting ("Bağlantı zayıf…", amber, yaş ≥ 12 sn
  *     = 4 kaçırılmış heartbeat) → disconnected ("Bağlantı koptu", kırmızı).
@@ -42,6 +49,13 @@ export const ROUTE_DUEL_OPP_STALE_UI_SECONDS = 12;
 /** Client'ın sunucudan kopuş KONTROLÜ istediği eşik (sn) — kararı sunucu
  *  verir (RPC içindeki 20 sn guard ile birebir aynı değer). */
 export const ROUTE_DUEL_DISCONNECT_REQUEST_SECONDS = 20;
+
+/** Sunucunun kopuşu KESİNLEŞTİRMEK için istediği KESİNTİSİZ gözlem penceresi
+ *  (sn) — 20260827120000'deki `c_confirm` ile birebir. Yalnız belgeleme/UI
+ *  metni için; kararı hâlâ SUNUCU verir. Tek bir handle_disconnect çağrısı
+ *  ARTIK MAÇ BİTİREMEZ: pencereyi açar, rakipten gelen ilk heartbeat kapatır.
+ *  → 20 sn bayatlık + 10 sn kesintisiz sessizlik = ~30 sn gerçek yokluk. */
+export const ROUTE_DUEL_DISCONNECT_CONFIRM_SECONDS = 10;
 
 /** Rakip bağlantı göstergesinin dört durumu:
  *  unknown = veri yok (nötr) · connected = yaş < 12 sn (yeşil) ·
@@ -123,9 +137,24 @@ export function deriveOppConnectionView(
   return staleSeconds >= ROUTE_DUEL_OPP_STALE_UI_SECONDS ? "reconnecting" : "connected";
 }
 
-/** Sunucudan kopuş kontrolü istensin mi? (Karar yine sunucuda — erken çağrı
- *  no-op.) unknown/NaN'da ASLA istenmez. */
-export function shouldRequestDisconnect(staleSeconds: number | null): boolean {
+/**
+ * Sunucudan kopuş kontrolü istensin mi? (Karar yine sunucuda — erken çağrı
+ * no-op.) unknown/NaN'da ASLA istenmez.
+ *
+ * `myHeartbeatHealthy` — KENDİ heartbeat'imin sunucuya ULAŞTIĞININ kanıtı
+ * (son route_duel_heartbeat çağrısı hatasız döndü mü). Kanıt yoksa rakibi
+ * suçlamayız: build 9'da heartbeat RPC'si `void supabase.rpc(...)` ile
+ * yazıldığı için HİÇ GÖNDERİLMİYORDU (PostgrestBuilder fetch'i yalnız
+ * `then()` çağrılınca başlatır) ve last_seen_at'i tazeleyen tek yol hamle
+ * göndermekti — boşta duran ama bağlı olan oyuncu kopuk sanılıp maçı
+ * kaybediyordu. Bu bayrak aynı sınıftan sessiz bir arıza (yetki hatası, ağ
+ * kesintisi) tekrar ederse kopuş İDDİASINI da susturur.
+ */
+export function shouldRequestDisconnect(
+  staleSeconds: number | null,
+  myHeartbeatHealthy = true,
+): boolean {
+  if (!myHeartbeatHealthy) return false;
   if (staleSeconds === null || !Number.isFinite(staleSeconds)) return false;
   return staleSeconds >= ROUTE_DUEL_DISCONNECT_REQUEST_SECONDS;
 }

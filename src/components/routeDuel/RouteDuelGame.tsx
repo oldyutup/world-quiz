@@ -27,6 +27,7 @@ import { supabase } from "../../lib/supabase";
 import { playSound } from "../../lib/sound";
 import { useInviteJoin } from "../../lib/useInviteJoin";
 import { getSyncedNowMs, initServerClockSync } from "../../lib/serverClock";
+import { decideQuickMatchJoin } from "../../lib/quickMatchFreshness";
 import { readStoredHomeTheme, getThemeBackgroundStyle } from "../../lib/themeBackgrounds";
 import { useRosterProfiles } from "../../lib/useRosterProfiles";
 import { useMobileSurface } from "../../lib/useIsMobile";
@@ -191,6 +192,11 @@ export default function RouteDuelGame({
 
   const myIdRef = useRef<string>("");
   const myClaimTokenRef = useRef<string>("");
+  /* Son heartbeat sunucuya ulaştı mı? Kopuş İDDİASININ ön koşulu (bkz.
+   * shouldRequestDisconnect): kendi canlılığımı kanıtlayamıyorsam rakibin
+   * sessizliği hakkında hüküm veremem. Başlangıçta true — ilk beat effect
+   * kurulur kurulmaz atılır ve değeri anında düzeltir. */
+  const heartbeatHealthyRef = useRef<boolean>(true);
 
   const isHost = !!room && room.host_player_id === myIdRef.current;
   const me = players.find(p => p.id === myIdRef.current);
@@ -336,10 +342,25 @@ export default function RouteDuelGame({
   useEffect(() => {
     if (!presenceActive) return;
     const beat = () => {
-      void supabase.rpc("route_duel_heartbeat", {
-        p_player_id: myIdRef.current,
-        p_claim_token: myClaimTokenRef.current,
-      });
+      // `.then(...)` ŞART: supabase.rpc() bir PostgrestBuilder döndürür ve o
+      // GERÇEK BİR PROMISE DEĞİLDİR — HTTP isteği ancak `then()` çağrıldığında
+      // başlar. Build 9'daki `void supabase.rpc("route_duel_heartbeat", …)`
+      // bu yüzden HİÇ İSTEK GÖNDERMİYORDU (ölçüldü: 0 request). last_seen_at'i
+      // tazeleyen tek yol submit_move kalıyor, hamle göndermeyen ama bağlı
+      // oyuncu 20 sn sonra "koptu" sayılıp maçı kaybediyordu.
+      void supabase
+        .rpc("route_duel_heartbeat", {
+          p_player_id: myIdRef.current,
+          p_claim_token: myClaimTokenRef.current,
+        })
+        .then(({ error }) => {
+          heartbeatHealthyRef.current = !error;
+          if (error) {
+            // Sessiz kalmak bu hatanın TAM OLARAK maç kaybettiren biçimiydi:
+            // beat düşerse kendi damgam donar, rakip beni kopmuş sanar.
+            console.error("[RouteDuel] heartbeat failed", error);
+          }
+        });
     };
     beat();
     const id = setInterval(beat, ROUTE_DUEL_HEARTBEAT_MS);
@@ -383,7 +404,9 @@ export default function RouteDuelGame({
       });
       setOppStaleSeconds(stale);
 
-      if (shouldRequestDisconnect(stale)) {
+      // Kendi beat'im sunucuya ULAŞMIYORSA rakibi suçlayamam: o durumda
+      // "rakip sessiz" okuması benim arızamın yansımasıdır.
+      if (shouldRequestDisconnect(stale, heartbeatHealthyRef.current)) {
         // Sunucu doğrular: eşik dolmadıysa no-op olarak playing oda döner ve
         // gösterge amber'da kalır; dolduysa maçı kalan oyuncu lehine bitirir.
         // Onaylı oda satırı (finished_reason='disconnect') RPC dönüşünden de
@@ -757,6 +780,40 @@ export default function RouteDuelGame({
 
   const joinQuickMatchRoom = useCallback(async (roomId: string, playerId: string, opponentName?: string) => {
     if (quickMatchJoinedRef.current) return;
+
+    // ── ÖNCE DOĞRULA, SONRA BAĞLAN ──────────────────────────────────────
+    // Arama state'i (interval'ler, abort/joined bayrakları) oda TAZE bir maç
+    // olduğu KANITLANMADAN sökülmez. `route_duel_reset_quick_match` her
+    // aramanın başında bayat satırı siliyor; bu guard o RPC ağ hatasıyla
+    // düşerse ikinci savunma katmanıdır (Bayrak/Ülke Yaz'daki kanıtlanmış
+    // desen). Bitmiş/terk edilmiş/silinmiş oda ASLA açılmaz.
+    const { data: roomData, error: roomErr } = await supabase
+      .from("route_duel_rooms")
+      .select("*")
+      .eq("id", roomId)
+      .maybeSingle();
+
+    if (roomErr || !roomData) {
+      // Oda okunamadı/silinmiş → aramayı BOZMA, sonraki tick tekrar dener.
+      console.warn("[RouteDuel] quick-match oda okunamadı, arama sürüyor", roomErr);
+      return;
+    }
+
+    const matched = roomData as RouteDuelRoom;
+    // Tazelik kararı paylaşılan SAF modülde (lib/quickMatchFreshness.ts) —
+    // testli ve Çark Düello ile ORTAK.
+    const verdict = decideQuickMatchJoin({
+      room: matched,
+      syncedNowMs: getSyncedNowMs(),
+    });
+    if (verdict.action !== "join") {
+      console.warn("[RouteDuel] bayat matched_room_id yok sayıldı", {
+        reason: verdict.reason, status: matched.status, started_at: matched.started_at,
+      });
+      return;   // arama state'i dokunulmadan sürer; iptal düğmesi çalışır
+    }
+
+    // ── Taze maç kanıtlandı → artık bağlan ───────────────────────────────
     quickMatchJoinedRef.current = true;
 
     if (quickMatchTickRef.current) { clearInterval(quickMatchTickRef.current); quickMatchTickRef.current = null; }
@@ -766,26 +823,13 @@ export default function RouteDuelGame({
     myIdRef.current = playerId;
     // claim token QM RPC'sine parametre olarak gitti; ref zaten güncel.
 
-    const { data: roomData, error: roomErr } = await supabase
-      .from("route_duel_rooms")
-      .select("*")
-      .eq("id", roomId)
-      .maybeSingle();
-
-    if (roomErr || !roomData) {
-      quickMatchJoinedRef.current = false;
-      setErrorMsg("Eşleşilen oda bulunamadı, tekrar dene.");
-      setPhase("setup");
-      return;
-    }
-
     const { data: ps } = await supabase
       .from("route_duel_players")
       .select("*")
       .eq("room_id", roomId)
       .order("joined_at", { ascending: true });
 
-    const matchedRoom = roomData as RouteDuelRoom;
+    const matchedRoom = matched;
     setRoom(matchedRoom);
     setPlayers((ps ?? []) as RouteDuelPlayer[]);
     saveRoomSession(matchedRoom.id, matchedRoom.code, playerId);
@@ -941,7 +985,14 @@ export default function RouteDuelGame({
       if (quickMatchTickRef.current) clearInterval(quickMatchTickRef.current);
       if (quickMatchSecondsRef.current) clearInterval(quickMatchSecondsRef.current);
       if (profile?.id && !quickMatchJoinedRef.current) {
-        void supabase.rpc("route_duel_cancel_quick_match", { p_profile_id: profile.id });
+        // `.then(...)` olmadan bu istek HİÇ gönderilmez (heartbeat ile aynı
+        // PostgrestBuilder tuzağı) → arama yarıda bırakıldığında queue satırı
+        // sunucuda bayat kalırdı.
+        void supabase
+          .rpc("route_duel_cancel_quick_match", { p_profile_id: profile.id })
+          .then(({ error }) => {
+            if (error) console.warn("[RouteDuel] cancel_quick_match failed", error);
+          });
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

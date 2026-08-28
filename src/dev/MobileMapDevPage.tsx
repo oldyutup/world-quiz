@@ -62,6 +62,78 @@ function WheelScene() {
   );
 }
 
+/* ── Çark Düello oyun ekranı: ÜRETİMDEKİ DOM birebir ──
+   WheelDuelGame'in playing dalının (wd-screen → wd-hud + wd-map → floating
+   .wd-player-card + WorldMap) aynısı. Amaç: "hedef ülke telefonda
+   tıklanamıyor" iddiasını gerçek hit-test ile ölçmek — bu yüzden WorldMap'e
+   üretimdeki DÖRT durum prop'u da geçilir (guessedISOs=used, lastGuessed=son
+   doğru, wrongId=kırmızı flash, activeIds=tıklanabilir havuz).
+   ?target=<topoId> hedefi, ?used=a,b ve ?last=<topoId> geçmişi seçer. */
+function WheelDuelScene() {
+  const params = new URLSearchParams(window.location.search);
+  const target = params.get("target") ?? "TUR";
+  const used = useMemo(
+    () => new Set((params.get("used") ?? "").split(",").filter(Boolean)),
+    [],
+  );
+  const last = params.get("last");
+  const wrong = params.get("wrong");
+  const clickable = useMemo(() => new Set(Object.keys(TOPOID_TO_DISPLAY)), []);
+  const onCountryClick = useCallback((topoId: string) => {
+    const t = (window.__mapTest ??= { countryClicks: 0, lastCountryId: null });
+    t.countryClicks += 1;
+    t.lastCountryId = topoId;
+  }, []);
+  const targetDisplay = TOPOID_TO_DISPLAY[target] ?? target;
+  return (
+    // Üretimdeki sarmalayıcı: WheelDuelGame kökü `.app.duel-screen`, oyun
+    // ekranı onun içindeki `.wd-screen`. Sarmalayıcı olmadan
+    // `.map-container-inner`ın height:100%'i çözülmez ve harita ezilir —
+    // yani ölçüm kendi düzen hatasını ürün hatası sanardı.
+    <div className="app duel-screen">
+    <div className="wd-screen">
+      <div className="wd-hud wd-hud--duel">
+        <div className="wd-hud-left">
+          <button className="btn btn-ghost wd-pass-btn">🟡 Pas Geç</button>
+        </div>
+        <div className="wd-hud-center">
+          <div className="wd-hud-label">🎯 Hedef</div>
+          <div className="wd-target">{targetDisplay}</div>
+        </div>
+        <div className="wd-hud-right">
+          <div className="wd-hud-label">⏱ Süre</div>
+          <div className="wd-timer">42</div>
+        </div>
+      </div>
+      <div className="wheel-map-area wd-map">
+        <div className="wd-player-card" aria-label="Oyuncular">
+          <div className="wd-player-card-title" aria-hidden="true">Oyuncular</div>
+          <div className="wd-player-row wd-player-row--me">
+            <span className="wd-player-name">enes1</span>
+            <span className="wd-player-score">3</span>
+          </div>
+          <div className="wd-player-row wd-player-row--opponent">
+            <span className="wd-player-name">enes</span>
+            <span className="wd-player-score">2</span>
+          </div>
+        </div>
+        <WorldMap
+          guessedISOs={used}
+          lastGuessed={last}
+          showLabels={false}
+          activeIds={clickable}
+          resetKey={0}
+          region="world"
+          onCountryClick={onCountryClick}
+          wrongId={wrong ?? undefined}
+          preserveUserView
+        />
+      </div>
+    </div>
+    </div>
+  );
+}
+
 /* ── Rota haritası; mevcut ülke test tarafından değiştirilebilir ── */
 function RouteScene() {
   const keyToTopoId = useMemo(buildKeyToTopoId, []);
@@ -166,6 +238,7 @@ export default function MobileMapDevPage() {
     document.body.style.margin = "0";
   }, []);
   const s = scene();
+  if (s === "wheelduel") return <WheelDuelScene />;
   if (s === "route")  return <RouteScene />;
   if (s === "play")   return <PlayScene />;
   if (s === "header") return <HeaderScene />;
