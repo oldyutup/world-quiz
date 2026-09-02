@@ -38,6 +38,7 @@ import { useEscapePass } from "../lib/useEscapePass";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
 import { decideQuickMatchJoin } from "../lib/quickMatchFreshness";
+import { useQuickMatchCountdown } from "../lib/useQuickMatchCountdown";
 import {
   supabase,
   type WheelDuelRoom,
@@ -390,17 +391,13 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
    *  searching → polling RPC ile rakip arar; bracket genişler.
    *  Eşleşince RPC 'matched_room_id' UPDATE yapar (bekleyen client realtime
    *  ile yakalar) veya RPC dönüşünden caller direkt joinQuickMatchRoom çağırır.
-   *  Sonra phase 'playing' olur ve room.room_source==='quick_match' +
-   *  started_at gelecekte iken countdown overlay gösterilir.
    */
   const [searchSeconds,    setSearchSeconds]    = useState(0);
-  const [countdownSeconds, setCountdownSeconds] = useState(0);
   const quickMatchTickRef        = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchSecondsRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchStartMsRef     = useRef<number>(0);
   const quickMatchAbortRef       = useRef(false);
   const quickMatchJoinedRef      = useRef(false);  // joinQuickMatchRoom tek seferlik guard
-  const quickMatchCountdownRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /* ── Identity (set fresh on create/join) ──────────────────── */
   const myIdRef = useRef<string>("");
@@ -428,6 +425,14 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
   const resultSoundPlayedRef = useRef(false);
 
   /* ── Derived ─────────────────────────────────────────────── */
+  /* HIZLI EŞLEŞ 3-2-1 — ODA SATIRINDAN TÜRETİLİR (lib/quickMatchStart.ts).
+   * Sunucu Hızlı Eşleş odasını `status='playing'` + `started_at=now()+3sn`
+   * ile açar; İLK maç da RÖVANŞ da (20260828120000) aynı şekli alır. Geri
+   * sayım artık "odaya nasıl girdiğime" değil ODA SATIRINA bağlı olduğu için:
+   *   • rövanşta kendiliğinden çalışır (started_at yeni değere atlar),
+   *   • yeniden yükleme / reconnect sonrası doğru yerinden devam eder,
+   *   • arka plana alınan sekme geri gelince kendini düzeltir. */
+  const countdownSeconds = useQuickMatchCountdown(room);
   const isHost = !!room && room.host_player_id === myIdRef.current;
   const lobbyDuration = room?.duration_seconds ?? hostDuration;
   const lobbyRegionDb = room?.region ?? normalizeRegion(hostRegion);
@@ -523,8 +528,13 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
           if (r.status === "finished") {
             setPhase("finished");
           }
-          // Rövanş reset → her iki tarafta lobby'ye dön.
-          // (waiting'e başka geçiş yolu şu an yok; ileride eklenirse de güvenli.)
+          // MANUEL oda rövanşı → her iki tarafta lobby'ye dön (oda kodu +
+          // host "Başlat" ürünü orada DOĞRUDUR ve korunur).
+          //
+          // HIZLI EŞLEŞ odası buraya DÜŞMEZ: sunucu (20260828120000)
+          // rövanşta doğrudan status='playing' + started_at=now()+3sn yazar,
+          // yukarıdaki 'playing' dalı devreye girer ve türetilmiş geri sayım
+          // 3-2-1'i gösterir. Lobi bir an bile görünmez.
           if (r.status === "waiting") {
             setPhase(prev => (prev === "lobby" ? prev : "lobby"));
           }
@@ -1183,6 +1193,39 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     }
   }, [room?.status]);
 
+  /* ═══════════════════════════════════════════════════════════
+     YENİ MAÇ → GEÇİCİ MAÇ DURUMUNU SIFIRLA
+     ═══════════════════════════════════════════════════════════
+     `current_match_id` her rövanş reset'inde SUNUCUDA yenilenir
+     (wheel_duel_process_rematch). Yani "yeni maç başladı"nın tek otoritesi
+     budur — istemcinin hangi düğmeye bastığı değil.
+
+     ESKİDEN bu sıfırlama `startGame()`in içindeydi ve Hızlı Eşleş rövanşı
+     lobiye uğramadığı için ARTIK ÇAĞRILMIYOR. Özellikle `endingRef` maç 1'den
+     `true` kaldığında host'un maç 2'yi bitiren yolu kapanırdı (sunucu
+     `advance_if_due` yine bitirirdi ama istemci yolunun sessizce ölmesi
+     "1. maçtan sızan durum" tanımına girer). Sıfırlama artık maç kimliğine
+     bağlı: hangi yoldan gelinirse gelinsin çalışır. */
+  const matchIdentity = room?.current_match_id ?? null;
+  useEffect(() => {
+    if (!matchIdentity) return;
+    endingRef.current   = false;
+    advancingRef.current = false;
+    prevTargetRef.current = roomRef.current?.current_target_topoid ?? null;
+    setWrongId(null);
+    setLastClaimedTopoId(null);
+    setIPressedLocally(false);
+    setClaimNotice(null);
+    if (wrongFlashTimerRef.current) {
+      clearTimeout(wrongFlashTimerRef.current);
+      wrongFlashTimerRef.current = null;
+    }
+    if (lastClaimedTimerRef.current) {
+      clearTimeout(lastClaimedTimerRef.current);
+      lastClaimedTimerRef.current = null;
+    }
+  }, [matchIdentity]);
+
   /* ───────────────────────────────────────────────────────────
      PAS GEÇ — request + host-side skip processor
   ─────────────────────────────────────────────────────────── */
@@ -1504,29 +1547,10 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
       saveRoomSession(room.id, room.code, playerId);
 
 
-      // Quick match countdown başlat (started_at - now() fark). started_at
-      // server tarafında now()+3s; client clock drift olunca buffer negatif
-      // veya fazlasıyla büyük görünebilir → synced clock kullanıyoruz.
-      const startMs = room.started_at ? new Date(room.started_at).getTime() : 0;
-      const now = getSyncedNowMs();
-      const remainMs = Math.max(0, startMs - now);
-      setCountdownSeconds(Math.ceil(remainMs / 1000));
-
-      if (quickMatchCountdownRef.current) {
-        clearInterval(quickMatchCountdownRef.current);
-        quickMatchCountdownRef.current = null;
-      }
-      if (remainMs > 0) {
-        const tick = () => {
-          const r = Math.max(0, startMs - getSyncedNowMs());
-          setCountdownSeconds(Math.ceil(r / 1000));
-          if (r <= 0 && quickMatchCountdownRef.current) {
-            clearInterval(quickMatchCountdownRef.current);
-            quickMatchCountdownRef.current = null;
-          }
-        };
-        quickMatchCountdownRef.current = setInterval(tick, 200);
-      }
+      // Geri sayım BURADA KURULMAZ: `useQuickMatchCountdown` odanın
+      // room_source + status + started_at üçlüsünden türetir (yukarıdaki
+      // "Derived" bloğuna bak). Böylece aynı sayaç ilk eşleşmede, rövanşta
+      // ve oturum geri yüklemede tek koddan gelir.
 
       // Opponent name UI'da küçük "Rakip bulundu: X" satırı için
       if (opponentName) {
@@ -1681,7 +1705,6 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     quickMatchJoinedRef.current = false;
     quickMatchStartMsRef.current = Date.now();
     setSearchSeconds(0);
-    setCountdownSeconds(0);
     setPhase("searching");
 
     // ── Önceki maçtan kalan wheel_duel_queue satırını KOŞULSUZ sil ─────────
@@ -1778,7 +1801,6 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     return () => {
       if (quickMatchTickRef.current) clearInterval(quickMatchTickRef.current);
       if (quickMatchSecondsRef.current) clearInterval(quickMatchSecondsRef.current);
-      if (quickMatchCountdownRef.current) clearInterval(quickMatchCountdownRef.current);
       // Best-effort cleanup; cancelQuickMatch async ama unmount'ta beklemeyiz.
       if (profile?.id && !quickMatchJoinedRef.current) {
         supabase.rpc("wheel_duel_cancel_quick_match", {
@@ -1960,13 +1982,8 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
     endingRef.current = false;
     prevTargetRef.current = null;
 
-    // Quick match guard ve countdown timer reset (tek shot olsa bile temiz çıkış)
+    // Quick match guard reset (countdown türetilmiş: room=null → 0)
     quickMatchJoinedRef.current = false;
-    setCountdownSeconds(0);
-    if (quickMatchCountdownRef.current) {
-      clearInterval(quickMatchCountdownRef.current);
-      quickMatchCountdownRef.current = null;
-    }
     if (wrongFlashTimerRef.current) {
       clearTimeout(wrongFlashTimerRef.current);
       wrongFlashTimerRef.current = null;
@@ -2805,11 +2822,15 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
         && room.room_source === "quick_match"
         && countdownSeconds > 0 && (() => {
           const opp = players.find(p => p.id !== myIdRef.current);
+          // match_seq SUNUCUDA her rövanşta +1 → 1'den büyükse bu bir rövanş.
+          const isRematchStart = (room.match_seq ?? 1) > 1;
           return (
             <div className="wheel-result-backdrop">
               <div className="wheel-result-panel" style={{ textAlign: "center" }}>
-                <div className="wheel-result-emoji">⚡</div>
-                <h2 className="wheel-result-title">Rakip bulundu!</h2>
+                <div className="wheel-result-emoji">{isRematchStart ? "↺" : "⚡"}</div>
+                <h2 className="wheel-result-title">
+                  {isRematchStart ? "Rövanş!" : "Rakip bulundu!"}
+                </h2>
                 {opp && (
                   <p
                     className="duel-lobby-desc"
@@ -2822,7 +2843,7 @@ export default function WheelDuelGame({ onHome, profile, autoQuickMatch = null, 
                   className="duel-lobby-desc"
                   style={{ margin: "8px 0 0", fontSize: "0.9rem" }}
                 >
-                  Oyun başlıyor…
+                  {isRematchStart ? "Yeni maç başlıyor…" : "Oyun başlıyor…"}
                 </p>
                 <div
                   style={{

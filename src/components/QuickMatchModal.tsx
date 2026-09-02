@@ -12,7 +12,12 @@
  * Tüm seçenekler ve mod seti `lib/quickMatch.ts`'ten (tek doğruluk kaynağı)
  * gelir; native MobileHome sheet'iyle aynı intent kontratını paylaşır. Yalnız
  * gerçek 1v1 hızlı eşleşmesi olan modlar gösterilir (Ülke Yaz / Çark / Bayrak /
- * Kuşatma); diğer modların queue'su olmadığı için listede yer almazlar.
+ * Rota); diğer modların queue'su olmadığı için listede yer almazlar.
+ *
+ * KUŞATMA burada YOKTUR ve eklenmemelidir: ürün kararı gereği Kuşatma yalnız
+ * oda/lobi akışıyla oynanır (bkz. lib/quickMatch.ts başlığı). Mod listesi
+ * QUICK_MATCH_MODE_META'dan geldiği ve `QuickMatchMode` birliğinde "conquest"
+ * bulunmadığı için bu yüzeyden Kuşatma seçilmesi tip düzeyinde imkânsızdır.
  *
  * Masaüstü modal dilini yeniden kullanır (.overlay + panel): role="dialog",
  * aria-modal, Escape ile kapanma, dışarı tıklama, ilk-odak + Tab hapsi ve
@@ -36,8 +41,6 @@ import {
   QUICK_MATCH_FLAG_ROUNDS,
   QUICK_MATCH_ROUTE_ROUNDS,
   QUICK_MATCH_ROUTE_LENGTHS,
-  QUICK_MATCH_CONQUEST_ROUNDS,
-  QUICK_MATCH_CONQUEST_MAP_OPTIONS,
   QUICK_MATCH_REGIONS,
   QUICK_MATCH_DEFAULT_REGION,
   type QuickMatchIntent,
@@ -54,7 +57,6 @@ const MODE_ICON: Record<QuickMatchMode, string> = {
   wheel: "/assets/icons/home/wheel-mode.png",
   flag: "/assets/icons/home/flag-mode.png",
   route: "/assets/icons/home/route-mode.png",
-  conquest: "/assets/icons/home/conquest-mode.png",
 };
 
 /** Mod satırı için ortak ikon görseli — trigger (seçili) ve liste satırlarında
@@ -316,10 +318,10 @@ export function QuickMatchModal({
   const [flagRounds, setFlagRounds] = useState(10);           // Bayrak varsayılan 10 Tur
   const [routeRounds, setRouteRounds] = useState(5);          // Rota varsayılan 5 Tur
   const [routeLength, setRouteLength] = useState("7");        // Rota varsayılan 7 ara ülke
-  const [siegeRounds, setSiegeRounds] = useState(6);          // Kuşatma varsayılan 6 Tur
   const [region, setRegion] = useState<string>(QUICK_MATCH_DEFAULT_REGION);
   // Aynı anda tek açılır liste: hangi alanın (mode | duration | rounds | region |
-  // map) listesinin açık olduğu. Yeni bir alan açılınca öncekini bu state kapatır.
+  // routeLength) listesinin açık olduğu. Yeni bir alan açılınca öncekini bu
+  // state kapatır.
   const [openField, setOpenField] = useState<string | null>(null);
 
   const active = QUICK_MATCH_MODE_META.find((m) => m.mode === mode)!;
@@ -362,7 +364,7 @@ export function QuickMatchModal({
   }, []);
 
   // Seçili modun queue'suna gerçekten ulaşan İKİ kontrol. Kıta üç düello moduyla
-  // ortak; Kuşatma yalnız Türkiye haritasını taşır (bölge orada anlamsız).
+  // ortak; Rota kendi uzunluk tercihini taşır.
   const fields = useMemo(() => {
     switch (mode) {
       case "country":
@@ -385,13 +387,8 @@ export function QuickMatchModal({
           { id: "rounds", label: "Tur", options: QUICK_MATCH_ROUTE_ROUNDS as QmOption[], value: routeRounds, onSelect: (v: string | number) => setRouteRounds(v as number) },
           { id: "routeLength", label: "Rota Uzunluğu", options: QUICK_MATCH_ROUTE_LENGTHS, value: routeLength, onSelect: (v: string | number) => setRouteLength(v as string) },
         ];
-      case "conquest":
-        return [
-          { id: "rounds", label: "Tur", options: QUICK_MATCH_CONQUEST_ROUNDS as QmOption[], value: siegeRounds, onSelect: (v: string | number) => setSiegeRounds(v as number) },
-          { id: "map", label: "Harita", options: QUICK_MATCH_CONQUEST_MAP_OPTIONS, value: "turkey", onSelect: () => { /* Türkiye tek canlı harita */ } },
-        ];
     }
-  }, [mode, countryDuration, wheelDuration, flagRounds, routeRounds, routeLength, siegeRounds, region]);
+  }, [mode, countryDuration, wheelDuration, flagRounds, routeRounds, routeLength, region]);
 
   function buildIntent(): QuickMatchIntent {
     switch (mode) {
@@ -399,7 +396,6 @@ export function QuickMatchModal({
       case "wheel":   return { mode, duration: wheelDuration, region };
       case "flag":    return { mode, rounds: flagRounds, region };
       case "route":   return { mode, rounds: routeRounds, routeLength };
-      case "conquest": return { mode, rounds: siegeRounds, map: "turkey" };
     }
   }
 

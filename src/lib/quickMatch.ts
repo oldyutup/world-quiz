@@ -24,26 +24,50 @@
  *   • Ülke Yaz Düellosu (country) → Süre (p_duration, sn) + Kıta (p_region)
  *   • Çark Düellosu      (wheel)   → Süre (p_duration, sn) + Kıta (p_region)
  *   • Bayrak Düellosu    (flag)    → Tur  (p_total_rounds) + Kıta (p_region)
- *   • Kuşatma            (conquest)→ Tur (round_count) + Harita (yalnız turkey)
  * The sheet shows only the two controls that actually reach the backend for the
- * selected mode — never a süre+tur combination the queue can't represent. The
- * duel modes carry region; conquest carries map (region is irrelevant there).
+ * selected mode — never a süre+tur combination the queue can't represent.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * ÜRÜN KARARI — KUŞATMA'NIN HIZLI EŞLEŞ'İ YOKTUR
+ * ══════════════════════════════════════════════════════════════════════════
+ * Kuşatma YALNIZ kendi oda/lobi akışıyla oynanır (kayıtlı kullanıcı oda kurar,
+ * diğerleri oda kodu/davet ile katılır, host lobide başlatır). Bu modülde
+ * `QuickMatchMode` birliğinde "conquest" YOKTUR: bir Kuşatma hızlı-eşleşme
+ * niyeti TİP DÜZEYİNDE temsil edilemez, dolayısıyla ne masaüstü modalı
+ * (QuickMatchModal) ne mobil sheet (MobileHome) ne de App yönlendirmesi
+ * Kuşatma'yı seçebilir.
+ *
+ * Sunucudaki eski `conquest_quick_match` / `conquest_cancel_quick_match` /
+ * `conquest_reset_quick_match` RPC'leri ve `conquest_quick_match_queue` tablosu
+ * SİLİNMEDİ (canlı DB nesnesi salt-temizlik için düşürülmez) ama ÜRÜN
+ * YÜZEYİNDEN ERİŞİLEMEZ: onları çağıran tek kod yolu ConquestMode'un
+ * `autoQuickMatch` prop'udur ve App artık bu prop'u HİÇ geçmez.
  */
 
-/** The five modes surfaced by the Quick Match sheet. */
-export type QuickMatchMode = "country" | "wheel" | "flag" | "route" | "conquest";
+/** The four modes surfaced by the Quick Match entry surfaces. Kuşatma is
+ *  DELIBERATELY absent — see the product decision in the header. */
+export type QuickMatchMode = "country" | "wheel" | "flag" | "route";
+
+/** Runtime guard for values that cross a trust boundary (sessionStorage
+ *  restore after an OAuth round-trip). A build that once wrote
+ *  `{"mode":"conquest"}` must NOT be able to resurrect a Kuşatma quick match
+ *  after this build removed it, so the parse side re-validates instead of
+ *  trusting the persisted string. */
+export const QUICK_MATCH_MODES: readonly QuickMatchMode[] = ["country", "wheel", "flag", "route"] as const;
+
+export function isQuickMatchMode(value: unknown): value is QuickMatchMode {
+  return typeof value === "string" && (QUICK_MATCH_MODES as readonly string[]).includes(value);
+}
 
 /** What the sheet hands up to App when the player taps the primary CTA. */
 export interface QuickMatchIntent {
   mode: QuickMatchMode;
   /** country | wheel → seconds, mapped to the RPC's p_duration. */
   duration?: number;
-  /** flag | route → p_total_rounds; conquest → round_count. */
+  /** flag | route → p_total_rounds. */
   rounds?: number;
   /** Duel modes → p_region (continent value chosen in the Kıta picker). */
   region?: string;
-  /** Conquest only — Türkiye is the single live map. */
-  map?: "turkey";
   /** Route duel only → p_route_length ('5' | '7' | '7plus'). */
   routeLength?: string;
 }
@@ -52,9 +76,9 @@ export interface QuickMatchIntent {
 export interface QmOption<T = number> {
   label: string;
   value: T;
-  /** Locked "Yakında" row (e.g. non-Türkiye conquest maps): rendered but not
-   *  selectable and never handed to a queue parameter. Optional so the existing
-   *  duration/round/region arrays stay assignable unchanged. */
+  /** Locked "Yakında" row: rendered but not selectable and never handed to a
+   *  queue parameter. Optional so the duration/round/region arrays stay
+   *  assignable unchanged. */
   disabled?: boolean;
 }
 
@@ -87,13 +111,6 @@ export const QUICK_MATCH_FLAG_ROUNDS: QmOption[] = [
   { label: "10 Tur", value: 10 },
   { label: "15 Tur", value: 15 },
   { label: "20 Tur", value: 20 },
-];
-
-/** Tur seçenekleri — Kuşatma. Birebir CONQUEST_ROUND_COUNTS ([6, 8, 10]). */
-export const QUICK_MATCH_CONQUEST_ROUNDS: QmOption[] = [
-  { label: "6 Tur", value: 6 },
-  { label: "8 Tur", value: 8 },
-  { label: "10 Tur", value: 10 },
 ];
 
 /** Tur seçenekleri — Rota 1v1. Birebir ROUTE_DUEL_ROUND_OPTIONS
@@ -131,19 +148,6 @@ export const QUICK_MATCH_REGIONS: QmOption<string>[] = [
 
 /** Region every duel quick-match call defaults to (Dünya / all continents). */
 export const QUICK_MATCH_DEFAULT_REGION = "world";
-
-/** The only conquest map with implemented region data — enforced everywhere. */
-export const QUICK_MATCH_CONQUEST_MAP = "turkey" as const;
-
-/**
- * Kuşatma quick-match CTA gate (product decision #5). Kuşatma is VISIBLE and
- * selectable in the sheet (Tur + Harita), but its "Eşleşmeye Başla" stays
- * inert until the new backend (20260719120000_conquest_quick_match.sql) is
- * deployed AND a real 2-account 1v1 match has been playtested. Flip to `true`
- * once that migration is applied and verified. The three duel modes reuse the
- * already-live queues, so they are active regardless of this flag.
- */
-export const CONQUEST_QUICK_MATCH_ENABLED = true;
 
 /**
  * Elapsed search seconds → accepted mode-level delta. Byte-for-byte the same
@@ -191,31 +195,16 @@ export interface QuickMatchModeMeta {
  * surface; the modes listed here and their `enabled` flags do not. Ordered so
  * a playable duel (Ülke Yaz) leads and is the natural default selection.
  *
+ * Kuşatma is NOT here and must never be re-added: it is room/lobby-only by
+ * product decision (see header).
+ *
  * NOTE: MobileHome keeps its own equivalent local list for the native sheet;
  * this export is consumed by the desktop entry (QuickMatchModal). Both derive
- * from the same option arrays + CONQUEST_QUICK_MATCH_ENABLED above, so they
- * cannot diverge on which modes are live.
+ * from the same option arrays, so they cannot diverge on which modes are live.
  */
 export const QUICK_MATCH_MODE_META: QuickMatchModeMeta[] = [
   { mode: "country",  label: "Ülke Yaz 1v1",  desc: QUICK_MATCH_DUEL_DESC, enabled: true },
   { mode: "wheel",    label: "Çark 1v1",      desc: QUICK_MATCH_DUEL_DESC, enabled: true },
   { mode: "flag",     label: "Bayrak 1v1",    desc: QUICK_MATCH_DUEL_DESC, enabled: true },
   { mode: "route",    label: "Rota Modu 1v1", desc: QUICK_MATCH_DUEL_DESC, enabled: true },
-  {
-    mode: "conquest",
-    label: "Kuşatma",
-    desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.",
-    enabled: CONQUEST_QUICK_MATCH_ENABLED,
-  },
-];
-
-/**
- * Kuşatma harita seçenekleri — yalnız Türkiye canlı; diğerleri görünür ama
- * kilitli "Yakında" satırları (queue parametresine asla ulaşmaz). Birebir
- * MobileHome'daki map option listesiyle aynı değerler.
- */
-export const QUICK_MATCH_CONQUEST_MAP_OPTIONS: QmOption<string>[] = [
-  { label: "🇹🇷 Türkiye", value: "turkey" },
-  { label: "🇪🇺 Avrupa", value: "europe", disabled: true },
-  { label: "🕌 Orta Doğu", value: "middle-east", disabled: true },
 ];

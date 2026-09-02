@@ -60,6 +60,8 @@ import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { decideRematchDestination } from "../lib/quickMatchStart";
+import { useQuickMatchCountdown } from "../lib/useQuickMatchCountdown";
 import { PlayerAvatar } from "./PlayerAvatar";
 import { PlayerProfileTrigger } from "./PlayerProfileTrigger";
 import { LobbyInviteBar } from "./LobbyInviteBar";
@@ -256,7 +258,12 @@ function buildAllowedSet(region: string): Set<string> | null {
 }
 
 /* ─── phase ─── */
-type DuelPhase = "lobby" | "creating" | "searching" | "waiting" | "playing" | "finished";
+/** "rematch-wait": HIZLI EŞLEŞ rövanşında, rövanşı KABUL EDEN tarafın rakibin
+ *  odaya katılmasını beklediği KISA ara faz. "waiting"ten kasten ayrıdır:
+ *  "waiting" oda-kodu lobisidir (kod kartı + davet çubuğu + oda ayarları) ve
+ *  Hızlı Eşleş'te ÜRÜN OLARAK yanlıştır. Bu faz yalnız bir "Rövanş
+ *  hazırlanıyor…" overlay'i çizer; oda kodu, davet ve "Başlat" YOKTUR. */
+type DuelPhase = "lobby" | "creating" | "searching" | "waiting" | "rematch-wait" | "playing" | "finished";
 
 /* ─── HIZLI EŞLEŞ ───
  *  Bayrak/Çark deseni ile birebir simetrik:
@@ -373,17 +380,13 @@ export default function DuelGame({
    *  searching → polling RPC ile rakip arar; bracket genişler.
    *  Eşleşince RPC matched_room_id UPDATE yapar (bekleyen client realtime
    *  ile yakalar) veya RPC dönüşünden caller direkt joinQuickMatchRoom çağırır.
-   *  Sonra phase 'playing' olur; started_at gelecekte (now()+3s) iken
-   *  countdown overlay 3sn boyunca gösterilir.
    */
   const [searchSeconds,    setSearchSeconds]    = useState(0);
-  const [countdownSeconds, setCountdownSeconds] = useState(0);
   const quickMatchTickRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchSecondsRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchStartMsRef   = useRef<number>(0);
   const quickMatchAbortRef     = useRef(false);
   const quickMatchJoinedRef    = useRef(false);
-  const quickMatchCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Frozen scores at game end — prevent late realtime claims from changing result display
   const [finalScores, setFinalScores] = useState<{ my: number; opp: number } | null>(null);
@@ -662,6 +665,14 @@ useEffect(() => {
   const myScore    = myTopoIds.size;
   const oppScore   = oppTopoIds.size;
 
+  /* HIZLI EŞLEŞ 3-2-1 — ODA SATIRINDAN TÜRETİLİR (lib/quickMatchStart.ts).
+   * Sunucu Hızlı Eşleş odasını `status='playing'` + `started_at=now()+3sn` ile
+   * açar; RÖVANŞ odası da (20260828120000: duel_accept_rematch kaynağı
+   * devrediyor, duel_join_rematch_room QM odada +3sn yazıyor) aynı şekli alır.
+   * Geri sayım "odaya nasıl girdiğime" değil ODA SATIRINA bağlı olduğu için
+   * rövanşta, yeniden yüklemede ve reconnect'te kendiliğinden doğrudur. */
+  const countdownSeconds = useQuickMatchCountdown(room);
+
   // Native kabukta location.origin capacitor://localhost olur → paylaşılan
   // link kırılırdı. buildInviteUrl web davranışını korur.
   const shareLink  = room ? buildInviteUrl("duel", room.code) : "";
@@ -669,11 +680,10 @@ useEffect(() => {
   const timerColor = timeLeft > gameDuration * 0.33 ? "var(--accent)" : timeLeft > gameDuration * 0.13 ? "#f59e0b" : "#ef4444";
   const gameOver = gameEndedRef.current || timeLeft <= 0 || phase === "finished";
   // QM countdown buffer aktif mi? handleGuess'in client-side fairness guard'ı
-  // ile birebir eşleşmeli (server-side started_at kontrolü yok).
-  const qmCountdownActive =
-    !!room
-    && room.room_source === "quick_match"
-    && countdownSeconds > 0;
+  // ile birebir eşleşmeli. Otorite artık SUNUCUDA da var: duel_submit_claim
+  // started_at'ten önce {claimed:false, reason:'not_started'} döner
+  // (20260828120000), bu kontrol yalnız UX içindir.
+  const qmCountdownActive = countdownSeconds > 0;
   // Input/submit tarafı için kompozit: gameOver olmasa bile countdown'da kilit.
   const inputLocked = gameOver || qmCountdownActive;
   const inputCls = ["duel-input",
@@ -887,8 +897,14 @@ useEffect(() => {
               }
 
               setPlayers(data);
-              // Quick match auto-start:
-              // Only trigger if we're the host, still waiting, and 2nd player just arrived
+              // Quick match auto-start (ESKİ yol — bugünkü Hızlı Eşleş buraya
+              // hiç uğramaz; oda zaten 'playing' doğar).
+              //
+              // ⚠ "rematch-wait" fazı BİLEREK bu koşulun DIŞINDADIR: Hızlı
+              // Eşleş rövanşında maçı `duel_join_rematch_room` atomik olarak
+              // başlatır ve started_at'e +3 sn tampon yazar. Buradan
+              // `duel_start_game` çağrılsaydı started_at = now() olur, geri
+              // sayım penceresi yok olur ve iki istemci farklı anda başlardı.
               if (
                 isQuickRef.current &&
                 isHostRef.current &&
@@ -1664,29 +1680,9 @@ ${shareLink}`
       setIsQuickMatch(true);
       setTimeLeft(r.duration_seconds);
 
-      // Quick match countdown başlat (started_at - now() farkı). started_at
-      // server tarafında now()+3s; client clock drift olunca buffer negatif
-      // veya büyük görünebilir → synced clock kullanıyoruz.
-      const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
-      const now = getSyncedNowMs();
-      const remainMs = Math.max(0, startMs - now);
-      setCountdownSeconds(Math.ceil(remainMs / 1000));
-
-      if (quickMatchCountdownRef.current) {
-        clearInterval(quickMatchCountdownRef.current);
-        quickMatchCountdownRef.current = null;
-      }
-      if (remainMs > 0) {
-        const tick = () => {
-          const remaining = Math.max(0, startMs - getSyncedNowMs());
-          setCountdownSeconds(Math.ceil(remaining / 1000));
-          if (remaining <= 0 && quickMatchCountdownRef.current) {
-            clearInterval(quickMatchCountdownRef.current);
-            quickMatchCountdownRef.current = null;
-          }
-        };
-        quickMatchCountdownRef.current = setInterval(tick, 200);
-      }
+      // Geri sayım BURADA KURULMAZ: `useQuickMatchCountdown` odanın
+      // room_source + status + started_at üçlüsünden türetir. Aynı sayaç ilk
+      // eşleşmede, rövanşta ve oturum geri yüklemede tek koddan gelir.
 
       if (opponentName) setStatusMsg(`Rakip bulundu: ${opponentName}`);
       else              setStatusMsg(null);
@@ -1777,10 +1773,6 @@ ${shareLink}`
       clearInterval(quickMatchSecondsRef.current);
       quickMatchSecondsRef.current = null;
     }
-    if (quickMatchCountdownRef.current) {
-      clearInterval(quickMatchCountdownRef.current);
-      quickMatchCountdownRef.current = null;
-    }
 
     setSearchSeconds(0);
     setStatusMsg(null);
@@ -1833,7 +1825,6 @@ ${shareLink}`
     quickMatchJoinedRef.current = false;
     quickMatchStartMsRef.current = Date.now();
     setSearchSeconds(0);
-    setCountdownSeconds(0);
     setPhase("searching");
 
     // Önceki maçtan kalan country_duel_queue satırını sil. Cancel RPC yalnız
@@ -1921,7 +1912,6 @@ ${shareLink}`
     return () => {
       if (quickMatchTickRef.current)      clearInterval(quickMatchTickRef.current);
       if (quickMatchSecondsRef.current)   clearInterval(quickMatchSecondsRef.current);
-      if (quickMatchCountdownRef.current) clearInterval(quickMatchCountdownRef.current);
       if (profile?.id && !quickMatchJoinedRef.current) {
         supabase.rpc("country_duel_cancel_quick_match", {
           p_profile_id: profile.id,
@@ -1993,7 +1983,10 @@ ${shareLink}`
     if (oppMonitorRef.current)        { clearInterval(oppMonitorRef.current);         oppMonitorRef.current        = null; }
     setOppDisconnected(false);
     setDisconnectCountdown(0);
-    if (room && phase === "waiting" && claimTokenRef.current) {
+    // "rematch-wait" de oda AÇILMIŞ ama maç BAŞLAMAMIŞ bir durumdur: çıkarken
+    // yeni rövanş odası sunucuda öksüz kalmamalı (host olduğumuz için
+    // duel_leave_room odayı cascade siler).
+    if (room && (phase === "waiting" || phase === "rematch-wait") && claimTokenRef.current) {
       // duel_leave_room RPC: host ise oda+player'lar cascade delete; misafir
       // ise kendi satırı (+ oda boşaldıysa oda).
       const { error } = await supabase.rpc("duel_leave_room", {
@@ -2068,6 +2061,10 @@ gameEndedRef.current = false; startTimeRef.current = null;
     gameEndedRef.current = false;
 setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(updatedRoom.duration_seconds);
+    // Hızlı Eşleş rövanş odası da 'quick_match' doğar (20260828120000) → bu
+    // bayrak korunur; started_at gelecekte olduğu için türetilmiş geri sayım
+    // 3-2-1'i kendiliğinden gösterir ve girdi o süre boyunca kilitlidir.
+    setIsQuickMatch(decideRematchDestination(updatedRoom) === "direct");
     setPhase("playing");
     dbg("joinRematchRoom: switched + started ✓", updatedRoom.code);
   }, [me, playerName, getIdentityArgs]);
@@ -2130,8 +2127,24 @@ setXpResult(null); xpAwardedRef.current = false;
     gameEndedRef.current = false;
 setXpResult(null); xpAwardedRef.current = false;
     setTimeLeft(dbDuration);
-    setPhase("waiting");
-    dbg("acceptRematch: switched to new room", newRoom.code);
+
+    /* ── LOBİ Mİ, DOĞRUDAN RÖVANŞ MI? ────────────────────────────────────
+     * Karar SUNUCUNUN yazdığı `room_source`a bağlıdır (istemci UI state'ine
+     * DEĞİL). `duel_accept_rematch` kaynağı eski odadan devraldığı için
+     * (20260828120000) Hızlı Eşleş rövanş odası da 'quick_match' doğar.
+     *
+     *   manual      → "waiting": oda kodu + davet + "Rakip Bekleniyor…"
+     *                 lobisi. Oda-kodu/davet ürününde DOĞRU davranıştır,
+     *                 aynen korunur.
+     *   quick_match → "rematch-wait": lobi YOK. Yalnız "Rövanş hazırlanıyor…"
+     *                 overlay'i. Rakip `duel_join_rematch_room`u çağırınca
+     *                 sunucu status='playing' + started_at=now()+3sn yazar,
+     *                 realtime UPDATE her iki tarafı 'playing'e geçirir ve
+     *                 türetilmiş geri sayım 3-2-1'i gösterir. */
+    const destination = decideRematchDestination(newRoom);
+    setIsQuickMatch(destination === "direct");
+    setPhase(destination === "direct" ? "rematch-wait" : "waiting");
+    dbg("acceptRematch: switched to new room", `${newRoom.code} → ${destination}`);
   }, [room]);
 
   const declineRematch = useCallback(() => {
@@ -2204,7 +2217,9 @@ setXpResult(null); xpAwardedRef.current = false;
   const result = resolveResult();
 
   const homeTheme = readStoredHomeTheme();
-  const isPreGamePhase = phase === "lobby" || phase === "creating" || phase === "waiting";
+  const isPreGamePhase =
+    phase === "lobby" || phase === "creating" || phase === "waiting"
+    || phase === "rematch-wait";
   const themeBgStyle = isPreGamePhase ? getThemeBackgroundStyle(homeTheme) : undefined;
   const themeDataAttr = isPreGamePhase ? getThemeDataAttr(homeTheme) : undefined;
 
@@ -2440,6 +2455,57 @@ setXpResult(null); xpAwardedRef.current = false;
               ✕ Aramayı İptal Et
             </button>
 
+            {errorMsg && (
+              <p className="duel-error" style={{ marginTop: 12 }}>{errorMsg}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ════════ REMATCH-WAIT — HIZLI EŞLEŞ RÖVANŞI (LOBİ DEĞİL) ════════
+          Rövanşı kabul eden taraf, rakip `duel_join_rematch_room`u çağırana
+          kadar (bir ağ gidiş-dönüşü) burada bekler. Oda kodu, davet çubuğu,
+          oda ayarları ve "Başlat" BİLEREK YOKTUR — Hızlı Eşleş'in ürünü
+          lobi değildir. Rakip katılınca sunucu status='playing' +
+          started_at=now()+3sn yazar; realtime UPDATE bu tarafı 'playing'e
+          geçirir ve 3-2-1 overlay'i devralır. */}
+      {phase === "rematch-wait" && room && (
+        <div className="duel-lobby">
+          <div className="duel-lobby-card" style={{ textAlign: "center" }}>
+            <div className="duel-result-emoji">↺</div>
+            <h2 className="duel-lobby-title">Rövanş hazırlanıyor…</h2>
+            <p className="duel-lobby-desc">
+              Aynı rakip, aynı ayarlar. Birazdan geri sayım başlayacak.
+            </p>
+            <div style={{
+              display: "flex", flexDirection: "column",
+              gap: 6, margin: "16px 0", fontSize: 14,
+            }}>
+              <div>
+                <strong>Süre:</strong>{" "}
+                {DURATION_OPTS.find(d => d.value === room.duration_seconds)?.label
+                  ?? `${room.duration_seconds}sn`}{" "}
+                <span style={{ opacity: 0.5 }}>·</span>{" "}
+                <strong>Bölge:</strong>{" "}
+                {REGION_OPTS.find(r => r.value === room.region)?.label ?? "🌍 Dünya"}
+              </div>
+            </div>
+            <div style={{
+              fontSize: 36, margin: "8px 0 16px",
+              animation: "wd-spin 1.4s linear infinite",
+              display: "inline-block",
+            }}>
+              ⚔️
+            </div>
+            {/* Kaçış kapısı: rakip bir daha hiç katılmazsa oyuncu kilitli
+                kalmasın. backToLobby duel_leave_room ile odayı da kapatır. */}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => { playSound("click"); void backToLobby(); }}
+            >
+              ✕ Vazgeç
+            </button>
             {errorMsg && (
               <p className="duel-error" style={{ marginTop: 12 }}>{errorMsg}</p>
             )}

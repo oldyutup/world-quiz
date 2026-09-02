@@ -686,8 +686,13 @@ section("5. Migration hijyeni");
   ok(modified.length === 0, "hiçbir MEVCUT migration değiştirilmedi (yalnız yeni dosyalar)",
      modified.join(" | "));
 
-  const added = changed.filter(l => l.startsWith("??")).map(l => l.slice(3).trim());
-  ok(added.length === 4, "tam olarak 4 YENİ migration eklendi", added.join(" "));
+  // Bu betiğin konusu 20260827* serisidir. Seri COMMIT EDİLDİKTEN sonra
+  // "untracked dosya sayısı" ölçmek anlamsızlaşır (o an 4 idi, artık 0) ve
+  // sonradan eklenen HER migration'da yanlış alarm verirdi. Doğru değişmez:
+  // seri dört dosyadan oluşur ve BU BETİK ÇALIŞIRKEN REPO'DA DURUR.
+  const series = readdirSync(join(ROOT, "supabase/migrations"))
+    .filter(f => f.startsWith("20260827") && f.endsWith(".sql")).sort();
+  ok(series.length === 4, "20260827 serisi tam olarak 4 migration", series.join(" "));
 
   // 5b. Zaman damgaları tekil ve sıralı.
   const files = readdirSync(join(ROOT, "supabase/migrations")).filter(f => f.endsWith(".sql")).sort();

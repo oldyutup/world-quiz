@@ -58,6 +58,8 @@ import { GuestTag } from "./GuestTag";
 import { useInviteJoin } from "../lib/useInviteJoin";
 import { readStoredHomeTheme, getThemeBackgroundStyle, getThemeDataAttr } from "../lib/themeBackgrounds";
 import { getSyncedNowMs, initServerClockSync } from "../lib/serverClock";
+import { useQuickMatchCountdown } from "../lib/useQuickMatchCountdown";
+import { QUICK_MATCH_START_BUFFER_SECONDS, isQuickMatchRoom } from "../lib/quickMatchStart";
 import { flagDuelServerTimeMs } from "../lib/flagDuelTime";
 import { PlayerAvatar } from "./PlayerAvatar";
 import GoldIcon from "./GoldIcon";
@@ -583,22 +585,32 @@ useEffect(() => {
   const [roomClosed, setRoomClosed] = useState(false);
   /* rematch */
 const [rematch, setRematch] = useState<"idle" | "requested" | "received" | "declined">("idle");
+/** Bu maç bir RÖVANŞ olarak mı açıldı? Yalnız başlangıç overlay'inin metnini
+ *  seçer (oyun mantığına girmez). duel_rooms'ta match_seq kolonu yok, o yüzden
+ *  rövanş yolundan set edilir; yeni bir Hızlı Eşleş aramasında sıfırlanır. */
+const [startedAsRematch, setStartedAsRematch] = useState(false);
 
   /* ── Hızlı Eşleş state + ref'ler ─────────────────────────────────────
    *  searching → polling RPC ile rakip arar; bracket genişler.
    *  Eşleşince RPC matched_room_id UPDATE yapar (bekleyen client realtime
    *  ile yakalar) veya RPC dönüşünden caller direkt joinQuickMatchRoom çağırır.
-   *  Sonra phase 'playing' olur ve room.room_source==='quick_match' +
-   *  started_at gelecekte iken countdown overlay gösterilir.
    */
   const [searchSeconds,    setSearchSeconds]    = useState(0);
-  const [countdownSeconds, setCountdownSeconds] = useState(0);
   const quickMatchTickRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchSecondsRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const quickMatchStartMsRef   = useRef<number>(0);
   const quickMatchAbortRef     = useRef(false);
   const quickMatchJoinedRef    = useRef(false);
-  const quickMatchCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* HIZLI EŞLEŞ 3-2-1 — ODA SATIRINDAN TÜRETİLİR (lib/quickMatchStart.ts).
+   * Sunucu Hızlı Eşleş odasını `status='playing'` + `started_at=now()+3sn`
+   * ile açar; RÖVANŞ da (20260828120000: flag_duel_accept_rematch'in
+   * quick_match dalı, started_at VE current_flag_at aynı ana kayar) aynı
+   * şekli alır. Geri sayım artık "odaya nasıl girdiğime" değil ODA SATIRINA
+   * bağlı → rövanşta, yeniden yüklemede ve reconnect'te kendiliğinden doğru. */
+  const countdownSeconds = useQuickMatchCountdown(room);
+  /** Geri sayım sürerken gameplay girdisi kilitli (adil başlangıç). */
+  const startLocked = countdownSeconds > 0;
 
   /* her bayrak için kalan saniye (her iki client'ta da senkron çalışır) */
   const [timeLeft, setTimeLeft] = useState(FLAG_TIMEOUT_SEC);
@@ -1108,7 +1120,16 @@ const runHostRematchReset = useCallback(async () => {
   // Synced clock kullanıyoruz — server bu değerleri RPC içinde now() ile
   // üzerine yazacak, ama host'un local clock'u 5 sn driftliyse arada timer
   // o farkla başlamasın.
-  const optimisticNowIso = new Date(getSyncedNowMs()).toISOString();
+  //
+  // ⚠ TAMPON SUNUCUYLA AYNI OLMALI: `flag_duel_accept_rematch` HIZLI EŞLEŞ
+  // odasında started_at/current_flag_at'i now()+3 sn yazar (20260828120000).
+  // İyimser satır now() yazsaydı host, gerçek UPDATE gelene kadar geri sayımı
+  // GÖRMEZ, girdisi AÇIK kalır ve tur sayacı 3 sn erken akmaya başlardı —
+  // yani tam da düzeltmeye çalıştığımız asimetri. Manuel odada tampon yok.
+  const startBufferMs = isQuickMatchRoom(currentRoom)
+    ? QUICK_MATCH_START_BUFFER_SECONDS * 1000
+    : 0;
+  const optimisticNowIso = new Date(getSyncedNowMs() + startBufferMs).toISOString();
   const optimistic: FlagDuelRoom = {
     ...currentRoom,
     status:              "playing",
@@ -1131,6 +1152,7 @@ useEffect(() => {
 
 const acceptRematch = useCallback(async () => {
   if (!room) return;
+  setStartedAsRematch(true);
   // XP idempotency için yeni match ID — rematch aynı odada olduğu için şart.
   matchIdRef.current = crypto.randomUUID();
   setXpResult(null); xpAwardedRef.current = false;
@@ -1288,29 +1310,9 @@ const declineRematch = useCallback(() => {
       // otomatiği devreye giremez (bugünkü davranış).
       if (isMeHost) void persistFlagSequence(r.id, qmPool);
 
-      // Quick match countdown başlat (started_at - now() farkı). started_at
-      // server tarafında now()+3s; client clock drift olunca buffer negatif
-      // veya fazlasıyla büyük görünebilir → synced clock kullanıyoruz.
-      const startMs = r.started_at ? new Date(r.started_at).getTime() : 0;
-      const now = getSyncedNowMs();
-      const remainMs = Math.max(0, startMs - now);
-      setCountdownSeconds(Math.ceil(remainMs / 1000));
-
-      if (quickMatchCountdownRef.current) {
-        clearInterval(quickMatchCountdownRef.current);
-        quickMatchCountdownRef.current = null;
-      }
-      if (remainMs > 0) {
-        const tick = () => {
-          const remaining = Math.max(0, startMs - getSyncedNowMs());
-          setCountdownSeconds(Math.ceil(remaining / 1000));
-          if (remaining <= 0 && quickMatchCountdownRef.current) {
-            clearInterval(quickMatchCountdownRef.current);
-            quickMatchCountdownRef.current = null;
-          }
-        };
-        quickMatchCountdownRef.current = setInterval(tick, 200);
-      }
+      // Geri sayım BURADA KURULMAZ: `useQuickMatchCountdown` odanın
+      // room_source + status + started_at üçlüsünden türetir. Aynı sayaç ilk
+      // eşleşmede, rövanşta ve oturum geri yüklemede tek koddan gelir.
 
       if (opponentName) {
         setStatusMsg(`Rakip bulundu: ${opponentName}`);
@@ -1474,7 +1476,7 @@ const declineRematch = useCallback(() => {
     quickMatchJoinedRef.current = false;
     quickMatchStartMsRef.current = Date.now();
     setSearchSeconds(0);
-    setCountdownSeconds(0);
+    setStartedAsRematch(false);
     setPhase("searching");
 
     // Önceki maçtan kalan flag_duel_queue satırını sil. cancel RPC yalnızca
@@ -1546,6 +1548,7 @@ const declineRematch = useCallback(() => {
     setRematch("declined");
   })
 .on("broadcast", { event: "rematch_accepted" }, () => {
+  setStartedAsRematch(true);
   // XP idempotency için yeni match ID — bu taraf da rematch'ı kabul etti
   matchIdRef.current = crypto.randomUUID();
   setXpResult(null); xpAwardedRef.current = false;
@@ -1689,7 +1692,6 @@ const declineRematch = useCallback(() => {
     return () => {
       if (quickMatchTickRef.current)      clearInterval(quickMatchTickRef.current);
       if (quickMatchSecondsRef.current)   clearInterval(quickMatchSecondsRef.current);
-      if (quickMatchCountdownRef.current) clearInterval(quickMatchCountdownRef.current);
       if (profile?.id && !quickMatchJoinedRef.current) {
         supabase.rpc("flag_duel_cancel_quick_match", {
           p_profile_id: profile.id,
@@ -1742,7 +1744,14 @@ const declineRematch = useCallback(() => {
     const tick = () => {
       if (cancelled) return;
       const elapsed   = getSyncedNowMs() - startMs;
-      const remaining = Math.max(0, Math.ceil((totalMs - elapsed) / 1000));
+      // HIZLI EŞLEŞ tamponunda current_flag_at GELECEKTEDİR (now()+3 sn) →
+      // elapsed negatif olur ve ham kalan süre tur limitini AŞAR. Çark/Ülke
+      // Yaz'daki gibi tavanla: geri sayım boyunca sayaç tur süresinde sabit
+      // durur, gerçek tur ancak started_at gelince akmaya başlar.
+      const remaining = Math.min(
+        FLAG_TIMEOUT_SEC,
+        Math.max(0, Math.ceil((totalMs - elapsed) / 1000)),
+      );
       setTimeLeft(remaining);
 
       if (elapsed >= totalMs) {
@@ -2036,6 +2045,11 @@ if (!code) {
     if (phaseRef.current !== "playing") return;
     if (!room || !currentFlag) return;
     if (roundResolved || myPassed) return;
+    // ADİL BAŞLANGIÇ: 3-2-1 geri sayımı bitmeden cevap gönderilmez. Otorite
+    // SUNUCUDA (flag_duel_submit_claim, started_at guard'ı → 'not_started');
+    // buradaki kontrol yalnız kullanıcıya yanlış "yanlış cevap" geri bildirimi
+    // göstermemek içindir.
+    if (startLocked) return;
 
     const norm = normalizeInput(input);
     if (!norm) return;
@@ -2071,6 +2085,7 @@ if (!code) {
     if (phaseRef.current !== "playing") return;
     if (!room || !currentFlag) return;
     if (roundResolved || myPassed) return;
+    if (startLocked) return;   // geri sayım sürerken pas da yok
     if (passesRemaining <= 0 && !room.is_golden_round) return;
 
     const passCode = `PASS:R${room.current_round}:${currentFlag.code}:${myIdRef.current}`;
@@ -2722,8 +2737,10 @@ ${shareLink}`
           return (
             <div className="wheel-result-backdrop">
               <div className="duel-result-card" style={{ textAlign: "center" }}>
-                <div className="duel-result-emoji">⚡</div>
-                <h2 className="duel-result-title">Rakip bulundu!</h2>
+                <div className="duel-result-emoji">{startedAsRematch ? "↺" : "⚡"}</div>
+                <h2 className="duel-result-title">
+                  {startedAsRematch ? "Rövanş!" : "Rakip bulundu!"}
+                </h2>
                 {opp && (
                   <p className="duel-lobby-desc"
                      style={{ margin: "0 0 4px", fontSize: "0.95rem" }}>
@@ -2732,7 +2749,7 @@ ${shareLink}`
                 )}
                 <p className="duel-lobby-desc"
                    style={{ margin: "8px 0 0", fontSize: "0.9rem" }}>
-                  Oyun başlıyor…
+                  {startedAsRematch ? "Yeni maç başlıyor…" : "Oyun başlıyor…"}
                 </p>
                 <div style={{
                   fontSize: 56, fontWeight: 800,

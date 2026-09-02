@@ -51,8 +51,6 @@ import { useDailyQuestStatus, MOBILE_DAILY_QUEST_HOME_VISIBLE } from "../lib/dai
 import { RoomCodeSheet, type RoomCodeSubmitOutcome } from "./RoomCodeJoin";
 import { CONQUEST_MOBILE_ENABLED } from "../lib/screenPolicy";
 import {
-  CONQUEST_QUICK_MATCH_ENABLED,
-  QUICK_MATCH_CONQUEST_ROUNDS,
   QUICK_MATCH_COUNTRY_DURATIONS,
   QUICK_MATCH_DEFAULT_REGION,
   QUICK_MATCH_FLAG_ROUNDS,
@@ -275,8 +273,8 @@ function MobileSheet({
   );
 }
 
-/** One option row the selector popover renders. Disabled rows (locked Kuşatma
- *  maps) are non-interactive for pointer and keyboard alike. */
+/** One option row the selector popover renders. Disabled rows are
+ *  non-interactive for pointer and keyboard alike. */
 interface QmSelectOption {
   value:     string | number;
   label:     string;
@@ -293,9 +291,8 @@ interface QmActiveField {
   onSelect: (v: string | number) => void;
 }
 
-/** One mode in the rail. `enabled:false` (Kuşatma until its backend is deployed
- *  + playtested) keeps the card selectable and its config visible, but the
- *  primary CTA stays inert. */
+/** One mode in the rail. `enabled:false` keeps the card selectable and its
+ *  config visible, but the primary CTA stays inert. */
 interface QmModeDef {
   mode:    QuickMatchMode;
   icon:    string;
@@ -307,27 +304,22 @@ interface QmModeDef {
 /** Shared duel matchmaking blurb (Ülke Yaz / Çark / Bayrak). */
 const DUEL_DESC = "Seviyene yakın bir rakiple birebir eşleş. Bekledikçe seviye penceresi genişler.";
 
-/** Rail order is fixed: Kuşatma first, then the three live duels. The sheet
- *  still OPENS with Ülke Yaz selected (a playable mode) — see the sheet's
- *  initial `mode` state and the auto-center effect that scrolls it into view.
+/** Rail order is fixed: the four live 1v1 quick-match duels, Çark first. The
+ *  sheet OPENS with Ülke Yaz selected — see the sheet's initial `mode` state
+ *  and the auto-center effect that scrolls it into view.
  *
- *  Kuşatma bu sheet'te (telefon yüzeyi) kapalıdır: mevcut "Yakında" rozeti +
- *  pasif CTA deseni aynen kullanılır. Masaüstü Hızlı Eşleş modalı ayrı bir
- *  bileşendir (QuickMatchModal) ve DEĞİŞMEZ. */
+ *  KUŞATMA BURADA YOKTUR ve eklenmemelidir: ürün kararı gereği Kuşatma yalnız
+ *  oda/lobi akışıyla oynanır (bkz. lib/quickMatch.ts başlığı). Kuşatma'ya bu
+ *  yüzeyden tek giriş, aşağıdaki "Çok Oyunculu" kartlarındaki normal
+ *  `onOpenConquest` (oda kur / kodla katıl) yoludur.
+ *
+ *  Mod seti `QuickMatchMode` birliğiyle sınırlıdır; "conquest" o birlikte
+ *  bulunmadığı için buraya geri eklenmesi derleme hatası verir. */
 const QM_MODES: QmModeDef[] = [
-  { mode: "conquest", icon: "🛡️", label: "Kuşatma",       desc: "Bölgeleri kuşat, rakibinin başkentini ele geçir.", enabled: CONQUEST_QUICK_MATCH_ENABLED && CONQUEST_MOBILE_ENABLED },
   { mode: "wheel",    icon: "🎯", label: "Çark 1v1",      desc: DUEL_DESC, enabled: true },
   { mode: "country",  icon: "🌍", label: "Ülke Yaz 1v1",  desc: DUEL_DESC, enabled: true },
   { mode: "flag",     icon: "🚩", label: "Bayrak 1v1",    desc: DUEL_DESC, enabled: true },
   { mode: "route",    icon: "🧭", label: "Rota Modu 1v1", desc: DUEL_DESC, enabled: true },
-];
-
-/** Conquest maps: only Türkiye is live; the rest stay visible-but-locked
- *  "Yakında" rows and never reach a queue parameter. */
-const QM_CONQUEST_MAP_OPTIONS: QmSelectOption[] = [
-  { value: "turkey",      label: "🇹🇷 Türkiye" },
-  { value: "europe",      label: "🇪🇺 Avrupa",    disabled: true },
-  { value: "middle-east", label: "🕌 Orta Doğu",  disabled: true },
 ];
 
 /** One compact selector field (Süre / Tur / Kıta / Harita): a label, the
@@ -475,9 +467,9 @@ function QmSelect({
 }
 
 /** Quick Match (Eşleş) — real 1v1 matchmaking entry. A horizontal mode rail
- *  (Kuşatma · Çark · Ülke Yaz · Bayrak) drives two mode-specific selector
+ *  (Çark · Ülke Yaz · Bayrak · Rota) drives two mode-specific selector
  *  fields — only the controls that actually reach that mode's queue (Ülke/Çark
- *  = Süre + Kıta, Bayrak = Tur + Kıta, Kuşatma = Tur + Harita). The CTA hands
+ *  = Süre + Kıta, Bayrak = Tur + Kıta, Rota = Tur + Uzunluk). The CTA hands
  *  the intent to App, which applies the existing auth gate and routes into the
  *  canonical quick-match flow. Reuses the .mh-sheet shell; opened from the
  *  native bottom-nav ⚡ tab and the narrow/mobil-web ⚡ card. */
@@ -491,14 +483,13 @@ function MobileQuickMatchSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   useSheetLock(sheetRef, onClose);
 
-  // Opens on a playable mode (Ülke Yaz) even though Kuşatma leads the rail.
+  // Opens on Ülke Yaz even though Çark leads the rail.
   const [mode,            setMode]            = useState<QuickMatchMode>("country");
   const [countryDuration, setCountryDuration] = useState(60);   // Ülke Yaz default 1 dk
   const [wheelDuration,   setWheelDuration]   = useState(60);   // Çark default 1 dk
   const [flagRounds,      setFlagRounds]      = useState(10);   // Bayrak default 10 Tur
   const [routeRounds,     setRouteRounds]     = useState(5);    // Rota default 5 Tur
   const [routeLength,     setRouteLength]     = useState("7");  // Rota default 7 ara ülke
-  const [siegeRounds,     setSiegeRounds]     = useState(6);    // Kuşatma default 6 Tur
   const [region,          setRegion]          = useState<string>(QUICK_MATCH_DEFAULT_REGION);
   const [openField,       setOpenField]       = useState<string | null>(null);
 
@@ -514,8 +505,8 @@ function MobileQuickMatchSheet({
   };
 
   // Keep the selected card centered in the rail. Instant on first paint (so the
-  // sheet opens already showing Ülke Yaz, with Kuşatma/Çark reachable by
-  // scrolling left); smooth afterwards, unless the user reduced motion.
+  // sheet opens already showing Ülke Yaz, with Çark reachable by scrolling
+  // left); smooth afterwards, unless the user reduced motion.
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;
@@ -547,7 +538,7 @@ function MobileQuickMatchSheet({
   };
 
   // Exactly the two controls that reach the selected mode's queue. Region is
-  // shared across the three duel modes; conquest carries the Türkiye-only map.
+  // shared across the three map/flag duels; Rota carries its own length pick.
   const fields: QmActiveField[] = (() => {
     switch (mode) {
       case "country":
@@ -570,11 +561,6 @@ function MobileQuickMatchSheet({
           { id: "rounds",      label: "Tur",           options: QUICK_MATCH_ROUTE_ROUNDS,  value: routeRounds, onSelect: v => setRouteRounds(v as number) },
           { id: "routeLength", label: "Rota Uzunluğu", options: QUICK_MATCH_ROUTE_LENGTHS, value: routeLength, onSelect: v => setRouteLength(v as string) },
         ];
-      case "conquest":
-        return [
-          { id: "rounds", label: "Tur",    options: QUICK_MATCH_CONQUEST_ROUNDS, value: siegeRounds, onSelect: v => setSiegeRounds(v as number) },
-          { id: "map",    label: "Harita", options: QM_CONQUEST_MAP_OPTIONS,     value: "turkey",    onSelect: () => {} },
-        ];
     }
   })();
 
@@ -584,7 +570,6 @@ function MobileQuickMatchSheet({
       case "wheel":   return { mode, duration: wheelDuration,   region };
       case "flag":    return { mode, rounds: flagRounds,        region };
       case "route":   return { mode, rounds: routeRounds, routeLength };
-      case "conquest":return { mode, rounds: siegeRounds, map: "turkey" };
     }
   }
 
@@ -669,7 +654,7 @@ function MobileQuickMatchSheet({
             aria-disabled={!active.enabled}
             onClick={handleStart}
           >
-            {active.enabled ? "Eşleşmeye Başla" : "Kuşatma yakında aktif"}
+            {active.enabled ? "Eşleşmeye Başla" : "Bu mod yakında aktif"}
           </button>
         </div>
       </div>

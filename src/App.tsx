@@ -37,6 +37,7 @@ import {
   ROOM_CODE_MODE_LABELS,
   type RoomCodeModeKey,
 } from "./lib/roomCode";
+import { isQuickMatchMode } from "./lib/quickMatch";
 import type { QuickMatchIntent, QuickMatchMode } from "./lib/quickMatch";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -273,13 +274,13 @@ function clearPendingDailyQuest() {
 
 /** Hızlı Eşleş intent → the AppScreen that hosts that mode's quick-match flow.
  *  Reuses the SAME screens the manual menu uses (no parallel surfaces): the
- *  duel games + ConquestMode just receive an autoQuickMatch prop. */
+ *  four duel games just receive an autoQuickMatch prop. Kuşatma is absent by
+ *  product decision (room/lobby only) — see lib/quickMatch.ts. */
 const QUICK_MATCH_SCREEN: Record<QuickMatchMode, AppScreen> = {
   country:  "duel-game",
   wheel:    "wheel-duel-game",
   flag:     "flag-duel-game",
   route:    "route-duel-game",
-  conquest: "conquest-game",
 };
 
 /** sessionStorage mirror of the in-flight quick-match intent, so a logged-out
@@ -312,13 +313,23 @@ function clearPendingRoomCode() {
 }
 
 /** Read + parse a persisted quick-match intent (boot restore). Tolerates a
- *  malformed/absent value by returning null. */
+ *  malformed/absent value by returning null.
+ *
+ *  `isQuickMatchMode` is a TRUST BOUNDARY, not decoration: sessionStorage may
+ *  still hold `{"mode":"conquest"}` written by a build that shipped the (now
+ *  product-removed) Kuşatma quick match. Re-validating here means such a value
+ *  is dropped instead of routed — a removed mode can never be resurrected by
+ *  stale client storage. */
 function readPendingQuickMatch(): QuickMatchIntent | null {
   try {
     const raw = sessionStorage.getItem(PENDING_QUICK_MATCH_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as QuickMatchIntent;
-    return parsed && typeof parsed.mode === "string" ? parsed : null;
+    if (!parsed || !isQuickMatchMode(parsed.mode)) {
+      clearPendingQuickMatch();
+      return null;
+    }
+    return parsed;
   } catch { return null; }
 }
 type GameMode        = "idle" | "timed" | "free" | "finished";
@@ -3288,9 +3299,10 @@ export default function App() {
    * auth policy is preserved verbatim. Logged-out players hit the auth modal;
    * after login/OAuth the intent survives and the target game auto-starts. */
   const startQuickMatch = (intent: QuickMatchIntent) => {
-    /* Kilitli hedef (telefonda Kuşatma): niyet hiç kurulmaz — böylece
-     * sessionStorage'da bekleyen bir "eşleşme" kalmaz ve login sonrası
-     * yönlendirme de tetiklenmez. */
+    /* Bu yüzeyde kilitli hedef: niyet hiç kurulmaz — böylece sessionStorage'da
+     * bekleyen bir "eşleşme" kalmaz ve login sonrası yönlendirme de
+     * tetiklenmez. (Kuşatma artık Hızlı Eşleş'te olmadığı için bu gate
+     * pratikte tetiklenmez; savunma amaçlı duruyor.) */
     if (isScreenLockedOnSurface(QUICK_MATCH_SCREEN[intent.mode], surface)) {
       setConquestSoonOpen(true);
       return;
@@ -4475,15 +4487,16 @@ useEffect(() => {
       profile={profile}
     />
   );
+  /* KUŞATMA — yalnız oda/lobi akışı. `autoQuickMatch` prop'u BİLEREK
+   * geçilmez: ürün kararı gereği Kuşatma'nın Hızlı Eşleş girişi yoktur
+   * (bkz. lib/quickMatch.ts başlığı). Prop verilmediği için ConquestMode'un
+   * eski quick-match arama fazı ve `conquest_quick_match*` RPC'leri hiçbir
+   * kullanıcı yolundan tetiklenemez. */
   if (screen === "conquest-game") return (
     <ConquestMode
       initialPhase="create"
       onHome={() => setScreen("home")}
       profile={profile}
-      autoQuickMatch={quickMatchIntent?.mode === "conquest"
-        ? { rounds: quickMatchIntent.rounds ?? 8, map: "turkey" }
-        : null}
-      onQuickMatchConsumed={clearQuickMatchIntent}
     />
   );
   if (screen === "conquest-rooms") return (
