@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import "./party-lab.css";
 
 const PREVIEW_MESSAGE = "Şimdilik lobi önizlemesi. Çok oyunculu oyun yakında.";
+const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
+  const [inArena, setInArena] = useState(false);
   const [nickname, setNickname] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [nicknameError, setNicknameError] = useState("");
@@ -40,6 +42,19 @@ export default function PartyLabRoot() {
     setStatus(action === "create"
       ? `${name}, çok oyunculu oyun yakında! Oda oluşturma henüz açık değil.`
       : `${name}, çok oyunculu oyun yakında! Kodla katılma henüz açık değil.`);
+  }
+
+  if (inArena) {
+    return (
+      <Suspense fallback={
+        <div className="party-lab pl-arena-loading">
+          <p role="status">Yerel arena hazırlanıyor…</p>
+          <button className="pl-button pl-join" onClick={() => setInArena(false)}>Lobiye Dön</button>
+        </div>
+      }>
+        <ArenaScene onExit={() => setInArena(false)} />
+      </Suspense>
+    );
   }
 
   return (
@@ -126,6 +141,9 @@ export default function PartyLabRoot() {
           </form>
 
           <p className="pl-status" role="status" aria-atomic="true">{status}</p>
+          <button className="pl-local-test" type="button" onClick={() => setInArena(true)}>
+            Yerel Test Arenası <span aria-hidden="true">↗</span>
+          </button>
         </section>
       </main>
 

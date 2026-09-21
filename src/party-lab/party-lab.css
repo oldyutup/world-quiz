@@ -188,3 +188,64 @@ body:has(.party-lab) {
 @media (prefers-reduced-motion: reduce) {
   .party-lab input, .party-lab .pl-button { transition: none; }
 }
+
+/* Local playground: independent of the landing layout and Torble shell. */
+.party-lab .pl-local-test {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--pl-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.party-lab .pl-local-test:hover { color: var(--pl-ink); }
+.party-lab.pl-arena-loading { align-items: center; justify-content: center; gap: 24px; }
+.party-lab.pl-playground { height: 100vh; height: 100dvh; min-height: 440px; padding: 24px 32px 20px; gap: 18px; }
+.party-lab .pl-arena-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.party-lab .pl-arena-header h2 { margin-top: 5px; font-size: 20px; letter-spacing: -0.025em; }
+.party-lab .pl-arena-header .pl-button { min-height: 44px; }
+.party-lab .pl-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--pl-border);
+  border-radius: 24px;
+  background: radial-gradient(ellipse at 50% 20%, oklch(55% 0.07 197), oklch(31% 0.045 199));
+  outline: none;
+}
+.party-lab .pl-viewport:focus-visible { border-color: var(--pl-accent); }
+.party-lab .pl-arena-message {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 12px 22px;
+  border: 1px solid var(--pl-border);
+  border-radius: 16px;
+  background: oklch(22% 0.03 180 / 94%);
+  text-align: center;
+  font-size: 14px;
+  pointer-events: none;
+}
+.party-lab .pl-arena-message strong { display: block; font-size: 24px; color: oklch(85% 0.085 30); }
+.party-lab .pl-arena-message span { color: var(--pl-muted); }
+.party-lab .pl-scene-notice { display: grid; place-content: center; height: 100%; padding: 32px; text-align: center; }
+.party-lab .pl-arena-footer, .party-lab .pl-arena-footer > div { display: flex; align-items: center; gap: 24px; }
+.party-lab .pl-arena-footer { justify-content: space-between; color: var(--pl-muted); font-size: 12px; }
+.party-lab kbd { padding: 5px 8px; border: 1px solid var(--pl-border); border-radius: 6px; color: var(--pl-ink); font: inherit; font-weight: 700; }
+@media (max-width: 600px) {
+  .party-lab.pl-playground { padding: 16px 12px; gap: 14px; }
+  .party-lab .pl-arena-header h2 { font-size: 16px; }
+  .party-lab .pl-arena-header .pl-button { padding-inline: 12px; }
+  .party-lab .pl-arena-footer { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .party-lab .pl-arena-footer > div { gap: 16px; }
+}
