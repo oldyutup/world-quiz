@@ -1,18 +1,23 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import PartyLobby from "./PartyLobby";
+import { useLobbySession } from "./network/session";
+import { normalizeNickname, normalizeRoomCode, validNickname, validRoomCode } from "./network/types";
 import "./party-lab.css";
 
-const PREVIEW_MESSAGE = "Şimdilik lobi önizlemesi. Çok oyunculu oyun yakında.";
+const PREVIEW_MESSAGE = "Arkadaşlarınla bir lobide buluş ve sohbet et. Online oyun sonraki aşamada.";
 const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
   const [inArena, setInArena] = useState(false);
   const [nickname, setNickname] = useState("");
-  const [roomCode, setRoomCode] = useState("");
+  const [roomCode, setRoomCode] = useState(() => normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? ""));
   const [nicknameError, setNicknameError] = useState("");
   const [roomCodeError, setRoomCodeError] = useState("");
   const [status, setStatus] = useState(PREVIEW_MESSAGE);
   const nicknameRef = useRef<HTMLInputElement>(null);
   const roomCodeRef = useRef<HTMLInputElement>(null);
+  const network = useLobbySession();
+  const busy = network.snapshot.status === "connecting";
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -21,13 +26,14 @@ export default function PartyLabRoot() {
   }, []);
 
   function handleAction(action: "create" | "join") {
-    const name = nickname.trim().normalize("NFC");
-    const code = roomCode.trim().toUpperCase();
-    const nameError = /^[\p{L}\p{N}_-]{3,16}$/u.test(name)
+    if (busy) return;
+    const name = normalizeNickname(nickname);
+    const code = normalizeRoomCode(roomCode);
+    const nameError = validNickname(name)
       ? ""
       : "3–16 karakter kullan: harf, rakam, alt çizgi veya kısa çizgi.";
-    const codeError = action === "join" && !/^[A-Z0-9]{6}$/.test(code)
-      ? "Katılmak için 6 harf veya rakamdan oluşan oda kodunu gir."
+    const codeError = action === "join" && !validRoomCode(code)
+      ? "6 karakterlik oda kodunu gir. I, O, 0 ve 1 kodlarda yer almaz."
       : "";
 
     setNicknameError(nameError);
@@ -39,9 +45,16 @@ export default function PartyLabRoot() {
     }
 
     setNickname(name);
-    setStatus(action === "create"
-      ? `${name}, çok oyunculu oyun yakında! Oda oluşturma henüz açık değil.`
-      : `${name}, çok oyunculu oyun yakında! Kodla katılma henüz açık değil.`);
+    setRoomCode(code);
+    void network.connect(action, name, code);
+  }
+
+  if (network.snapshot.code) {
+    return <PartyLobby lobby={network.snapshot} onChat={network.sendChat} onLeave={() => {
+      setRoomCode(network.snapshot.code);
+      network.leave();
+      setStatus(PREVIEW_MESSAGE);
+    }} />;
   }
 
   if (inArena) {
@@ -81,7 +94,7 @@ export default function PartyLabRoot() {
 
         <section className="pl-lobby" aria-labelledby="pl-lobby-title">
           <div className="pl-lobby-heading">
-            <span className="pl-eyebrow">Lobi önizlemesi</span>
+            <span className="pl-eyebrow">Arkadaş lobisi</span>
             <span className="pl-badge">DENEYSEL</span>
           </div>
           <h2 id="pl-lobby-title">Partiye adını yaz.</h2>
@@ -96,6 +109,7 @@ export default function PartyLabRoot() {
               autoComplete="nickname"
               placeholder="Sana ne diyelim?"
               maxLength={16}
+              disabled={busy}
               spellCheck={false}
               value={nickname}
               aria-invalid={!!nicknameError}
@@ -108,7 +122,7 @@ export default function PartyLabRoot() {
             />
             <p className="pl-hint" id="pl-nickname-hint">3–16 karakter · Harf, rakam, _ veya -</p>
             <p className="pl-error" id="pl-nickname-error" aria-live="polite">{nicknameError}</p>
-            <button className="pl-button pl-create" type="submit">Oda Oluştur <span aria-hidden="true">↗</span></button>
+            <button className="pl-button pl-create" type="submit" disabled={busy}>Oda Oluştur <span aria-hidden="true">↗</span></button>
           </form>
 
           <div className="pl-divider"><span>ya da kodla katıl</span></div>
@@ -123,8 +137,9 @@ export default function PartyLabRoot() {
                 className="pl-code"
                 autoComplete="off"
                 autoCapitalize="characters"
-                placeholder="ABC123"
+                placeholder="ABC234"
                 maxLength={6}
+                disabled={busy}
                 spellCheck={false}
                 value={roomCode}
                 aria-invalid={!!roomCodeError}
@@ -135,13 +150,13 @@ export default function PartyLabRoot() {
                   setStatus(PREVIEW_MESSAGE);
                 }}
               />
-              <button className="pl-button pl-join" type="submit">Katıl</button>
+              <button className="pl-button pl-join" type="submit" disabled={busy}>Katıl</button>
             </div>
             <p className="pl-error" id="pl-room-error" aria-live="polite">{roomCodeError}</p>
           </form>
 
-          <p className="pl-status" role="status" aria-atomic="true">{status}</p>
-          <button className="pl-local-test" type="button" onClick={() => setInArena(true)}>
+          <p className="pl-status" role="status" aria-atomic="true">{busy ? "Lobiye bağlanılıyor…" : network.snapshot.notice || status}</p>
+          <button className="pl-local-test" type="button" disabled={busy} onClick={() => setInArena(true)}>
             Yerel Test Arenası <span aria-hidden="true">↗</span>
           </button>
         </section>
