@@ -1,0 +1,190 @@
+/* Loaded only by PartyLabRoot. The body reset is scoped to this root. */
+body:has(.party-lab) {
+  margin: 0;
+  background: oklch(18% 0.025 180);
+}
+
+.party-lab {
+  --pl-ink: oklch(95% 0.016 155);
+  --pl-muted: oklch(75% 0.03 170);
+  --pl-accent: oklch(88% 0.13 158);
+  --pl-border: oklch(80% 0.05 170 / 18%);
+  box-sizing: border-box;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 30px 6vw 24px;
+  display: flex;
+  flex-direction: column;
+  color: var(--pl-ink);
+  background:
+    radial-gradient(ellipse at 15% 45%, oklch(36% 0.075 173 / 55%), transparent 57%),
+    radial-gradient(ellipse at 95% 90%, oklch(29% 0.065 153 / 45%), transparent 48%),
+    oklch(18% 0.025 180);
+  font-family: "DM Sans", system-ui, sans-serif;
+  line-height: 1.5;
+  color-scheme: dark;
+}
+
+.party-lab *, .party-lab *::before, .party-lab *::after { box-sizing: border-box; }
+.party-lab :where(h1, h2, p) { margin: 0; }
+
+.party-lab .pl-topbar, .party-lab .pl-footer {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.party-lab .pl-brand { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+.party-lab .pl-brand-divider { padding-inline: 14px; color: var(--pl-muted); font-weight: 400; }
+.party-lab .pl-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  color: var(--pl-muted);
+  text-decoration: none;
+  font-size: 13px;
+}
+.party-lab .pl-back:hover { color: var(--pl-ink); }
+.party-lab .pl-back span { transform: rotate(-135deg); font-size: 20px; }
+
+.party-lab .pl-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 58px auto 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  align-content: center;
+  align-items: center;
+  gap: 64px;
+}
+
+.party-lab .pl-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--pl-muted); }
+.party-lab h1 {
+  margin-block: 18px 12px;
+  font-family: "Bebas Neue", Impact, sans-serif;
+  font-size: 128px;
+  font-weight: 400;
+  line-height: 0.86;
+  letter-spacing: 0.015em;
+}
+.party-lab h1 span { display: block; color: var(--pl-accent); }
+.party-lab .pl-subtitle { margin-top: 22px; max-width: 31ch; color: var(--pl-muted); font-size: 16px; }
+.party-lab .pl-invitation { font-size: 16px; font-weight: 600; }
+.party-lab .pl-invitation span { display: block; margin-top: 4px; color: var(--pl-muted); font-size: 14px; font-weight: 400; }
+
+/* Three small, static CSS mascots. No assets, canvas, or animation loop. */
+.party-lab .pl-mascots { position: relative; width: 280px; height: 126px; margin-block: 28px 22px; }
+.party-lab .pl-bean {
+  position: absolute;
+  bottom: 8px;
+  width: 67px;
+  height: 91px;
+  border-radius: 48% 48% 40% 40%;
+  box-shadow: inset -8px -6px 0 oklch(18% 0.03 170 / 12%);
+}
+.party-lab .pl-bean-mint { left: 22px; transform: rotate(-16deg); background: var(--pl-accent); }
+.party-lab .pl-bean-cream { left: 99px; bottom: 20px; transform: rotate(8deg); background: oklch(91% 0.07 95); }
+.party-lab .pl-bean-coral { left: 174px; transform: rotate(20deg); background: oklch(77% 0.12 38); }
+.party-lab .pl-bean i {
+  position: absolute;
+  top: 29px;
+  left: 23px;
+  width: 6px;
+  height: 11px;
+  border-radius: 50%;
+  color: oklch(22% 0.035 175);
+  background: currentColor;
+  box-shadow: 16px 0 currentColor;
+}
+.party-lab .pl-spark { position: absolute; color: var(--pl-muted); font-size: 23px; font-weight: 400; }
+.party-lab .pl-spark-one { top: 8px; left: 3px; transform: rotate(18deg); }
+.party-lab .pl-spark-two { top: 6px; right: 12px; transform: rotate(-15deg); font-size: 17px; }
+
+.party-lab .pl-lobby {
+  padding: 32px;
+  border: 1px solid var(--pl-border);
+  border-radius: 26px;
+  background: linear-gradient(145deg, oklch(40% 0.035 175 / 28%), oklch(24% 0.025 175 / 72%));
+  box-shadow: 0 24px 70px oklch(10% 0.02 180 / 22%), inset 0 1px oklch(95% 0.02 170 / 5%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.party-lab .pl-lobby-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 21px; }
+.party-lab .pl-badge { border: 1px solid var(--pl-border); border-radius: 6px; padding: 4px 7px; color: var(--pl-accent); font-size: 9px; font-weight: 700; letter-spacing: 0.09em; }
+.party-lab h2 { font-size: 27px; font-weight: 700; letter-spacing: -0.04em; line-height: 1.2; }
+.party-lab .pl-lobby-description { margin-block: 9px 28px; color: var(--pl-muted); font-size: 13px; }
+.party-lab label { display: block; margin-bottom: 9px; font-size: 13px; font-weight: 600; }
+.party-lab input {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  padding: 0 15px;
+  border: 1px solid var(--pl-border);
+  border-radius: 12px;
+  background: oklch(15% 0.025 180 / 50%);
+  color: var(--pl-ink);
+  font: inherit;
+  font-size: 16px;
+  transition: border-color 160ms ease-out;
+}
+.party-lab input::placeholder { color: oklch(67% 0.025 170); opacity: 1; }
+.party-lab input:hover { border-color: oklch(75% 0.05 170 / 40%); }
+.party-lab :is(input, button, a):focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 4px; }
+.party-lab input[aria-invalid="true"] { border-color: oklch(80% 0.11 30); }
+.party-lab .pl-hint { margin-top: 8px; color: var(--pl-muted); font-size: 11px; }
+.party-lab .pl-error { margin-top: 8px; color: oklch(85% 0.085 30); font-size: 12px; }
+.party-lab .pl-error:empty { display: none; }
+.party-lab .pl-button {
+  min-height: 52px;
+  padding: 12px 19px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease-out, transform 160ms ease-out;
+}
+.party-lab .pl-button:active { transform: translateY(1px); }
+.party-lab .pl-create { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 22px; color: oklch(23% 0.045 175); background: var(--pl-accent); }
+.party-lab .pl-create span { font-size: 21px; font-weight: 400; }
+.party-lab .pl-create:hover { background: oklch(92% 0.105 158); }
+.party-lab .pl-divider { display: flex; align-items: center; gap: 14px; margin-block: 24px; color: var(--pl-muted); font-size: 11px; }
+.party-lab .pl-divider::before, .party-lab .pl-divider::after { content: ""; flex: 1; height: 1px; background: var(--pl-border); }
+.party-lab .pl-join-row { display: flex; gap: 10px; }
+.party-lab .pl-code { letter-spacing: 0.15em; }
+.party-lab .pl-join { flex-shrink: 0; padding-inline: 23px; background: oklch(45% 0.045 173 / 38%); border-color: var(--pl-border); color: var(--pl-ink); }
+.party-lab .pl-join:hover { background: oklch(48% 0.055 173 / 55%); }
+.party-lab .pl-status { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--pl-border); min-height: 58px; color: var(--pl-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.party-lab .pl-footer { padding-top: 18px; border-top: 1px solid var(--pl-border); color: var(--pl-muted); font-size: 11px; }
+
+@media (max-width: 800px) {
+  .party-lab { padding: 20px 24px; }
+  .party-lab .pl-main { max-width: 460px; grid-template-columns: minmax(0, 1fr); gap: 32px; margin-block: 38px; }
+  .party-lab .pl-intro { text-align: center; }
+  .party-lab h1 { font-size: 88px; }
+  .party-lab h1 span { display: inline; }
+  .party-lab .pl-subtitle { margin: 18px auto 0; }
+  .party-lab .pl-mascots { margin: 10px auto 0; transform: scale(0.8); height: 110px; }
+  .party-lab .pl-invitation { display: none; }
+}
+
+@media (max-width: 420px) {
+  .party-lab { padding-inline: 16px; }
+  .party-lab .pl-brand { font-size: 12px; }
+  .party-lab .pl-brand-divider { padding-inline: 8px; }
+  .party-lab .pl-back { font-size: 12px; }
+  .party-lab h1 { font-size: 74px; }
+  .party-lab .pl-lobby { padding: 24px 20px; border-radius: 22px; }
+  .party-lab .pl-footer { flex-direction: column; align-items: flex-start; gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .party-lab input, .party-lab .pl-button { transition: none; }
+}

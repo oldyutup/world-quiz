@@ -1,0 +1,135 @@
+import { useEffect, useRef, useState } from "react";
+import "./party-lab.css";
+
+const PREVIEW_MESSAGE = "Şimdilik lobi önizlemesi. Çok oyunculu oyun yakında.";
+
+export default function PartyLabRoot() {
+  const [nickname, setNickname] = useState("");
+  const [roomCode, setRoomCode] = useState("");
+  const [nicknameError, setNicknameError] = useState("");
+  const [roomCodeError, setRoomCodeError] = useState("");
+  const [status, setStatus] = useState(PREVIEW_MESSAGE);
+  const nicknameRef = useRef<HTMLInputElement>(null);
+  const roomCodeRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "Party Lab | Torble";
+    return () => { document.title = previousTitle; };
+  }, []);
+
+  function handleAction(action: "create" | "join") {
+    const name = nickname.trim().normalize("NFC");
+    const code = roomCode.trim().toUpperCase();
+    const nameError = /^[\p{L}\p{N}_-]{3,16}$/u.test(name)
+      ? ""
+      : "3–16 karakter kullan: harf, rakam, alt çizgi veya kısa çizgi.";
+    const codeError = action === "join" && !/^[A-Z0-9]{6}$/.test(code)
+      ? "Katılmak için 6 harf veya rakamdan oluşan oda kodunu gir."
+      : "";
+
+    setNicknameError(nameError);
+    setRoomCodeError(codeError);
+    if (nameError || codeError) {
+      setStatus(PREVIEW_MESSAGE);
+      (nameError ? nicknameRef : roomCodeRef).current?.focus();
+      return;
+    }
+
+    setNickname(name);
+    setStatus(action === "create"
+      ? `${name}, çok oyunculu oyun yakında! Oda oluşturma henüz açık değil.`
+      : `${name}, çok oyunculu oyun yakında! Kodla katılma henüz açık değil.`);
+  }
+
+  return (
+    <div className="party-lab">
+      <header className="pl-topbar">
+        <span className="pl-brand">torble<span className="pl-brand-divider">/</span>party lab</span>
+        <a className="pl-back" href="/"><span aria-hidden="true">↗</span> Torble'a Dön</a>
+      </header>
+
+      <main className="pl-main">
+        <section className="pl-intro" aria-labelledby="pl-title">
+          <span className="pl-eyebrow">Biraz rekabet. Biraz kaos.</span>
+          <h1 id="pl-title">PARTY <span>LAB</span></h1>
+          <p className="pl-subtitle">Deneysel, 3 kişilik tarayıcı parti oyunu.</p>
+          <div className="pl-mascots" aria-hidden="true">
+            <span className="pl-bean pl-bean-mint"><i /></span>
+            <span className="pl-bean pl-bean-cream"><i /></span>
+            <span className="pl-bean pl-bean-coral"><i /></span>
+            <span className="pl-spark pl-spark-one">+</span>
+            <span className="pl-spark pl-spark-two">+</span>
+          </div>
+          <p className="pl-invitation">Arkadaşlarını kap. <span>Gerisi biraz karışabilir.</span></p>
+        </section>
+
+        <section className="pl-lobby" aria-labelledby="pl-lobby-title">
+          <div className="pl-lobby-heading">
+            <span className="pl-eyebrow">Lobi önizlemesi</span>
+            <span className="pl-badge">DENEYSEL</span>
+          </div>
+          <h2 id="pl-lobby-title">Partiye adını yaz.</h2>
+          <p className="pl-lobby-description">Hesap gerekmez. Bir takma ad yeter.</p>
+
+          <form noValidate onSubmit={event => { event.preventDefault(); handleAction("create"); }}>
+            <label htmlFor="pl-nickname">Takma adın</label>
+            <input
+              ref={nicknameRef}
+              id="pl-nickname"
+              name="nickname"
+              autoComplete="nickname"
+              placeholder="Sana ne diyelim?"
+              maxLength={16}
+              spellCheck={false}
+              value={nickname}
+              aria-invalid={!!nicknameError}
+              aria-describedby="pl-nickname-hint pl-nickname-error"
+              onChange={event => {
+                setNickname(event.target.value);
+                setNicknameError("");
+                setStatus(PREVIEW_MESSAGE);
+              }}
+            />
+            <p className="pl-hint" id="pl-nickname-hint">3–16 karakter · Harf, rakam, _ veya -</p>
+            <p className="pl-error" id="pl-nickname-error" aria-live="polite">{nicknameError}</p>
+            <button className="pl-button pl-create" type="submit">Oda Oluştur <span aria-hidden="true">↗</span></button>
+          </form>
+
+          <div className="pl-divider"><span>ya da kodla katıl</span></div>
+
+          <form noValidate onSubmit={event => { event.preventDefault(); handleAction("join"); }}>
+            <label htmlFor="pl-room-code">Oda kodu</label>
+            <div className="pl-join-row">
+              <input
+                ref={roomCodeRef}
+                id="pl-room-code"
+                name="roomCode"
+                className="pl-code"
+                autoComplete="off"
+                autoCapitalize="characters"
+                placeholder="ABC123"
+                maxLength={6}
+                spellCheck={false}
+                value={roomCode}
+                aria-invalid={!!roomCodeError}
+                aria-describedby="pl-room-error"
+                onChange={event => {
+                  setRoomCode(event.target.value.toUpperCase());
+                  setRoomCodeError("");
+                  setStatus(PREVIEW_MESSAGE);
+                }}
+              />
+              <button className="pl-button pl-join" type="submit">Katıl</button>
+            </div>
+            <p className="pl-error" id="pl-room-error" aria-live="polite">{roomCodeError}</p>
+          </form>
+
+          <p className="pl-status" role="status" aria-atomic="true">{status}</p>
+        </section>
+      </main>
+
+      <footer className="pl-footer"><span>Küçük bir deney. Büyük bir eğlence fikri.</span><span>En fazla 3 oyuncu</span></footer>
+    </div>
+  );
+}
