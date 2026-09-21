@@ -1,5 +1,6 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { MovementInput } from "../input/keyboard";
+import { PLAYERS, type PlayerId } from "./players";
 
 export const PHYSICS = {
   step: 1 / 60,
@@ -10,16 +11,15 @@ export const PHYSICS = {
   speed: 5.2,
   acceleration: 32,
   airAcceleration: 10,
-  braking: 18,
+  braking: 10,
   damping: 0.45,
   friction: 0.3,
   jumpSpeed: 7.5,
   groundMargin: 0.08,
   fallY: -5,
-  respawnDelay: 1.25,
 } as const;
 
-export const SPAWN = { x: 0, y: 1.6, z: 2 };
+export const IDLE_INPUT: MovementInput = { x: 0, z: 0, jump: false };
 export const PLATFORM = { width: 14, depth: 12, height: 1.2 };
 export const BUMPERS = [
   { x: -3.2, z: -1.7, radius: 0.85, height: 1.4, color: "#ef9a87" },
@@ -39,13 +39,11 @@ export function initializePhysics(): Promise<void> {
 /** Local fixed-step simulation, deliberately independent of React and Three. */
 export class PlaygroundPhysics {
   readonly world: RAPIER.World;
-  readonly player: RAPIER.RigidBody;
-  private readonly collider: RAPIER.Collider;
+  readonly players: { id: PlayerId; body: RAPIER.RigidBody; collider: RAPIER.Collider; eliminated: boolean }[];
   private readonly groundRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
   private readonly impulse = { x: 0, y: 0, z: 0 };
-  private respawnRemaining = 0;
   private disposed = false;
-  fallen = false;
+  private readonly eliminations: PlayerId[] = [];
 
   constructor() {
     this.world = new RAPIER.World({ x: 0, y: PHYSICS.gravity, z: 0 });
@@ -58,43 +56,50 @@ export class PlaygroundPhysics {
         .setFriction(0.3).setRestitution(0.55)
         .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max));
     }
-    this.player = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(SPAWN.x, SPAWN.y, SPAWN.z)
-      .lockRotations().setLinearDamping(PHYSICS.damping).setCcdEnabled(true));
-    this.collider = this.world.createCollider(RAPIER.ColliderDesc.capsule(PHYSICS.halfHeight, PHYSICS.radius)
-      .setMass(PHYSICS.mass).setFriction(PHYSICS.friction).setRestitution(0)
-      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), this.player);
+    this.players = PLAYERS.map(({ id, spawn }) => {
+      const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(spawn.x, spawn.y, spawn.z)
+        .lockRotations().setLinearDamping(PHYSICS.damping).setCcdEnabled(true));
+      const collider = this.world.createCollider(RAPIER.ColliderDesc.capsule(PHYSICS.halfHeight, PHYSICS.radius)
+        .setMass(PHYSICS.mass).setFriction(PHYSICS.friction).setRestitution(0)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body);
+      return { id, body, collider, eliminated: false };
+    });
   }
 
-  isGrounded(): boolean {
-    if (this.fallen || this.player.linvel().y > 0.5) return false;
-    const position = this.player.translation();
+  isGrounded(id: PlayerId): boolean {
+    const player = this.players[id];
+    if (player.eliminated || player.body.linvel().y > 0.5) return false;
+    const position = player.body.translation();
     this.groundRay.origin.x = position.x;
     this.groundRay.origin.y = position.y;
     this.groundRay.origin.z = position.z;
     const hit = this.world.castRayAndGetNormal(this.groundRay,
       PHYSICS.halfHeight + PHYSICS.radius + PHYSICS.groundMargin, true,
-      undefined, undefined, this.collider, this.player);
+      undefined, undefined, player.collider, player.body);
     return hit !== null && hit.normal.y > 0.65;
   }
 
-  step(input: MovementInput): "fell" | "respawned" | null {
-    if (this.fallen) {
-      this.respawnRemaining -= PHYSICS.step;
-      if (this.respawnRemaining > 0) return null;
-      // Teleport only on respawn, never as a movement controller.
-      this.player.setTranslation(SPAWN, true);
-      this.player.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      this.player.setAngvel({ x: 0, y: 0, z: 0 }, true);
-      this.player.resetForces(true);
-      this.player.resetTorques(true);
-      this.player.setEnabled(true);
-      this.fallen = false;
-      return "respawned";
+  reset() {
+    for (const { id, spawn } of PLAYERS) {
+      const player = this.players[id];
+      player.body.setEnabled(true);
+      player.body.setTranslation(spawn, true);
+      player.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+      player.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      player.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      player.body.resetForces(true);
+      player.body.resetTorques(true);
+      player.eliminated = false;
     }
+    this.eliminations.length = 0;
+  }
 
-    const grounded = this.isGrounded();
-    const velocity = this.player.linvel();
+  private move(id: PlayerId, input: MovementInput) {
+    const player = this.players[id];
+    if (player.eliminated) return;
+    const grounded = this.isGrounded(id);
+    const velocity = player.body.linvel();
     const length = Math.hypot(input.x, input.z);
     const normalizer = Math.max(1, length);
     const desiredX = input.x / normalizer * PHYSICS.speed;
@@ -107,16 +112,22 @@ export class PlaygroundPhysics {
     this.impulse.x = deltaX * scale * PHYSICS.mass;
     this.impulse.z = deltaZ * scale * PHYSICS.mass;
     this.impulse.y = input.jump && grounded ? (PHYSICS.jumpSpeed - velocity.y) * PHYSICS.mass : 0;
-    this.player.applyImpulse(this.impulse, true);
-    this.world.step();
+    player.body.applyImpulse(this.impulse, true);
+  }
 
-    if (this.player.translation().y < PHYSICS.fallY) {
-      this.fallen = true;
-      this.respawnRemaining = PHYSICS.respawnDelay;
-      this.player.setEnabled(false);
-      return "fell";
+  /** All inputs are applied before the single shared world step. */
+  step(inputs: readonly MovementInput[]): readonly PlayerId[] {
+    for (const player of this.players) this.move(player.id, inputs[player.id] ?? IDLE_INPUT);
+    this.world.step();
+    this.eliminations.length = 0;
+    for (const player of this.players) {
+      if (!player.eliminated && player.body.translation().y < PHYSICS.fallY) {
+        player.eliminated = true;
+        player.body.setEnabled(false);
+        this.eliminations.push(player.id);
+      }
     }
-    return null;
+    return this.eliminations;
   }
 
   dispose() {

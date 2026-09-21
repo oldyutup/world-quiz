@@ -4,9 +4,12 @@ import { Vector3, type Group, type PerspectiveCamera } from "three";
 import { bindKeyboard } from "../input/keyboard";
 import Arena from "./Arena";
 import PlayerBean from "./PlayerBean";
-import { initializePhysics, PHYSICS, PlaygroundPhysics } from "./physics";
+import { initializePhysics, PHYSICS } from "./physics";
+import { LocalRoundSimulation } from "./localRound";
+import { PLAYERS } from "./players";
+import type { RoundSnapshot } from "./roundLogic";
 
-type ArenaStatus = "loading" | "playing" | "fallen" | "error" | "graphics-error";
+type ArenaStatus = "loading" | "ready" | "error" | "graphics-error";
 
 class SceneBoundary extends Component<{ children: ReactNode; onError: () => void }, { failed: boolean }> {
   state = { failed: false };
@@ -19,13 +22,16 @@ class SceneBoundary extends Component<{ children: ReactNode; onError: () => void
   }
 }
 
-function Playground({ onStatus }: { onStatus: (status: ArenaStatus) => void }) {
-  const bean = useRef<Group>(null);
-  const simulation = useRef<PlaygroundPhysics | null>(null);
+function Playground({ onStatus, onRound }: {
+  onStatus: (status: ArenaStatus) => void;
+  onRound: (snapshot: RoundSnapshot) => void;
+}) {
+  const beans = useRef<(Group | null)[]>([]);
+  const simulation = useRef<LocalRoundSimulation | null>(null);
   const keyboard = useRef<ReturnType<typeof bindKeyboard> | null>(null);
-  const previous = useRef(new Vector3());
-  const current = useRef(new Vector3());
+  const poses = useRef(PLAYERS.map(() => ({ previous: new Vector3(), current: new Vector3() })));
   const accumulator = useRef(0);
+  const publishedRevision = useRef(-1);
   const { camera, size } = useThree();
 
   useEffect(() => {
@@ -42,12 +48,16 @@ function Playground({ onStatus }: { onStatus: (status: ArenaStatus) => void }) {
     keyboard.current = controls;
     void initializePhysics().then(() => {
       if (cancelled) return;
-      const physics = new PlaygroundPhysics();
-      simulation.current = physics;
+      const local = new LocalRoundSimulation();
+      simulation.current = local;
       accumulator.current = 0;
-      current.current.copy(physics.player.translation());
-      previous.current.copy(current.current);
-      onStatus("playing");
+      for (const player of local.physics.players) {
+        poses.current[player.id].current.copy(player.body.translation());
+        poses.current[player.id].previous.copy(poses.current[player.id].current);
+      }
+      publishedRevision.current = local.round.revision;
+      onRound(local.round.snapshot());
+      onStatus("ready");
     }).catch(() => {
       if (!cancelled) onStatus("error");
     });
@@ -58,12 +68,12 @@ function Playground({ onStatus }: { onStatus: (status: ArenaStatus) => void }) {
       simulation.current?.dispose();
       simulation.current = null;
     };
-  }, [onStatus]);
+  }, [onStatus, onRound]);
 
   useFrame((_, delta) => {
-    const physics = simulation.current;
+    const local = simulation.current;
     const controls = keyboard.current;
-    if (!physics || !controls || !bean.current) return;
+    if (!local || !controls) return;
     // Never try to catch up minutes of physics after a hidden tab or debugger pause.
     if (document.hidden || delta > 0.25) {
       accumulator.current = 0;
@@ -72,31 +82,47 @@ function Playground({ onStatus }: { onStatus: (status: ArenaStatus) => void }) {
     }
     accumulator.current += Math.min(delta, 0.1);
     while (accumulator.current >= PHYSICS.step) {
-      previous.current.copy(current.current);
-      const event = physics.step(controls.input);
+      for (const pose of poses.current) pose.previous.copy(pose.current);
+      const event = local.step(controls.input);
       controls.input.jump = false;
-      current.current.copy(physics.player.translation());
-      if (event) {
-        controls.clear();
-        onStatus(event === "fell" ? "fallen" : "playing");
-        if (event === "respawned") previous.current.copy(current.current);
+      if (event) controls.clear();
+      for (const player of local.physics.players) {
+        const pose = poses.current[player.id];
+        pose.current.copy(player.body.translation());
+        if (event === "reset") {
+          pose.previous.copy(pose.current);
+          beans.current[player.id]?.rotation.set(0, 0, 0);
+        }
+      }
+      if (publishedRevision.current !== local.round.revision) {
+        publishedRevision.current = local.round.revision;
+        onRound(local.round.snapshot());
       }
       accumulator.current -= PHYSICS.step;
     }
-    bean.current.visible = !physics.fallen;
-    bean.current.position.lerpVectors(previous.current, current.current, accumulator.current / PHYSICS.step);
-    if (controls.input.x || controls.input.z) {
-      const target = Math.atan2(controls.input.x, controls.input.z);
-      const difference = Math.atan2(Math.sin(target - bean.current.rotation.y), Math.cos(target - bean.current.rotation.y));
-      bean.current.rotation.y += difference * (1 - Math.exp(-12 * delta));
+    for (const player of local.physics.players) {
+      const bean = beans.current[player.id];
+      if (!bean) continue;
+      const pose = poses.current[player.id];
+      bean.visible = !player.eliminated;
+      bean.position.lerpVectors(pose.previous, pose.current, accumulator.current / PHYSICS.step);
+      const velocity = player.body.linvel();
+      if (local.round.phase === "playing" && Math.hypot(velocity.x, velocity.z) > 0.15) {
+        const target = Math.atan2(velocity.x, velocity.z);
+        const difference = Math.atan2(Math.sin(target - bean.rotation.y), Math.cos(target - bean.rotation.y));
+        bean.rotation.y += difference * (1 - Math.exp(-12 * delta));
+      }
     }
   });
 
-  return <><Arena /><PlayerBean ref={bean} /></>;
+  return <><Arena />{PLAYERS.map(player => (
+    <PlayerBean key={player.id} color={player.color} ref={bean => { beans.current[player.id] = bean; }} />
+  ))}</>;
 }
 
 export default function ArenaScene({ onExit }: { onExit: () => void }) {
   const [status, setStatus] = useState<ArenaStatus>("loading");
+  const [round, setRound] = useState<RoundSnapshot | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
 
   useEffect(() => { viewport.current?.focus(); }, []);
@@ -116,20 +142,47 @@ export default function ArenaScene({ onExit }: { onExit: () => void }) {
             fallback={<div className="pl-scene-notice" role="alert">Bu arena için WebGL 2 desteği gerekiyor.</div>}>
             <hemisphereLight args={["#fff2d9", "#537b7b", 1.8]} />
             <directionalLight position={[4, 10, 6]} intensity={2.2} color="#fff2d9" />
-            <Playground onStatus={setStatus} />
+            <Playground onStatus={setStatus} onRound={setRound} />
           </Canvas>
         </SceneBoundary>
-        {status !== "playing" && status !== "graphics-error" && (
+        {status === "ready" && round && (
+          <>
+            <div className="pl-round-hud">
+              <ul className="pl-roster" aria-label="Oyuncu durumları">
+                {PLAYERS.map(player => (
+                  <li key={player.id} className={round.alive[player.id] ? "" : "pl-eliminated"}>
+                    <span className="pl-player-dot" style={{ backgroundColor: player.color }} aria-hidden="true" />
+                    <span><b>{player.label} <small>{player.id === 0 ? "Sen" : "Bot"}</small></b>
+                      <span>{round.alive[player.id] ? "Aktif" : "Elendi"}</span></span>
+                  </li>
+                ))}
+              </ul>
+              {round.phase === "playing" && <span className="pl-round-clock" aria-label={`Kalan süre: ${round.seconds} saniye`}>{round.seconds} sn</span>}
+            </div>
+            {(round.phase !== "playing" || !round.alive[0]) && (
+              <div className="pl-arena-message pl-round-message" role="status" aria-atomic="true">
+                {round.phase === "countdown" && <><strong>{round.seconds}</strong><span>Hazır ol!</span></>}
+                {round.phase === "playing" && <><strong>Düştün!</strong><span>Diğer oyuncuları izle.</span></>}
+                {round.phase === "results" && <>
+                  <strong style={{ color: round.winner === null ? undefined : PLAYERS[round.winner].color }}>
+                    {round.winner === null ? "Berabere!" : `${PLAYERS[round.winner].label} kazandı!`}
+                  </strong>
+                  <span>{round.reason === "timeout" ? "Süre doldu. " : ""}Yeni tur birazdan.</span>
+                </>}
+              </div>
+            )}
+          </>
+        )}
+        {status !== "ready" && status !== "graphics-error" && (
           <div className="pl-arena-message" role="status" aria-live="polite">
             {status === "loading" && "Arena hazırlanıyor…"}
-            {status === "fallen" && <><strong>Düştün!</strong><span>Bir daha deneyelim.</span></>}
             {status === "error" && "Fizik motoru yüklenemedi. Lobiye dönüp tekrar dene."}
           </div>
         )}
       </div>
       <footer className="pl-arena-footer" id="pl-controls">
         <div><span><kbd>WASD</kbd> — Hareket</span><span><kbd>SPACE</kbd> — Zıpla</span></div>
-        <span>Tek oyuncu · Yerel deneme</span>
+        <span>1 oyuncu + 2 yerel bot</span>
       </footer>
     </div>
   );

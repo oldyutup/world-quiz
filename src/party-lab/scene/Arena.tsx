@@ -1,4 +1,5 @@
 import { BUMPERS, PLATFORM } from "./physics";
+import { PLAYERS } from "./players";
 
 export default function Arena() {
   return (
@@ -34,9 +35,11 @@ export default function Arena() {
           </mesh>
         </group>
       ))}
-      <mesh position={[0, 0.008, 2]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.8, 0.85, 32]} /><meshBasicMaterial color="#d7ebcc" />
-      </mesh>
+      {PLAYERS.map(player => (
+        <mesh key={player.id} position={[player.spawn.x, 0.008, player.spawn.z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.8, 0.85, 32]} /><meshBasicMaterial color={player.color} />
+        </mesh>
+      ))}
     </group>
   );
 }

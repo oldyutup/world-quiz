@@ -238,6 +238,16 @@ body:has(.party-lab) {
 }
 .party-lab .pl-arena-message strong { display: block; font-size: 24px; color: oklch(85% 0.085 30); }
 .party-lab .pl-arena-message span { color: var(--pl-muted); }
+.party-lab .pl-round-hud { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; pointer-events: none; }
+.party-lab .pl-roster { display: flex; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.party-lab .pl-roster li { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border: 1px solid var(--pl-border); border-radius: 12px; background: oklch(22% 0.03 180 / 92%); font-size: 12px; }
+.party-lab .pl-player-dot { width: 10px; height: 16px; border-radius: 45%; flex-shrink: 0; }
+.party-lab .pl-roster b { display: block; font-weight: 600; }
+.party-lab .pl-roster small { margin-left: 4px; color: var(--pl-muted); font-size: 10px; font-weight: 400; }
+.party-lab .pl-roster li > span > span { color: var(--pl-muted); font-size: 11px; }
+.party-lab .pl-roster .pl-eliminated .pl-player-dot { opacity: 0.45; }
+.party-lab .pl-round-clock { padding: 9px 12px; border: 1px solid var(--pl-border); border-radius: 10px; background: oklch(22% 0.03 180 / 92%); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.party-lab .pl-round-message { top: 88px; }
 .party-lab .pl-scene-notice { display: grid; place-content: center; height: 100%; padding: 32px; text-align: center; }
 .party-lab .pl-arena-footer, .party-lab .pl-arena-footer > div { display: flex; align-items: center; gap: 24px; }
 .party-lab .pl-arena-footer { justify-content: space-between; color: var(--pl-muted); font-size: 12px; }
@@ -248,4 +258,9 @@ body:has(.party-lab) {
   .party-lab .pl-arena-header .pl-button { padding-inline: 12px; }
   .party-lab .pl-arena-footer { align-items: flex-start; flex-direction: column; gap: 12px; }
   .party-lab .pl-arena-footer > div { gap: 16px; }
+  .party-lab .pl-round-hud { top: 10px; left: 8px; right: 8px; gap: 6px; flex-wrap: wrap; }
+  .party-lab .pl-roster { gap: 5px; }
+  .party-lab .pl-roster li { padding: 7px; gap: 6px; font-size: 11px; }
+  .party-lab .pl-roster small { display: block; margin-left: 0; }
+  .party-lab .pl-round-message { top: 116px; }
 }
