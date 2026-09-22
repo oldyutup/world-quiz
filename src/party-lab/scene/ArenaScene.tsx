@@ -31,6 +31,12 @@ import { initializePhysics, PHYSICS } from "./physics";
 import { LocalRoundSimulation } from "./localRound";
 import { PLAYERS } from "./players";
 import type { RoundSnapshot } from "./roundLogic";
+import {
+  ARENA_MAP_IDS,
+  arenaMap,
+  DEFAULT_ARENA_MAP_ID,
+  type ArenaMapId,
+} from "../../../shared/party-lab/maps";
 
 type ArenaStatus = "loading" | "ready" | "error" | "graphics-error";
 interface CombatHudElements {
@@ -71,7 +77,9 @@ function Playground({
   audio,
   shakeEnabled,
   costumeId,
+  mapId,
 }: {
+  mapId: ArenaMapId;
   onStatus: (status: ArenaStatus) => void;
   onRound: (snapshot: RoundSnapshot) => void;
   hud: MutableRefObject<CombatHudElements>;
@@ -130,7 +138,7 @@ function Playground({
     void initializePhysics()
       .then(() => {
         if (cancelled) return;
-        const local = new LocalRoundSimulation(Math.random, event => { audio.playSfx(event); feel.current.trigger(event); });
+        const local = new LocalRoundSimulation(Math.random, event => { audio.playSfx(event); feel.current.trigger(event); }, arenaMap(mapId));
         simulation.current = local;
         accumulator.current = 0;
         for (const player of local.physics.players) {
@@ -160,7 +168,7 @@ function Playground({
       simulation.current?.dispose();
       simulation.current = null;
     };
-  }, [onStatus, onRound, gl, audio]);
+  }, [onStatus, onRound, gl, audio, mapId]);
 
   useFrame((frame, delta) => {
     const local = simulation.current;
@@ -298,7 +306,7 @@ function Playground({
 
   return (
     <>
-      <Arena />
+      <Arena mapId={mapId} />
       {PLAYERS.map((player) => (
         <PlayerBean
           key={player.id}
@@ -329,6 +337,7 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
     return () => query.removeEventListener("change", changed);
   }, []);
   const [status, setStatus] = useState<ArenaStatus>("loading");
+  const [mapId, setMapId] = useState<ArenaMapId>(DEFAULT_ARENA_MAP_ID);
   const [round, setRound] = useState<RoundSnapshot | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const combatHud = useRef<CombatHudElements>({
@@ -346,9 +355,26 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
     <div className="party-lab pl-playground">
       <header className="pl-arena-header">
         <div>
-          <span className="pl-eyebrow">PARTY LAB / YEREL TEST</span>
+          <span className="pl-eyebrow">PARTY LAB / YEREL TEST · {arenaMap(mapId).name.toLocaleUpperCase("tr-TR")}</span>
           <h2>Biraz hareket, biraz kaos.</h2>
         </div>
+        <label className="pl-map-select">
+          <span>Harita</span>
+          <select
+            value={mapId}
+            onChange={(event) => {
+              setStatus("loading");
+              setRound(null);
+              setMapId(event.target.value as ArenaMapId);
+              // Keep arrow keys for the game, not for switching maps mid-round.
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}
+          >
+            {ARENA_MAP_IDS.map((id) => (
+              <option key={id} value={id}>{arenaMap(id).name}</option>
+            ))}
+          </select>
+        </label>
         <button className="pl-button pl-join" type="button" onClick={onControls}>Kontroller</button>
         <button className="pl-button pl-join" type="button" onClick={onExit} data-sfx="uiBack">
           Lobiye Dön
@@ -374,13 +400,9 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
               </div>
             }
           >
-            <hemisphereLight args={["#fff2d9", "#537b7b", 1.8]} />
-            <directionalLight
-              position={[4, 10, 6]}
-              intensity={2.2}
-              color="#fff2d9"
-            />
             <Playground
+              key={mapId}
+              mapId={mapId}
               onStatus={setStatus}
               onRound={setRound}
               hud={combatHud}

@@ -19,7 +19,7 @@ import { cap, finite, length, sub, type Vec } from "./ragdoll/math.js";
 export const PHYSICS = RAGDOLL;
 export const IDLE_INPUT: MovementInput = { x: 0, z: 0, jump: false };
 import { createArenaWorld } from "./world.js";
-export { PLATFORM, BUMPERS } from "./environment.js";
+import { arenaMap, DEFAULT_ARENA_MAP_ID, type ArenaMap } from "../maps/index.js";
 let initialization: Promise<void> | undefined;
 export function initializePhysics(): Promise<void> {
   return (initialization ??= RAPIER.init().catch((error) => {
@@ -40,10 +40,13 @@ export class PlaygroundPhysics {
   };
   private disposed = false;
   private readonly eliminations: PlayerId[] = [];
-  constructor(private readonly feedback: FeedbackSink = silentFeedback) {
-    this.world = createArenaWorld();
-    this.players = PLAYERS.map(({ id, spawn }) =>
-      createCharacter(this.world, id, spawn)
+  constructor(
+    private readonly feedback: FeedbackSink = silentFeedback,
+    readonly map: ArenaMap = arenaMap(DEFAULT_ARENA_MAP_ID)
+  ) {
+    this.world = createArenaWorld(map);
+    this.players = PLAYERS.map(({ id }) =>
+      createCharacter(this.world, id, map.spawns[id])
     );
   }
   isGrounded(id: PlayerId) {
@@ -67,8 +70,9 @@ export class PlaygroundPhysics {
   }
   /** Spawn/reset only. Every limb and anatomical joint is restored/recreated. */
   reset() {
-    for (const { id, spawn } of PLAYERS) {
-      const player = this.players[id];
+    for (const { id } of PLAYERS) {
+      const player = this.players[id],
+        spawn = this.map.spawns[id];
       restore(player, spawn, Math.atan2(-spawn.x, -spawn.z));
       connect(this.world, player);
     }
@@ -102,7 +106,7 @@ export class PlaygroundPhysics {
       ) {
         this.diagnostics.invalidBodies++;
         // Fault containment only: quarantine invalid state and eliminate.
-        restore(player, PLAYERS[player.id].spawn);
+        restore(player, this.map.spawns[player.id]);
         this.eliminate(player);
         return false;
       }

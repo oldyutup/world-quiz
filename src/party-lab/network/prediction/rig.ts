@@ -1,4 +1,8 @@
 import { createArenaWorld } from "../../../../shared/party-lab/simulation/world";
+import {
+  arenaMap,
+  ONLINE_ARENA_MAP_ID,
+} from "../../../../shared/party-lab/maps";
 import { createCharacter } from "../../../../shared/party-lab/simulation/ragdoll/character";
 import {
   control,
@@ -23,26 +27,27 @@ import {
   startPunch,
   punchArmDrive,
 } from "../../../../shared/party-lab/simulation/combat/punch";
-import {
-  PLAYERS,
-  type PlayerId,
-} from "../../../../shared/party-lab/simulation/players";
+import type { PlayerId } from "../../../../shared/party-lab/simulation/players";
 import type { MovementInput } from "../../../../shared/party-lab/intent";
 import {
   VELOCITY_BYTES,
   type GameSnapshot,
 } from "../../../../shared/party-lab/network/protocol";
 
-/** Nine real bodies/eight joints, static environment only. No combat, grips, rounds or feedback sink. */
+/**
+ * Nine real bodies/eight joints, static environment only. No combat, grips, rounds or feedback sink.
+ * Builds the same static map as the authoritative server (ONLINE_ARENA_MAP_ID).
+ */
 export class PredictionRig {
-  readonly world = createArenaWorld();
+  readonly map = arenaMap(ONLINE_ARENA_MAP_ID);
+  readonly world = createArenaWorld(this.map);
   readonly character;
   readonly punches = [newPunch(), newPunch()];
   nextHand: Hand = 0;
   alternateIn = 0;
   private disposed = false;
   constructor(readonly slot: PlayerId) {
-    this.character = createCharacter(this.world, slot, PLAYERS[slot].spawn);
+    this.character = createCharacter(this.world, slot, this.map.spawns[slot]);
     // Populate static query structures before grounded tests on a restored snapshot.
     this.world.step();
   }

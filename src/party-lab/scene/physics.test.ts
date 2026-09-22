@@ -9,11 +9,12 @@ import {
 import { PARTS, TOTAL_MASS, SHAPES, RAGDOLL } from "./ragdoll/config";
 import { restore } from "./ragdoll/character";
 import { rotate, length } from "./ragdoll/math";
-import { PLAYERS } from "./players";
 import { LocalRoundSimulation } from "./localRound";
+import { TEST_MAP } from "../../../shared/party-lab/maps/test";
+import type { ArenaMap } from "../../../shared/party-lab/maps";
 before(() => initializePhysics());
-const withWorld = (check: (p: PlaygroundPhysics) => void) => {
-  const p = new PlaygroundPhysics();
+const withWorld = (check: (p: PlaygroundPhysics) => void, map?: ArenaMap) => {
+  const p = new PlaygroundPhysics(undefined, map);
   try {
     check(p);
   } finally {
@@ -85,7 +86,7 @@ test("an arm/head touching a bumper never grants an airborne jump", () =>
     const v = p.players[0].body.linvel().y;
     p.step([{ ...IDLE_INPUT, jump: true }]);
     assert.ok(p.players[0].body.linvel().y < v + 0.2);
-  }));
+  }, TEST_MAP));
 test("a bumper obstructs normal walking", () =>
   withWorld((p) => {
     restore(p.players[0], { x: 3.2, y: 1, z: 1 }, Math.PI);
@@ -93,7 +94,7 @@ test("a bumper obstructs normal walking", () =>
     advance(p, 100, { x: 0, z: -1, jump: false });
     assert.ok(p.players[0].body.translation().z > -1.1);
     assert.equal(p.players[0].eliminated, false);
-  }));
+  }, TEST_MAP));
 test("characters physically push and torque can topple an unlocked body", () =>
   withWorld((p) => {
     restore(p.players[0], { x: 0, y: 1, z: 1 }, Math.PI / 2);
@@ -170,7 +171,7 @@ test("countdown/results preserve round behavior; reset restores every part and r
         assert.equal(c.eliminated, false);
         assert.ok(body.isEnabled());
         assert.ok(
-          Math.abs(body.translation().y - PLAYERS[c.id].spawn.y - SHAPES[n].y) <
+          Math.abs(body.translation().y - s.map.spawns[c.id].y - SHAPES[n].y) <
             0.001
         );
       }

@@ -1,7 +1,9 @@
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 export const NET = {
-  version: 2,
+  // 3: rooftop arena. Prediction replays against the static map, so a client
+  // built for another map must refuse this server's snapshots.
+  version: 3,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,

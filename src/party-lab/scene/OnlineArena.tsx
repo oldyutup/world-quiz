@@ -24,6 +24,7 @@ import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
 import { NET, neutralIntent } from "../../../shared/party-lab/network/protocol";
+import { ONLINE_ARENA_MAP_ID } from "../../../shared/party-lab/maps";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
 
@@ -339,7 +340,7 @@ function OnlineView({
   });
   return (
     <>
-      <Arena />
+      <Arena mapId={ONLINE_ARENA_MAP_ID} />
       {PLAYERS.map((player) => (
         <PlayerBean
           key={player.id}
@@ -412,12 +413,6 @@ export default function OnlineArena(props: Props) {
             gl={{ antialias: true, alpha: true }}
             fallback={<p>Bu arena için WebGL 2 gerekiyor.</p>}
           >
-            <hemisphereLight args={["#fff2d9", "#537b7b", 1.8]} />
-            <directionalLight
-              position={[4, 10, 6]}
-              intensity={2.2}
-              color="#fff2d9"
-            />
             <OnlineView {...props} performanceLabel={performanceLabel} />
           </Canvas>
         </GraphicsBoundary>

@@ -2,6 +2,7 @@ import type { MovementInput } from "../input/types";
 import type { PlayerId } from "./players";
 import type { Consciousness } from "./combat/knockout";
 import { BOT_COMBAT } from "./combatConfig";
+import type { ArenaMap, LethalEdge, Vec2 } from "../../../shared/party-lab/maps";
 export interface BotObservation {
   id: PlayerId;
   x: number;
@@ -13,6 +14,125 @@ export interface BotObservation {
   grips: readonly (PlayerId | null)[];
   grabbedBy: PlayerId | null;
 }
+/** Axis-aligned footprint of a static obstacle, with its top height. */
+export interface BotObstacle {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  top: number;
+}
+/** What a bot knows about the map: lethal edges, obstacle footprints, a safe home and a wander box. */
+export interface BotArena {
+  lethalEdges: readonly LethalEdge[];
+  obstacles: readonly BotObstacle[];
+  home: Vec2;
+  wander: ArenaMap["bot"]["wander"];
+}
+const EDGE_MARGIN = 0.85;
+const OBSTACLE_PADDING = 0.45;
+const LOOKAHEAD = 1.4;
+const BLOCKING = new Set(["parapet", "building", "deck", "condenser", "bumper"]);
+
+export function botArena(map: ArenaMap): BotArena {
+  const obstacles: BotObstacle[] = [];
+  for (const c of map.colliders) {
+    if (!BLOCKING.has(c.role)) continue;
+    const hx = c.shape === "cylinder" ? c.radius : c.half.x,
+      hz = c.shape === "cylinder" ? c.radius : c.half.z,
+      hy = c.shape === "cylinder" ? c.halfHeight : c.half.y;
+    obstacles.push({
+      minX: c.center.x - hx,
+      maxX: c.center.x + hx,
+      minZ: c.center.z - hz,
+      maxZ: c.center.z + hz,
+      top: c.center.y + hy,
+    });
+  }
+  return { lethalEdges: map.lethalEdges, obstacles, home: map.bot.home, wander: map.bot.wander };
+}
+
+/** Distance to the closest lethal edge segment and that edge. */
+export function nearestLethalEdge(arena: BotArena, x: number, z: number) {
+  let best: { edge: LethalEdge; distance: number } | null = null;
+  for (const edge of arena.lethalEdges) {
+    const dx = edge.to.x - edge.from.x,
+      dz = edge.to.z - edge.from.z;
+    const t = Math.max(0, Math.min(1, ((x - edge.from.x) * dx + (z - edge.from.z) * dz) / (dx * dx + dz * dz)));
+    const distance = Math.hypot(x - (edge.from.x + t * dx), z - (edge.from.z + t * dz));
+    if (!best || distance < best.distance) best = { edge, distance };
+  }
+  return best;
+}
+
+const inside = (o: BotObstacle, x: number, z: number, pad: number) =>
+  x > o.minX - pad && x < o.maxX + pad && z > o.minZ - pad && z < o.maxZ + pad;
+
+/** First padded obstacle face along the ray, if any, within the lookahead. */
+function obstacleAhead(arena: BotArena, x: number, z: number, dx: number, dz: number, skip?: BotObstacle) {
+  let best: { t: number; nx: number; nz: number } | null = null;
+  for (const o of arena.obstacles) {
+    // Standing on it (pushed or carried up): its edges are handled as floor, not a wall.
+    if (o === skip || inside(o, x, z, 0)) continue;
+    const x0 = o.minX - OBSTACLE_PADDING,
+      x1 = o.maxX + OBSTACLE_PADDING,
+      z0 = o.minZ - OBSTACLE_PADDING,
+      z1 = o.maxZ + OBSTACLE_PADDING;
+    if (x > x0 && x < x1 && z > z0 && z < z1) {
+      // Inside the padding: leave through the nearest face.
+      const faces = [
+        { d: x - x0, nx: -1, nz: 0 },
+        { d: x1 - x, nx: 1, nz: 0 },
+        { d: z - z0, nx: 0, nz: -1 },
+        { d: z1 - z, nx: 0, nz: 1 },
+      ].sort((a, b) => a.d - b.d)[0];
+      return { t: 0, nx: faces.nx, nz: faces.nz };
+    }
+    let tNear = -Infinity,
+      tFar = Infinity,
+      nx = 0,
+      nz = 0;
+    for (const [origin, dir, lo, hi, ax] of [
+      [x, dx, x0, x1, "x"],
+      [z, dz, z0, z1, "z"],
+    ] as const) {
+      if (Math.abs(dir) < 1e-9) {
+        if (origin <= lo || origin >= hi) tNear = Infinity;
+        continue;
+      }
+      const a = (lo - origin) / dir,
+        b = (hi - origin) / dir;
+      const enter = Math.min(a, b);
+      if (enter > tNear) {
+        tNear = enter;
+        nx = ax === "x" ? -Math.sign(dir) : 0;
+        nz = ax === "z" ? -Math.sign(dir) : 0;
+      }
+      tFar = Math.min(tFar, Math.max(a, b));
+    }
+    if (tNear <= tFar && tNear >= 0 && tNear <= LOOKAHEAD && (!best || tNear < best.t)) best = { t: tNear, nx, nz };
+  }
+  return best;
+}
+
+/** Slide along an obstacle instead of walking into it. No pathfinding. */
+export function steerAround(arena: BotArena, x: number, z: number, vx: number, vz: number, skip?: BotObstacle) {
+  const length = Math.hypot(vx, vz);
+  if (length < 1e-6) return { x: vx, z: vz };
+  const dx = vx / length,
+    dz = vz / length;
+  const hit = obstacleAhead(arena, x, z, dx, dz, skip);
+  if (!hit) return { x: vx, z: vz };
+  let tx = -hit.nz,
+    tz = hit.nx;
+  if (tx * dx + tz * dz < 0) {
+    tx = -tx;
+    tz = -tz;
+  }
+  const push = hit.t === 0 ? 0.6 : 0.25;
+  return { x: (tx + hit.nx * push) * length, z: (tz + hit.nz * push) * length };
+}
+
 /** Removable input producer. No body writes or privileged force/hit/escape paths. */
 export class LocalBot {
   readonly input: MovementInput = { x: 0, z: 0, jump: false };
@@ -50,8 +170,7 @@ export class LocalBot {
   update(
     dt: number,
     players: readonly BotObservation[],
-    halfWidth: number,
-    halfDepth: number
+    arena: BotArena
   ): MovementInput {
     const me = players[this.id],
       i = this.input;
@@ -88,14 +207,19 @@ export class LocalBot {
         this.targetX = nearest.x + (this.random() - 0.5) * 0.35;
         this.targetZ = nearest.z + (this.random() - 0.5) * 0.35;
       } else {
-        this.targetX = (this.random() - 0.5) * 4;
-        this.targetZ = (this.random() - 0.5) * 3;
+        const w = arena.wander;
+        this.targetX = w.x + (this.random() - 0.5) * 2 * w.halfX;
+        this.targetZ = w.z + (this.random() - 0.5) * 2 * w.halfZ;
       }
     }
-    const edge =
-      Math.abs(me.x) > halfWidth - 0.85 || Math.abs(me.z) > halfDepth - 0.85;
-    let x = (edge ? 0 : this.targetX) - me.x,
-      z = (edge ? 0 : this.targetZ) - me.z;
+    const lethal = nearestLethalEdge(arena, me.x, me.z);
+    const edge = !!lethal && lethal.distance < EDGE_MARGIN;
+    let x = (edge ? arena.home.x : this.targetX) - me.x,
+      z = (edge ? arena.home.z : this.targetZ) - me.z;
+    // A target standing on a low obstacle (deck, condenser) is reached by jumping, not avoided.
+    const perch = arena.obstacles.find(
+      (o) => o.top <= 1.25 && inside(o, this.targetX, this.targetZ, 0)
+    );
     if (me.grabbedBy !== this.previousGrabber) {
       this.previousGrabber = me.grabbedBy;
       this.reactionIn =
@@ -122,13 +246,9 @@ export class LocalBot {
         this.holdFor > 0 &&
         (this.firstHand === 1 || this.holdAge > BOT_COMBAT.secondHandDelay);
       i.lift = target.state === "KNOCKED_OUT" || target.state === "DAZED";
-      if (halfWidth - Math.abs(me.x) < halfDepth - Math.abs(me.z)) {
-        x = Math.sign(me.x) || 1;
-        z = 0;
-      } else {
-        x = 0;
-        z = Math.sign(me.z) || 1;
-      }
+      // Carry toward the closest lethal edge, straight out through it.
+      x = lethal?.edge.outward.x ?? 0;
+      z = lethal?.edge.outward.z ?? 1;
       if (edge && this.holdAge > 0.7) {
         i.left = i.right = false;
         this.holdFor = 0;
@@ -169,12 +289,14 @@ export class LocalBot {
         }
       }
     }
-    const norm = Math.max(1, Math.hypot(x, z));
-    i.x = x / norm;
-    i.z = z / norm;
+    const steered = steerAround(arena, me.x, me.z, x, z, edge || holding !== undefined ? undefined : perch);
+    const norm = Math.max(1, Math.hypot(steered.x, steered.z));
+    i.x = steered.x / norm;
+    i.z = steered.z / norm;
     if (me.grounded && this.jumpIn <= 0 && !edge && holding === undefined) {
-      i.jump = this.random() < 0.3;
-      this.jumpIn = 2 + this.random() * 2;
+      const climbing = perch && inside(perch, me.x, me.z, 0.9) && !inside(perch, me.x, me.z, 0);
+      i.jump = climbing || this.random() < 0.3;
+      this.jumpIn = climbing ? 0.6 : 2 + this.random() * 2;
     }
     return i;
   }

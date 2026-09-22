@@ -2,32 +2,45 @@ import { silentFeedback, type FeedbackEvent, type FeedbackSink } from "../audio/
 import { PhysicsFeedback } from "./feedback";
 import type { MovementInput } from "../input/types";
 import { CombatSimulation } from "./combat";
-import { LocalBot, type BotObservation } from "./bots";
-import { IDLE_INPUT, PHYSICS, PLATFORM, PlaygroundPhysics } from "./physics";
+import { LocalBot, botArena, type BotArena, type BotObservation } from "./bots";
+import { IDLE_INPUT, PHYSICS, PlaygroundPhysics } from "./physics";
 import { PLAYERS } from "./players";
 import { RoundLogic, type RoundEvent } from "./roundLogic";
+import { arenaMap, DEFAULT_ARENA_MAP_ID, type ArenaMap } from "../../../shared/party-lab/maps";
 export class LocalRoundSimulation {
   private readonly pendingFeedback: FeedbackEvent[] = [];
   private readonly collectFeedback: FeedbackSink = event => this.pendingFeedback.push(event);
-  readonly physics = new PlaygroundPhysics(this.collectFeedback);
+  readonly physics: PlaygroundPhysics;
   readonly round = new RoundLogic();
-  readonly combat = new CombatSimulation(this.physics, this.collectFeedback);
-  private readonly physicalFeedback = new PhysicsFeedback(this.physics, this.collectFeedback);
+  readonly combat: CombatSimulation;
+  private readonly physicalFeedback: PhysicsFeedback;
   private countdownCue = 0;
   private readonly bots: readonly LocalBot[];
+  private readonly botArena: BotArena;
   private readonly inputs: MovementInput[] = PLAYERS.map(() => IDLE_INPUT);
-  private readonly observations: BotObservation[] = PLAYERS.map((p) => ({
-    id: p.id,
-    x: p.spawn.x,
-    z: p.spawn.z,
-    alive: true,
-    grounded: false,
-    state: "CONSCIOUS",
-    cooldowns: [0, 0],
-    grips: [null, null],
-    grabbedBy: null,
-  }));
-  constructor(random: () => number = Math.random, private readonly feedback: FeedbackSink = silentFeedback) {
+  private readonly observations: BotObservation[];
+  private readonly feedback: FeedbackSink;
+  constructor(
+    random: () => number = Math.random,
+    feedback: FeedbackSink = silentFeedback,
+    readonly map: ArenaMap = arenaMap(DEFAULT_ARENA_MAP_ID)
+  ) {
+    this.feedback = feedback;
+    this.physics = new PlaygroundPhysics(this.collectFeedback, map);
+    this.combat = new CombatSimulation(this.physics, this.collectFeedback);
+    this.physicalFeedback = new PhysicsFeedback(this.physics, this.collectFeedback);
+    this.botArena = botArena(map);
+    this.observations = PLAYERS.map((p) => ({
+      id: p.id,
+      x: map.spawns[p.id].x,
+      z: map.spawns[p.id].z,
+      alive: true,
+      grounded: false,
+      state: "CONSCIOUS",
+      cooldowns: [0, 0],
+      grips: [null, null],
+      grabbedBy: null,
+    }));
     this.bots = [new LocalBot(1, random), new LocalBot(2, random)];
     this.bots.forEach((b) => b.reset());
   }
@@ -83,12 +96,7 @@ export class LocalRoundSimulation {
     }
     this.inputs[0] = this.round.alive[0] ? humanInput : IDLE_INPUT;
     for (const bot of this.bots)
-      this.inputs[bot.id] = bot.update(
-        PHYSICS.step,
-        this.observations,
-        PLATFORM.width / 2,
-        PLATFORM.depth / 2
-      );
+      this.inputs[bot.id] = bot.update(PHYSICS.step, this.observations, this.botArena);
     const drives = this.combat.step(this.inputs, PHYSICS.step, "playing");
     const eliminated = this.physics.step(this.inputs, drives);
     this.combat.afterStep();

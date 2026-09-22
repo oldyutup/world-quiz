@@ -5,6 +5,7 @@ import { RoundLogic } from "./roundLogic.js";
 import { PLAYERS, type PlayerId } from "./players.js";
 import { PARTS, HANDS } from "./ragdoll/config.js";
 import type { MovementInput } from "../intent.js";
+import { arenaMap, ONLINE_ARENA_MAP_ID } from "../maps/index.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import {
   CONDITIONS,
@@ -21,7 +22,7 @@ export class OnlineRoundSimulation {
   private collect = (event: FeedbackEvent) => {
     this.pending.push(event);
   };
-  readonly physics = new PlaygroundPhysics(this.collect);
+  readonly physics = new PlaygroundPhysics(this.collect, arenaMap(ONLINE_ARENA_MAP_ID));
   readonly combat = new CombatSimulation(this.physics, this.collect);
   private contacts = new PhysicsFeedback(this.physics, this.collect);
   round = new RoundLogic();
