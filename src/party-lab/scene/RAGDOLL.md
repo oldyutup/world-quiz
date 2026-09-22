@@ -1,5 +1,9 @@
 # Party Lab: local active ragdoll prototype (Phase 3C)
 
+Phase 3D adds semantic audio and camera feedback without retuning this physics.
+See [original local audio and game feel](../audio/AUDIO.md) for event mapping,
+settings, validation and listening-test limitations.
+
 Open `http://127.0.0.1:5173/party-lab` with `npm run dev -- --host 127.0.0.1`, then
 choose **Yerel Test Arenası**. The separate room/chat server is not needed for this
 local arena. No gameplay is networked. No dependency or hosting changes were made.

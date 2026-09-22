@@ -1,3 +1,5 @@
+import { silentFeedback, type FeedbackEvent, type FeedbackSink } from "../audio/events";
+import { PhysicsFeedback } from "./feedback";
 import type { MovementInput } from "../input/types";
 import { CombatSimulation } from "./combat";
 import { LocalBot, type BotObservation } from "./bots";
@@ -5,9 +7,13 @@ import { IDLE_INPUT, PHYSICS, PLATFORM, PlaygroundPhysics } from "./physics";
 import { PLAYERS } from "./players";
 import { RoundLogic, type RoundEvent } from "./roundLogic";
 export class LocalRoundSimulation {
-  readonly physics = new PlaygroundPhysics();
+  private readonly pendingFeedback: FeedbackEvent[] = [];
+  private readonly collectFeedback: FeedbackSink = event => this.pendingFeedback.push(event);
+  readonly physics = new PlaygroundPhysics(this.collectFeedback);
   readonly round = new RoundLogic();
-  readonly combat = new CombatSimulation(this.physics);
+  readonly combat = new CombatSimulation(this.physics, this.collectFeedback);
+  private readonly physicalFeedback = new PhysicsFeedback(this.physics, this.collectFeedback);
+  private countdownCue = 0;
   private readonly bots: readonly LocalBot[];
   private readonly inputs: MovementInput[] = PLAYERS.map(() => IDLE_INPUT);
   private readonly observations: BotObservation[] = PLAYERS.map((p) => ({
@@ -21,14 +27,28 @@ export class LocalRoundSimulation {
     grips: [null, null],
     grabbedBy: null,
   }));
-  constructor(random: () => number = Math.random) {
+  constructor(random: () => number = Math.random, private readonly feedback: FeedbackSink = silentFeedback) {
     this.bots = [new LocalBot(1, random), new LocalBot(2, random)];
     this.bots.forEach((b) => b.reset());
   }
   step(humanInput: MovementInput): RoundEvent {
+    this.pendingFeedback.length = 0;
+    const event = this.advance(humanInput);
+    if (this.round.phase === "countdown" && this.round.seconds !== this.countdownCue) {
+      this.countdownCue = this.round.seconds;
+      this.collectFeedback({ name: "countdown", step: this.countdownCue });
+    }
+    if (event === "started") this.collectFeedback({ name: "roundStart" });
+    if (event === "finished") this.collectFeedback({ name: this.round.winner === null ? "draw" : "winner" });
+    for (const cue of this.pendingFeedback) this.feedback(cue);
+    return event;
+  }
+  private advance(humanInput: MovementInput): RoundEvent {
     if (this.round.phase === "results") {
       const event = this.round.tick(PHYSICS.step);
       if (event === "reset") {
+        this.countdownCue = 0;
+        this.physicalFeedback.reset();
         this.combat.reset(); // Drop every hand reference before anatomical joints are recreated.
         this.physics.reset();
         this.bots.forEach((b) => b.reset());
@@ -72,12 +92,15 @@ export class LocalRoundSimulation {
     const drives = this.combat.step(this.inputs, PHYSICS.step, "playing");
     const eliminated = this.physics.step(this.inputs, drives);
     this.combat.afterStep();
+    this.physicalFeedback.afterStep(PHYSICS.step, this.pendingFeedback);
     const event = this.round.tick(PHYSICS.step, eliminated);
     if (event === "finished") this.combat.stop();
     return event;
   }
   dispose() {
     this.combat.stop();
+    this.physicalFeedback.reset();
+    this.pendingFeedback.length = 0;
     this.physics.dispose();
   }
 }

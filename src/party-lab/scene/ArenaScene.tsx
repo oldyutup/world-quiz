@@ -1,3 +1,6 @@
+import { usePartyAudio } from "../audio/PartyAudio";
+import type { AudioManager } from "../audio/AudioManager";
+import { CameraFeel } from "../audio/feel";
 import {
   Component,
   useEffect,
@@ -64,12 +67,16 @@ function Playground({
   hud,
   bindings,
   paused,
+  audio,
+  shakeEnabled,
 }: {
   onStatus: (status: ArenaStatus) => void;
   onRound: (snapshot: RoundSnapshot) => void;
   hud: MutableRefObject<CombatHudElements>;
   bindings: Bindings;
   paused: boolean;
+  audio: AudioManager;
+  shakeEnabled: boolean;
 }) {
   const beans = useRef<(Group | null)[]>([]);
   const simulation = useRef<LocalRoundSimulation | null>(null);
@@ -88,6 +95,8 @@ function Playground({
   const publishedRevision = useRef(-1);
   const { camera, size, gl } = useThree();
   const hudTime = useRef(0);
+  const cameraBase = useRef(new Vector3());
+  const feel = useRef(new CameraFeel());
   const performanceSample = useRef({
     time: 0,
     frames: 0,
@@ -100,13 +109,14 @@ function Playground({
     const distance = Math.max(1, 1.5 / (size.width / Math.max(1, size.height)));
     perspective.position.set(0, 12 * distance, 14 * distance);
     perspective.lookAt(0, 0, 0);
+    cameraBase.current.copy(perspective.position);
     perspective.updateProjectionMatrix();
   }, [camera, size.width, size.height]);
 
   useLayoutEffect(() => {
     keyboard.current?.setBindings(bindings);
     keyboard.current?.setSuspended(paused);
-    if (paused) simulation.current?.combat.stop();
+    if (paused) { simulation.current?.combat.stop(); audio.stopAll(); feel.current.clear(); }
   }, [bindings, paused]);
 
   useEffect(() => {
@@ -117,7 +127,7 @@ function Playground({
     void initializePhysics()
       .then(() => {
         if (cancelled) return;
-        const local = new LocalRoundSimulation();
+        const local = new LocalRoundSimulation(Math.random, event => { audio.playSfx(event); feel.current.trigger(event); });
         simulation.current = local;
         accumulator.current = 0;
         for (const player of local.physics.players) {
@@ -139,21 +149,26 @@ function Playground({
       });
     return () => {
       cancelled = true;
+      audio.stopAll();
+      feel.current.clear();
+      camera.position.copy(cameraBase.current);
       controls.dispose();
       keyboard.current = null;
       simulation.current?.dispose();
       simulation.current = null;
     };
-  }, [onStatus, onRound, gl]);
+  }, [onStatus, onRound, gl, audio]);
 
   useFrame((frame, delta) => {
     const local = simulation.current;
     const controls = keyboard.current;
     if (!local || !controls) return;
+    camera.position.copy(cameraBase.current);
     // Never try to catch up minutes of physics after a hidden tab or debugger pause.
     if (paused || document.hidden || delta > 0.25) {
       accumulator.current = 0;
       controls.clear();
+      feel.current.clear();
       return;
     }
     accumulator.current += Math.min(delta, 0.1);
@@ -214,6 +229,8 @@ function Playground({
         combat.condition.state === "DAZED";
       stars.rotation.y = frame.clock.elapsedTime * 3;
     }
+    const [shakeX, shakeY] = feel.current.step(delta, shakeEnabled);
+    camera.position.x += shakeX; camera.position.y += shakeY;
     const sample = performanceSample.current;
     sample.time += delta;
     sample.frames++;
@@ -298,6 +315,14 @@ export default function ArenaScene({ onExit, bindings, paused, onControls }: {
   paused: boolean;
   onControls: () => void;
 }) {
+  const { audio, settings } = usePartyAudio();
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const changed = () => setReducedMotion(query.matches);
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  }, []);
   const [status, setStatus] = useState<ArenaStatus>("loading");
   const [round, setRound] = useState<RoundSnapshot | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -320,7 +345,7 @@ export default function ArenaScene({ onExit, bindings, paused, onControls }: {
           <h2>Biraz hareket, biraz kaos.</h2>
         </div>
         <button className="pl-button pl-join" type="button" onClick={onControls}>Kontroller</button>
-        <button className="pl-button pl-join" type="button" onClick={onExit}>
+        <button className="pl-button pl-join" type="button" onClick={onExit} data-sfx="uiBack">
           Lobiye Dön
         </button>
       </header>
@@ -356,6 +381,8 @@ export default function ArenaScene({ onExit, bindings, paused, onControls }: {
               hud={combatHud}
               bindings={bindings}
               paused={paused}
+              audio={audio}
+              shakeEnabled={settings.cameraShake && !reducedMotion}
             />
           </Canvas>
         </SceneBoundary>
@@ -415,7 +442,7 @@ export default function ArenaScene({ onExit, bindings, paused, onControls }: {
             />
             {(round.phase !== "playing" || !round.alive[0]) && (
               <div
-                className="pl-arena-message pl-round-message"
+                className={`pl-arena-message pl-round-message${round.phase === "results" ? " pl-result-pulse" : ""}`}
                 role="status"
                 aria-atomic="true"
               >

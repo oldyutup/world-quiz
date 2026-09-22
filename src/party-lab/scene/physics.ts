@@ -1,3 +1,4 @@
+import { silentFeedback, type FeedbackSink } from "../audio/events";
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { MovementInput } from "../input/types";
 import { PLAYERS, type PlayerId } from "./players";
@@ -43,7 +44,7 @@ export class PlaygroundPhysics {
   };
   private disposed = false;
   private readonly eliminations: PlayerId[] = [];
-  constructor() {
+  constructor(private readonly feedback: FeedbackSink = silentFeedback) {
     this.world = new RAPIER.World({ x: 0, y: RAGDOLL.gravity, z: 0 });
     this.world.timestep = RAGDOLL.step;
     this.world.createCollider(
@@ -97,6 +98,8 @@ export class PlaygroundPhysics {
   private eliminate(player: Character) {
     if (player.eliminated) return;
     player.eliminated = true;
+    if (player.body.translation().y < RAGDOLL.fallY)
+      this.feedback({ name: "fall", actor: player.id, x: player.body.translation().x });
     for (const part of Object.values(player.parts)) part.body.setEnabled(false);
     this.eliminations.push(player.id);
   }
@@ -149,12 +152,15 @@ export class PlaygroundPhysics {
         this.eliminate(player);
         continue;
       }
+      const jumpBefore = player.jumpIn;
       control(
         this.world,
         player,
         inputs[player.id] ?? IDLE_INPUT,
         drives[player.id] ?? this.normal[player.id]
       );
+      if (player.jumpIn > jumpBefore)
+        this.feedback({ name: "jump", actor: player.id, x: player.body.translation().x });
       for (const name of PARTS)
         player.parts[name].beforeVelocity = {
           ...player.parts[name].body.linvel(),

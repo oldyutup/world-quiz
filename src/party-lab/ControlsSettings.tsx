@@ -1,3 +1,4 @@
+import AudioSettings from "./audio/AudioSettings";
 import { useEffect, useRef, useState } from "react";
 import { ACTIONS, ACTION_LABELS, type Action } from "./input/actions";
 import {
@@ -74,6 +75,7 @@ export default function ControlsSettings({
         <button
           className="pl-button pl-join"
           onClick={onClose}
+          data-sfx="uiBack"
           disabled={!!capture}
         >
           {inArena ? "Arenaya Dön" : "Lobiye Dön"}
@@ -167,6 +169,7 @@ export default function ControlsSettings({
         <div className="pl-settings-bottom">
           <button
             className="pl-button pl-join"
+            data-sfx="uiConfirm"
             disabled={!!capture}
             onClick={() => {
               onChange(defaultBindings());
@@ -184,6 +187,7 @@ export default function ControlsSettings({
           Tuşlar fiziksel konumlarına göre atanır. CTRL / ALT tek başına
           kullanılabilir; tarayıcı ve sistem kısayolları ayrılmıştır.
         </p>
+        <AudioSettings disabled={!!capture} />
       </main>
     </div>
   );

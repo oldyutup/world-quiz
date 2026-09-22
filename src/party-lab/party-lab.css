@@ -337,3 +337,20 @@ body:has(.party-lab) {
   .party-lab .pl-settings-bottom { align-items: flex-start; flex-direction: column; gap: 12px; }
   .party-lab .pl-arena-header { flex-wrap: wrap; }
 }
+
+.pl-audio-scope { display: contents; }
+.party-lab .pl-audio-settings { margin: 36px 0 0; padding: 24px 0 0; border: 0; border-top: 1px solid var(--pl-border); min-width: 0; }
+.party-lab .pl-audio-settings legend { padding: 0 16px 0 0; font-size: 22px; font-weight: 700; }
+.party-lab .pl-audio-settings p { color: var(--pl-muted); font-size: 13px; }
+.party-lab .pl-volume-row { display: grid; grid-template-columns: 150px 1fr 50px; align-items: center; gap: 16px; margin-top: 18px; font-size: 14px; }
+.party-lab .pl-volume-row input { width: 100%; height: 32px; padding: 0; accent-color: var(--pl-accent); cursor: pointer; }
+.party-lab .pl-volume-row output { text-align: right; font-variant-numeric: tabular-nums; }
+.party-lab .pl-audio-options, .party-lab .pl-audio-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; margin-top: 18px; }
+.party-lab .pl-audio-options label { display: flex; align-items: center; gap: 9px; min-height: 44px; margin: 0; font-size: 14px; cursor: pointer; }
+.party-lab .pl-audio-options input { width: 18px; height: 18px; margin: 0; accent-color: var(--pl-accent); }
+.party-lab .pl-audio-preview select { min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--pl-border); border-radius: 8px; font: inherit; color: var(--pl-ink); background: oklch(25% 0.035 175); }
+.party-lab :is(select, input[type="range"]):focus-visible { outline: 2px solid var(--pl-accent); outline-offset: 4px; }
+.party-lab .pl-result-pulse strong { animation: pl-win-pulse .36s ease-out; }
+@keyframes pl-win-pulse { from { transform: scale(.94); opacity: .6; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-result-pulse strong { animation: none; } }
+@media (max-width: 600px) { .party-lab .pl-volume-row { grid-template-columns: 100px 1fr 42px; gap: 8px; } }

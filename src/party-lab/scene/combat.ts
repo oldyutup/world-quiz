@@ -1,3 +1,4 @@
+import { hitSound, silentFeedback, type FeedbackSink } from "../audio/events";
 import type { MovementInput } from "../input/types";
 import { COMBAT } from "./combatConfig";
 import { HandGrips } from "./combat/grab";
@@ -54,10 +55,11 @@ export class CombatSimulation {
     lifts: 0,
     releases: 0,
   };
-  constructor(readonly physics: PlaygroundPhysics) {
+  constructor(readonly physics: PlaygroundPhysics, private readonly feedback: FeedbackSink = silentFeedback) {
     this.grips = new HandGrips(
       physics,
-      this.players.map((p) => p.condition)
+      this.players.map((p) => p.condition),
+      feedback
     );
   }
   reset() {
@@ -91,7 +93,10 @@ export class CombatSimulation {
     }
     this.cleanupEliminations();
     for (const p of this.players) {
+      const previousCondition = p.condition.state;
       tickKnockout(p.condition, dt);
+      if (previousCondition === "KNOCKED_OUT" && p.condition.state === "RECOVERING")
+        this.feedback({ name: "recovery", actor: p.id, x: this.physics.players[p.id].body.translation().x });
       p.flash = Math.max(0, p.flash - dt);
       p.alternateIn = Math.max(0, p.alternateIn - dt);
       p.releaseIn = Math.max(0, p.releaseIn - dt);
@@ -157,6 +162,7 @@ export class CombatSimulation {
           if (input.punch) p.nextPunchHand = hand === 0 ? 1 : 0;
           p.alternateIn = COMBAT.punch.alternateInterval;
           this.stats.punches++;
+          this.feedback({ name: "punchSwing", actor: p.id, x: actor.body.translation().x });
         }
         const reaching =
           down &&
@@ -225,7 +231,10 @@ export class CombatSimulation {
         );
         const lift = input.lift ? quality : 0;
         if (lift > 0.3) {
-          if (grip.liftTime === 0) this.stats.lifts++;
+          if (grip.liftTime === 0) {
+            this.stats.lifts++;
+            this.feedback({ name: "lift", actor: p.id, x: actor.body.translation().x, intensity: quality });
+          }
           grip.liftTime += dt;
         }
         // Raised arm targets pull the actual hand; the point hold transmits that force
@@ -317,6 +326,7 @@ export class CombatSimulation {
           if (best.part.name === "head") this.stats.headHits++;
           const victim = this.players[best.target.id];
           victim.flash = COMBAT.punch.flash;
+          this.feedback({ name: hitSound(best.part.name), actor: attacker.id, target: victim.id, x: best.point.x, intensity: clamp(best.power / COMBAT.knockout.head) });
           const assist = mul(
             best.direction,
             COMBAT.punch.maxAssist * clamp(best.power / COMBAT.knockout.head)
@@ -325,6 +335,7 @@ export class CombatSimulation {
           part.body.applyImpulse(mul(assist, -COMBAT.punch.recoil), true);
           if (impact(victim.condition, best.power)) {
             this.stats.knockouts++;
+            this.feedback({ name: "knockout", actor: victim.id, x: best.point.x, intensity: 1 });
             for (const hand of HANDS)
               this.grips.release(victim.id, hand, "knockout");
             victim.punches.forEach((p) => (p.age = -1));

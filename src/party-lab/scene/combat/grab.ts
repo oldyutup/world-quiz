@@ -1,3 +1,4 @@
+import { silentFeedback, type FeedbackSink } from "../../audio/events";
 import type { MovementInput } from "../../input/types";
 import { COMBAT } from "../combatConfig";
 import type { PlaygroundPhysics } from "../physics";
@@ -64,7 +65,8 @@ export class HandGrips {
   };
   constructor(
     readonly physics: PlaygroundPhysics,
-    readonly states: readonly KnockoutState[]
+    readonly states: readonly KnockoutState[],
+    private readonly feedback: FeedbackSink = silentFeedback
   ) {}
   count(owner: PlayerId, target?: PlayerId) {
     return this.hands[owner].filter(
@@ -179,6 +181,7 @@ export class HandGrips {
     this.hands[owner][hand] = grip;
     this.incoming[target].add(`${owner}:${hand}`);
     this.stats.grabs++;
+    this.feedback({ name: this.count(owner, target) === 2 ? "secondGrab" : "grab", actor: owner, target, x: point.x });
     if (this.count(owner, target) === 2) this.stats.twoHands++;
     return grip;
   }
@@ -190,6 +193,13 @@ export class HandGrips {
     if (!this.incoming[grip.target].size)
       this.protection[grip.target] = COMBAT.grip.protection;
     this.stats.releases++;
+    if (reason === "escape" || reason === "overload" || reason === "distance")
+      this.feedback({ name: "gripBreak", actor: owner, target: grip.target, x: this.physics.players[owner].body.translation().x });
+    else if (reason === "release" && this.count(owner, grip.target) === 0) {
+      const body = this.physics.players[grip.target].parts.torso.body;
+      const speed = length(body.linvel());
+      this.feedback({ name: speed >= 2.5 ? "throw" : "release", actor: owner, target: grip.target, x: body.translation().x, intensity: clamp(speed / 10) });
+    }
     if (reason === "escape") this.stats.escapes++;
     if (reason === "overload") this.stats.overloads++;
     return grip;

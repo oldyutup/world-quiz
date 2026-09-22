@@ -1,3 +1,4 @@
+import { PartyAudio } from "./audio/PartyAudio";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ControlsSettings from "./ControlsSettings";
 import { loadControls, saveControls } from "./input/storage";
@@ -11,6 +12,10 @@ const PREVIEW_MESSAGE = "Arkadaşlarınla bir lobide buluş ve sohbet et. Online
 const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
+  return <PartyAudio><PartyLab /></PartyAudio>;
+}
+
+function PartyLab() {
   const [inArena, setInArena] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [bindings, setBindings] = useState(loadControls);
@@ -143,7 +148,7 @@ export default function PartyLabRoot() {
             />
             <p className="pl-hint" id="pl-nickname-hint">3–16 karakter · Harf, rakam, _ veya -</p>
             <p className="pl-error" id="pl-nickname-error" aria-live="polite">{nicknameError}</p>
-            <button className="pl-button pl-create" type="submit" disabled={busy}>Oda Oluştur <span aria-hidden="true">↗</span></button>
+            <button className="pl-button pl-create" data-sfx="uiConfirm" type="submit" disabled={busy}>Oda Oluştur <span aria-hidden="true">↗</span></button>
           </form>
 
           <div className="pl-divider"><span>ya da kodla katıl</span></div>
@@ -171,7 +176,7 @@ export default function PartyLabRoot() {
                   setStatus(PREVIEW_MESSAGE);
                 }}
               />
-              <button className="pl-button pl-join" type="submit" disabled={busy}>Katıl</button>
+              <button className="pl-button pl-join" data-sfx="uiConfirm" type="submit" disabled={busy}>Katıl</button>
             </div>
             <p className="pl-error" id="pl-room-error" aria-live="polite">{roomCodeError}</p>
           </form>
