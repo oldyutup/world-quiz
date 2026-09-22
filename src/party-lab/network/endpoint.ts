@@ -17,5 +17,8 @@ export function serverEndpoint(
     url.password
   )
     throw new Error("SERVER_NOT_CONFIGURED");
+  // A deployed HTTPS page cannot open ws:// or http:// (mixed content); require wss:// or https://.
+  if (!dev && page.protocol === "https:" && !["wss:", "https:"].includes(url.protocol))
+    throw new Error("SERVER_NOT_CONFIGURED");
   return endpoint;
 }

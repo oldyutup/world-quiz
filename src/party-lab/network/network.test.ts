@@ -157,6 +157,20 @@ test("LAN hostname default, localhost, IPv6, secure page, explicit override and 
     })
   );
 });
+test("production HTTPS page uses the configured secure endpoint and refuses insecure ones", () => {
+  const page = { hostname: "torble.com", protocol: "https:" };
+  assert.equal(
+    serverEndpoint("wss://party.up.railway.app", false, page),
+    "wss://party.up.railway.app"
+  );
+  assert.equal(
+    serverEndpoint("https://party.up.railway.app", false, page),
+    "https://party.up.railway.app"
+  );
+  for (const insecure of ["ws://party.up.railway.app", "http://party.up.railway.app"])
+    assert.throws(() => serverEndpoint(insecure, false, page), /SERVER_NOT_CONFIGURED/);
+  assert.throws(() => serverEndpoint(undefined, false, page), /SERVER_NOT_CONFIGURED/);
+});
 test("hidden or settings-paused presentation consumes IDs without replaying an audio backlog", () => {
   const stream = new GameStream();
   const event = { name: "fall" as const, id: 1, round: 1, tick: 60, actor: 0 };

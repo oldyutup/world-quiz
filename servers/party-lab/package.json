@@ -10,7 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/servers/party-lab/src/index.js",
     "typecheck": "tsc -p tsconfig.test.json",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {

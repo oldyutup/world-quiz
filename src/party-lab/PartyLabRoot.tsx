@@ -57,7 +57,12 @@ function PartyLab() {
   useEffect(() => {
     const previousTitle = document.title;
     document.title = "Party Lab | Torble";
-    return () => { document.title = previousTitle; };
+    // Private test: keep the page out of search results (the host also sends X-Robots-Tag).
+    const robots = document.createElement("meta");
+    robots.name = "robots";
+    robots.content = "noindex, nofollow";
+    document.head.appendChild(robots);
+    return () => { document.title = previousTitle; robots.remove(); };
   }, []);
 
   function handleAction(action: "create" | "join") {

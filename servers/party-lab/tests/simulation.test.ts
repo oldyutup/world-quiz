@@ -12,7 +12,7 @@ import {
 } from "../../../shared/party-lab/simulation/ragdoll/config.js";
 import { restore } from "../../../shared/party-lab/simulation/ragdoll/character.js";
 import { impact } from "../../../shared/party-lab/simulation/combat/knockout.js";
-import { allowedOrigin } from "../src/origin.js";
+import { allowedOrigin, invalidAllowlistEntries } from "../src/origin.js";
 import type { GameEvent } from "../../../shared/party-lab/network/protocol.js";
 import { capturePredictionState } from "../../../shared/party-lab/simulation/predictionState.js";
 before(() => initializePhysics());
@@ -199,5 +199,18 @@ test("development origin validation accepts same LAN host, rejects foreign sites
   assert.equal(allowedOrigin("null", "192.168.1.34:2567", ""), false);
   assert.ok(
     allowedOrigin("https://play.example", "host:2567", "https://play.example")
+  );
+});
+test("production allowlist admits only the listed exact origins", () => {
+  const list = "https://torble.com, https://www.torble.com";
+  assert.ok(allowedOrigin("https://torble.com", "party.up.railway.app", list));
+  assert.ok(allowedOrigin("https://www.torble.com", "party.up.railway.app", list));
+  for (const origin of ["http://torble.com", "https://evil.torble.com", "https://torble.com.evil.example", "http://localhost:5173"])
+    assert.equal(allowedOrigin(origin, "party.up.railway.app", list), false, origin);
+  assert.deepEqual(invalidAllowlistEntries(list), []);
+  assert.deepEqual(invalidAllowlistEntries(""), []);
+  assert.deepEqual(
+    invalidAllowlistEntries("https://torble.com/,*,torble.com,https://torble.com/party-lab,ws://torble.com,https://ok.example"),
+    ["https://torble.com/", "*", "torble.com", "https://torble.com/party-lab", "ws://torble.com"]
   );
 });

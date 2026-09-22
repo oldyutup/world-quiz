@@ -46,10 +46,15 @@ peers. Nothing is deployed by these commands. For an installed checkout, skip `c
 Matchmaking and WebSocket upgrades validate browser origins. Development allows
 the same hostname as the requested server (plus interchangeable loopback names)
 on Vite ports 5173/5174/5175/4173. Set `PARTY_LAB_ALLOWED_ORIGINS` to a comma-separated
-list of exact origins for other setups. Production requires that allowlist and
-an explicit frontend endpoint. Non-browser SDKs without Origin still require
-Colyseus seat reservations/reconnect credentials. These are local development
-policies, not a finished public hosting/admission-abuse system.
+list of exact origins for other setups (the server refuses to start if an entry
+is not an exact origin, e.g. has a trailing slash). Production requires that
+allowlist and an explicit frontend endpoint. Non-browser SDKs without Origin
+still require Colyseus seat reservations/reconnect credentials.
+
+Friends-only internet deployment (Railway server + private `/party-lab` gate on
+Vercel) is documented in [DEPLOY.md](DEPLOY.md). `GET /health` on the server port
+returns `{"ok":true,"service":"party-lab","protocol":3}`. Admission carries the
+network protocol version; a mismatched client is rejected with `PROTOCOL_MISMATCH`.
 
 For a compiled long-lived process:
 
@@ -57,6 +62,12 @@ For a compiled long-lived process:
 npm --prefix servers/party-lab run build
 npm --prefix servers/party-lab start
 ```
+
+`build` uses `tsconfig.build.json`, which maps `shared/party-lab`'s npm imports to
+this package's `node_modules` so a checkout with only this package installed
+(Railway) compiles. `tsconfig.json` stays unmapped because `tsx` applies `paths` at
+runtime; `dev` and tests therefore still resolve `shared/` imports from the
+repository root install.
 
 ## Protocol and policies
 
@@ -119,7 +130,7 @@ npm --prefix servers/party-lab run typecheck
 npm --prefix servers/party-lab test
 npm --prefix servers/party-lab run build
 npx tsc --noEmit --incremental false
-node --import tsx --test src/party-lab/input/*.test.ts src/party-lab/audio/*.test.ts src/party-lab/scene/*.test.ts src/party-lab/network/*.test.ts
+node --import tsx --test src/party-lab/input/*.test.ts src/party-lab/audio/*.test.ts src/party-lab/scene/*.test.ts src/party-lab/scene/visual/*.test.ts src/party-lab/network/*.test.ts edge/*.test.ts
 npx vite build --outDir /tmp/party-lab-build
 ```
 
@@ -134,7 +145,7 @@ compare rosters and exchange chat; fourth join must fail. Leave the creator and
 verify two remain. Close a participant tab to see the disconnected seat expire.
 Finally return to the landing page and enter the local three-bean arena.
 
-This is a local foundation. In-memory data is lost on restart. Internet hosting,
-TLS, deployment-wide admission abuse controls and multi-process scaling are
-deliberately undecided. Phase 4B.2 predicts only local locomotion/jump and harmless
+In-memory data is lost on restart. Hosting is one Railway process behind TLS
+(see DEPLOY.md); deployment-wide admission abuse controls and multi-process
+scaling are deliberately undecided. Phase 4B.2 predicts only local locomotion/jump and harmless
 punch presentation; constrained combat states continue to follow authority.

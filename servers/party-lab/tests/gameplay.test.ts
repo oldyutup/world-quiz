@@ -6,9 +6,10 @@ import { matchMaker } from "@colyseus/core";
 import { createPartyServer } from "../src/server.js";
 import type { PartyRoom } from "../src/PartyRoom.js";
 import type { LobbyState } from "../src/state.js";
-import type {
-  GameSnapshot,
-  GameEvent,
+import {
+  NET,
+  type GameSnapshot,
+  type GameEvent,
 } from "../../../shared/party-lab/network/protocol.js";
 import { restore } from "../../../shared/party-lab/simulation/ragdoll/character.js";
 import { IDLE_INPUT } from "../../../shared/party-lab/simulation/physics.js";
@@ -43,11 +44,13 @@ async function peer(code?: string, name = "Alice") {
   const client = new Client(endpoint);
   const room = code
     ? await client.joinById<LobbyState>(code, {
+        protocol: NET.version,
         nickname: name,
         intent: "join",
         code,
       })
     : await client.create<LobbyState>("party_lab", {
+        protocol: NET.version,
         nickname: name,
         intent: "create",
       });

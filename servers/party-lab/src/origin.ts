@@ -27,3 +27,19 @@ export function allowedOrigin(
     return false;
   }
 }
+
+/** Entries that can never match a browser Origin, e.g. a trailing slash, path or wildcard. */
+export function invalidAllowlistEntries(allowlist: string) {
+  return allowlist
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((entry) => {
+      try {
+        const url = new URL(entry);
+        return !["http:", "https:"].includes(url.protocol) || url.origin !== entry;
+      } catch {
+        return true;
+      }
+    });
+}

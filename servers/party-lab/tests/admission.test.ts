@@ -7,6 +7,7 @@ import { createPartyServer } from "../src/server.js";
 import { type PartyRoom } from "../src/PartyRoom.js";
 import { appendChat, ChatMessage, type LobbyState } from "../src/state.js";
 import { RECONNECT_SECONDS } from "../src/validation.js";
+import { NET } from "../../../shared/party-lab/network/protocol.js";
 
 const { server, httpServer } = createPartyServer();
 let endpoint: string;
@@ -28,17 +29,35 @@ after(async () => {
   await server.gracefullyShutdown(false);
 });
 function track(room: Room<unknown, LobbyState>) { rooms.add(room); room.onMessage("notice", () => {}); return room; }
-async function create(name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).create<LobbyState>("party_lab", { nickname: name, intent: "create", costumeId })); }
-async function join(code: string, name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).joinById<LobbyState>(code, { nickname: name, intent: "join", code, costumeId })); }
+async function create(name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).create<LobbyState>("party_lab", { protocol: NET.version, nickname: name, intent: "create", costumeId })); }
+async function join(code: string, name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).joinById<LobbyState>(code, { protocol: NET.version, nickname: name, intent: "join", code, costumeId })); }
 async function leave(room: Room<unknown, LobbyState>) { await room.leave(); rooms.delete(room); }
+
+test("health endpoint reports liveness and protocol version only", async () => {
+  const response = await fetch(`${endpoint}/health`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), { ok: true, service: "party-lab", protocol: NET.version });
+});
 
 test("invalid admissions and nonexistent rooms are rejected by the server", async () => {
   await assert.rejects(create("x"));
-  await assert.rejects(new Client(endpoint).create("party_lab", { nickname: "Alice" }));
+  await assert.rejects(new Client(endpoint).create("party_lab", { protocol: NET.version, nickname: "Alice" }));
   await assert.rejects(join("ABC234"));
   const room = await create();
-  await assert.rejects(new Client(endpoint).joinById(room.roomId, { nickname: "Bob", intent: "join", code: "ABC123" }));
-  await assert.rejects(new Client(endpoint).joinById(room.roomId, { nickname: "Bob", intent: "create" }));
+  await assert.rejects(new Client(endpoint).joinById(room.roomId, { protocol: NET.version, nickname: "Bob", intent: "join", code: "ABC123" }));
+  await assert.rejects(new Client(endpoint).joinById(room.roomId, { protocol: NET.version, nickname: "Bob", intent: "create" }));
+  await leave(room);
+});
+
+test("admission requires the exact network protocol version", async () => {
+  const mismatch = (data: Record<string, unknown>) =>
+    assert.rejects(new Client(endpoint).create("party_lab", { nickname: "Alice", intent: "create", ...data }), /PROTOCOL_MISMATCH/);
+  await mismatch({});
+  await mismatch({ protocol: NET.version - 1 });
+  await mismatch({ protocol: String(NET.version) });
+  const room = await create();
+  await assert.rejects(new Client(endpoint).joinById(room.roomId, { protocol: NET.version + 1, nickname: "Bob", intent: "join", code: room.roomId }), /PROTOCOL_MISMATCH/);
   await leave(room);
 });
 

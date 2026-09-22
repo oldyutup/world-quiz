@@ -15,6 +15,8 @@ export function lobbyError(error: unknown): string {
   const message = data?.message ?? "";
   if (message === "SERVER_NOT_CONFIGURED")
     return "Çevrimiçi lobi henüz bu ortamda açık değil. Yerel arenayı deneyebilirsin.";
+  if (message === "PROTOCOL_MISMATCH")
+    return "Party Lab güncellendi. Sayfayı yenileyip tekrar dene.";
   if (message === "INVALID_NICKNAME")
     return "Takma adın 3–16 harf, rakam, _ veya - içermeli.";
   if (message === "INVALID_CODE")

@@ -41,6 +41,8 @@ function options(value: unknown): {
     throw new ServerError(400, "INVALID_ADMISSION");
   const data = value as Record<string, unknown>;
   try {
+    // Frontend and server deploy separately; a stale page must not join a room it cannot simulate.
+    if (data.protocol !== NET.version) throw new Error("PROTOCOL_MISMATCH");
     if (data.intent !== "create" && data.intent !== "join")
       throw new Error("INVALID_ADMISSION");
     return {
