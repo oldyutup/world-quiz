@@ -10,11 +10,16 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Group, Quaternion, Vector3, type PerspectiveCamera } from "three";
 import Arena from "./Arena";
 import PlayerBean from "./PlayerBean";
+import { playerCostumeAtSlot } from "./visual/costumes";
 import { PLAYERS } from "./players";
 import { PARTS } from "./ragdoll/config";
 import { bindKeyboard } from "../input/keyboard";
 import type { Bindings } from "../input/bindings";
 import { bindingLabel } from "../input/bindings";
+import { initializePhysics } from "../../../shared/party-lab/simulation/physics";
+import { LocalPrediction } from "../network/prediction/localPrediction";
+import type { PlayerId } from "./players";
+import type { InputPacket } from "../../../shared/party-lab/network/protocol";
 import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
@@ -45,7 +50,7 @@ interface Props {
   stream: GameStream;
   bindings: Bindings;
   paused: boolean;
-  sendInput: (input: MovementInput) => void;
+  sendInput: (input: MovementInput) => InputPacket | null | undefined;
   onLeave: () => void;
   onControls: () => void;
 }
@@ -64,15 +69,37 @@ function OnlineView({
   const beans = useRef<(Group | null)[]>([]);
   const controls = useRef<ReturnType<typeof bindKeyboard> | null>(null);
   const base = useRef(new Vector3());
+  const prediction = useRef<LocalPrediction | null>(null);
+  const accumulator = useRef(0);
+  const follow = useRef(new Vector3());
+  const followTarget = useRef(new Vector3());
+  const debug =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).has("partyDebug");
   const qa = useRef(new Quaternion()),
     qb = useRef(new Quaternion());
   const feel = useRef(new CameraFeel());
-  const live = useRef({ paused, lobby, self });
-  live.current = { paused, lobby, self };
   const sample = useRef({ seconds: 0, frames: 0, renderMs: 0 });
   const [reduced, setReduced] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+  useEffect(() => {
+    if (self?.slot === undefined) return;
+    let cancelled = false;
+    void initializePhysics()
+      .then(() => {
+        if (!cancelled)
+          prediction.current = new LocalPrediction(self.slot as PlayerId);
+      })
+      .catch(() => {
+        /* Authoritative interpolation remains usable if WASM is unavailable. */
+      });
+    return () => {
+      cancelled = true;
+      prediction.current?.dispose();
+      prediction.current = null;
+    };
+  }, [self?.slot]);
   useLayoutEffect(() => {
     stream.setPresentationEnabled(!paused);
     return () => stream.setPresentationEnabled(true);
@@ -82,6 +109,8 @@ function OnlineView({
       if (document.hidden) {
         stream.discardEvents();
         controls.current?.clear();
+        prediction.current?.suspend();
+        accumulator.current = 0;
         sendInput(neutralIntent());
         audio.stopAll();
         feel.current.clear();
@@ -107,19 +136,13 @@ function OnlineView({
   useEffect(() => {
     const adapter = bindKeyboard(gl.domElement, bindings);
     controls.current = adapter;
-    const timer = window.setInterval(() => {
-      const { paused, lobby, self } = live.current;
-      const enabled =
-        !paused &&
-        !document.hidden &&
-        lobby.status === "connected" &&
-        lobby.phase === "playing" &&
-        !!self?.participating;
-      if (!enabled) adapter.clear();
-      sendInput(enabled ? adapter.readIntent() : neutralIntent());
-    }, 1000 / NET.inputHz);
+    adapter.setSuspended(
+      paused ||
+        lobby.status !== "connected" ||
+        lobby.phase !== "playing" ||
+        !self?.participating
+    );
     return () => {
-      window.clearInterval(timer);
       adapter.dispose();
       controls.current = null;
       sendInput(neutralIntent());
@@ -135,7 +158,15 @@ function OnlineView({
         lobby.phase !== "playing" ||
         !self?.participating
     );
-    if (paused) {
+    if (
+      paused ||
+      lobby.status !== "connected" ||
+      lobby.phase !== "playing" ||
+      !self?.participating
+    ) {
+      prediction.current?.suspend();
+      accumulator.current = 0;
+      follow.current.set(0, 0, 0);
       sendInput(neutralIntent());
       audio.stopAll();
       feel.current.clear();
@@ -151,6 +182,48 @@ function OnlineView({
   ]);
   useFrame((_frame, dt) => {
     const start = performance.now();
+    const enabled =
+      !paused &&
+      !document.hidden &&
+      lobby.status === "connected" &&
+      lobby.phase === "playing" &&
+      !!self?.participating;
+    const predictor = prediction.current;
+    const latest = stream.snapshots.latest;
+    if (enabled && latest) predictor?.reconcile(latest, start);
+    if (!enabled || dt > 0.25) {
+      controls.current?.clear();
+      predictor?.suspend();
+      accumulator.current = 0;
+      if (dt > 0.25) sendInput(neutralIntent());
+    } else {
+      accumulator.current += Math.min(dt, 0.05);
+      const ticks =
+        accumulator.current + 1e-6 >= 1 / NET.inputHz
+          ? Math.min(
+              3,
+              Math.floor((accumulator.current + 1e-6) * NET.physicsHz)
+            )
+          : 0;
+      if (ticks > 0 && controls.current) {
+        accumulator.current -= ticks / NET.physicsHz;
+        const intent = controls.current.readIntent();
+        const packet = sendInput(intent);
+        if (packet) {
+          const result = predictor?.advance(packet, ticks, start);
+          if (result?.swing && self) {
+            const event = {
+              name: "punchSwing" as const,
+              actor: self.slot,
+              x: predictor!.rig.character.body.translation().x,
+            };
+            if (audio.playSfx(event))
+              stream.markLocalSwing(packet.round, self.slot, packet.seq);
+          }
+        }
+      }
+    }
+    const localPose = enabled ? predictor?.pose(Math.min(dt, 0.1)) : null;
     const frame = stream.snapshots.sample(start);
     camera.position.copy(base.current);
     if (!frame) return;
@@ -158,30 +231,51 @@ function OnlineView({
     for (const player of PLAYERS) {
       const bean = beans.current[player.id];
       if (!bean) continue;
-      bean.visible = !!(b.snapshot.mask & b.snapshot.alive & (1 << player.id));
+      const local = player.id === self?.slot;
+      bean.visible =
+        !!(b.snapshot.mask & b.snapshot.alive & (1 << player.id)) &&
+        (!local ||
+          !latest ||
+          !!(latest.snapshot.mask & latest.snapshot.alive & (1 << player.id)));
+      const predicted = local && localPose ? localPose : null;
       for (let i = 0; i < PARTS.length; i++) {
         const part = bean.children[i],
           offset = (player.id * PARTS.length + i) * 7;
-        part.position.set(
-          a.values[offset] + (b.values[offset] - a.values[offset]) * alpha,
-          a.values[offset + 1] +
-            (b.values[offset + 1] - a.values[offset + 1]) * alpha,
-          a.values[offset + 2] +
-            (b.values[offset + 2] - a.values[offset + 2]) * alpha
-        );
-        qa.current.set(
-          a.values[offset + 3],
-          a.values[offset + 4],
-          a.values[offset + 5],
-          a.values[offset + 6]
-        );
-        qb.current.set(
-          b.values[offset + 3],
-          b.values[offset + 4],
-          b.values[offset + 5],
-          b.values[offset + 6]
-        );
-        part.quaternion.copy(qa.current).slerp(qb.current, alpha);
+        if (predicted) {
+          const at = i * 7;
+          part.position.set(
+            predicted[at],
+            predicted[at + 1],
+            predicted[at + 2]
+          );
+          part.quaternion.set(
+            predicted[at + 3],
+            predicted[at + 4],
+            predicted[at + 5],
+            predicted[at + 6]
+          );
+        } else {
+          part.position.set(
+            a.values[offset] + (b.values[offset] - a.values[offset]) * alpha,
+            a.values[offset + 1] +
+              (b.values[offset + 1] - a.values[offset + 1]) * alpha,
+            a.values[offset + 2] +
+              (b.values[offset + 2] - a.values[offset + 2]) * alpha
+          );
+          qa.current.set(
+            a.values[offset + 3],
+            a.values[offset + 4],
+            a.values[offset + 5],
+            a.values[offset + 6]
+          );
+          qb.current.set(
+            b.values[offset + 3],
+            b.values[offset + 4],
+            b.values[offset + 5],
+            b.values[offset + 6]
+          );
+          part.quaternion.copy(qa.current).slerp(qb.current, alpha);
+        }
         if (PARTS[i] === "head") {
           const stars = part.getObjectByName("stars");
           if (stars) {
@@ -200,6 +294,21 @@ function OnlineView({
         feel.current.trigger(event, self?.slot ?? -1);
       }
     }
+    const localBean = self ? beans.current[self.slot] : null;
+    if (localBean?.visible && !reduced && !paused) {
+      const p = localBean.children[0].position;
+      followTarget.current.set(
+        Math.max(-0.65, Math.min(0.65, p.x * 0.1)),
+        Math.max(0, Math.min(0.15, (p.y - 0.8) * 0.05)),
+        Math.max(-0.65, Math.min(0.65, p.z * 0.1))
+      );
+    } else followTarget.current.set(0, 0, 0);
+    follow.current.lerp(
+      followTarget.current,
+      1 - Math.exp(-Math.min(dt, 0.1) / 0.12)
+    );
+    camera.position.add(follow.current);
+    camera.lookAt(follow.current);
     const [x, y] = feel.current.step(
       dt,
       settings.cameraShake && !reduced && !paused
@@ -211,12 +320,20 @@ function OnlineView({
     stats.seconds += dt;
     stats.renderMs += performance.now() - start;
     if (stats.seconds >= 2) {
-      if (performanceLabel.current)
+      if (performanceLabel.current && debug) {
+        const m = predictor?.metrics;
         performanceLabel.current.textContent = `${Math.round(
           stats.frames / stats.seconds
-        )} FPS · ${(stats.renderMs / stats.frames).toFixed(
-          2
-        )} ms çizim hazırlığı · 20 Hz sunucu`;
+        )} FPS · ${localPose ? "yerel tahmin" : "sunucu görünümü"} · ${
+          m ? (m.stepMs / Math.max(1, m.steps)).toFixed(2) : "—"
+        } ms/tahmin · hata ${m?.error.toFixed(3) ?? "—"} m · ort/max ${
+          m ? (m.totalError / Math.max(1, m.reconciliations)).toFixed(3) : "—"
+        }/${m?.maxError.toFixed(3) ?? "—"} · düzeltme ${m?.corrections ?? 0}/${
+          m?.hard ?? 0
+        } sert · bekleyen ${predictor?.history.records.length ?? 0} · ACK ${
+          m?.ackDelayMs.toFixed(0) ?? "—"
+        } ms`;
+      }
       stats.frames = stats.seconds = stats.renderMs = 0;
     }
   });
@@ -227,6 +344,7 @@ function OnlineView({
         <PlayerBean
           key={player.id}
           color={player.color}
+          costume={playerCostumeAtSlot(lobby.players, player.id)}
           ref={(node) => {
             beans.current[player.id] = node;
           }}
@@ -249,8 +367,8 @@ export default function OnlineArena(props: Props) {
           `Oyuncu ${lobby.winner + 1}`
         } kazandı!`;
   useEffect(() => {
-    viewport.current?.focus();
-  }, []);
+    if (!props.paused) viewport.current?.focus();
+  }, [props.paused]);
   return (
     <div className="party-lab pl-playground">
       <header className="pl-arena-header">

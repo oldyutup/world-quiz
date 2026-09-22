@@ -127,9 +127,15 @@ test("server ready gate: one cannot start, unready blocks two, all three start; 
   );
   for (const p of [b, c])
     assert.deepEqual(
-      p.snapshots.find((s) => s.seq === same.seq),
-      same
+      { ...p.snapshots.find((s) => s.seq === same.seq), prediction: undefined },
+      { ...same, prediction: undefined }
     );
+  assert.equal(same.prediction?.slot, slot);
+  assert.equal(same.prediction?.velocities.length, 216);
+  assert.equal(same.prediction?.controller.length, 9);
+  await until(() =>
+    a.events.some((e) => e.name === "punchSwing" && e.inputSeq === 3)
+  );
   assert.ok(same.transforms instanceof Uint8Array);
   assert.equal(same.transforms.length, 756);
   assert.equal(room.game.combat.stats.punches, 1);

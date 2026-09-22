@@ -4,7 +4,7 @@ Initial checkpoint: clean `party-game-prototype` at `cae1bc0`. Controls, nine-bo
 ragdolls, combat, bots, rounds and room/chat were inspected first. All 63 baseline
 local tests passed. This phase changes only `src/party-lab/`.
 
-## Online compatibility (Phase 4B.1)
+## Online compatibility (Phase 4B.2)
 
 Pure event definitions, recipes and policy now live under `shared/party-lab/feedback/`;
 existing audio modules re-export them. Web Audio, preferences and WAV decoding stay
@@ -14,6 +14,14 @@ Deduplication never derives a fall sound from snapshots. `fall-cat.wav` remains 
 primary physical-elimination cue, once per event, with procedural fallback and no
 layering. Hidden tabs/settings discard presentation events while retaining their
 ID high-water mark. See [ONLINE.md](../../../shared/party-lab/ONLINE.md).
+
+Ordinary local predicted punch motion can now play an immediate `punchSwing`.
+Only successfully played swings are marked by round/slot/input sequence; the
+matching authoritative swing echo is suppressed. Replay is silent. Hits, KO,
+grabs, lift, throw, jump/landing, elimination and results remain server events.
+Prediction never plays the cat WAV or triggers impact camera shake. The WAV,
+audio settings, recipes and AudioManager are unchanged. See
+[PREDICTION.md](../../../shared/party-lab/PREDICTION.md).
 
 ## Architecture and synthesis
 

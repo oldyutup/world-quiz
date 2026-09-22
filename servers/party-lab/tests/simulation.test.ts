@@ -14,6 +14,7 @@ import { restore } from "../../../shared/party-lab/simulation/ragdoll/character.
 import { impact } from "../../../shared/party-lab/simulation/combat/knockout.js";
 import { allowedOrigin } from "../src/origin.js";
 import type { GameEvent } from "../../../shared/party-lab/network/protocol.js";
+import { capturePredictionState } from "../../../shared/party-lab/simulation/predictionState.js";
 before(() => initializePhysics());
 test("online allocates articulated rigs, enables only real slots, countdown blocks intent, reset clears every body and grip", () => {
   const s = new OnlineRoundSimulation();
@@ -147,12 +148,20 @@ test("three-player authoritative simulation benchmark and snapshot encoding stay
       if (i % 3 === 0) {
         const start = performance.now();
         const snap = s.snapshot([i, i, i]);
+        const prediction = s.physics.players.map((p) =>
+          capturePredictionState(p, s.combat.players[p.id])
+        );
         serialize += performance.now() - start;
         snapshots++;
         bytes =
           snap.transforms.byteLength +
-          JSON.stringify({ ...snap, transforms: undefined }).length;
+          JSON.stringify({ ...snap, transforms: undefined }).length +
+          Math.max(...prediction.map((p) =>
+            p.velocities.byteLength +
+            JSON.stringify({ prediction: { ...p, velocities: undefined } }).length
+          ));
         assert.equal(snap.transforms.byteLength, 756);
+        assert.ok(prediction.every((p) => p.velocities.byteLength === 216));
       }
       for (const p of s.physics.players)
         for (const name of PARTS) {

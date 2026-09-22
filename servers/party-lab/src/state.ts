@@ -8,6 +8,7 @@ export const LobbyPlayer = schema(
     connected: t.boolean(),
     slot: t.number(),
     color: t.string(),
+    costumeId: t.string(),
     ready: t.boolean(),
     participating: t.boolean(),
   },

@@ -1,3 +1,4 @@
+import { capturePredictionState } from "../../../shared/party-lab/simulation/predictionState.js";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@colyseus/core";
 import { appendChat, ChatMessage, LobbyPlayer, LobbyState } from "./state.js";
 import { normalizeRoomCode, roomCodes } from "./roomCodes.js";
+import { selectedCostumeId, type SelectableCostumeId } from "../../../shared/party-lab/costumes.js";
 import {
   ChatLimiter,
   chatText,
@@ -33,6 +35,7 @@ function options(value: unknown): {
   nickname: string;
   intent: "create" | "join";
   code?: string;
+  costumeId: SelectableCostumeId;
 } {
   if (!value || typeof value !== "object")
     throw new ServerError(400, "INVALID_ADMISSION");
@@ -44,6 +47,7 @@ function options(value: unknown): {
       nickname: nickname(data.nickname),
       intent: data.intent,
       code: data.intent === "join" ? normalizeRoomCode(data.code) : undefined,
+      costumeId: selectedCostumeId(data.costumeId),
     };
   } catch (error) {
     throw new ServerError(400, (error as Error).message);
@@ -107,7 +111,16 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         input.clear();
       else intent[p.slot] = input.read(now);
     }
-    const events = this.game.step(intent);
+    const events = this.game.step(intent).map((event) => {
+      if (event.name !== "punchSwing") return event;
+      const id = [...this.state.players.values()].find(
+        (p) => p.slot === event.actor
+      )?.id;
+      return {
+        ...event,
+        inputSeq: id ? this.mailboxes.get(id)?.processedPunchSeq : undefined,
+      };
+    });
     this.events.push(...events);
     this.metrics.eventCount += events.length;
     const ms = performance.now() - now;
@@ -125,18 +138,35 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       phase === "waiting"
     ) {
       const start = performance.now();
-      const ack = PLAYERS.map(
-        (p) =>
-          this.mailboxes.get(
-            [...this.state.players.values()].find((v) => v.slot === p.id)?.id ??
-              ""
-          )?.seq ?? -1
-      );
+      const ack = PLAYERS.map((p) => {
+        const id = [...this.state.players.values()].find(
+          (v) => v.slot === p.id
+        )?.id;
+        const input = id ? this.mailboxes.get(id) : undefined;
+        return input?.processedRound === this.game.roundId
+          ? input.processedSeq
+          : -1;
+      });
       const snapshot = this.game.snapshot(ack);
-      this.broadcast("snapshot", snapshot);
+      let predictionBytes = 0;
+      for (const client of this.clients) {
+        const player = this.state.players.get(client.sessionId);
+        if (!player?.connected) continue;
+        const prediction = capturePredictionState(
+          this.game.physics.players[player.slot],
+          this.game.combat.players[player.slot]
+        );
+        client.send("snapshot", { ...snapshot, prediction });
+        predictionBytes = Math.max(
+          predictionBytes,
+          prediction.velocities.byteLength +
+            JSON.stringify({ ...prediction, velocities: undefined }).length
+        );
+      }
       this.metrics.snapshots++;
       this.metrics.serializeMs += performance.now() - start;
       this.metrics.snapshotBytes =
+        predictionBytes +
         snapshot.transforms.byteLength +
         JSON.stringify({ ...snapshot, transforms: undefined }).length;
       if (this.events.length) {
@@ -237,6 +267,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       connected: true,
       slot: slot.id,
       color: slot.color,
+      costumeId: admission.costumeId,
       ready: false,
       participating: false,
     });

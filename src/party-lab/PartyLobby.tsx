@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CHAT_MAX_LENGTH, type LobbySnapshot } from "./network/types";
+import { COSTUME_NAMES, COSTUME_SYMBOLS } from "./scene/visual/costumes";
 
 export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls, controlsRef }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onControls: () => void;
@@ -66,8 +67,8 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
           <div className="pl-room-roster-heading"><h2>Oyuncular</h2><span>{playersOnline.length} / 3</span></div>
           <ul className="pl-room-roster" aria-label="Lobideki oyuncular">
             {lobby.players.map(player => <li key={player.id}>
-              <span className="pl-lobby-avatar" style={{ backgroundColor: player.color }} aria-hidden="true">••</span>
-              <span className="pl-room-player"><b>{player.nickname}</b>{player.id === lobby.selfId && <small>Sen</small>}</span>
+              <span className="pl-lobby-avatar" style={{ borderColor: player.color }} aria-hidden="true">{COSTUME_SYMBOLS[player.costumeId]}</span>
+              <span className="pl-room-player"><b>{player.nickname}{player.id === lobby.selfId && <small>Sen</small>}</b><small className="pl-costume-name">{COSTUME_NAMES[player.costumeId]}</small></span>
               <span className={`pl-player-status${player.connected && player.ready ? " is-ready" : ""}`}>
                 <span aria-hidden="true">{!player.connected ? "↻" : player.ready ? "✓" : "○"}</span>{" "}
                 {player.connected ? (player.ready ? "Hazır" : "Hazır Değil") : "Yeniden bağlanıyor"}

@@ -2,12 +2,14 @@ import type {
   GameSnapshot,
   OnlinePhase,
 } from "../../../shared/party-lab/network/protocol";
+import type { SelectableCostumeId } from "../../../shared/party-lab/costumes";
 export interface LobbyPlayer {
   id: string;
   nickname: string;
   connected: boolean;
   slot: number;
   color: string;
+  costumeId: SelectableCostumeId;
   ready: boolean;
   participating: boolean;
 }

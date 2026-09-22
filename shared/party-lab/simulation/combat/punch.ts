@@ -1,3 +1,7 @@
+import type { Character } from "../ragdoll/character.js";
+import type { Hand } from "../ragdoll/config.js";
+import type { ArmDrive } from "../ragdoll/controller.js";
+import { add, rotate, yaw } from "../ragdoll/math.js";
 import { COMBAT } from "../combatConfig.js";
 import type { PartName } from "../ragdoll/config.js";
 import { clamp } from "../ragdoll/math.js";
@@ -40,4 +44,30 @@ export function punchPower(part: PartName, closing: number, direction: number) {
     part,
     clamp(closing / COMBAT.punch.fullClosing) * clamp(direction, 0.25, 1)
   );
+}
+
+/** Physical arm drive shared by real combat and presentation-only prediction. No hit logic. */
+export function punchArmDrive(
+  character: Character,
+  hand: Hand,
+  punch: Punch
+): ArmDrive | null {
+  if (punch.age < 0 || punch.age >= COMBAT.punch.startup + COMBAT.punch.active)
+    return null;
+  const arm: ArmDrive = {
+    shoulder: punch.age < COMBAT.punch.startup ? -0.35 : COMBAT.punch.shoulder,
+    elbow: COMBAT.punch.elbow,
+  };
+  if (punch.age >= COMBAT.punch.startup) {
+    arm.target = add(
+      character.body.translation(),
+      rotate(yaw(character.facing), {
+        x: hand === 0 ? -0.14 : 0.14,
+        y: 0.82,
+        z: 0.95,
+      })
+    );
+    arm.force = COMBAT.punch.handForce;
+  }
+  return arm;
 }

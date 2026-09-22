@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   InputMailbox,
+  NET,
   validateInput,
   TRANSFORM_BYTES,
   type GameSnapshot,
@@ -78,7 +79,7 @@ test("mailbox sequences, round epochs, edge consumption, held transitions and ex
   assert.ok(box.accept({ ...input(6), round: 2 }, 2, 410));
 });
 const frame = (seq: number, tick: number, round = 1): GameSnapshot => ({
-  v: 1,
+  v: NET.version,
   seq,
   tick,
   round,

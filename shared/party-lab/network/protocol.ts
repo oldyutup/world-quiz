@@ -1,10 +1,10 @@
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 export const NET = {
-  version: 1,
+  version: 2,
   physicsHz: 60,
   snapshotHz: 20,
-  inputHz: 30,
+  inputHz: 60,
   staleMs: 300,
   interpolationMs: 100,
 } as const;
@@ -23,7 +23,15 @@ export interface GameEvent extends FeedbackEvent {
   id: number;
   round: number;
   tick: number;
+  inputSeq?: number; // Originating punch edge, for local swing-only deduplication.
 }
+/** Only sent to this slot's client. Never accepted from a client. */
+export interface PredictionState {
+  slot: number;
+  velocities: Uint8Array; // Nine bodies × (linear XYZ, angular XYZ), Float32 LE.
+  controller: number[]; // facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs
+}
+export const VELOCITY_BYTES = 9 * 6 * 4;
 export interface GameSnapshot {
   v: number;
   seq: number;
@@ -39,6 +47,7 @@ export interface GameSnapshot {
   grips: number[];
   ack: number[];
   transforms: Uint8Array;
+  prediction?: PredictionState;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -104,17 +113,24 @@ export const neutralIntent = (): MovementInput => ({
 /** Per-session mailbox: sequence high-water mark survives stale/reset/reconnect. */
 export class InputMailbox {
   seq = -1;
+  processedSeq = -1;
+  processedRound = -1;
+  processedPunchSeq = -1;
+  private punchSeq = -1;
   private received = -Infinity;
   private packet: InputPacket | null = null;
   private jump = false;
   private punch = false;
   accept(value: unknown, round: number, now: number) {
     const p = validateInput(value);
-    if (!p || p.round !== round || p.seq <= this.seq || now - this.received < 8)
-      return false;
+    // Transport limits traffic; valid ordered packets may arrive together after network jitter.
+    if (!p || p.round !== round || p.seq <= this.seq) return false;
     this.seq = p.seq;
     this.jump ||= p.jumpPressed && !this.packet?.jumpPressed;
-    this.punch ||= p.punchPressed && !this.packet?.punchPressed;
+    if (p.punchPressed && !this.packet?.punchPressed && !this.punch) {
+      this.punch = true;
+      this.punchSeq = p.seq;
+    }
     this.packet = p;
     this.received = now;
     return true;
@@ -122,6 +138,11 @@ export class InputMailbox {
   read(now: number): MovementInput {
     if (now - this.received > NET.staleMs) this.clear();
     const p = this.packet;
+    if (p) {
+      this.processedSeq = this.seq;
+      this.processedRound = p.round;
+    }
+    this.processedPunchSeq = this.punch ? this.punchSeq : -1;
     const result = p
       ? {
           x: p.moveX,
@@ -139,5 +160,6 @@ export class InputMailbox {
     this.packet = null;
     this.jump = this.punch = false;
     this.received = -Infinity;
+    this.punchSeq = this.processedPunchSeq = -1;
   }
 }

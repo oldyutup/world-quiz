@@ -18,7 +18,7 @@ import { PARTS, RAGDOLL } from "./ragdoll/config.js";
 import { cap, finite, length, sub, type Vec } from "./ragdoll/math.js";
 export const PHYSICS = RAGDOLL;
 export const IDLE_INPUT: MovementInput = { x: 0, z: 0, jump: false };
-import { PLATFORM, BUMPERS } from "./environment.js";
+import { createArenaWorld } from "./world.js";
 export { PLATFORM, BUMPERS } from "./environment.js";
 let initialization: Promise<void> | undefined;
 export function initializePhysics(): Promise<void> {
@@ -41,24 +41,7 @@ export class PlaygroundPhysics {
   private disposed = false;
   private readonly eliminations: PlayerId[] = [];
   constructor(private readonly feedback: FeedbackSink = silentFeedback) {
-    this.world = new RAPIER.World({ x: 0, y: RAGDOLL.gravity, z: 0 });
-    this.world.timestep = RAGDOLL.step;
-    this.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(
-        PLATFORM.width / 2,
-        PLATFORM.height / 2,
-        PLATFORM.depth / 2
-      )
-        .setTranslation(0, -PLATFORM.height / 2, 0)
-        .setFriction(0.6)
-    );
-    for (const bumper of BUMPERS)
-      this.world.createCollider(
-        RAPIER.ColliderDesc.cylinder(bumper.height / 2, bumper.radius)
-          .setTranslation(bumper.x, bumper.height / 2, bumper.z)
-          .setFriction(0.3)
-          .setRestitution(0.3)
-      );
+    this.world = createArenaWorld();
     this.players = PLAYERS.map(({ id, spawn }) =>
       createCharacter(this.world, id, spawn)
     );

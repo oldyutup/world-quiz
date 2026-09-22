@@ -28,8 +28,8 @@ after(async () => {
   await server.gracefullyShutdown(false);
 });
 function track(room: Room<unknown, LobbyState>) { rooms.add(room); room.onMessage("notice", () => {}); return room; }
-async function create(name = "Alice") { return track(await new Client(endpoint).create<LobbyState>("party_lab", { nickname: name, intent: "create" })); }
-async function join(code: string, name = "Alice") { return track(await new Client(endpoint).joinById<LobbyState>(code, { nickname: name, intent: "join", code })); }
+async function create(name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).create<LobbyState>("party_lab", { nickname: name, intent: "create", costumeId })); }
+async function join(code: string, name = "Alice", costumeId = "cat") { return track(await new Client(endpoint).joinById<LobbyState>(code, { nickname: name, intent: "join", code, costumeId })); }
 async function leave(room: Room<unknown, LobbyState>) { await room.leave(); rooms.delete(room); }
 
 test("invalid admissions and nonexistent rooms are rejected by the server", async () => {
@@ -40,6 +40,19 @@ test("invalid admissions and nonexistent rooms are rejected by the server", asyn
   await assert.rejects(new Client(endpoint).joinById(room.roomId, { nickname: "Bob", intent: "join", code: "ABC123" }));
   await assert.rejects(new Client(endpoint).joinById(room.roomId, { nickname: "Bob", intent: "create" }));
   await leave(room);
+});
+
+test("server validates and synchronizes costume identity as player state", async () => {
+  const first = await create('Alice', 'gazelle');
+  const second = await join(first.roomId, 'Bob', 'anchovy');
+  const invalid = await join(first.roomId, 'Cara', 'arbitrary-mesh');
+  await until(() => [first, second, invalid].every(room => room.state?.players?.size === 3));
+  for (const observer of [first, second, invalid]) {
+    assert.equal(observer.state.players.get(first.sessionId)?.costumeId, 'gazelle');
+    assert.equal(observer.state.players.get(second.sessionId)?.costumeId, 'anchovy');
+    assert.equal(observer.state.players.get(invalid.sessionId)?.costumeId, 'cat');
+  }
+  await leave(first); await leave(second); await leave(invalid);
 });
 
 test("concurrent admissions allow exactly three distinct sessions, including duplicate nicknames", async () => {
@@ -98,7 +111,7 @@ test("server validates chat, rate limits, rejects unknown types, and caps transi
 
 test("dropped seats stay reserved, reconnect keeps identity, expiry frees capacity", { timeout: 25000 }, async () => {
   const first = await create();
-  const second = await join(first.roomId, "Bob");
+  const second = await join(first.roomId, "Bob", "anchovy");
   const third = await join(first.roomId, "Cara");
   await until(() => first.state?.players?.size === 3);
   const id = second.sessionId;
@@ -110,6 +123,8 @@ test("dropped seats stay reserved, reconnect keeps identity, expiry frees capaci
   const restored = track(await new Client(endpoint).reconnect<LobbyState>(token));
   assert.equal(restored.sessionId, id);
   await until(() => first.state.players.get(id)?.connected === true);
+  assert.equal(restored.state.players.get(id)?.costumeId, 'anchovy');
+  assert.equal(first.state.players.get(id)?.costumeId, 'anchovy');
   await assert.rejects(new Client(endpoint).reconnect<LobbyState>(token), "old/duplicate credentials cannot admit another player");
   restored.reconnection.enabled = false;
   restored.connection.close(4001);

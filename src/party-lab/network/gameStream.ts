@@ -14,6 +14,10 @@ export class SnapshotBuffer {
   frames: BufferedSnapshot[] = [];
   private sequence = -1;
   renderMs = 0;
+  constructor(readonly delayMs: number = NET.interpolationMs) {}
+  get latest() {
+    return this.frames[this.frames.length - 1];
+  }
   push(snapshot: GameSnapshot, now: number) {
     if (
       !snapshot ||
@@ -50,8 +54,7 @@ export class SnapshotBuffer {
       snapshot.mask !== last.snapshot.mask
     ) {
       this.frames = [];
-      this.renderMs =
-        (snapshot.tick * 1000) / NET.physicsHz - NET.interpolationMs;
+      this.renderMs = (snapshot.tick * 1000) / NET.physicsHz - this.delayMs;
     }
     this.sequence = snapshot.seq;
     this.frames.push({ snapshot, values, received: now });
@@ -64,7 +67,7 @@ export class SnapshotBuffer {
     const end = (latest.snapshot.tick * 1000) / NET.physicsHz;
     this.renderMs = Math.min(
       end,
-      Math.max(this.renderMs, end + now - latest.received - NET.interpolationMs)
+      Math.max(this.renderMs, end + now - latest.received - this.delayMs)
     );
     while (
       this.frames.length > 2 &&
@@ -96,6 +99,12 @@ export class GameStream {
   private eventHead = 0;
   private events: GameEvent[] = [];
   private presentationEnabled = true;
+  private localSwings = new Set<string>();
+  markLocalSwing(round: number, slot: number, seq: number) {
+    this.localSwings.add(`${round}:${slot}:${seq}`);
+    if (this.localSwings.size > 64)
+      this.localSwings.delete(this.localSwings.values().next().value!);
+  }
   setPresentationEnabled(enabled: boolean) {
     this.presentationEnabled = enabled;
     if (!enabled) this.discardEvents();
@@ -116,6 +125,13 @@ export class GameStream {
       )
         continue;
       this.eventHead = event.id;
+      if (
+        event.name === "punchSwing" &&
+        this.localSwings.delete(
+          `${event.round}:${event.actor}:${event.inputSeq}`
+        )
+      )
+        continue;
       if (visible && this.presentationEnabled) this.events.push(event);
     }
     if (this.events.length > 128)
@@ -140,6 +156,7 @@ export class GameStream {
   reset() {
     this.clearPresentation();
     this.eventHead = 0;
+    this.localSwings.clear();
     this.presentationEnabled = true;
   }
 }

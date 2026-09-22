@@ -20,6 +20,7 @@ import {
   tickPunch,
   activePunch,
   punchPower,
+  punchArmDrive,
 } from "./combat/punch.js";
 import { IDLE_INPUT, type PlaygroundPhysics } from "./physics.js";
 import { PLAYERS } from "./players.js";
@@ -197,26 +198,9 @@ export class CombatSimulation {
             p.heldFor[hand] >= COMBAT.holdThreshold) &&
           punch.age < 0;
         drive.arms[hand] = { shoulder: -0.25, elbow: -0.35 };
-        if (
-          punch.age >= 0 &&
-          punch.age < COMBAT.punch.startup + COMBAT.punch.active
-        ) {
-          drive.arms[hand] = {
-            shoulder:
-              punch.age < COMBAT.punch.startup ? -0.35 : COMBAT.punch.shoulder,
-            elbow: COMBAT.punch.elbow,
-          };
-          if (punch.age >= COMBAT.punch.startup) {
-            drive.arms[hand].target = add(
-              actor.body.translation(),
-              rotate(yaw(actor.facing), {
-                x: hand === 0 ? -0.14 : 0.14,
-                y: 0.82,
-                z: 0.95,
-              })
-            );
-            drive.arms[hand].force = COMBAT.punch.handForce;
-          }
+        const punchDrive = punchArmDrive(actor, hand, punch);
+        if (punchDrive) {
+          drive.arms[hand] = punchDrive;
         } else if (reaching && !this.grips.hands[p.id][hand]) {
           const paired = this.grips.hands[p.id].find((g) => g !== null);
           // Before acquisition only the best available hand reaches. Afterwards

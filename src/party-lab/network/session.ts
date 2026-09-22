@@ -7,7 +7,9 @@ import type {
 import type { MovementInput } from "../input/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room } from "@colyseus/sdk";
+import { selectedCostumeId, type SelectableCostumeId } from "../../../shared/party-lab/costumes";
 import { createLobbyClient, lobbyError } from "./client";
+import { admissionOptions } from "./admission";
 import {
   CHAT_MAX_LENGTH,
   EMPTY_LOBBY,
@@ -50,7 +52,8 @@ export class LobbySession {
   async connect(
     action: "create" | "join",
     rawNickname: string,
-    rawCode: string
+    rawCode: string,
+    costumeId: SelectableCostumeId
   ) {
     if (this.disposed || this.room || this.snapshot.status === "connecting")
       return;
@@ -65,15 +68,8 @@ export class LobbySession {
       const client = createLobbyClient();
       const pending =
         action === "create"
-          ? client.create<LobbyState>("party_lab", {
-              nickname,
-              intent: "create",
-            })
-          : client.joinById<LobbyState>(code, {
-              nickname,
-              code,
-              intent: "join",
-            });
+          ? client.create<LobbyState>("party_lab", admissionOptions("create", nickname, code, costumeId))
+          : client.joinById<LobbyState>(code, admissionOptions("join", nickname, code, costumeId));
       // Late successful admissions must be released after timeout/unmount/cancel.
       void pending.then(
         (room) => {
@@ -109,6 +105,7 @@ export class LobbySession {
             connected: player.connected,
             slot: player.slot,
             color: player.color,
+            costumeId: selectedCostumeId(player.costumeId),
             ready: player.ready,
             participating: player.participating,
           })
@@ -203,13 +200,13 @@ export class LobbySession {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected")
       this.room.send("ready", ready);
   }
-  sendInput(intent: MovementInput) {
+  sendInput(intent: MovementInput): InputPacket | null {
     if (
       !this.room?.connection.isOpen ||
       this.snapshot.status !== "connected" ||
       this.snapshot.phase !== "playing"
     )
-      return;
+      return null;
     const packet: InputPacket = {
       seq: ++this.inputSeq,
       round: this.snapshot.round,
@@ -221,6 +218,7 @@ export class LobbySession {
       liftHeld: !!intent.lift,
     };
     this.room.send("input", packet);
+    return packet;
   }
   sendChat(text: string): boolean {
     if (
@@ -284,8 +282,8 @@ export function useLobbySession() {
     stream,
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
-    connect: (action: "create" | "join", nickname: string, code: string) =>
-      session.current?.connect(action, nickname, code),
+    connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>
+      session.current?.connect(action, nickname, code, costumeId),
     leave: () => session.current?.leave(),
     sendChat: (text: string) => session.current?.sendChat(text) ?? false,
   };

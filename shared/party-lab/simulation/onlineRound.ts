@@ -8,6 +8,7 @@ import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import {
   CONDITIONS,
+  NET,
   TRANSFORM_BYTES,
   type GameEvent,
   type GameSnapshot,
@@ -145,7 +146,7 @@ export class OnlineRoundSimulation {
         }
       }
     return {
-      v: 1,
+      v: NET.version,
       seq: ++this.snapshotId,
       tick: this.tick,
       round: this.roundId,

@@ -8,12 +8,15 @@ documentation. All 44 original local tests passed before this task. The existing
 Phase 4A Colyseus room/chat server was inspected and left unchanged. Existing work
 was preserved; no reset, stash, commit, push, deployment or gameplay networking.
 
-## Online compatibility (Phase 4B.1)
+## Online compatibility (Phase 4B.2)
 
 Online uses these same local bindings and focus protections. It transmits only
-abstract intent at 30 Hz; the server validates and applies it at 60 Hz. Opening
+abstract intent at up to 60 Hz; the server validates and applies it at 60 Hz. Opening
 settings neutralizes your input without pausing the shared round. Control storage
-and customization remain entirely local. See [ONLINE.md](../../../shared/party-lab/ONLINE.md).
+and customization remain entirely local. Local movement/jump and harmless punch
+motion use an isolated predicted rig; input history is cleared on settings,
+disconnect, stale snapshots and round changes. See
+[PREDICTION.md](../../../shared/party-lab/PREDICTION.md).
 
 ## Architecture
 

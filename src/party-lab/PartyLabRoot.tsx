@@ -4,6 +4,9 @@ import ControlsSettings from "./ControlsSettings";
 import { loadControls, saveControls } from "./input/storage";
 import type { Bindings } from "./input/bindings";
 import PartyLobby from "./PartyLobby";
+import CostumePreview from "./CostumePreview";
+import { loadSelectedCostume, saveSelectedCostume } from "./scene/visual/costumeStorage";
+import { COSTUME_NAMES, SELECTABLE_COSTUME_IDS, type SelectableCostumeId } from "./scene/visual/costumes";
 import { useLobbySession } from "./network/session";
 import { normalizeNickname, normalizeRoomCode, validNickname, validRoomCode } from "./network/types";
 import "./party-lab.css";
@@ -33,6 +36,7 @@ function PartyLab() {
       requestAnimationFrame(() => controlsEntry.current?.focus());
     }} /> : null;
   const [nickname, setNickname] = useState("");
+  const [costumeId, setCostumeId] = useState<SelectableCostumeId>(loadSelectedCostume);
   const [roomCode, setRoomCode] = useState(() => normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? ""));
   const [nicknameError, setNicknameError] = useState("");
   const [roomCodeError, setRoomCodeError] = useState("");
@@ -40,6 +44,15 @@ function PartyLab() {
   const nicknameRef = useRef<HTMLInputElement>(null);
   const roomCodeRef = useRef<HTMLInputElement>(null);
   const busy = network.snapshot.status === "connecting";
+
+  function chooseCostume(next: SelectableCostumeId) {
+    setCostumeId(next);
+    saveSelectedCostume(next);
+  }
+  function cycleCostume(step: -1 | 1) {
+    const index = SELECTABLE_COSTUME_IDS.indexOf(costumeId);
+    chooseCostume(SELECTABLE_COSTUME_IDS[(index + step + SELECTABLE_COSTUME_IDS.length) % SELECTABLE_COSTUME_IDS.length]);
+  }
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -68,7 +81,7 @@ function PartyLab() {
 
     setNickname(name);
     setRoomCode(code);
-    void network.connect(action, name, code);
+    void network.connect(action, name, code, costumeId);
   }
 
   if (network.snapshot.code) {
@@ -94,7 +107,7 @@ function PartyLab() {
         </div>
       }>
         <div hidden={controlsOpen}>
-          <ArenaScene onExit={() => setInArena(false)} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} />
+          <ArenaScene onExit={() => setInArena(false)} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} costumeId={costumeId} />
         </div>
         {settings}
       </Suspense>
@@ -104,7 +117,7 @@ function PartyLab() {
   if (settings) return settings;
 
   return (
-    <div className="party-lab">
+    <div className="party-lab pl-landing">
       <header className="pl-topbar">
         <span className="pl-brand">torble<span className="pl-brand-divider">/</span>party lab</span>
         <a className="pl-back" href="/"><span aria-hidden="true">↗</span> Torble'a Dön</a>
@@ -115,14 +128,19 @@ function PartyLab() {
           <span className="pl-eyebrow">Biraz rekabet. Biraz kaos.</span>
           <h1 id="pl-title">PARTY <span>LAB</span></h1>
           <p className="pl-subtitle">Deneysel, 3 kişilik tarayıcı parti oyunu.</p>
-          <div className="pl-mascots" aria-hidden="true">
-            <span className="pl-bean pl-bean-mint"><i /></span>
-            <span className="pl-bean pl-bean-cream"><i /></span>
-            <span className="pl-bean pl-bean-coral"><i /></span>
-            <span className="pl-spark pl-spark-one">+</span>
-            <span className="pl-spark pl-spark-two">+</span>
+          <div className="pl-costume-picker" aria-label="Kostüm seç">
+            <span className="pl-eyebrow">Kostümün</span>
+            <CostumePreview costumeId={costumeId} />
+            <div className="pl-costume-switch">
+              <button type="button" aria-label="Önceki kostüm" disabled={busy} onClick={() => cycleCostume(-1)}>←</button>
+              <strong aria-live="polite">{COSTUME_NAMES[costumeId]}</strong>
+              <button type="button" aria-label="Sonraki kostüm" disabled={busy} onClick={() => cycleCostume(1)}>→</button>
+            </div>
+            <div className="pl-costume-options" aria-label="Kostümler">
+              {SELECTABLE_COSTUME_IDS.map(id => <button key={id} type="button" aria-label={COSTUME_NAMES[id]}
+                aria-pressed={costumeId === id} disabled={busy} onClick={() => chooseCostume(id)}>{COSTUME_NAMES[id]}</button>)}
+            </div>
           </div>
-          <p className="pl-invitation">Arkadaşlarını kap. <span>Gerisi biraz karışabilir.</span></p>
         </section>
 
         <section className="pl-lobby" aria-labelledby="pl-lobby-title">

@@ -1,9 +1,11 @@
-# Party Lab server (Phase 4B.1)
+# Party Lab server (Phase 4B.2)
 
 Independent, single-process Node.js + Colyseus lobby and authoritative Rapier
 gameplay for 2–3 real players. No Supabase, accounts, database or host authority.
 See [ONLINE.md](../../shared/party-lab/ONLINE.md) for the simulation, protocol,
 measurements, file inventory and verification limits.
+See [PREDICTION.md](../../shared/party-lab/PREDICTION.md) for current input
+acknowledgements, local prediction, bandwidth and latency measurements.
 
 ## Run locally
 
@@ -81,8 +83,10 @@ npm --prefix servers/party-lab start
   code or stored in local/session storage. Reload/closed tabs do not restore a
   session: the old seat expires within the grace policy, then join again.
 - Schema patches at 100ms synchronize room code, roster, ready/round state and
-  chat history. Compact custom messages carry 20 Hz articulated snapshots;
-  the render loop interpolates them without running client combat authority.
+  chat history. Compact custom messages carry 20 Hz articulated snapshots with
+  processed-input acknowledgements and recipient-only velocity/controller state.
+  Remote players are interpolated; ordinary local locomotion is predicted and
+  reconciled without client combat authority.
 - `chat` accepts a **string**, at most **280 UTF-16 code units**. Trim/NFC,
   normalize line breaks/tabs, reject empty/control/bidi-spoofing input. HTML-like
   text stays literal; React renders text nodes, not HTML or Markdown.
@@ -90,7 +94,7 @@ npm --prefix servers/party-lab start
   **40** messages retained, oldest evicted. Sender ID, nickname, message ID, and
   timestamp are server supplied. No message persistence or body logging.
 - Unknown message types are rejected with a fixed notice. Transport payloads
-  cap at **2048 bytes**; Colyseus additionally caps client traffic at 90 messages/s (normal input is 30 Hz).
+  cap at **2048 bytes**; Colyseus additionally caps client traffic at 90 messages/s (normal input is at most 60 Hz).
 - Local Phase 3 arena is still available from the landing page, with bots and
   rounds unchanged. Leave the online lobby to enter it. Online has no bots.
 
@@ -132,4 +136,5 @@ Finally return to the landing page and enter the local three-bean arena.
 
 This is a local foundation. In-memory data is lost on restart. Internet hosting,
 TLS, deployment-wide admission abuse controls and multi-process scaling are
-deliberately undecided. Advanced client prediction/reconciliation belongs to Phase 4B.2.
+deliberately undecided. Phase 4B.2 predicts only local locomotion/jump and harmless
+punch presentation; constrained combat states continue to follow authority.

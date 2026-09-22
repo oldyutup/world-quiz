@@ -24,6 +24,7 @@ import Arena from "./Arena";
 import { ACTION_LABELS, ACTIONS } from "../input/actions";
 import { actionBindingLabel, type Bindings } from "../input/bindings";
 import PlayerBean from "./PlayerBean";
+import { localCostumeForSlot, type SelectableCostumeId } from "./visual/costumes";
 import { PARTS } from "./ragdoll/config";
 import { COMBAT } from "./combatConfig";
 import { initializePhysics, PHYSICS } from "./physics";
@@ -69,6 +70,7 @@ function Playground({
   paused,
   audio,
   shakeEnabled,
+  costumeId,
 }: {
   onStatus: (status: ArenaStatus) => void;
   onRound: (snapshot: RoundSnapshot) => void;
@@ -77,6 +79,7 @@ function Playground({
   paused: boolean;
   audio: AudioManager;
   shakeEnabled: boolean;
+  costumeId: SelectableCostumeId;
 }) {
   const beans = useRef<(Group | null)[]>([]);
   const simulation = useRef<LocalRoundSimulation | null>(null);
@@ -300,6 +303,7 @@ function Playground({
         <PlayerBean
           key={player.id}
           color={player.color}
+          costume={localCostumeForSlot(costumeId, player.id)}
           ref={(bean) => {
             beans.current[player.id] = bean;
           }}
@@ -309,11 +313,12 @@ function Playground({
   );
 }
 
-export default function ArenaScene({ onExit, bindings, paused, onControls }: {
+export default function ArenaScene({ onExit, bindings, paused, onControls, costumeId }: {
   onExit: () => void;
   bindings: Bindings;
   paused: boolean;
   onControls: () => void;
+  costumeId: SelectableCostumeId;
 }) {
   const { audio, settings } = usePartyAudio();
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -383,6 +388,7 @@ export default function ArenaScene({ onExit, bindings, paused, onControls }: {
               paused={paused}
               audio={audio}
               shakeEnabled={settings.cameraShake && !reducedMotion}
+              costumeId={costumeId}
             />
           </Canvas>
         </SceneBoundary>

@@ -11,6 +11,12 @@ local arena. Phase 4B.1 also provides a separate authoritative online arena; see
 non-browser simulation under `shared/party-lab/simulation/`; these scene modules
 retain compatibility exports for the local mode and its tests.
 
+Phase 4B.2 adds an online-only, nine-body/eight-joint local prediction world using
+the same static arena, controller and physical punch arm drive. It has no combat
+resolver, remote rigs, grips, elimination or result authority. All-body restore
+and bounded input replay reconcile it to server snapshots. Local bot mode is
+unchanged. See [PREDICTION.md](../../../shared/party-lab/PREDICTION.md).
+
 ## Controls
 
 Controls are now configurable from **Kontroller** on the landing page or local
