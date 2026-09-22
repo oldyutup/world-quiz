@@ -28,7 +28,7 @@ function PartyLab() {
     setControlsSaved(saveControls(next));
   }, []);
   const settings = controlsOpen ? <ControlsSettings bindings={bindings} onChange={updateBindings}
-    saved={controlsSaved} inArena={inArena || !!network.snapshot.code} online={!!network.snapshot.code} onClose={() => {
+    saved={controlsSaved} inArena={inArena || (!!network.snapshot.code && network.snapshot.phase !== "waiting")} online={!!network.snapshot.code && network.snapshot.phase !== "waiting"} onClose={() => {
       setControlsOpen(false);
       requestAnimationFrame(() => controlsEntry.current?.focus());
     }} /> : null;
@@ -76,7 +76,7 @@ function PartyLab() {
     return <>
       <div hidden={controlsOpen}>
         {network.snapshot.phase === 'waiting'
-          ? <PartyLobby lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onControls={() => setControlsOpen(true)} />
+          ? <PartyLobby controlsRef={controlsEntry} lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onControls={() => setControlsOpen(true)} />
           : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
               <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} onLeave={leave}/>
             </Suspense>}
