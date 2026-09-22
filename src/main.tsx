@@ -81,8 +81,14 @@ const LegalRoot = isLegalRoute
   ? lazy(() => import("./legal/LegalRoot"))
   : null;
 
-// Öncelik: dev test sayfası (yalnız dev) → hukuki sayfa → uygulama.
-const RootComponent = DevPage ?? LegalRoot ?? App;
+// Party Lab has its own root and styles; it never mounts the Torble App.
+const PartyLabRoot =
+  window.location.pathname === "/party-lab" || window.location.pathname === "/party-lab/"
+    ? lazy(() => import("./party-lab/PartyLabRoot"))
+    : null;
+
+// Öncelik: dev test sayfası → hukuki sayfa → Party Lab → uygulama.
+const RootComponent = DevPage ?? LegalRoot ?? PartyLabRoot ?? App;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

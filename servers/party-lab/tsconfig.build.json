@@ -1,0 +1,13 @@
+{
+  // Production build (Railway). shared/party-lab sits outside this package, so a clean
+  // checkout with only this package installed cannot resolve its npm imports by walking
+  // up from ../../shared. Map them to this package's copy for type checking; emitted JS
+  // keeps the bare specifier, which Node resolves from dist/ to ./node_modules.
+  // Kept out of tsconfig.json because tsx applies `paths` at runtime (dev server, tests).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@dimforge/rapier3d-compat": ["./node_modules/@dimforge/rapier3d-compat/dist/rapier.d.ts"]
+    }
+  }
+}

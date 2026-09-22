@@ -1,0 +1,20 @@
+rooftop-kit.glb — Party Lab "Çatı" (rooftop) arena kit
+
+Source: Downtown City MegaKit (Standard / free edition) by Quaternius
+        https://quaternius.com — models by @Quaternius
+License: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+         https://creativecommons.org/publicdomain/zero/1.0/
+         (as stated in the pack's License_Standard.txt; attribution is not
+         required, credit is given here voluntarily)
+
+Only this curated subset is included (Exports/glTF (Godot)):
+  Models:   Prop_ACUnit, Cornice_Brick_Center, Stairs_Entrance_Concrete,
+            Door_1, DoorFrame_Metal_Single, Prop_Drain, Prop_ManholeCover
+  Textures: T_Concrete_Asphalt_BaseColor, T_Concrete_BaseColor,
+            T_RedBrick_BaseColor, T_MetalConcrete_BaseColor,
+            T_Ornaments_BaseColor (cropped to the band the props use)
+
+Changes: merged into one GLB; vertex colours, second UV sets, ORM and normal
+maps dropped; metalness 0 and opaque glass; pivots normalised; textures
+resized to 1024 px WebP. Rebuild with:
+  node scripts/build-party-lab-rooftop-kit.mjs [path/to/DowntownCityMegaKit_extracted]
