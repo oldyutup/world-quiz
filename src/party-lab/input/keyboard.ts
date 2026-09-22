@@ -1,54 +1,74 @@
-export interface MovementInput {
-  x: number;
-  z: number;
-  jump: boolean;
-}
+import type { Bindings } from "./bindings";
+import { defaultBindings } from "./defaults";
+import { InputManager } from "./inputManager";
+import { isUIInput, keyboardBinding, mouseBinding } from "./device";
+export type { MovementInput } from "./types";
 
-const MOVEMENT_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", "Space"]);
-
-/** Arena-only input. Nothing is registered until the scene mounts. */
-export function bindKeyboard() {
-  const pressed = new Set<string>();
-  const input: MovementInput = { x: 0, z: 0, jump: false };
-
-  function updateAxes() {
-    input.x = Number(pressed.has("KeyD") || pressed.has("ArrowRight")) - Number(pressed.has("KeyA") || pressed.has("ArrowLeft"));
-    input.z = Number(pressed.has("KeyS") || pressed.has("ArrowDown")) - Number(pressed.has("KeyW") || pressed.has("ArrowUp"));
-  }
-
-  function clear() {
-    pressed.clear();
-    input.x = input.z = 0;
-    input.jump = false;
-  }
-
+/** Arena-scoped device adapter. Combat receives only readIntent()'s abstract actions. */
+export function bindKeyboard(
+  surface: HTMLElement,
+  bindings: Bindings = defaultBindings()
+) {
+  const manager = new InputManager(bindings);
+  let suspended = false;
+  const clear = () => manager.clear();
+  const bound = (binding: string) =>
+    Object.values(manager.bindings).some((slots) => slots.includes(binding));
   function keyDown(event: KeyboardEvent) {
-    if (!MOVEMENT_KEYS.has(event.code) || event.ctrlKey || event.metaKey || event.altKey) return;
-    const target = event.target;
-    if (target instanceof HTMLElement && target.closest("input, textarea, select, button, a, [contenteditable]")) return;
+    if (
+      suspended ||
+      isUIInput(event.target) ||
+      isUIInput(document.activeElement)
+    )
+      return;
+    const binding = keyboardBinding(event);
+    if (!binding || !bound(binding)) return;
     event.preventDefault();
-    if (event.code === "Space" && !event.repeat && !pressed.has("Space")) input.jump = true;
-    pressed.add(event.code);
-    updateAxes();
+    if (event.repeat) return;
+    manager.setBindingDown(binding, true);
   }
-
   function keyUp(event: KeyboardEvent) {
-    pressed.delete(event.code);
-    updateAxes();
+    manager.setBindingDown(event.code, false);
   }
-
+  function mouseDown(event: MouseEvent) {
+    if (suspended || isUIInput(event.target)) return;
+    const binding = mouseBinding(event.button);
+    if (!binding || !bound(binding)) return;
+    event.preventDefault();
+    (surface.closest("[tabindex]") as HTMLElement | null)?.focus();
+    manager.setBindingDown(binding, true);
+  }
+  function mouseUp(event: MouseEvent) {
+    const binding = mouseBinding(event.button);
+    if (binding) manager.setBindingDown(binding, false);
+  }
+  const contextMenu = (event: Event) => {
+    if (!suspended && bound("MouseRight")) event.preventDefault();
+  };
+  surface.addEventListener("mousedown", mouseDown);
+  surface.addEventListener("contextmenu", contextMenu);
+  window.addEventListener("mouseup", mouseUp);
+  window.addEventListener("pointercancel", clear);
   window.addEventListener("keydown", keyDown);
   window.addEventListener("keyup", keyUp);
   window.addEventListener("blur", clear);
   document.addEventListener("visibilitychange", clear);
-  // Releasing gameplay keys on HUD focus keeps keyboard navigation safe.
   document.addEventListener("focusin", clear);
-
   return {
-    input,
+    manager,
+    readIntent: () => manager.readIntent(),
     clear,
+    setBindings: (next: Bindings) => manager.setBindings(next),
+    setSuspended(value: boolean) {
+      suspended = value;
+      manager.setSuspended(value);
+    },
     dispose() {
       clear();
+      surface.removeEventListener("mousedown", mouseDown);
+      surface.removeEventListener("contextmenu", contextMenu);
+      window.removeEventListener("mouseup", mouseUp);
+      window.removeEventListener("pointercancel", clear);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", clear);

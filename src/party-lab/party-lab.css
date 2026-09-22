@@ -282,9 +282,18 @@ body:has(.party-lab) {
 .party-lab .pl-roster .pl-eliminated .pl-player-dot { opacity: 0.45; }
 .party-lab .pl-round-clock { padding: 9px 12px; border: 1px solid var(--pl-border); border-radius: 10px; background: oklch(22% 0.03 180 / 92%); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .party-lab .pl-round-message { top: 88px; }
+.party-lab .pl-combat-label { display: block; min-height: 16px; }
+.party-lab .pl-stun-meter { display: block; width: 100%; height: 4px; margin-top: 5px; border: 0; border-radius: 3px; overflow: hidden; appearance: none; background: oklch(40% 0.03 180); }
+.party-lab .pl-stun-meter::-webkit-progress-bar { background: oklch(40% 0.03 180); }
+.party-lab .pl-stun-meter::-webkit-progress-value { background: oklch(84% 0.12 85); }
+.party-lab .pl-stun-meter::-moz-progress-bar { background: oklch(84% 0.12 85); }
+.party-lab .pl-combat-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: oklch(22% 0.03 180 / 94%); color: var(--pl-ink); font-size: 12px; text-align: center; pointer-events: none; }
+.party-lab .pl-combat-hint:empty { display: none; }
 .party-lab .pl-scene-notice { display: grid; place-content: center; height: 100%; padding: 32px; text-align: center; }
 .party-lab .pl-arena-footer, .party-lab .pl-arena-footer > div { display: flex; align-items: center; gap: 24px; }
 .party-lab .pl-arena-footer { justify-content: space-between; color: var(--pl-muted); font-size: 12px; }
+.party-lab .pl-arena-footer { flex-wrap: wrap; gap: 12px; }
+.party-lab .pl-arena-footer > div { flex-wrap: wrap; gap: 14px 20px; }
 .party-lab kbd { padding: 5px 8px; border: 1px solid var(--pl-border); border-radius: 6px; color: var(--pl-ink); font: inherit; font-weight: 700; }
 @media (max-width: 600px) {
   .party-lab.pl-playground { padding: 16px 12px; gap: 14px; }
@@ -297,4 +306,34 @@ body:has(.party-lab) {
   .party-lab .pl-roster li { padding: 7px; gap: 6px; font-size: 11px; }
   .party-lab .pl-roster small { display: block; margin-left: 0; }
   .party-lab .pl-round-message { top: 116px; }
+}
+
+/* Controls share Party Lab's mint palette and compact, keyboard-friendly buttons. */
+.party-lab .pl-settings-main { width: 100%; max-width: 850px; margin: 40px auto; }
+.party-lab.pl-settings h1 { margin: 12px 0 18px; font-size: 56px; line-height: 1; }
+.party-lab .pl-settings-main > p { max-width: 70ch; color: var(--pl-muted); }
+.party-lab .pl-settings-note { margin-top: 12px; font-size: 13px; }
+.party-lab .pl-binding-head, .party-lab .pl-binding-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; align-items: center; gap: 20px; }
+.party-lab .pl-binding-head { margin-top: 30px; padding-bottom: 10px; color: var(--pl-muted); font-size: 12px; }
+.party-lab .pl-binding-row { padding: 10px 0; border-top: 1px solid var(--pl-border); }
+.party-lab .pl-action-label { font-weight: 600; }
+.party-lab .pl-binding-slot { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.party-lab .pl-binding-button { min-height: 44px; width: 132px; max-width: 100%; padding: 8px; border: 1px solid var(--pl-border); border-radius: 8px; background: oklch(25% 0.035 175); color: var(--pl-ink); font: inherit; font-size: 14px; cursor: pointer; }
+.party-lab .pl-binding-button:hover:not(:disabled) { border-color: var(--pl-accent); }
+.party-lab .pl-binding-remove { min-height: 44px; padding: 4px 8px; border: 0; background: transparent; color: var(--pl-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.party-lab .pl-binding-remove:hover:not(:disabled) { color: var(--pl-ink); text-decoration: underline; }
+.party-lab .pl-settings-feedback { min-height: 60px; padding-block: 16px; color: var(--pl-accent); }
+.party-lab .pl-settings-bottom { display: flex; align-items: center; gap: 24px; padding-top: 16px; border-top: 1px solid var(--pl-border); }
+.party-lab .pl-settings-bottom p { color: var(--pl-muted); font-size: 13px; max-width: 48ch; }
+.party-lab .pl-settings-bottom .pl-button { flex-shrink: 0; }
+.party-lab.pl-settings button:disabled { opacity: 0.5; cursor: default; }
+.party-lab .pl-arena-header > div { margin-right: auto; }
+@media (max-width: 600px) {
+  .party-lab.pl-settings { padding: 20px 16px; }
+  .party-lab .pl-settings-main { margin-block: 28px; }
+  .party-lab .pl-binding-head, .party-lab .pl-binding-row { grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; }
+  .party-lab .pl-binding-slot { flex-wrap: wrap; gap: 0; }
+  .party-lab .pl-action-label { font-size: 13px; }
+  .party-lab .pl-settings-bottom { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .party-lab .pl-arena-header { flex-wrap: wrap; }
 }

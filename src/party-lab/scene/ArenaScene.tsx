@@ -1,38 +1,99 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type MutableRefObject,
+} from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Vector3, type Group, type PerspectiveCamera } from "three";
+import {
+  Vector3,
+  Quaternion,
+  type Group,
+  type Mesh,
+  type MeshStandardMaterial,
+  type PerspectiveCamera,
+} from "three";
 import { bindKeyboard } from "../input/keyboard";
 import Arena from "./Arena";
+import { ACTION_LABELS, ACTIONS } from "../input/actions";
+import { actionBindingLabel, type Bindings } from "../input/bindings";
 import PlayerBean from "./PlayerBean";
+import { PARTS } from "./ragdoll/config";
+import { COMBAT } from "./combatConfig";
 import { initializePhysics, PHYSICS } from "./physics";
 import { LocalRoundSimulation } from "./localRound";
 import { PLAYERS } from "./players";
 import type { RoundSnapshot } from "./roundLogic";
 
 type ArenaStatus = "loading" | "ready" | "error" | "graphics-error";
+interface CombatHudElements {
+  labels: (HTMLSpanElement | null)[];
+  meters: (HTMLProgressElement | null)[];
+  hint: HTMLDivElement | null;
+  performance: HTMLSpanElement | null;
+}
 
-class SceneBoundary extends Component<{ children: ReactNode; onError: () => void }, { failed: boolean }> {
+class SceneBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { failed: boolean }
+> {
   state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch() { this.props.onError(); }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
   render() {
-    return this.state.failed
-      ? <div className="pl-scene-notice" role="alert">Arena açılamadı. WebGL 2 destekli bir tarayıcıda tekrar dene.</div>
-      : this.props.children;
+    return this.state.failed ? (
+      <div className="pl-scene-notice" role="alert">
+        Arena açılamadı. WebGL 2 destekli bir tarayıcıda tekrar dene.
+      </div>
+    ) : (
+      this.props.children
+    );
   }
 }
 
-function Playground({ onStatus, onRound }: {
+function Playground({
+  onStatus,
+  onRound,
+  hud,
+  bindings,
+  paused,
+}: {
   onStatus: (status: ArenaStatus) => void;
   onRound: (snapshot: RoundSnapshot) => void;
+  hud: MutableRefObject<CombatHudElements>;
+  bindings: Bindings;
+  paused: boolean;
 }) {
   const beans = useRef<(Group | null)[]>([]);
   const simulation = useRef<LocalRoundSimulation | null>(null);
   const keyboard = useRef<ReturnType<typeof bindKeyboard> | null>(null);
-  const poses = useRef(PLAYERS.map(() => ({ previous: new Vector3(), current: new Vector3() })));
+  const poses = useRef(
+    PLAYERS.map(() =>
+      PARTS.map(() => ({
+        previous: new Vector3(),
+        current: new Vector3(),
+        previousQ: new Quaternion(),
+        currentQ: new Quaternion(),
+      }))
+    )
+  );
   const accumulator = useRef(0);
   const publishedRevision = useRef(-1);
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
+  const hudTime = useRef(0);
+  const performanceSample = useRef({
+    time: 0,
+    frames: 0,
+    simulationMs: 0,
+    steps: 0,
+  });
 
   useEffect(() => {
     const perspective = camera as PerspectiveCamera;
@@ -42,25 +103,40 @@ function Playground({ onStatus, onRound }: {
     perspective.updateProjectionMatrix();
   }, [camera, size.width, size.height]);
 
+  useLayoutEffect(() => {
+    keyboard.current?.setBindings(bindings);
+    keyboard.current?.setSuspended(paused);
+    if (paused) simulation.current?.combat.stop();
+  }, [bindings, paused]);
+
   useEffect(() => {
     let cancelled = false;
-    const controls = bindKeyboard();
+    const controls = bindKeyboard(gl.domElement, bindings);
+    controls.setSuspended(paused);
     keyboard.current = controls;
-    void initializePhysics().then(() => {
-      if (cancelled) return;
-      const local = new LocalRoundSimulation();
-      simulation.current = local;
-      accumulator.current = 0;
-      for (const player of local.physics.players) {
-        poses.current[player.id].current.copy(player.body.translation());
-        poses.current[player.id].previous.copy(poses.current[player.id].current);
-      }
-      publishedRevision.current = local.round.revision;
-      onRound(local.round.snapshot());
-      onStatus("ready");
-    }).catch(() => {
-      if (!cancelled) onStatus("error");
-    });
+    void initializePhysics()
+      .then(() => {
+        if (cancelled) return;
+        const local = new LocalRoundSimulation();
+        simulation.current = local;
+        accumulator.current = 0;
+        for (const player of local.physics.players) {
+          PARTS.forEach((name, index) => {
+            const pose = poses.current[player.id][index],
+              body = player.parts[name].body;
+            pose.current.copy(body.translation());
+            pose.previous.copy(pose.current);
+            pose.currentQ.copy(body.rotation());
+            pose.previousQ.copy(pose.currentQ);
+          });
+        }
+        publishedRevision.current = local.round.revision;
+        onRound(local.round.snapshot());
+        onStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) onStatus("error");
+      });
     return () => {
       cancelled = true;
       controls.dispose();
@@ -68,31 +144,41 @@ function Playground({ onStatus, onRound }: {
       simulation.current?.dispose();
       simulation.current = null;
     };
-  }, [onStatus, onRound]);
+  }, [onStatus, onRound, gl]);
 
-  useFrame((_, delta) => {
+  useFrame((frame, delta) => {
     const local = simulation.current;
     const controls = keyboard.current;
     if (!local || !controls) return;
     // Never try to catch up minutes of physics after a hidden tab or debugger pause.
-    if (document.hidden || delta > 0.25) {
+    if (paused || document.hidden || delta > 0.25) {
       accumulator.current = 0;
       controls.clear();
       return;
     }
     accumulator.current += Math.min(delta, 0.1);
     while (accumulator.current >= PHYSICS.step) {
-      for (const pose of poses.current) pose.previous.copy(pose.current);
-      const event = local.step(controls.input);
-      controls.input.jump = false;
+      for (const character of poses.current)
+        for (const pose of character) {
+          pose.previous.copy(pose.current);
+          pose.previousQ.copy(pose.currentQ);
+        }
+      const start = performance.now();
+      const event = local.step(controls.readIntent());
+      performanceSample.current.simulationMs += performance.now() - start;
+      performanceSample.current.steps++;
       if (event) controls.clear();
       for (const player of local.physics.players) {
-        const pose = poses.current[player.id];
-        pose.current.copy(player.body.translation());
-        if (event === "reset") {
-          pose.previous.copy(pose.current);
-          beans.current[player.id]?.rotation.set(0, 0, 0);
-        }
+        PARTS.forEach((name, index) => {
+          const pose = poses.current[player.id][index],
+            body = player.parts[name].body;
+          pose.current.copy(body.translation());
+          pose.currentQ.copy(body.rotation());
+          if (event === "reset") {
+            pose.previous.copy(pose.current);
+            pose.previousQ.copy(pose.currentQ);
+          }
+        });
       }
       if (publishedRevision.current !== local.round.revision) {
         publishedRevision.current = local.round.revision;
@@ -103,72 +189,268 @@ function Playground({ onStatus, onRound }: {
     for (const player of local.physics.players) {
       const bean = beans.current[player.id];
       if (!bean) continue;
-      const pose = poses.current[player.id];
       bean.visible = !player.eliminated;
-      bean.position.lerpVectors(pose.previous, pose.current, accumulator.current / PHYSICS.step);
-      const velocity = player.body.linvel();
-      if (local.round.phase === "playing" && Math.hypot(velocity.x, velocity.z) > 0.15) {
-        const target = Math.atan2(velocity.x, velocity.z);
-        const difference = Math.atan2(Math.sin(target - bean.rotation.y), Math.cos(target - bean.rotation.y));
-        bean.rotation.y += difference * (1 - Math.exp(-12 * delta));
+      const combat = local.combat.players[player.id];
+      PARTS.forEach((name, index) => {
+        const node = bean.getObjectByName(name)!,
+          pose = poses.current[player.id][index];
+        node.position.lerpVectors(
+          pose.previous,
+          pose.current,
+          accumulator.current / PHYSICS.step
+        );
+        node.quaternion.slerpQuaternions(
+          pose.previousQ,
+          pose.currentQ,
+          accumulator.current / PHYSICS.step
+        );
+        const mesh = node.getObjectByName("skin") as Mesh;
+        (mesh.material as MeshStandardMaterial).emissiveIntensity =
+          (combat.flash / COMBAT.punch.flash) * 0.7;
+      });
+      const stars = bean.getObjectByName("stars")!;
+      stars.visible =
+        combat.condition.state === "KNOCKED_OUT" ||
+        combat.condition.state === "DAZED";
+      stars.rotation.y = frame.clock.elapsedTime * 3;
+    }
+    const sample = performanceSample.current;
+    sample.time += delta;
+    sample.frames++;
+    if (sample.time >= 2) {
+      if (hud.current.performance)
+        hud.current.performance.textContent = `${Math.round(
+          sample.frames / sample.time
+        )} FPS · ${(sample.simulationMs / Math.max(1, sample.steps)).toFixed(
+          1
+        )} ms fizik · 27 gövde / 24 eklem`;
+      sample.time = sample.frames = sample.simulationMs = sample.steps = 0;
+    }
+    // Imperative DOM meters at 10Hz, not React state or full component rerenders.
+    hudTime.current += delta;
+    if (hudTime.current >= 0.1) {
+      hudTime.current = 0;
+      for (const player of local.combat.players) {
+        const label = hud.current.labels[player.id],
+          meter = hud.current.meters[player.id];
+        const active =
+          local.round.phase === "playing" &&
+          !local.physics.players[player.id].eliminated;
+        const state = player.condition.state,
+          grips = local.combat.grips.count(player.id);
+        const text = !active
+          ? ""
+          : state === "KNOCKED_OUT"
+          ? "Baygın"
+          : state === "RECOVERING"
+          ? "Toparlanıyor"
+          : state === "DAZED"
+          ? "Sersem"
+          : local.combat.grips.incoming[player.id].size
+          ? "Tutuluyor"
+          : grips
+          ? `${grips} elle tutuyor`
+          : player.punches[0].age >= 0
+          ? "Sol yumruk"
+          : player.punches[1].age >= 0
+          ? "Sağ yumruk"
+          : "Hazır";
+        if (label && label.textContent !== text) label.textContent = text;
+        if (meter) meter.value = active ? player.condition.meter : 0;
       }
+      const human = local.combat.players[0];
+      const text =
+        local.round.phase !== "playing" || local.physics.players[0].eliminated
+          ? ""
+          : human.condition.state === "KNOCKED_OUT"
+          ? "Bayıldın! Birazdan toparlanacaksın."
+          : human.condition.state === "RECOVERING"
+          ? "Ayağa kalkıyorsun…"
+          : local.combat.grips.incoming[0].size
+          ? "Tutuldun! Uzaklaş, zıpla veya boş elinle karşılık ver."
+          : local.combat.grips.count(0)
+          ? `${actionBindingLabel(bindings, "lift")}: kaldır · Savurmak için tutmayı bırak.`
+          : `${actionBindingLabel(bindings, "punch")}: yumruk · ${actionBindingLabel(bindings, "grab")}: basılı tut ve yakala.`;
+      if (hud.current.hint && hud.current.hint.textContent !== text)
+        hud.current.hint.textContent = text;
     }
   });
 
-  return <><Arena />{PLAYERS.map(player => (
-    <PlayerBean key={player.id} color={player.color} ref={bean => { beans.current[player.id] = bean; }} />
-  ))}</>;
+  return (
+    <>
+      <Arena />
+      {PLAYERS.map((player) => (
+        <PlayerBean
+          key={player.id}
+          color={player.color}
+          ref={(bean) => {
+            beans.current[player.id] = bean;
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
-export default function ArenaScene({ onExit }: { onExit: () => void }) {
+export default function ArenaScene({ onExit, bindings, paused, onControls }: {
+  onExit: () => void;
+  bindings: Bindings;
+  paused: boolean;
+  onControls: () => void;
+}) {
   const [status, setStatus] = useState<ArenaStatus>("loading");
   const [round, setRound] = useState<RoundSnapshot | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const combatHud = useRef<CombatHudElements>({
+    labels: [],
+    meters: [],
+    hint: null,
+    performance: null,
+  });
 
-  useEffect(() => { viewport.current?.focus(); }, []);
+  useEffect(() => {
+    if (!paused) viewport.current?.focus();
+  }, [paused]);
 
   return (
     <div className="party-lab pl-playground">
       <header className="pl-arena-header">
-        <div><span className="pl-eyebrow">PARTY LAB / YEREL TEST</span><h2>Biraz hareket, biraz kaos.</h2></div>
-        <button className="pl-button pl-join" type="button" onClick={onExit}>Lobiye Dön</button>
+        <div>
+          <span className="pl-eyebrow">PARTY LAB / YEREL TEST</span>
+          <h2>Biraz hareket, biraz kaos.</h2>
+        </div>
+        <button className="pl-button pl-join" type="button" onClick={onControls}>Kontroller</button>
+        <button className="pl-button pl-join" type="button" onClick={onExit}>
+          Lobiye Dön
+        </button>
       </header>
-      <div className="pl-viewport" ref={viewport} tabIndex={0} role="region"
-        aria-label="Yerel 3D test arenası" aria-describedby="pl-controls"
-        onPointerDown={() => viewport.current?.focus()}>
+      <div
+        className="pl-viewport"
+        ref={viewport}
+        tabIndex={0}
+        role="region"
+        aria-label="Yerel 3D test arenası"
+        aria-describedby="pl-controls"
+        onPointerDown={() => viewport.current?.focus()}
+      >
         <SceneBoundary onError={() => setStatus("graphics-error")}>
-          <Canvas dpr={[1, 1.5]} camera={{ position: [0, 12, 14], fov: 45, near: 0.1, far: 180 }}
+          <Canvas
+            dpr={[1, 1.5]}
+            camera={{ position: [0, 12, 14], fov: 45, near: 0.1, far: 180 }}
             gl={{ antialias: true, alpha: true }}
-            fallback={<div className="pl-scene-notice" role="alert">Bu arena için WebGL 2 desteği gerekiyor.</div>}>
+            fallback={
+              <div className="pl-scene-notice" role="alert">
+                Bu arena için WebGL 2 desteği gerekiyor.
+              </div>
+            }
+          >
             <hemisphereLight args={["#fff2d9", "#537b7b", 1.8]} />
-            <directionalLight position={[4, 10, 6]} intensity={2.2} color="#fff2d9" />
-            <Playground onStatus={setStatus} onRound={setRound} />
+            <directionalLight
+              position={[4, 10, 6]}
+              intensity={2.2}
+              color="#fff2d9"
+            />
+            <Playground
+              onStatus={setStatus}
+              onRound={setRound}
+              hud={combatHud}
+              bindings={bindings}
+              paused={paused}
+            />
           </Canvas>
         </SceneBoundary>
         {status === "ready" && round && (
           <>
             <div className="pl-round-hud">
               <ul className="pl-roster" aria-label="Oyuncu durumları">
-                {PLAYERS.map(player => (
-                  <li key={player.id} className={round.alive[player.id] ? "" : "pl-eliminated"}>
-                    <span className="pl-player-dot" style={{ backgroundColor: player.color }} aria-hidden="true" />
-                    <span><b>{player.label} <small>{player.id === 0 ? "Sen" : "Bot"}</small></b>
-                      <span>{round.alive[player.id] ? "Aktif" : "Elendi"}</span></span>
+                {PLAYERS.map((player) => (
+                  <li
+                    key={player.id}
+                    className={round.alive[player.id] ? "" : "pl-eliminated"}
+                  >
+                    <span
+                      className="pl-player-dot"
+                      style={{ backgroundColor: player.color }}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <b>
+                        {player.label}{" "}
+                        <small>{player.id === 0 ? "Sen" : "Bot"}</small>
+                      </b>
+                      <span>{round.alive[player.id] ? "Aktif" : "Elendi"}</span>
+                      <span
+                        className="pl-combat-label"
+                        ref={(element) => {
+                          combatHud.current.labels[player.id] = element;
+                        }}
+                      />
+                      <progress
+                        className="pl-stun-meter"
+                        max={COMBAT.knockout.threshold}
+                        defaultValue={0}
+                        aria-label={`${player.label} sersemleme birikimi`}
+                        ref={(element) => {
+                          combatHud.current.meters[player.id] = element;
+                        }}
+                      />
+                    </span>
                   </li>
                 ))}
               </ul>
-              {round.phase === "playing" && <span className="pl-round-clock" aria-label={`Kalan süre: ${round.seconds} saniye`}>{round.seconds} sn</span>}
+              {round.phase === "playing" && (
+                <span
+                  className="pl-round-clock"
+                  aria-label={`Kalan süre: ${round.seconds} saniye`}
+                >
+                  {round.seconds} sn
+                </span>
+              )}
             </div>
+            <div
+              className="pl-combat-hint"
+              ref={(element) => {
+                combatHud.current.hint = element;
+              }}
+            />
             {(round.phase !== "playing" || !round.alive[0]) && (
-              <div className="pl-arena-message pl-round-message" role="status" aria-atomic="true">
-                {round.phase === "countdown" && <><strong>{round.seconds}</strong><span>Hazır ol!</span></>}
-                {round.phase === "playing" && <><strong>Düştün!</strong><span>Diğer oyuncuları izle.</span></>}
-                {round.phase === "results" && <>
-                  <strong style={{ color: round.winner === null ? undefined : PLAYERS[round.winner].color }}>
-                    {round.winner === null ? "Berabere!" : `${PLAYERS[round.winner].label} kazandı!`}
-                  </strong>
-                  <span>{round.reason === "timeout" ? "Süre doldu. " : ""}Yeni tur birazdan.</span>
-                </>}
+              <div
+                className="pl-arena-message pl-round-message"
+                role="status"
+                aria-atomic="true"
+              >
+                {round.phase === "countdown" && (
+                  <>
+                    <strong>{round.seconds}</strong>
+                    <span>Hazır ol!</span>
+                  </>
+                )}
+                {round.phase === "playing" && (
+                  <>
+                    <strong>Düştün!</strong>
+                    <span>Diğer oyuncuları izle.</span>
+                  </>
+                )}
+                {round.phase === "results" && (
+                  <>
+                    <strong
+                      style={{
+                        color:
+                          round.winner === null
+                            ? undefined
+                            : PLAYERS[round.winner].color,
+                      }}
+                    >
+                      {round.winner === null
+                        ? "Berabere!"
+                        : `${PLAYERS[round.winner].label} kazandı!`}
+                    </strong>
+                    <span>
+                      {round.reason === "timeout" ? "Süre doldu. " : ""}Yeni tur
+                      birazdan.
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </>
@@ -176,13 +458,24 @@ export default function ArenaScene({ onExit }: { onExit: () => void }) {
         {status !== "ready" && status !== "graphics-error" && (
           <div className="pl-arena-message" role="status" aria-live="polite">
             {status === "loading" && "Arena hazırlanıyor…"}
-            {status === "error" && "Fizik motoru yüklenemedi. Lobiye dönüp tekrar dene."}
+            {status === "error" &&
+              "Fizik motoru yüklenemedi. Lobiye dönüp tekrar dene."}
           </div>
         )}
       </div>
       <footer className="pl-arena-footer" id="pl-controls">
-        <div><span><kbd>WASD</kbd> — Hareket</span><span><kbd>SPACE</kbd> — Zıpla</span></div>
-        <span>1 oyuncu + 2 yerel bot</span>
+        <div>
+          {ACTIONS.map(action => <span key={action}>
+            <kbd>{actionBindingLabel(bindings, action)}</kbd> {ACTION_LABELS[action]}
+          </span>)}
+        </div>
+        <span
+          ref={(element) => {
+            combatHud.current.performance = element;
+          }}
+        >
+          1 oyuncu + 2 yerel bot · Aktif ragdoll testi
+        </span>
       </footer>
     </div>
   );

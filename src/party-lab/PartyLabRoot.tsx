@@ -1,4 +1,7 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import ControlsSettings from "./ControlsSettings";
+import { loadControls, saveControls } from "./input/storage";
+import type { Bindings } from "./input/bindings";
 import PartyLobby from "./PartyLobby";
 import { useLobbySession } from "./network/session";
 import { normalizeNickname, normalizeRoomCode, validNickname, validRoomCode } from "./network/types";
@@ -9,6 +12,19 @@ const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
   const [inArena, setInArena] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
+  const [bindings, setBindings] = useState(loadControls);
+  const [controlsSaved, setControlsSaved] = useState(true);
+  const controlsEntry = useRef<HTMLButtonElement>(null);
+  const updateBindings = useCallback((next: Bindings) => {
+    setBindings(next);
+    setControlsSaved(saveControls(next));
+  }, []);
+  const settings = controlsOpen ? <ControlsSettings bindings={bindings} onChange={updateBindings}
+    saved={controlsSaved} inArena={inArena} onClose={() => {
+      setControlsOpen(false);
+      requestAnimationFrame(() => controlsEntry.current?.focus());
+    }} /> : null;
   const [nickname, setNickname] = useState("");
   const [roomCode, setRoomCode] = useState(() => normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? ""));
   const [nicknameError, setNicknameError] = useState("");
@@ -65,10 +81,15 @@ export default function PartyLabRoot() {
           <button className="pl-button pl-join" onClick={() => setInArena(false)}>Lobiye Dön</button>
         </div>
       }>
-        <ArenaScene onExit={() => setInArena(false)} />
+        <div hidden={controlsOpen}>
+          <ArenaScene onExit={() => setInArena(false)} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} />
+        </div>
+        {settings}
       </Suspense>
     );
   }
+
+  if (settings) return settings;
 
   return (
     <div className="party-lab">
@@ -159,6 +180,7 @@ export default function PartyLabRoot() {
           <button className="pl-local-test" type="button" disabled={busy} onClick={() => setInArena(true)}>
             Yerel Test Arenası <span aria-hidden="true">↗</span>
           </button>
+          <button ref={controlsEntry} className="pl-local-test" type="button" onClick={() => setControlsOpen(true)}>Kontroller</button>
         </section>
       </main>
 
