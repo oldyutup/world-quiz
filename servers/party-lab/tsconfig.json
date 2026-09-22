@@ -7,8 +7,13 @@
     "skipLibCheck": true,
     "useDefineForClassFields": false,
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "rootDir": "../..",
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "../../shared/party-lab"
+  ]
 }

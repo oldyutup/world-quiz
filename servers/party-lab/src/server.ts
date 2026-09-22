@@ -1,3 +1,4 @@
+import { allowedOrigin } from "./origin.js";
 import { createServer } from "node:http";
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
@@ -6,7 +7,16 @@ import { PartyRoom } from "./PartyRoom.js";
 export function createPartyServer() {
   const httpServer = createServer();
   const server = new Server({
-    transport: new WebSocketTransport({ server: httpServer, maxPayload: 2048, pingInterval: 3000, pingMaxRetries: 2 }),
+    transport: new WebSocketTransport({
+      server: httpServer,
+      maxPayload: 2048,
+      pingInterval: 3000,
+      pingMaxRetries: 2,
+      verifyClient: (info: {
+        origin: string;
+        req: { headers: { host?: string } };
+      }) => allowedOrigin(info.origin, info.req.headers.host),
+    }),
     greet: false,
     gracefullyShutdown: false,
   });

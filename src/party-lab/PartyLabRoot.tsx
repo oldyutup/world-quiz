@@ -8,7 +8,8 @@ import { useLobbySession } from "./network/session";
 import { normalizeNickname, normalizeRoomCode, validNickname, validRoomCode } from "./network/types";
 import "./party-lab.css";
 
-const PREVIEW_MESSAGE = "Arkadaşlarınla bir lobide buluş ve sohbet et. Online oyun sonraki aşamada.";
+const PREVIEW_MESSAGE = "Arkadaşlarınla buluş, hazır ol ve aynı arenada kapış. 2–3 oyuncu.";
+const OnlineArena = lazy(() => import("./scene/OnlineArena"));
 const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
@@ -21,12 +22,13 @@ function PartyLab() {
   const [bindings, setBindings] = useState(loadControls);
   const [controlsSaved, setControlsSaved] = useState(true);
   const controlsEntry = useRef<HTMLButtonElement>(null);
+  const network = useLobbySession();
   const updateBindings = useCallback((next: Bindings) => {
     setBindings(next);
     setControlsSaved(saveControls(next));
   }, []);
   const settings = controlsOpen ? <ControlsSettings bindings={bindings} onChange={updateBindings}
-    saved={controlsSaved} inArena={inArena} onClose={() => {
+    saved={controlsSaved} inArena={inArena || !!network.snapshot.code} online={!!network.snapshot.code} onClose={() => {
       setControlsOpen(false);
       requestAnimationFrame(() => controlsEntry.current?.focus());
     }} /> : null;
@@ -37,7 +39,6 @@ function PartyLab() {
   const [status, setStatus] = useState(PREVIEW_MESSAGE);
   const nicknameRef = useRef<HTMLInputElement>(null);
   const roomCodeRef = useRef<HTMLInputElement>(null);
-  const network = useLobbySession();
   const busy = network.snapshot.status === "connecting";
 
   useEffect(() => {
@@ -71,11 +72,17 @@ function PartyLab() {
   }
 
   if (network.snapshot.code) {
-    return <PartyLobby lobby={network.snapshot} onChat={network.sendChat} onLeave={() => {
-      setRoomCode(network.snapshot.code);
-      network.leave();
-      setStatus(PREVIEW_MESSAGE);
-    }} />;
+    const leave = () => { setRoomCode(network.snapshot.code); network.leave(); setControlsOpen(false); setStatus(PREVIEW_MESSAGE); };
+    return <>
+      <div hidden={controlsOpen}>
+        {network.snapshot.phase === 'waiting'
+          ? <PartyLobby lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onControls={() => setControlsOpen(true)} />
+          : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
+              <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} onLeave={leave}/>
+            </Suspense>}
+      </div>
+      {settings}
+    </>;
   }
 
   if (inArena) {

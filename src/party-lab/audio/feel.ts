@@ -3,8 +3,8 @@ import { impactLevel, type FeedbackEvent } from "./events";
 export class CameraFeel {
   private remaining = 0;
   private strength = 0;
-  trigger(event: FeedbackEvent) {
-    const local = event.actor === 0 || event.target === 0;
+  trigger(event: FeedbackEvent, localSlot = 0) {
+    const local = event.actor === localSlot || event.target === localSlot;
     const impact = [
       "headHit",
       "bodyHit",

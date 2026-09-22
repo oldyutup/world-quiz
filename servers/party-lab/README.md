@@ -1,7 +1,9 @@
-# Party Lab lobby server (Phase 4A)
+# Party Lab server (Phase 4B.1)
 
-Independent, single-process Node.js + Colyseus lobby. No Supabase, accounts,
-database, Rapier, positions, game simulation, or host authority.
+Independent, single-process Node.js + Colyseus lobby and authoritative Rapier
+gameplay for 2–3 real players. No Supabase, accounts, database or host authority.
+See [ONLINE.md](../../shared/party-lab/ONLINE.md) for the simulation, protocol,
+measurements, file inventory and verification limits.
 
 ## Run locally
 
@@ -16,22 +18,36 @@ In another terminal, from the repository root:
 
 ```sh
 npm ci
-npm run dev -- --host 127.0.0.1 --port 5173
+npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
 ```
 
-Open **http://127.0.0.1:5173/party-lab**. The lobby server is
-**ws://127.0.0.1:2567**; HTTP matchmaking uses the same host/port.
-Vite may choose another port if 5173 is occupied; use its printed URL.
-For an installed checkout, skip the `ci` commands.
+MacBook host: open **http://localhost:5173/party-lab**, or use the LAN URL
+printed by Vite. Windows on the same Wi-Fi/LAN: open
+**http://192.168.1.173:5173/party-lab** (the Mac's address measured during this
+implementation; replace it if Vite prints a different address). Create/join the
+same room and have everyone press **Hazır**. No software installation is needed
+on Windows beyond its browser. Use the LAN URL on the Mac as well when sharing
+invite links; a localhost invite only works on that computer.
 
-Server defaults work without an env file. To override them, copy this directory's
-`.env.example` to `.env` and run commands from this directory. `HOST` defaults to
-loopback; nothing is deployed or publicly exposed by these instructions.
+The frontend development default follows the page hostname: a page at
+`http://192.168.1.173:5173` connects to `ws://192.168.1.173:2567`.
+Localhost/127.0.0.1 also work. Leave `VITE_PARTY_LAB_SERVER_URL` unset for this
+behavior. An explicit root `.env.local` override always wins; remove a stale
+loopback override before LAN testing and restart Vite.
 
-Frontend: optionally copy the `VITE_PARTY_LAB_SERVER_URL` entry from root
-`.env.party-lab.example` into root `.env.local`, then restart Vite. Only development
-has a localhost fallback. Production without a configured endpoint shows a clear
-unavailable message; the local arena remains usable. No hosting choice is made.
+Server defaults are `HOST=0.0.0.0`, `PORT=2567`. Optional server settings go in
+`servers/party-lab/.env`. Both TCP ports 5173 and 2567 must be reachable from
+Windows; allow the Node processes on the Mac's local-network firewall if needed.
+No router port forwarding is required. Guest Wi-Fi client isolation can block LAN
+peers. Nothing is deployed by these commands. For an installed checkout, skip `ci`.
+
+Matchmaking and WebSocket upgrades validate browser origins. Development allows
+the same hostname as the requested server (plus interchangeable loopback names)
+on Vite ports 5173/5174/5175/4173. Set `PARTY_LAB_ALLOWED_ORIGINS` to a comma-separated
+list of exact origins for other setups. Production requires that allowlist and
+an explicit frontend endpoint. Non-browser SDKs without Origin still require
+Colyseus seat reservations/reconnect credentials. These are local development
+policies, not a finished public hosting/admission-abuse system.
 
 For a compiled long-lived process:
 
@@ -64,8 +80,9 @@ npm --prefix servers/party-lab start
 - Reconnect credentials stay in SDK memory only and are never logged by our
   code or stored in local/session storage. Reload/closed tabs do not restore a
   session: the old seat expires within the grace policy, then join again.
-- Schema patches at 100ms synchronize only room code, roster, and chat history.
-  The browser takes immutable snapshots on state changes, never per render frame.
+- Schema patches at 100ms synchronize room code, roster, ready/round state and
+  chat history. Compact custom messages carry 20 Hz articulated snapshots;
+  the render loop interpolates them without running client combat authority.
 - `chat` accepts a **string**, at most **280 UTF-16 code units**. Trim/NFC,
   normalize line breaks/tabs, reject empty/control/bidi-spoofing input. HTML-like
   text stays literal; React renders text nodes, not HTML or Markdown.
@@ -73,14 +90,14 @@ npm --prefix servers/party-lab start
   **40** messages retained, oldest evicted. Sender ID, nickname, message ID, and
   timestamp are server supplied. No message persistence or body logging.
 - Unknown message types are rejected with a fixed notice. Transport payloads
-  cap at **2048 bytes**; Colyseus additionally caps client traffic at 10 messages/s.
+  cap at **2048 bytes**; Colyseus additionally caps client traffic at 90 messages/s (normal input is 30 Hz).
 - Local Phase 3 arena is still available from the landing page, with bots and
-  rounds unchanged. Leave the online lobby to enter it. Online gameplay is disabled.
+  rounds unchanged. Leave the online lobby to enter it. Online has no bots.
 
 ## Dependencies
 
 Pinned runtime: `@colyseus/core@0.18.15`, `@colyseus/ws-transport@0.18.2`,
-`@colyseus/schema@5.0.33`, `express@5.2.1`.
+`@colyseus/schema@5.0.33`, `express@5.2.1`, `@dimforge/rapier3d-compat@0.20.0`.
 The transport imports Express even though its peer metadata calls it optional.
 Test SDK: `@colyseus/sdk@0.18.3`; tooling: `tsx@4.22.3`, `typescript@5.9.3`,
 `@types/node@25.6.0`. Root frontend adds only `@colyseus/sdk@0.18.3`.
@@ -98,7 +115,7 @@ npm --prefix servers/party-lab run typecheck
 npm --prefix servers/party-lab test
 npm --prefix servers/party-lab run build
 npx tsc --noEmit --incremental false
-node --import tsx --test src/party-lab/scene/*.test.ts
+node --import tsx --test src/party-lab/input/*.test.ts src/party-lab/audio/*.test.ts src/party-lab/scene/*.test.ts src/party-lab/network/*.test.ts
 npx vite build --outDir /tmp/party-lab-build
 ```
 
@@ -114,5 +131,5 @@ verify two remain. Close a participant tab to see the disconnected seat expire.
 Finally return to the landing page and enter the local three-bean arena.
 
 This is a local foundation. In-memory data is lost on restart. Internet hosting,
-TLS/origin policy, deployment-wide admission abuse controls, and multi-process
-scaling are deliberately undecided. Physics networking belongs to a later phase.
+TLS, deployment-wide admission abuse controls and multi-process scaling are
+deliberately undecided. Advanced client prediction/reconciliation belongs to Phase 4B.2.

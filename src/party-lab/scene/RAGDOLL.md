@@ -6,7 +6,10 @@ settings, validation and listening-test limitations.
 
 Open `http://127.0.0.1:5173/party-lab` with `npm run dev -- --host 127.0.0.1`, then
 choose **Yerel Test Arenası**. The separate room/chat server is not needed for this
-local arena. No gameplay is networked. No dependency or hosting changes were made.
+local arena. Phase 4B.1 also provides a separate authoritative online arena; see
+[ONLINE.md](../../../shared/party-lab/ONLINE.md). Both modes now import the same
+non-browser simulation under `shared/party-lab/simulation/`; these scene modules
+retain compatibility exports for the local mode and its tests.
 
 ## Controls
 

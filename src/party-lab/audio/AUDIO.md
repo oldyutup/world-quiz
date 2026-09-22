@@ -4,6 +4,17 @@ Initial checkpoint: clean `party-game-prototype` at `cae1bc0`. Controls, nine-bo
 ragdolls, combat, bots, rounds and room/chat were inspected first. All 63 baseline
 local tests passed. This phase changes only `src/party-lab/`.
 
+## Online compatibility (Phase 4B.1)
+
+Pure event definitions, recipes and policy now live under `shared/party-lab/feedback/`;
+existing audio modules re-export them. Web Audio, preferences and WAV decoding stay
+browser-only. Online plays server-confirmed semantic events with room-lifetime IDs,
+round/tick timing and existing spatial positions through the same AudioManager.
+Deduplication never derives a fall sound from snapshots. `fall-cat.wav` remains the
+primary physical-elimination cue, once per event, with procedural fallback and no
+layering. Hidden tabs/settings discard presentation events while retaining their
+ID high-water mark. See [ONLINE.md](../../../shared/party-lab/ONLINE.md).
+
 ## Architecture and synthesis
 
 `PartyAudio` owns one lazy `AudioManager` per Party Lab root. Physics, combat,

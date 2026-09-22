@@ -1,4 +1,4 @@
-import { BUMPERS, PLATFORM } from "./physics";
+import { BUMPERS, PLATFORM } from "../../../shared/party-lab/simulation/environment";
 import { PLAYERS } from "./players";
 
 export default function Arena() {

@@ -15,12 +15,14 @@ export default function ControlsSettings({
   onChange,
   onClose,
   inArena,
+  online = false,
   saved,
 }: {
   bindings: Bindings;
   onChange: (bindings: Bindings) => void;
   onClose: () => void;
   inArena: boolean;
+  online?: boolean;
   saved: boolean;
 }) {
   const [capture, setCapture] = useState<{
@@ -78,7 +80,7 @@ export default function ControlsSettings({
           data-sfx="uiBack"
           disabled={!!capture}
         >
-          {inArena ? "Arenaya Dön" : "Lobiye Dön"}
+          {inArena ? "Oyuna Dön" : "Lobiye Dön"}
         </button>
       </header>
       <main className="pl-settings-main">
@@ -92,7 +94,7 @@ export default function ControlsSettings({
         </p>
         <p className="pl-settings-note">
           Bir atamayı seç, sonra yeni tuşa basıp bırak. ESC ile iptal et.{" "}
-          {inArena && "Arena duraklatıldı."}
+          {online ? "Girişlerin durduruldu; online tur devam ediyor." : inArena && "Arena duraklatıldı."}
         </p>
         <div
           className="pl-settings-feedback"

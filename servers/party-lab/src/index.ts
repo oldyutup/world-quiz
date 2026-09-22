@@ -4,7 +4,7 @@ import { createPartyServer } from "./server.js";
 
 if (existsSync(".env")) loadEnvFile(".env");
 const port = Number(process.env.PORT ?? 2567);
-const host = process.env.HOST ?? "127.0.0.1";
+const host = process.env.HOST ?? "0.0.0.0";
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
 const { server } = createPartyServer();
 let stopping = false;
@@ -16,4 +16,4 @@ const stop = async () => {
 process.once("SIGINT", () => { void stop(); });
 process.once("SIGTERM", () => { void stop(); });
 await server.listen(port, host);
-console.log(`Party Lab lobby listening at ws://${host}:${port}`);
+console.log(`Party Lab authoritative server listening at ws://${host}:${port}`);

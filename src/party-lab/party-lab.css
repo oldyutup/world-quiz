@@ -354,3 +354,6 @@ body:has(.party-lab) {
 @keyframes pl-win-pulse { from { transform: scale(.94); opacity: .6; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .party-lab .pl-result-pulse strong { animation: none; } }
 @media (max-width: 600px) { .party-lab .pl-volume-row { grid-template-columns: 100px 1fr 42px; gap: 8px; } }
+
+.party-lab .pl-online-status { color: var(--pl-muted); margin: 0 0 12px; font-size: 14px; }
+.party-lab .pl-online-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--pl-muted); font-size: 12px; padding-top: 10px; }
