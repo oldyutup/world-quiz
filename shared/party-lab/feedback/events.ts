@@ -25,6 +25,15 @@ export const SFX_NAMES = [
   "uiClick",
   "uiConfirm",
   "uiBack",
+  // Barn Shootout (rooftop never emits these).
+  "weaponPickup",
+  "shotgunFire",
+  "smgFire",
+  "bulletHit",
+  "weaponEmpty",
+  "trapSnap",
+  "death",
+  "respawn",
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 export interface FeedbackEvent {
@@ -34,6 +43,29 @@ export interface FeedbackEvent {
   actor?: number;
   target?: number;
   step?: number; // countdown number
+  /** Barn Shootout presentation detail (server-confirmed online); rooftop never sets it. */
+  barn?: BarnEventDetail;
+}
+/**
+ * What a client needs to draw a confirmed Barn shot or hit without re-deriving it:
+ * compact integers (centimetres). Presentation only — HP, kills and deaths always come
+ * from the snapshot.
+ */
+export interface BarnEventDetail {
+  /** Shots: weapon code (1 shotgun, 2 SMG). */
+  weapon?: number;
+  /** Shots: where each pellet/round stopped, xyz per pellet (cm). */
+  ends?: number[];
+  /** Shots: per pellet, the slot it struck, −1 flew on, −2 stopped by the barn. */
+  struck?: number[];
+  /** Hits: damage dealt, the target's HP after, whether it killed. */
+  damage?: number;
+  hp?: number;
+  killed?: boolean;
+  /** Hits: where (xyz, cm). */
+  point?: number[];
+  /** Deaths: the credited killer (−1: nobody). */
+  by?: number;
 }
 export type FeedbackSink = (event: FeedbackEvent) => void;
 export const silentFeedback: FeedbackSink = () => {};

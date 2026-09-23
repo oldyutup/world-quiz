@@ -146,8 +146,11 @@ test("ping echoes the client clock, adds server time, and diagnostics only on re
   a.send("ping", { id: 3, t: 2, diag: true });
   await until(() => pongs.length === 2);
   const d = pongs[1].d!;
-  for (const value of Object.values(d)) assert.ok(Number.isFinite(value));
+  const { mode, rewind, ...numbers } = d;
+  for (const value of Object.values(numbers)) assert.ok(Number.isFinite(value));
   assert.ok(d.rooms >= 1 && d.heapMb > 0);
+  assert.equal(mode, "rooftop_brawl", "the room reports its simulation's mode");
+  assert.equal(rewind, undefined, "lag-compensation figures are Barn-only");
   for (const bad of [null, [], { id: -1, t: 0 }, { id: 1.5, t: 0 }, { id: 4, t: "x" }, { id: 4, t: 0, slot: 1 }, { id: 4, t: 0, diag: 1 }]) {
     await pause(210);
     a.send("ping", bad);

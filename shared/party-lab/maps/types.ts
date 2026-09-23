@@ -5,7 +5,7 @@
  *
  * Coordinates: metres, +Y up, +Z toward the fixed camera, main floor at y = 0.
  */
-export type ArenaMapId = "rooftop" | "test";
+export type ArenaMapId = "rooftop" | "test" | "barn";
 
 export interface Vec3 {
   readonly x: number;
@@ -26,7 +26,18 @@ export type ColliderRole =
   | "stairs"
   | "condenser"
   | "curb"
-  | "bumper";
+  | "bumper"
+  // Barn ("Ambar")
+  | "wall"
+  | "fence"
+  | "loft"
+  | "step"
+  | "rail"
+  | "hay"
+  | "crate"
+  | "stall"
+  | "barrel"
+  | "post";
 
 interface ColliderBase {
   readonly role: ColliderRole;
@@ -72,8 +83,10 @@ export interface ArenaMap {
     readonly maxZ: number;
   };
   readonly colliders: readonly ArenaCollider[];
-  /** One per slot; the pelvis is restored here, facing the origin. */
+  /** One per slot; the pelvis is restored here, facing `spawnYaws` (default: the origin). */
   readonly spawns: readonly [Vec3, Vec3, Vec3];
+  /** Facing per slot (atan2(x, z), the body's yaw); maps without it face every spawn toward the origin. */
+  readonly spawnYaws?: readonly [number, number, number];
   readonly lethalEdges: readonly LethalEdge[];
   /** Local bots only: retreat point and random wander box. */
   readonly bot: {

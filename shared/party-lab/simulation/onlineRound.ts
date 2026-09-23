@@ -15,9 +15,12 @@ import {
   type GameSnapshot,
   type OnlinePhase,
 } from "../network/protocol.js";
+import { capturePredictionState } from "./predictionState.js";
+import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "./online.js";
 
-/** Same physical rules as LocalRoundSimulation; no bots or browser dependencies. */
-export class OnlineRoundSimulation {
+/** Rooftop Brawl. Same physical rules as LocalRoundSimulation; no bots or browser dependencies. */
+export class OnlineRoundSimulation implements OnlineSimulation {
+  readonly mode = "rooftop_brawl" as const;
   private pending: FeedbackEvent[] = [];
   private collect = (event: FeedbackEvent) => {
     this.pending.push(event);
@@ -27,14 +30,23 @@ export class OnlineRoundSimulation {
   private contacts = new PhysicsFeedback(this.physics, this.collect);
   round = new RoundLogic();
   phase: OnlinePhase = "waiting";
-  roundId = 0;
-  tick = 0;
   mask = 0;
-  private eventId = 0;
-  private snapshotId = 0;
   private countdown = 0;
-  constructor() {
+  /** Room-lifetime tick/round/event/snapshot counters (shared across mode swaps). */
+  constructor(readonly counters: RoomCounters = newRoomCounters()) {
     this.resetBodies([]);
+  }
+  get roundId() {
+    return this.counters.round;
+  }
+  get tick() {
+    return this.counters.tick;
+  }
+  get seconds() {
+    return this.phase === "waiting" ? 0 : this.round.seconds;
+  }
+  get winner() {
+    return this.round.winner ?? -1;
   }
   private resetBodies(slots: readonly PlayerId[]) {
     this.combat.reset();
@@ -52,7 +64,7 @@ export class OnlineRoundSimulation {
   start(slots: readonly PlayerId[]) {
     if (this.phase !== "waiting" || new Set(slots).size < 2) return false;
     this.round = new RoundLogic();
-    this.roundId++;
+    this.counters.round++;
     this.countdown = 0;
     this.resetBodies(slots);
     this.phase = "countdown";
@@ -82,7 +94,7 @@ export class OnlineRoundSimulation {
     // Departure is a forfeit, not a physical fall: no cat cue.
   }
   step(inputs: readonly MovementInput[]): GameEvent[] {
-    this.tick++;
+    this.counters.tick++;
     this.pending.length = 0;
     if (this.phase === "waiting") return [];
     if (this.phase === "results") {
@@ -119,7 +131,7 @@ export class OnlineRoundSimulation {
     }
     return this.pending.map((event) => ({
       ...event,
-      id: ++this.eventId,
+      id: ++this.counters.event,
       round: this.roundId,
       tick: this.tick,
     }));
@@ -148,7 +160,8 @@ export class OnlineRoundSimulation {
       }
     return {
       v: NET.version,
-      seq: ++this.snapshotId,
+      mode: this.mode,
+      seq: ++this.counters.snapshot,
       tick: this.tick,
       round: this.roundId,
       phase: this.phase,
@@ -169,6 +182,9 @@ export class OnlineRoundSimulation {
       ack,
       transforms,
     };
+  }
+  prediction(slot: PlayerId) {
+    return capturePredictionState(this.physics.players[slot], this.combat.players[slot]);
   }
   dispose() {
     this.combat.stop();

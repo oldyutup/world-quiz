@@ -19,7 +19,8 @@ import { bindingLabel } from "../input/bindings";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics";
 import { LocalPrediction } from "../network/prediction/localPrediction";
 import type { PlayerId } from "./players";
-import type { InputPacket } from "../../../shared/party-lab/network/protocol";
+import type { AnyInputPacket } from "../../../shared/party-lab/network/protocol";
+import OnlineBarnArena from "./OnlineBarnArena";
 import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
@@ -53,7 +54,7 @@ interface Props {
   stream: GameStream;
   bindings: Bindings;
   paused: boolean;
-  sendInput: (input: MovementInput) => InputPacket | null | undefined;
+  sendInput: (input: MovementInput) => AnyInputPacket | null | undefined;
   onLeave: () => void;
   onControls: () => void;
   diagnostics?: NetDiagnostics | null;
@@ -382,7 +383,14 @@ function OnlineView({
     </>
   );
 }
+/**
+ * The round's mode comes from the server (lobby state, set with the phase); the view
+ * never guesses it from poses or map data. Rooftop Brawl keeps its original view.
+ */
 export default function OnlineArena(props: Props) {
+  return props.lobby.mode === "barn_shootout" ? <OnlineBarnArena {...props} /> : <OnlineRooftopArena {...props} />;
+}
+function OnlineRooftopArena(props: Props) {
   const { lobby, onLeave, onControls, bindings } = props;
   const viewport = useRef<HTMLDivElement>(null),
     performanceLabel = useRef<HTMLSpanElement>(null),

@@ -11,11 +11,15 @@ export class CameraFeel {
       "heavyBump",
       "floorFlop",
       "knockout",
+      // Barn only (the rooftop never emits these).
+      "bulletHit",
+      "trapSnap",
+      "death",
     ].includes(event.name);
     if (!local || !impact || impactLevel(event.intensity ?? 0) !== "HEAVY")
       return;
     this.remaining = 0.15;
-    this.strength = event.name === "knockout" ? 0.035 : 0.022;
+    this.strength = event.name === "knockout" || event.name === "death" ? 0.035 : 0.022;
   }
   step(dt: number, enabled: boolean): [number, number] {
     if (!enabled) this.clear();

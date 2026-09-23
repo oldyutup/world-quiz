@@ -186,6 +186,21 @@ body:has(.party-lab) {
 .party-lab .pl-copy-status { color: var(--pl-sage); font-size: 13px; }
 .party-lab .pl-copy-status:not(:empty), .party-lab .pl-copy-fallback { margin-top: 10px; }
 .party-lab .pl-room-roster-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+/* Lobby game mode: host picks, everyone sees the choice and the actual next round. */
+.party-lab .pl-mode { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--pl-border); }
+.party-lab .pl-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.party-lab .pl-mode-option { display: grid; gap: 4px; align-content: start; min-height: 88px; padding: 10px 12px; border: 1px solid var(--pl-border); border-radius: 12px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; text-align: left; cursor: pointer; }
+.party-lab .pl-mode-option b { font-size: 14px; }
+.party-lab .pl-mode-option small { color: var(--pl-muted); font-size: 12px; line-height: 1.35; }
+.party-lab .pl-mode-option:hover:not(:disabled) { border-color: var(--pl-muted); }
+.party-lab .pl-mode-option.is-selected { border-color: var(--pl-accent); background: oklch(33% 0.04 75); }
+.party-lab .pl-mode-option.is-selected b { color: var(--pl-accent); }
+.party-lab .pl-mode-option:disabled { cursor: default; }
+.party-lab .pl-mode-option:disabled:not(.is-selected) { opacity: 0.62; }
+.party-lab .pl-mode-next { margin-top: 10px; color: var(--pl-muted); font-size: 13px; }
+.party-lab .pl-mode-next b { color: var(--pl-ink); }
+.party-lab .pl-room-player .pl-host-tag { color: var(--pl-accent); }
+@media (max-width: 560px) { .party-lab .pl-mode-options { grid-template-columns: minmax(0, 1fr); } .party-lab .pl-mode-option { min-height: 0; } }
 .party-lab .pl-room-layout h2 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
 .party-lab .pl-room-roster-heading > span { color: var(--pl-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 .party-lab .pl-room-roster { list-style: none; padding: 0; margin: 12px 0 20px; }
@@ -398,6 +413,54 @@ body:has(.party-lab) {
   pointer-events: none;
 }
 .party-lab .pl-arena-message strong { display: block; font-size: 24px; color: oklch(85% 0.085 30); }
+/* Barn third-person camera: look mode, crosshair (temporary aim debug), prompts. */
+.party-lab .pl-look-select { margin-left: 0; }
+.party-lab .pl-viewport[data-look] { cursor: crosshair; }
+.party-lab .pl-crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); pointer-events: none; }
+.party-lab .pl-crosshair::before, .party-lab .pl-crosshair::after { content: ""; position: absolute; background: oklch(97% 0.01 90 / 92%); box-shadow: 0 0 0 1px oklch(18% 0.02 60 / 55%); }
+.party-lab .pl-crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+.party-lab .pl-crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
+.party-lab .pl-look-prompt { top: 50%; transform: translate(-50%, calc(-50% - 84px)); }
+.party-lab .pl-look-prompt strong { font-size: 20px; }
+.party-lab .pl-look-chip { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: oklch(22% 0.03 180 / 88%); color: var(--pl-muted); font-size: 12px; pointer-events: none; }
+/* Barn combat HUD: health, weapon/ammo, hit marker, damage vignette, death. */
+.party-lab .pl-barn-hud { position: absolute; left: 16px; bottom: 16px; display: grid; gap: 8px; min-width: 200px; padding: 10px 12px; border-radius: 10px; background: oklch(20% 0.03 180 / 82%); color: var(--pl-ink); pointer-events: none; }
+.party-lab .pl-barn-health { display: grid; gap: 6px; }
+.party-lab .pl-barn-hp { display: flex; align-items: baseline; gap: 6px; }
+.party-lab .pl-barn-hp b { font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.party-lab .pl-barn-hp small { color: var(--pl-muted); font-size: 12px; }
+.party-lab .pl-barn-hp-bar { --hp: 100%; position: relative; display: block; height: 8px; border-radius: 999px; background: oklch(30% 0.02 180); overflow: hidden; }
+.party-lab .pl-barn-hp-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--hp); background: oklch(78% 0.16 145); transition: width 120ms ease-out; }
+.party-lab .pl-barn-hp-bar[data-low="true"]::after { background: oklch(68% 0.2 30); }
+.party-lab .pl-barn-weapon { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.party-lab .pl-barn-weapon b { font-size: 16px; }
+.party-lab .pl-barn-weapon span { color: oklch(86% 0.12 85); font-size: 14px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.party-lab .pl-barn-status { color: oklch(82% 0.14 40); font-size: 13px; min-height: 0; }
+.party-lab .pl-barn-status:empty { display: none; }
+.party-lab .pl-crosshair[data-blocked="true"] { transform: translate(-50%, -50%) rotate(45deg); }
+.party-lab .pl-crosshair[data-blocked="true"]::before, .party-lab .pl-crosshair[data-blocked="true"]::after { background: oklch(66% 0.23 28); }
+.party-lab .pl-hitmarker { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); opacity: 0; pointer-events: none; }
+.party-lab .pl-hitmarker::before, .party-lab .pl-hitmarker::after { content: ""; position: absolute; left: 14px; top: 0; width: 2px; height: 30px; background: oklch(97% 0.01 90); box-shadow: 0 0 0 1px oklch(18% 0.02 60 / 55%); clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%, 0 65%, 100% 65%, 100% 100%, 0 100%); }
+.party-lab .pl-hitmarker::before { transform: rotate(45deg); }
+.party-lab .pl-hitmarker::after { transform: rotate(-45deg); }
+.party-lab .pl-hitmarker.pl-hitmarker-kill::before, .party-lab .pl-hitmarker.pl-hitmarker-kill::after { background: oklch(66% 0.23 28); }
+.party-lab .pl-damage-vignette { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 45%, oklch(55% 0.22 28 / 70%) 100%); }
+.party-lab .pl-barn-death[hidden] { display: none; }
+.party-lab .pl-stun-meter.pl-hp-meter::-webkit-progress-value { background: oklch(78% 0.16 145); }
+.party-lab .pl-stun-meter.pl-hp-meter::-moz-progress-bar { background: oklch(78% 0.16 145); }
+/* Online Barn: timer top centre, scoreboard top right, small kill feed under it. */
+.party-lab .pl-barn-top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); pointer-events: none; }
+.party-lab .pl-barn-timer { display: block; padding: 6px 14px; border: 1px solid var(--pl-border); border-radius: 10px; background: oklch(20% 0.03 180 / 86%); color: var(--pl-ink); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.party-lab .pl-barn-scores { position: absolute; top: 14px; right: 16px; display: grid; gap: 2px; min-width: 190px; margin: 0; padding: 8px 10px; list-style: none; border: 1px solid var(--pl-border); border-radius: 10px; background: oklch(20% 0.03 180 / 82%); color: var(--pl-ink); font-size: 13px; pointer-events: none; }
+.party-lab .pl-barn-scores li { display: grid; grid-template-columns: minmax(0, 1fr) 52px 40px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.party-lab .pl-barn-scores li > span:first-child { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-lab .pl-barn-scores li > :not(:first-child) { text-align: right; }
+.party-lab .pl-barn-scores li[data-self="true"] > span:first-child { color: var(--pl-accent); }
+.party-lab .pl-barn-scores li[data-dead="true"] { opacity: 0.6; }
+.party-lab .pl-barn-scores .pl-barn-score-head { color: var(--pl-muted); font-size: 11px; }
+.party-lab .pl-barn-feed { position: absolute; top: 118px; right: 16px; margin: 0; max-width: 260px; color: var(--pl-ink); font: 12px/1.6 inherit; text-align: right; white-space: pre-line; text-shadow: 0 1px 2px oklch(10% 0.02 60 / 90%); pointer-events: none; }
+.party-lab .pl-viewport[data-mode="barn_shootout"] .pl-look-chip { top: 58px; }
+@media (max-width: 720px) { .party-lab .pl-barn-scores { min-width: 150px; font-size: 12px; } .party-lab .pl-barn-feed { top: 104px; } }
 .party-lab .pl-arena-message span { color: var(--pl-muted); }
 .party-lab .pl-round-hud { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; pointer-events: none; }
 .party-lab .pl-roster { display: flex; gap: 8px; list-style: none; padding: 0; margin: 0; }
@@ -416,6 +479,7 @@ body:has(.party-lab) {
 .party-lab .pl-stun-meter::-moz-progress-bar { background: oklch(84% 0.12 85); }
 .party-lab .pl-combat-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 10px; background: oklch(22% 0.03 180 / 94%); color: var(--pl-ink); font-size: 12px; text-align: center; pointer-events: none; }
 .party-lab .pl-combat-hint:empty { display: none; }
+.party-lab .pl-viewport[data-combat="barn"] .pl-combat-hint { left: auto; right: 16px; transform: none; max-width: min(460px, calc(100% - 260px)); text-align: right; }
 .party-lab .pl-scene-notice { display: grid; place-content: center; height: 100%; padding: 32px; text-align: center; }
 .party-lab .pl-arena-footer, .party-lab .pl-arena-footer > div { display: flex; align-items: center; gap: 24px; }
 .party-lab .pl-arena-footer { justify-content: space-between; color: var(--pl-muted); font-size: 12px; }
@@ -444,6 +508,7 @@ body:has(.party-lab) {
 .party-lab .pl-binding-head { margin-top: 30px; padding-bottom: 10px; color: var(--pl-muted); font-size: 12px; }
 .party-lab .pl-binding-row { padding: 10px 0; border-top: 1px solid var(--pl-border); }
 .party-lab .pl-action-label { font-weight: 600; }
+.party-lab .pl-action-mode { display: block; color: var(--pl-muted); font-size: 12px; font-weight: 400; }
 .party-lab .pl-binding-slot { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .party-lab .pl-binding-button { min-height: 44px; width: 132px; max-width: 100%; padding: 8px; border: 1px solid var(--pl-border); border-radius: 8px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; font-size: 14px; cursor: pointer; }
 .party-lab .pl-binding-button:hover:not(:disabled) { border-color: var(--pl-accent); }

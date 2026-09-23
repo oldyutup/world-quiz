@@ -119,6 +119,9 @@ export class SnapshotBuffer {
     this.sampledAt = -1;
   }
 }
+/** A locally predicted shot waits this long for its server echo before it stops suppressing one. */
+export const LOCAL_SHOT_MS = 1500;
+const SHOT_NAMES = new Set(["shotgunFire", "smgFire"]);
 /** Events are never reconstructed from poses; IDs are monotonic for the room lifetime. */
 export class GameStream {
   readonly snapshots = new SnapshotBuffer();
@@ -126,6 +129,19 @@ export class GameStream {
   private events: GameEvent[] = [];
   private presentationEnabled = true;
   private localSwings = new Set<string>();
+  /**
+   * Barn: shots the local player already presented from prediction (flash, tracer,
+   * sound). Each suppresses the next confirmed echo of the same weapon from that slot.
+   * Counted, not matched by input sequence: held SMG fire can land a tick apart on the
+   * server, so an exact sequence would miss and duplicate the presentation.
+   */
+  private localShots: { slot: number; name: string; at: number }[] = [];
+  /** Local predicted shot → confirmed echo (ms), most recent. */
+  lastShotEchoMs = NaN;
+  markLocalShot(slot: number, name: "shotgunFire" | "smgFire", now = performance.now()) {
+    this.localShots.push({ slot, name, at: now });
+    if (this.localShots.length > 32) this.localShots.shift();
+  }
   markLocalSwing(round: number, slot: number, seq: number) {
     this.localSwings.add(`${round}:${slot}:${seq}`);
     if (this.localSwings.size > 64)
@@ -158,16 +174,31 @@ export class GameStream {
         )
       )
         continue;
+      if (SHOT_NAMES.has(event.name) && this.consumeLocalShot(event)) continue;
       if (visible && this.presentationEnabled) this.events.push(event);
     }
     if (this.events.length > 128)
       this.events.splice(0, this.events.length - 128);
   }
-  drain(round: number, renderMs: number) {
+  private consumeLocalShot(event: GameEvent) {
+    const now = performance.now();
+    this.localShots = this.localShots.filter((s) => now - s.at < LOCAL_SHOT_MS);
+    const i = this.localShots.findIndex((s) => s.slot === event.actor && s.name === event.name);
+    if (i < 0) return false;
+    this.lastShotEchoMs = now - this.localShots[i].at;
+    this.localShots.splice(i, 1);
+    return true;
+  }
+  /**
+   * Events due on the remote playout timeline. `immediate` events (the local player's
+   * own confirmed hits, damage, death) are released as soon as they arrive: they match
+   * the HUD, which reads the newest snapshot, not the delayed remote timeline.
+   */
+  drain(round: number, renderMs: number, immediate?: (event: GameEvent) => boolean) {
     const ready: GameEvent[] = [];
     this.events = this.events.filter((e) => {
       if (e.round < round) return false;
-      if (e.round === round && (e.tick * 1000) / NET.physicsHz <= renderMs) {
+      if (e.round === round && ((e.tick * 1000) / NET.physicsHz <= renderMs || immediate?.(e))) {
         ready.push(e);
         return false;
       }
@@ -183,6 +214,8 @@ export class GameStream {
     this.clearPresentation();
     this.eventHead = 0;
     this.localSwings.clear();
+    this.localShots = [];
+    this.lastShotEchoMs = NaN;
     this.presentationEnabled = true;
   }
 }

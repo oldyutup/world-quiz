@@ -1,6 +1,6 @@
 import AudioSettings from "./audio/AudioSettings";
 import { useEffect, useRef, useState } from "react";
-import { ACTIONS, ACTION_LABELS, type Action } from "./input/actions";
+import { ACTIONS, ACTION_LABELS, BARN_ACTION_LABELS, type Action } from "./input/actions";
 import {
   bindingLabel,
   changeBinding,
@@ -116,7 +116,10 @@ export default function ControlsSettings({
         <div className="pl-binding-list">
           {ACTIONS.map((action) => (
             <div className="pl-binding-row" key={action}>
-              <span className="pl-action-label">{ACTION_LABELS[action]}</span>
+              <span className="pl-action-label">
+                {ACTION_LABELS[action]}
+                {BARN_ACTION_LABELS[action] && <small className="pl-action-mode">Ambarda: {BARN_ACTION_LABELS[action]}</small>}
+              </span>
               {([0, 1] as const).map((slot) => (
                 <div className="pl-binding-slot" key={slot}>
                   <button

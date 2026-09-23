@@ -24,6 +24,20 @@ export interface Character {
   facing: number;
   gait: number;
   jumpIn: number;
+  /**
+   * Sprint blend 0…1, eased toward MovementInput.sprint by the controller. Stays 0
+   * unless sprint input is sent (rooftop never sends it). Not yet in the online
+   * prediction snapshot; add it there before sprint is used online.
+   */
+  sprint: number;
+  /**
+   * Idle anchor (only with `CharacterDrive.anchor`, the barn): where the character
+   * stopped. Standing still, the controller steers gently back toward it instead of
+   * toward zero velocity, which cancels the active ragdoll's slow idle creep.
+   */
+  anchored: boolean;
+  anchorX: number;
+  anchorZ: number;
 }
 
 // Six hard-limited hinges + two ball shoulders with passive cone correction.
@@ -153,6 +167,9 @@ export function restore(
   character.facing = facing;
   character.gait = 0;
   character.jumpIn = 0;
+  character.sprint = 0;
+  character.anchored = false;
+  character.anchorX = character.anchorZ = 0;
   character.eliminated = false;
   const q = yaw(facing);
   for (const name of PARTS) {
@@ -175,7 +192,9 @@ export function restore(
 export function createCharacter(
   world: RAPIER.World,
   id: PlayerId,
-  spawn: Vec
+  spawn: Vec,
+  /** Initial yaw; defaults to facing the arena origin. */
+  facing = Math.atan2(-spawn.x, -spawn.z)
 ): Character {
   // Filter same-character contacts (including nonadjacent limbs), retain all opponents/environment.
   const membership = 1 << (id + 1),
@@ -218,9 +237,13 @@ export function createCharacter(
     body: parts.pelvis.body,
     joints: [],
     eliminated: false,
-    facing: Math.atan2(-spawn.x, -spawn.z),
+    facing,
     gait: 0,
     jumpIn: 0,
+    sprint: 0,
+    anchored: false,
+    anchorX: 0,
+    anchorZ: 0,
   };
   restore(character, spawn);
   connect(world, character);

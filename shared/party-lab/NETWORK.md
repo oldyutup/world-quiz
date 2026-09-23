@@ -1,6 +1,8 @@
 # Network reliability and realtime chat (Rooftop online)
 
-Audit and fixes made before Online Barn. Rooftop gameplay (movement, Punch, Grab,
+Audit and fixes made before Online Barn (the wire version is now **5**: Barn Shootout
+went online without changing anything below — see [BARN_ONLINE.md](BARN_ONLINE.md)).
+Rooftop gameplay (movement, Punch, Grab,
 Lift, KO, elimination, camera, bots, local mode) and all combat constants are
 unchanged. Current prediction details stay in [PREDICTION.md](PREDICTION.md);
 [ONLINE.md](ONLINE.md) is the historical 4B.1 report.
@@ -155,13 +157,13 @@ curl 'http://127.0.0.1:2601/stall?ms=600'   # or /set?rtt=150&jitter=40, /drop, 
 - **Replicas: exactly 1.** Rooms and codes live in one process's memory.
 - **Serverless / App Sleeping: off.** A sleeping service drops sockets and cold-starts.
 - Restart policy `ON_FAILURE` (10 retries) and health check `GET /health` →
-  `{"ok":true,"service":"party-lab","protocol":4}` after deploying this change.
+  `{"ok":true,"service":"party-lab","protocol":5}` (this change shipped 4; Online Barn made it 5).
 - Deploys/restarts end every room: avoid deploying during play.
 - Metrics: CPU (a vCPU pinned near 100 % would show as `srv` step gaps), memory
   (steady ~30 MB heap), network egress, and the logs above (`drop code=1006` = network
   loss, `1001` = tab closed/navigated, `4010` = client-side recovery).
-- Deploy frontend (Vercel) and server (Railway) together: protocol 4 clients refuse a
-  protocol 3 server and vice versa ("Party Lab güncellendi" message).
+- Deploy frontend (Vercel) and server (Railway) together: a client refuses a server with
+  another protocol and vice versa ("Party Lab güncellendi" message).
 
 ## Verdict
 

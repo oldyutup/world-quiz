@@ -3,6 +3,10 @@ export const RAGDOLL = {
   step: 1 / 60,
   gravity: -20,
   speed: 4.6,
+  /** MovementInput.sprint: target speed and gait cadence multiplier. */
+  sprintMultiplier: 1.4,
+  /** Seconds for the sprint blend to go fully in or out. */
+  sprintRamp: 0.25,
   acceleration: 25,
   airAcceleration: 5,
   braking: 9,
@@ -32,6 +36,18 @@ export const RAGDOLL = {
   gaitAmplitude: 0.22,
   gaitFrequency: 7,
   turnSpeed: 5,
+  /** Turn rate toward an explicit aim yaw (MovementInput.facing), rad/s. */
+  aimTurnSpeed: 12,
+  /**
+   * Idle anchor (CharacterDrive.anchor, barn only): standing still, the target velocity
+   * is gain × (anchor − pelvis), at most maxSpeed, through the normal braking limit —
+   * never a position edit. A push beyond `anchorRelease` re-anchors where the body is.
+   */
+  anchorGain: 3,
+  anchorMaxSpeed: 0.5,
+  anchorRelease: 0.35,
+  /** The anchor is only taken once the pelvis moves slower than this (m/s). */
+  anchorSettle: 0.3,
   handSpring: 100,
   handDamping: 8,
   handForce: 24,

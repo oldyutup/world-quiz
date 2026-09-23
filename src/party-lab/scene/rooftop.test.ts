@@ -13,6 +13,7 @@ import { createArenaWorld } from "../../../shared/party-lab/simulation/world";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound";
 import { capturePredictionState } from "../../../shared/party-lab/simulation/predictionState";
 import { InputMailbox, NET, type GameSnapshot, type InputPacket } from "../../../shared/party-lab/network/protocol";
+import { MODE_MAP } from "../../../shared/party-lab/modes";
 import {
   ARENA_MAPS,
   DEFAULT_ARENA_MAP_ID,
@@ -81,14 +82,16 @@ const facing = (x: number, z: number) => Math.atan2(x, z);
 
 // ─── Map data ────────────────────────────────────────────────────────────────
 
-test("rooftop is the default and only online map; ids are validated", () => {
+test("rooftop is the local default and Rooftop Brawl's online map; ids are validated", () => {
   assert.equal(DEFAULT_ARENA_MAP_ID, "rooftop");
   assert.equal(ONLINE_ARENA_MAP_ID, "rooftop");
+  assert.equal(MODE_MAP.rooftop_brawl, "rooftop");
   assert.equal(arenaMap("rooftop"), map);
-  assert.deepEqual(Object.keys(ARENA_MAPS).sort(), ["rooftop", "test"]);
+  assert.deepEqual(Object.keys(ARENA_MAPS).sort(), ["barn", "rooftop", "test"]);
   assert.ok(isArenaMapId("test") && isArenaMapId("rooftop"));
   assert.ok(!isArenaMapId("toString") && !isArenaMapId("") && !isArenaMapId(3));
-  assert.equal(NET.version, 4);
+  // 5 = game modes (Barn Shootout online); Rooftop Brawl's wire content is unchanged apart from `mode`.
+  assert.equal(NET.version, 5);
 });
 
 test("rooftop data is finite, inside the 14 × 11 m roof and matches the audited layout", () => {
@@ -367,12 +370,46 @@ test("carry-drop: a knocked-out opponent carried to the curb and released falls;
       combat.afterStep();
     }
     assert.ok(combat.stats.lifts > 0, "the target was lifted");
+    assert.ok(p.players.every((c) => c.sprint === 0), "Lift (Shift) never sprints on the rooftop");
     assert.equal(p.players[1].eliminated, true, "dropped over the curb");
     assert.equal(p.players[0].eliminated, false, "carrier stays on the roof");
   } finally {
     combat.stop();
     p.dispose();
   }
+});
+
+test("Shift keeps its rooftop meaning: holding Lift while walking changes nothing, and walking speed is unchanged", () => {
+  // Rooftop input never carries `sprint` (only the barn maps Lift to it); the character's walk is bit-identical.
+  const walk = (extra: Partial<MovementInput>) => {
+    const trace: number[] = [];
+    withRoof((p) => {
+      solo(p);
+      restore(p.players[0], { x: -5, y: 1, z: 3.6 }, facing(1, 0));
+      run(p, 0.5);
+      run(p, 1.6, (t) => ({ x: 1, z: Math.sin(t * 3) * 0.3, jump: false, ...extra }));
+      for (const name of PARTS) {
+        const b = p.players[0].parts[name].body, q = b.translation(), v = b.linvel();
+        trace.push(q.x, q.y, q.z, v.x, v.y, v.z);
+      }
+      trace.push(p.players[0].facing, p.players[0].gait, p.players[0].sprint);
+    });
+    return trace;
+  };
+  const plain = walk({});
+  assert.deepEqual(walk({ lift: true }), plain, "Lift alone does not change movement");
+  assert.deepEqual(walk({ sprint: false }), plain, "an explicit non-sprint is the plain walk");
+  assert.equal(plain[plain.length - 1], 0, "sprint blend stays 0");
+  withRoof((p) => {
+    solo(p);
+    restore(p.players[0], { x: -6, y: 1, z: 3.6 }, facing(1, 0));
+    run(p, 0.5);
+    run(p, 0.8, () => ({ x: 1, z: 0, jump: false, lift: true }));
+    const a = { ...pelvis(p) };
+    run(p, 0.8, () => ({ x: 1, z: 0, jump: false, lift: true }));
+    const speed = (pelvis(p).x - a.x) / 0.8;
+    assert.ok(Math.abs(speed - RAGDOLL.speed) < 0.25, `rooftop walking speed ${speed.toFixed(2)} m/s`);
+  });
 });
 
 test("stairs and deck are traversable; the deck's open right side is lethal, its front drop is not", () => {

@@ -1,0 +1,26 @@
+barn-kit.glb — Party Lab "Ambar" (Barn Shootout) arena kit
+
+Sources (all by Quaternius, via poly.pizza bundle downloads):
+  Farm Buildings Bundle   https://poly.pizza/l/ppbnhEfNEt
+  Medieval Village Pack   https://poly.pizza/l/NsHhjhlrfY
+  Toon Shooter Game Kit   https://poly.pizza/l/qraiSXoAru
+License: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+         https://creativecommons.org/publicdomain/zero/1.0/
+         (as stated on the three poly.pizza bundle pages, checked 2026-09-22;
+         the downloaded packs contain no license file. Attribution is not
+         required; credit is given here voluntarily.)
+
+Only this curated subset is included:
+  Farm:     Big Barn (its two sliding doors only, for the south entrance)
+  Medieval: Package-kYvD6QCQRd (as hay bale), Hay, Barrel, Bags, Fence (deck rail)
+  Shooter:  Crate, Pallet, Shotgun, Smg, Bear Trap
+
+Changes: merged into one GLB; only positions, normals and indices kept (the
+weapons' all-white vertex colours and unused UVs dropped); every material is an
+opaque, metalness-0 flat colour from one palette (the SMG's duplicated
+transparent materials merged); props re-pivoted and scaled to gameplay sizes;
+Big Barn's doors cut out of the model, re-pivoted and scaled 1.36×. The barn's
+walls, roofs, floors and decks are generated in code (the four-wing plan has no
+ready-made shell). Gameplay colliders are not derived from
+this file (see shared/party-lab/maps/barn.ts). Rebuild with:
+  node scripts/build-party-lab-barn-kit.mjs [path/to/PartyLabBarnAssets]

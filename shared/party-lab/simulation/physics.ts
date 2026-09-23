@@ -19,7 +19,7 @@ import { cap, finite, length, sub, type Vec } from "./ragdoll/math.js";
 export const PHYSICS = RAGDOLL;
 export const IDLE_INPUT: MovementInput = { x: 0, z: 0, jump: false };
 import { createArenaWorld } from "./world.js";
-import { arenaMap, DEFAULT_ARENA_MAP_ID, type ArenaMap } from "../maps/index.js";
+import { arenaMap, DEFAULT_ARENA_MAP_ID, spawnYaw, type ArenaMap } from "../maps/index.js";
 let initialization: Promise<void> | undefined;
 export function initializePhysics(): Promise<void> {
   return (initialization ??= RAPIER.init().catch((error) => {
@@ -46,7 +46,7 @@ export class PlaygroundPhysics {
   ) {
     this.world = createArenaWorld(map);
     this.players = PLAYERS.map(({ id }) =>
-      createCharacter(this.world, id, map.spawns[id])
+      createCharacter(this.world, id, map.spawns[id], spawnYaw(map, id))
     );
   }
   isGrounded(id: PlayerId) {
@@ -73,7 +73,7 @@ export class PlaygroundPhysics {
     for (const { id } of PLAYERS) {
       const player = this.players[id],
         spawn = this.map.spawns[id];
-      restore(player, spawn, Math.atan2(-spawn.x, -spawn.z));
+      restore(player, spawn, spawnYaw(this.map, id));
       connect(this.world, player);
     }
     this.eliminations.length = 0;

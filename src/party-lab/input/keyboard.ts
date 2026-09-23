@@ -4,10 +4,21 @@ import { InputManager } from "./inputManager";
 import { isUIInput, keyboardBinding, mouseBinding } from "./device";
 export type { MovementInput } from "./types";
 
+export interface KeyboardOptions {
+  /**
+   * Element receiving gameplay mouse presses (default: `surface`). The barn passes
+   * its Pointer Lock element: while locked, the browser delivers mouse events there.
+   */
+  mouseSurface?: HTMLElement;
+  /** Presses this returns true for are look input (e.g. the lock-acquiring click), never gameplay. */
+  claimMouse?: (event: MouseEvent) => boolean;
+}
+
 /** Arena-scoped device adapter. Combat receives only readIntent()'s abstract actions. */
 export function bindKeyboard(
   surface: HTMLElement,
-  bindings: Bindings = defaultBindings()
+  bindings: Bindings = defaultBindings(),
+  { mouseSurface = surface, claimMouse }: KeyboardOptions = {}
 ) {
   const manager = new InputManager(bindings);
   let suspended = false;
@@ -31,7 +42,7 @@ export function bindKeyboard(
     manager.setBindingDown(event.code, false);
   }
   function mouseDown(event: MouseEvent) {
-    if (suspended || isUIInput(event.target)) return;
+    if (suspended || isUIInput(event.target) || claimMouse?.(event)) return;
     const binding = mouseBinding(event.button);
     if (!binding || !bound(binding)) return;
     event.preventDefault();
@@ -45,8 +56,8 @@ export function bindKeyboard(
   const contextMenu = (event: Event) => {
     if (!suspended && bound("MouseRight")) event.preventDefault();
   };
-  surface.addEventListener("mousedown", mouseDown);
-  surface.addEventListener("contextmenu", contextMenu);
+  mouseSurface.addEventListener("mousedown", mouseDown);
+  mouseSurface.addEventListener("contextmenu", contextMenu);
   window.addEventListener("mouseup", mouseUp);
   window.addEventListener("pointercancel", clear);
   window.addEventListener("keydown", keyDown);
@@ -65,8 +76,8 @@ export function bindKeyboard(
     },
     dispose() {
       clear();
-      surface.removeEventListener("mousedown", mouseDown);
-      surface.removeEventListener("contextmenu", contextMenu);
+      mouseSurface.removeEventListener("mousedown", mouseDown);
+      mouseSurface.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("mouseup", mouseUp);
       window.removeEventListener("pointercancel", clear);
       window.removeEventListener("keydown", keyDown);

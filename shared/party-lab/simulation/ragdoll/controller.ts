@@ -33,6 +33,12 @@ export interface CharacterDrive {
   mobility: number;
   jump: boolean;
   arms: [ArmDrive, ArmDrive];
+  /**
+   * Hold position while idle (the barn). The active ragdoll otherwise creeps toward
+   * its facing at ~0.03–0.07 m/s when standing still (arm pose + balance torques
+   * against ground friction). Unset on the rooftop, whose movement stays bit-identical.
+   */
+  anchor?: boolean;
 }
 export const normalDrive = (): CharacterDrive => ({
   posture: 1,
@@ -98,6 +104,34 @@ function upright(character: Character, strength: number, dt: number) {
   }
 }
 
+/**
+ * Barn idle anchor: standing still on a floor, steer back toward where the character
+ * came to rest (a velocity target through the usual braking limit; no teleport, no
+ * lock). It is only set once the body has slowed below `anchorSettle`, so a knockback
+ * slide or a walking stop is braked as before and never pulled back; moving, jumping
+ * or leaving the floor clears it, and a push beyond `anchorRelease` re-anchors.
+ */
+function holdAnchor(character: Character, desired: Vec, movement: number, supported: boolean) {
+  if (movement > 0.05 || !supported || character.jumpIn > 0) {
+    character.anchored = false;
+    return;
+  }
+  const p = character.body.translation();
+  if (!character.anchored || Math.hypot(character.anchorX - p.x, character.anchorZ - p.z) > RAGDOLL.anchorRelease) {
+    const v = character.body.linvel();
+    if (Math.hypot(v.x, v.z) > RAGDOLL.anchorSettle) {
+      character.anchored = false;
+      return;
+    }
+    character.anchored = true;
+    character.anchorX = p.x;
+    character.anchorZ = p.z;
+  }
+  const pull = cap({ x: (character.anchorX - p.x) * RAGDOLL.anchorGain, y: 0, z: (character.anchorZ - p.z) * RAGDOLL.anchorGain }, RAGDOLL.anchorMaxSpeed);
+  desired.x = pull.x;
+  desired.z = pull.z;
+}
+
 export function control(
   world: RAPIER.World,
   character: Character,
@@ -107,19 +141,23 @@ export function control(
   const dt = RAGDOLL.step;
   character.jumpIn = Math.max(0, character.jumpIn - dt);
   const movement = Math.min(1, Math.hypot(input.x, input.z));
-  if (movement > 0.15 && drive.mobility > 0) {
-    const angle = Math.atan2(input.x, input.z),
+  const aim = input.facing !== undefined && Number.isFinite(input.facing);
+  if ((aim || movement > 0.15) && drive.mobility > 0) {
+    // An explicit aim yaw wins over the movement direction (strafe/backpedal).
+    const angle = aim ? input.facing! : Math.atan2(input.x, input.z),
+      rate = aim ? RAGDOLL.aimTurnSpeed : RAGDOLL.turnSpeed,
       delta = Math.atan2(
         Math.sin(angle - character.facing),
         Math.cos(angle - character.facing)
       );
-    character.facing += clamp(
-      delta,
-      -RAGDOLL.turnSpeed * dt,
-      RAGDOLL.turnSpeed * dt
-    );
+    character.facing += clamp(delta, -rate * dt, rate * dt);
   }
-  character.gait += dt * RAGDOLL.gaitFrequency * movement;
+  // Sprint is the same drive with a higher target (faster steps, higher speed, no
+  // position edits), eased in and out so pressing or releasing it never snaps the torso.
+  const ease = dt / RAGDOLL.sprintRamp;
+  character.sprint = clamp(character.sprint + (input.sprint ? ease : -ease), 0, 1);
+  const pace = 1 + (RAGDOLL.sprintMultiplier - 1) * character.sprint;
+  character.gait += dt * RAGDOLL.gaitFrequency * movement * pace;
   for (const { name, joint, torque, spherical } of character.joints) {
     let target = 0;
     if (name === "leftHip")
@@ -195,11 +233,13 @@ export function control(
     );
   }
   const normalizer = Math.max(1, Math.hypot(input.x, input.z));
+  // `pace` last: ×1 is exact, so non-sprint (rooftop) targets stay bit-identical.
   const desired = {
-    x: (input.x / normalizer) * RAGDOLL.speed * drive.mobility,
+    x: (input.x / normalizer) * RAGDOLL.speed * drive.mobility * pace,
     y: 0,
-    z: (input.z / normalizer) * RAGDOLL.speed * drive.mobility,
+    z: (input.z / normalizer) * RAGDOLL.speed * drive.mobility * pace,
   };
+  if (drive.anchor) holdAnchor(character, desired, movement, onGround || support !== null);
   const accel =
     onGround || support !== null
       ? movement

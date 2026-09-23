@@ -19,6 +19,12 @@ export const ACTION_LABELS: Record<Action, string> = {
   grab: "Tut",
   lift: "Kaldır",
 };
+/** Barn meanings of shared bindings (same key, other gameplay): see scene/arenas/barnControls.ts. */
+export const BARN_ACTION_LABELS: Partial<Record<Action, string>> = {
+  punch: "Saldır (yumruk / ateş)",
+  grab: "Silah al",
+  lift: "Koş",
+};
 
 /** Device-free human intent. Edges (jump/punch) are consumed once per physics step. */
 export interface ActionIntent {

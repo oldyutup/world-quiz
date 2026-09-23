@@ -13,7 +13,8 @@
  *   curl 'http://127.0.0.1:2601/set?rtt=150&jitter=40'
  *   curl 'http://127.0.0.1:2601/stall?ms=600'   hold both directions, then release in order
  *   curl 'http://127.0.0.1:2601/drop'           reset every proxied connection (brief disconnect)
- *   curl 'http://127.0.0.1:2601/status'
+ *   curl 'http://127.0.0.1:2601/status'          conditions, connections, bytes each way since /bytes?reset
+ *   curl 'http://127.0.0.1:2601/bytes?reset=1'    byte counters (all connections), optionally reset
  */
 import { createServer, connect } from "node:net";
 import { createServer as createHttpServer } from "node:http";
@@ -30,8 +31,10 @@ const [targetHost, targetPort] = (args.target ?? "127.0.0.1:2567").split(":");
 const conditions = { rtt: Number(args.rtt ?? 0), jitter: Number(args.jitter ?? 0) };
 let stallUntil = 0;
 const sockets = new Set();
+/** Bytes forwarded per direction (TCP payload: WebSocket frames incl. headers, plus HTTP matchmaking). */
+const bytes = { up: 0, down: 0, since: Date.now() };
 
-function lane(destination) {
+function lane(destination, direction) {
   let last = 0;
   const queue = [];
   let timer = null;
@@ -45,6 +48,7 @@ function lane(destination) {
     if (queue.length) timer = setTimeout(flush, Math.max(0, queue[0].due - Date.now()));
   };
   return (chunk) => {
+    bytes[direction] += chunk.length;
     const now = Date.now();
     const due = Math.max(last, stallUntil, now + conditions.rtt / 2 + Math.random() * conditions.jitter);
     last = due;
@@ -59,8 +63,8 @@ createServer((client) => {
   upstream.setNoDelay(true);
   sockets.add(client);
   sockets.add(upstream);
-  const toServer = lane(upstream),
-    toClient = lane(client);
+  const toServer = lane(upstream, "up"),
+    toClient = lane(client, "down");
   client.on("data", toServer);
   upstream.on("data", toClient);
   const close = () => {
@@ -86,11 +90,17 @@ createHttpServer((req, res) => {
     // A reset, not a FIN: the browser sees an abnormal close (1006) like a real network loss.
     for (const socket of sockets) socket.resetAndDestroy?.() ?? socket.destroy();
     sockets.clear();
+  } else if (url.pathname === "/bytes") {
+    const seconds = (Date.now() - bytes.since) / 1000;
+    const report = { ...bytes, seconds, upBps: Math.round(bytes.up / seconds), downBps: Math.round(bytes.down / seconds) };
+    if (url.searchParams.has("reset")) Object.assign(bytes, { up: 0, down: 0, since: Date.now() });
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(report));
+    return;
   } else if (url.pathname !== "/status") {
     res.writeHead(404).end();
     return;
   }
-  const status = { ...conditions, stallRemainingMs: Math.max(0, stallUntil - Date.now()), connections: sockets.size / 2 };
+  const status = { ...conditions, stallRemainingMs: Math.max(0, stallUntil - Date.now()), connections: sockets.size / 2, bytesUp: bytes.up, bytesDown: bytes.down };
   console.log(`${url.pathname} → ${JSON.stringify(status)}`);
   res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(status));
 }).listen(control, "127.0.0.1");

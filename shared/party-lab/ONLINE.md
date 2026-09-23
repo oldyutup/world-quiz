@@ -2,7 +2,8 @@
 
 This is the historical Phase 4B.1 checkpoint report. **Current Phase 4B.2 behavior,
 rates, protocol additions and validation are documented in [PREDICTION.md](PREDICTION.md);
-link reliability, thresholds and chat realtime behavior in [NETWORK.md](NETWORK.md).**
+link reliability, thresholds and chat realtime behavior in [NETWORK.md](NETWORK.md);
+game modes and online Barn Shootout (protocol 5) in [BARN_ONLINE.md](BARN_ONLINE.md).**
 Server authority and the round/membership policies below remain in effect.
 
 ## Scope and checkpoint

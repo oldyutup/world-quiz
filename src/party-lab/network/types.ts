@@ -3,6 +3,7 @@ import type {
   OnlinePhase,
 } from "../../../shared/party-lab/network/protocol";
 import type { SelectableCostumeId } from "../../../shared/party-lab/costumes";
+import type { GameMode, ModeSelection } from "../../../shared/party-lab/modes";
 import type { LinkQuality } from "./diagnostics";
 export interface LobbyPlayer {
   id: string;
@@ -28,6 +29,9 @@ export interface LobbyState {
   round: number;
   seconds: number;
   winner: number;
+  selection: string;
+  mode: string;
+  hostId: string;
   players: { forEach(callback: (player: LobbyPlayer) => void): void };
   messages: { forEach(callback: (message: ChatMessage) => void): void };
 }
@@ -45,6 +49,12 @@ export interface LobbySnapshot {
   round: number;
   seconds: number;
   winner: number;
+  /** Host's lobby choice. */
+  selection: ModeSelection;
+  /** The current round's mode during a round; in the lobby, the next round's. */
+  mode: GameMode;
+  /** Who may change the mode. */
+  hostId: string;
   selfId: string;
   players: LobbyPlayer[];
   messages: ChatMessage[];
@@ -64,6 +74,9 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   round: 0,
   seconds: 0,
   winner: -1,
+  selection: "rooftop_brawl",
+  mode: "rooftop_brawl",
+  hostId: "",
   game: null,
   link: "good",
 };

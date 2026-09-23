@@ -1,10 +1,14 @@
 import type { BufferedSnapshot } from "../gameStream";
-import type {
-  InputPacket,
-  GameSnapshot,
+import {
+  isBarnPacket,
+  type AnyInputPacket,
+  type GameSnapshot,
 } from "../../../../shared/party-lab/network/protocol";
 import type { PlayerId } from "../../../../shared/party-lab/simulation/players";
+import type { GameMode } from "../../../../shared/party-lab/modes";
+import type { WeaponKind } from "../../../../shared/party-lab/simulation/barn/weapons";
 import { PredictionRig } from "./rig";
+import { BarnPredictionRig, canPredictBarn } from "./barnRig";
 import { InputHistory, PREDICTION_LIMITS, type PendingInput } from "./history";
 import { RigCorrection } from "./correction";
 
@@ -19,8 +23,21 @@ export function canPredict(snapshot: GameSnapshot, slot: number) {
     )
   );
 }
+/** A predicted local shot to present now (each weapon round at most once). */
+export interface PredictedShot {
+  kind: WeaponKind;
+  spread: number;
+  /** Tick within the input record it fired on (0 for a round a replay revealed late). */
+  tick: number;
+}
+/**
+ * Local articulated prediction and reconciliation for one mode. Rooftop Brawl uses the
+ * rooftop rig and packet; Barn Shootout the barn rig (movement, aim-facing, sprint,
+ * idle anchor, trap hold, stagger, punches and its own weapon cadence). History,
+ * windows and correction tiers are shared and unchanged.
+ */
 export class LocalPrediction {
-  readonly rig;
+  readonly rig: PredictionRig | BarnPredictionRig;
   readonly history = new InputHistory();
   readonly correction = new RigCorrection();
   readonly metrics = {
@@ -39,34 +56,60 @@ export class LocalPrediction {
   };
   active = false;
   lastAck = -1;
+  /**
+   * Barn: rounds a reconciliation replay fired that were never presented (the timing
+   * moved into an already-acknowledged record). The arena presents them once, late.
+   */
+  readonly lateShots: PredictedShot[] = [];
+  /** Highest round presented for the current weapon life (see BarnPredictionRig.weaponLife). */
+  private presented = { life: -1, round: 0 };
   private round = -1;
   private sequence = -1;
   private latest: BufferedSnapshot | null = null;
   private heldConstraint = false;
   private raw = new Float32Array(63);
   private visual = new Float32Array(63);
-  constructor(readonly slot: PlayerId) {
-    this.rig = new PredictionRig(slot);
+  constructor(readonly slot: PlayerId, readonly mode: GameMode = "rooftop_brawl") {
+    this.rig = mode === "barn_shootout" ? new BarnPredictionRig(slot) : new PredictionRig(slot);
   }
   private run(record: PendingInput) {
     let swing = false,
       jumped = false;
+    const shots: PredictedShot[] = [];
     const p = record.packet;
     for (let i = 0; i < record.ticks; i++) {
       const began = performance.now();
-      const result = this.rig.step({
-        x: p.moveX,
-        z: p.moveZ,
-        jump: i === 0 && p.jumpPressed,
-        punch: i === 0 && p.punchPressed,
-      });
+      let result: { valid: boolean; swing: boolean; jumped: boolean };
+      if (this.rig instanceof BarnPredictionRig) {
+        if (!isBarnPacket(p)) return { valid: false, swing: false, jumped: false, shots };
+        const barn = this.rig.stepPacket(p, i === 0);
+        if (barn.shot && this.present(barn.shot.life, barn.shot.round)) shots.push({ kind: barn.shot.kind, spread: barn.shot.spread, tick: i });
+        result = barn;
+      } else {
+        if (isBarnPacket(p)) return { valid: false, swing: false, jumped: false, shots };
+        result = this.rig.step({
+          x: p.moveX,
+          z: p.moveZ,
+          jump: i === 0 && p.jumpPressed,
+          punch: i === 0 && p.punchPressed,
+        });
+      }
       this.metrics.stepMs += performance.now() - began;
       this.metrics.steps++;
-      if (!result.valid) return { valid: false, swing: false, jumped: false };
+      if (!result.valid) return { valid: false, swing: false, jumped: false, shots };
       swing ||= result.swing;
       jumped ||= result.jumped;
     }
-    return { valid: true, swing, jumped };
+    return { valid: true, swing, jumped, shots };
+  }
+  /** Whether this weapon round is new to the screen (and mark it shown). */
+  private present(life: number, round: number) {
+    if (life === this.presented.life && round <= this.presented.round) return false;
+    this.presented = { life, round };
+    return true;
+  }
+  private predictable(snapshot: GameSnapshot) {
+    return this.mode === "barn_shootout" ? canPredictBarn(snapshot, this.slot) : canPredict(snapshot, this.slot);
   }
   reconcile(frame: BufferedSnapshot, now: number) {
     const s = frame.snapshot;
@@ -95,7 +138,7 @@ export class LocalPrediction {
     const wasActive = this.active;
     const before = this.pose(0)?.slice();
     if (
-      !canPredict(s, this.slot) ||
+      !this.predictable(s) ||
       this.heldConstraint ||
       !this.rig.restore(s, frame.values)
     ) {
@@ -106,10 +149,13 @@ export class LocalPrediction {
     }
     this.active = true;
     for (const record of this.history.records) {
-      if (!this.run(record).valid) {
+      const replay = this.run(record);
+      if (!replay.valid) {
         this.suspend();
         return;
       }
+      // A replay can fire a round no first run showed (its timing moved): show it now.
+      for (const shot of replay.shots) this.lateShots.push({ ...shot, tick: 0 });
       this.metrics.replaySteps += record.ticks;
     }
     if (wasActive && before && !newRound) {
@@ -126,8 +172,9 @@ export class LocalPrediction {
     } else this.correction.clear();
     this.metrics.reconcileMs += performance.now() - began;
   }
-  advance(packet: InputPacket, ticks: number, now: number) {
-    this.heldConstraint = packet.grabHeld || packet.liftHeld;
+  advance(packet: AnyInputPacket, ticks: number, now: number) {
+    // Rooftop grips/lift are server-driven presentation; the barn has neither.
+    this.heldConstraint = !isBarnPacket(packet) && (packet.grabHeld || packet.liftHeld);
     const frame = this.latest;
     if (
       !frame ||
@@ -137,7 +184,7 @@ export class LocalPrediction {
       this.suspend();
       return null;
     }
-    if (!canPredict(frame.snapshot, this.slot) || this.heldConstraint) {
+    if (!this.predictable(frame.snapshot) || this.heldConstraint) {
       this.active = false;
       this.history.clear();
       this.correction.clear();

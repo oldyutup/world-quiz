@@ -52,4 +52,12 @@ export const SFX: Record<SfxName, Recipe> = {
   uiClick: tone(450, 290, 0.055, 0.06, 0.085, 0, 0.045),
   uiConfirm: { ...tone(420, 520, 0.15, 0, 0.11, 1, 0.08), notes: [1, 1.25] },
   uiBack: tone(360, 240, 0.09, 0.02, 0.09, 0, 0.08),
+  weaponPickup: { ...tone(300, 470, 0.16, 0.12, 0.15, 1, 0.1), notes: [1, 1.5] },
+  shotgunFire: tone(120, 38, 0.34, 0.92, 0.32, 2, 0.1),
+  smgFire: tone(250, 120, 0.075, 0.85, 0.15, 1, 0.05),
+  bulletHit: tone(185, 85, 0.11, 0.35, 0.22, 1, 0.04),
+  weaponEmpty: tone(560, 250, 0.12, 0.45, 0.12, 1, 0.1),
+  trapSnap: tone(720, 170, 0.18, 0.6, 0.27, 2, 0.1),
+  death: { ...tone(330, 85, 0.6, 0.05, 0.22, 2, 0.2), wobble: 30 },
+  respawn: { ...tone(260, 520, 0.3, 0.02, 0.15, 1, 0.3), notes: [1, 1.5] },
 };

@@ -1,6 +1,15 @@
-import { capturePredictionState } from "../../../shared/party-lab/simulation/predictionState.js";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
+import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
+import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
+import {
+  DEFAULT_MODE_SELECTION,
+  isModeSelection,
+  otherMode,
+  upcomingMode,
+  type GameMode,
+  type ModeSelection,
+} from "../../../shared/party-lab/modes.js";
 import {
   PLAYERS,
   type PlayerId,
@@ -13,11 +22,14 @@ import {
   type OnlinePhase,
   type GameEvent,
   type PongPacket,
+  type ServerDiagnostics,
 } from "../../../shared/party-lab/network/protocol.js";
 import { allowedOrigin } from "./origin.js";
 import { LoopMetrics, processMetrics } from "./diagnostics.js";
 import { randomUUID } from "node:crypto";
 import {
+  getMessageBytes,
+  Protocol,
   Room,
   ServerError,
   type Client,
@@ -61,13 +73,32 @@ function options(value: unknown): {
   }
 }
 
+/** A mode's authoritative simulation, sharing the room's lifetime counters. */
+export function createSimulation(mode: GameMode, counters: RoomCounters): OnlineSimulation {
+  return mode === "barn_shootout" ? new BarnRoundSimulation(counters) : new OnlineRoundSimulation(counters);
+}
+/** Events whose `inputSeq` lets the actor's client skip its own predicted presentation. */
+const LOCAL_ECHO = new Set(["punchSwing", "shotgunFire", "smgFire"]);
+/** Exact encoded snapshot size is measured this often (one extra encode per second). */
+const SNAPSHOT_MEASURE_EVERY = 20;
+
 export class PartyRoom extends Room<{ state: LobbyState }> {
   maxClients = MAX_PLAYERS;
   seatReservationTimeout = 10;
   state = new LobbyState();
   private limiters = new Map<string, ChatLimiter>();
 
-  game!: OnlineRoundSimulation;
+  /** Tick/round/event/snapshot counters for the room's whole life (every simulation shares them). */
+  readonly counters = newRoomCounters();
+  game!: OnlineSimulation;
+  /** The host's lobby choice, and the mode the next round will be played in. */
+  selection: ModeSelection = DEFAULT_MODE_SELECTION;
+  upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, null);
+  /** Join order (the host is the earliest-joined connected player). */
+  private joined = new Map<string, number>();
+  private joinCounter = 0;
+  /** Simulations built/disposed over the room's life (mode switches). */
+  readonly simulations = { created: 0, disposed: 0 };
   private mailboxes = new Map<string, InputMailbox>();
   private events: GameEvent[] = [];
   private participants = new Set<string>();
@@ -81,18 +112,64 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     snapshots: 0,
     serializeMs: 0,
     snapshotBytes: 0,
+    /** Exact encoded `snapshot` message (msgpack + Colyseus header), largest recipient, last measured. */
+    snapshotWireBytes: 0,
     eventCount: 0,
+    /** Encoded `feedback` bytes sent (for a per-second event traffic figure). */
+    feedbackBytes: 0,
   };
 
   private syncGameState() {
     const game = this.game;
     this.state.phase = game.phase;
     this.state.round = game.roundId;
-    this.state.seconds = game.phase === "waiting" ? 0 : game.round.seconds;
-    this.state.winner = game.round.winner ?? -1;
+    this.state.seconds = game.seconds;
+    this.state.winner = game.winner;
+    this.state.selection = this.selection;
+    this.state.mode = game.phase === "waiting" ? this.upcoming : game.mode;
     for (const p of this.state.players.values())
       p.participating =
         this.participants.has(p.id) && !!(game.mask & (1 << p.slot));
+    this.syncHost();
+  }
+  /**
+   * The host picks the mode. There was no host before: the room creator had no special
+   * authority. Host = the earliest-joined player who is connected (the creator while
+   * present); if nobody is connected, the earliest-joined. Leaving hands it on cleanly.
+   */
+  private syncHost() {
+    let host = "",
+      best = Infinity,
+      fallback = "",
+      fallbackOrder = Infinity;
+    for (const p of this.state.players.values()) {
+      const order = this.joined.get(p.id) ?? Infinity;
+      if (p.connected && order < best) {
+        best = order;
+        host = p.id;
+      }
+      if (order < fallbackOrder) {
+        fallbackOrder = order;
+        fallback = p.id;
+      }
+    }
+    this.state.hostId = host || fallback;
+  }
+  /** The simulation for this round's mode; a different mode disposes the old world first. */
+  private ensureSimulation(mode: GameMode) {
+    if (this.game?.mode === mode) return;
+    this.game?.dispose();
+    if (this.game) this.simulations.disposed++;
+    this.game = createSimulation(mode, this.counters);
+    this.simulations.created++;
+  }
+  private setSelection(selection: ModeSelection) {
+    if (selection === this.selection) return;
+    this.selection = selection;
+    this.upcoming = upcomingMode(selection, null);
+    // A different game is a new decision: everyone confirms again.
+    for (const p of this.state.players.values()) p.ready = false;
+    this.syncGameState();
   }
   private resetReady() {
     this.participants.clear();
@@ -106,6 +183,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     );
     if (eligible.length < 2 || !eligible.every((p) => p.ready)) return;
     this.participants = new Set(eligible.map((p) => p.id));
+    this.ensureSimulation(this.upcoming);
     this.game.start(eligible.map((p) => p.slot as PlayerId));
     for (const input of this.mailboxes.values()) input.clear();
     this.syncGameState();
@@ -124,7 +202,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       else intent[p.slot] = input.read(now);
     }
     const events = this.game.step(intent).map((event) => {
-      if (event.name !== "punchSwing") return event;
+      if (!LOCAL_ECHO.has(event.name)) return event;
       const id = [...this.state.players.values()].find(
         (p) => p.slot === event.actor
       )?.id;
@@ -144,6 +222,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (before !== phase) {
       for (const input of this.mailboxes.values()) input.clear();
       if (phase === "waiting") this.resetReady();
+      // Mixed: once a round is under way the next one is the other mode.
+      if (phase === "playing" && this.selection === "mixed") this.upcoming = otherMode(this.game.mode);
     }
     this.syncGameState();
     if (
@@ -161,20 +241,23 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
           : -1;
       });
       const snapshot = this.game.snapshot(ack);
-      let predictionBytes = 0;
+      let predictionBytes = 0,
+        wireBytes = 0;
+      const measure = this.metrics.snapshots % SNAPSHOT_MEASURE_EVERY === 0;
       for (const client of this.clients) {
         const player = this.state.players.get(client.sessionId);
         if (!player?.connected) continue;
-        const prediction = capturePredictionState(
-          this.game.physics.players[player.slot],
-          this.game.combat.players[player.slot]
-        );
-        client.send("snapshot", { ...snapshot, prediction });
+        const prediction = this.game.prediction(player.slot as PlayerId);
+        const message = { ...snapshot, prediction };
+        client.send("snapshot", message);
         predictionBytes = Math.max(
           predictionBytes,
           prediction.velocities.byteLength +
-            JSON.stringify({ ...prediction, velocities: undefined }).length
+            (prediction.barn?.byteLength ?? 0) +
+            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined }).length
         );
+        if (measure)
+          wireBytes = Math.max(wireBytes, getMessageBytes.raw(Protocol.ROOM_DATA, "snapshot", message).byteLength);
       }
       this.metrics.snapshots++;
       this.metrics.serializeMs += performance.now() - start;
@@ -183,7 +266,10 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         predictionBytes +
         snapshot.transforms.byteLength +
         JSON.stringify({ ...snapshot, transforms: undefined }).length;
+      if (measure && wireBytes) this.metrics.snapshotWireBytes = wireBytes;
       if (this.events.length) {
+        if (measure || this.metrics.feedbackBytes === 0)
+          this.metrics.feedbackBytes += getMessageBytes.raw(Protocol.ROOM_DATA, "feedback", this.events).byteLength;
         this.broadcast("feedback", this.events);
         this.events = [];
       }
@@ -214,9 +300,11 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (options(data).intent !== "create")
       throw new ServerError(400, "INVALID_ADMISSION");
     await initializePhysics();
-    this.game = new OnlineRoundSimulation();
+    this.ensureSimulation(this.upcoming);
     this.state.phase = "waiting";
     this.state.winner = -1;
+    this.state.selection = this.selection;
+    this.state.mode = this.upcoming;
     this.roomId = roomCodes.claim();
     this.state.code = this.roomId;
     this.setPrivate(true);
@@ -230,7 +318,17 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         return;
       this.mailboxes
         .get(client.sessionId)
-        ?.accept(data, this.game.roundId, performance.now());
+        ?.accept(data, this.game.roundId, performance.now(), this.game.mode);
+    });
+    // Host only, lobby only: Rooftop Brawl, Barn Shootout or Mixed. Clears every Ready.
+    this.onMessage("mode", (client, data: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p?.connected || this.game.phase !== "waiting" || !isModeSelection(data)) return;
+      if (this.state.hostId !== client.sessionId) {
+        client.send("notice", "MODE_HOST_ONLY");
+        return;
+      }
+      this.setSelection(data);
     });
     this.onMessage("ready", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
@@ -279,7 +377,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         return;
       this.lastPing.set(client.sessionId, now);
       const pong: PongPacket = { id: ping.id, t: ping.t, s: Date.now() };
-      if (ping.diag) pong.d = this.loop.report();
+      if (ping.diag) pong.d = { ...this.loop.report(), ...this.roomReport() };
       client.send("pong", pong);
     });
     this.onMessage("*", (client) => {
@@ -314,8 +412,30 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       participating: false,
     });
     this.mailboxes.set(client.sessionId, new InputMailbox());
+    this.joined.set(client.sessionId, ++this.joinCounter);
     this.state.players.set(client.sessionId, player);
     this.limiters.set(client.sessionId, new ChatLimiter());
+    this.syncHost();
+  }
+  /** Per-room additions to the opt-in debug pong. */
+  private roomReport() {
+    const report: Partial<ServerDiagnostics> = {
+      mode: this.game.mode,
+      snapshotBytes: this.metrics.snapshotWireBytes,
+      simulations: this.simulations.created,
+    };
+    if (this.game instanceof BarnRoundSimulation) {
+      const r = this.game.rewind;
+      report.rewind = {
+        shots: r.shots,
+        lastMs: r.lastMs,
+        maxMs: r.maxMs,
+        clampedOld: r.clampedOld,
+        rejectedFuture: r.rejectedFuture,
+        lookupUs: r.shots ? (r.lookupMs / r.shots) * 1000 : 0,
+      };
+    }
+    return report;
   }
 
   async onDrop(client: Client, code?: number) {
@@ -334,7 +454,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       }
       this.tryStart();
     }
-    // The reserved seat still counts toward maxClients. No host authority exists.
+    this.syncHost();
+    // The reserved seat still counts toward maxClients.
     try {
       await this.allowReconnection(client, RECONNECT_SECONDS);
     } catch {
@@ -352,6 +473,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = true;
     this.mailboxes.get(client.sessionId)?.clear();
+    this.syncHost();
   }
   onLeave(client: Client, code?: number) {
     this.log("leave", client, ` code=${code ?? "-"}`);
@@ -367,14 +489,16 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     }
     this.participants.delete(client.sessionId);
     this.mailboxes.delete(client.sessionId);
-    this.syncGameState();
+    this.joined.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
+    this.syncGameState();
     this.limiters.delete(client.sessionId);
     this.tryStart();
   }
   onDispose() {
     if (this.game) processMetrics().rooms--;
     this.game?.dispose();
+    if (this.game) this.simulations.disposed++;
     this.mailboxes.clear();
     this.events = [];
     roomCodes.release(this.roomId);

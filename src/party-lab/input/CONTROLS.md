@@ -67,6 +67,36 @@ and both Shifts are accepted. Escape cancels; Command/Meta, IME composition and
 Ctrl/Alt browser shortcut chords are reserved. Ctrl/Alt assignments are therefore
 best used for standalone actions, not movement/lift chords. Shift supports chords.
 
+## Mode-specific meaning (Barn sprint)
+
+One binding can mean different gameplay per mode. Kaldır (Shift by default) lifts a
+grabbed player on the rooftop; in the barn, `scene/arenas/barnControls.ts` reads the
+same held action as Sprint (`MovementInput.sprint`) and sends no lift. No action was
+added, so saved `party-lab-controls-v1` maps stay valid and a rebound Kaldır key also
+sprints in the barn. The barn footer shows "Koş"; settings note "Ambarda: Koş".
+
+The shared ragdoll controller applies sprint: target speed and step cadence ×
+`RAGDOLL.sprintMultiplier` (1.4), eased by a 0…1 `Character.sprint` blend over
+`RAGDOLL.sprintRamp` (0.25 s) in and out. Rooftop input never sets it, so its blend
+stays 0 and rooftop movement is bit-identical. Before the barn goes online, the
+input packet needs a sprint flag and the prediction snapshot needs `Character.sprint`.
+
+## Barn contextual attack and pickup
+
+In the barn the same bindings are read contextually (`barnIntent`): Yumruk (F / left
+click) is the attack — a punch unarmed, a shot armed, and held for the SMG's automatic
+fire (`attackHeld` from `InputManager.isActionDown`) — and Tut (E / right click) picks up
+the nearest weapon (`pickup`, the pressed edge). The rooftop's punch/grab/lift fields are
+never sent in the barn, so no grab or lift can start there. The footer shows "Saldır
+(yumruk / ateş)" and "Silah al"; settings add "Ambarda: …".
+
+Pointer Lock: while locked, the browser sends mouse events to the lock element, so the
+barn binds gameplay mouse presses to the viewport (`KeyboardOptions.mouseSurface`). The
+click that acquires the lock is look input: `LookController.claimsClick` claims it
+(recorded as it requests the lock, so the listener order does not matter) and
+`bindKeyboard`'s `claimMouse` drops it — taking the lock never punches or fires. In drag
+mode the left button looks and F attacks. The rooftop passes no options (unchanged).
+
 ## Gameplay compatibility
 
 `CombatSimulation` resolves human Punch into an existing physical hand strike.

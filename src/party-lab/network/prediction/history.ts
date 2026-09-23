@@ -1,4 +1,4 @@
-import type { InputPacket } from "../../../../shared/party-lab/network/protocol";
+import type { AnyInputPacket } from "../../../../shared/party-lab/network/protocol";
 /**
  * The pending window must cover RTT + snapshot wait + jitter. At 300 ms / 18 ticks,
  * RTT 150 ms with 0–60 ms jitter already overflowed and RTT 200 + 80 ms suspended
@@ -13,7 +13,7 @@ export const PREDICTION_LIMITS = {
   staleMs: 500,
 } as const;
 export interface PendingInput {
-  packet: InputPacket;
+  packet: AnyInputPacket;
   ticks: number;
   sentAt: number;
 }
@@ -21,7 +21,7 @@ export interface PendingInput {
 export class InputHistory {
   records: PendingInput[] = [];
   lastSeq = -1;
-  add(packet: InputPacket, ticks: number, sentAt: number) {
+  add(packet: AnyInputPacket, ticks: number, sentAt: number) {
     if (
       packet.seq <= this.lastSeq ||
       !Number.isInteger(ticks) ||

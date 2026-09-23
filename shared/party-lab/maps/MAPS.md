@@ -6,14 +6,17 @@
   authoritative server, the client prediction rig and the local reference mode.
   `createArenaWorld(map)` (simulation/world.ts) builds Rapier colliders only from
   this data; nothing is derived from rendered meshes or the GLB.
-- `ONLINE_ARENA_MAP_ID` (rooftop) is the only online map. `OnlineRoundSimulation`
-  and `PredictionRig` both use it. Changing the online map requires bumping
-  `NET.version` (now 4; 4 added link diagnostics) so stale clients reject snapshots instead of predicting
-  on the wrong geometry.
+- Online, every round names its game mode and each mode its map (`modes.ts`
+  `MODE_MAP`): Rooftop Brawl → `rooftop` (`ONLINE_ARENA_MAP_ID`, used by
+  `OnlineRoundSimulation` and `PredictionRig`), Barn Shootout → `barn`
+  (`BarnRoundSimulation`, `BarnPredictionRig`). Changing an online map requires bumping
+  `NET.version` (now 5; 5 added the Barn mode) so stale clients reject snapshots instead
+  of predicting on the wrong geometry.
 - Local mode defaults to `DEFAULT_ARENA_MAP_ID` (rooftop); the original platform
   (`test`) stays selectable from the local arena header for debugging.
 - Spawns are map data (`map.spawns[slot]`); `PLAYERS` keeps slot identity only.
-  Reset and fault recovery restore to the map's spawns, facing the origin.
+  Reset and fault recovery restore to the map's spawns, facing `spawnYaw(map, slot)`:
+  the map's optional `spawnYaws`, else the origin (rooftop and test have none).
 - Local bots read `botArena(map)`: lethal edge segments (nearest one = carry
   direction, 0.85 m retreat margin), obstacle footprints with a cheap look-ahead
   slide (no navmesh), a home point and a wander box.
@@ -46,6 +49,92 @@ Visual only: a haze plane at y −4.2 (80% opaque, bodies fade before the
 shared elimination at y −5), fog, a skyline behind the safe wall, and lower
 buildings beside/in front of the drops sunk below the haze and the elimination
 height so nothing near a drop looks landable.
+
+## Barn ("Ambar") — Barn Shootout, layout (local only)
+
+`barn.ts`: a four-wing barn, 35 m across — a 13 m hub (x, z −6.5…6.5) and a 9 m wide
+wing reaching 11 m out on each side (floor y 0, +Z = south, the entrance wing). The
+wings are around corners from each other, and each wing's mouth has one side closed by
+a tall piece in a pinwheel (north: crates; east: the hay steps' top; south: the stairs'
+top; west: the ramp's top), with a tiered hay pile (1.6 m, 2.4 m top) in the middle of
+the hub under the void. Props keep their Phase 1 sizes (crates, bales, barrels, stall
+boards, rails, risers, treads); only the space grew. 61 static colliders: floor, 12 wall
+blocks (the solid outside the cross, 6.5 m — 3.5 m above the upper floor), 8 decks and
+the east landing, 4 columns, 10 rails, 2 wedges, 4 hay steps, 16 cover boxes, 3 barrels.
+
+Wing identities: north — hay store under the hayloft, a bale tower, crates in the mouth,
+a covered aisle under the north catwalk; south — the entrance yard (Big Barn's doors,
+stairs up to the ring, a crate block); east — stalls under the east catwalk, hay steps
+along the north wall; west — storage crates, the main ramp along the south wall.
+
+Upper floor (3.0 m, decks 0.2 m thick, open underneath): a 2.5 m ring around an 8 × 8 m
+void over the hub, broken for 4 m over the south wing's mouth; a catwalk up the north
+wing's east side to the hayloft over its end; a catwalk over the east wing's stalls out
+to the end wall. ~175 m², about 30% of the ground floor. Only the void's four corners
+stand on posts, 0.6 m square: measured with the real character, 0.3 m posts left the
+ragdoll leaning below 0.6 upright in half of random approaches (an arm wraps round),
+0.6 m about as rarely as a crate. Three routes up, one per side, each rising toward the
+hub: the west ramp and the south stairs (26.6° wedges; the stairs draw 0.15 m steps
+over theirs), the east hay steps (0.6 m risers onto a solid landing). Every open deck
+edge is either railed (1 m, about a third of it) or one of 13 marked drops (`DROPS`,
+drawn with straw-coloured edge boards): the void's open NE corner and SW side, the
+ring's broken ends, over the north/west/east wing mouths, the catwalks' open stretches,
+the hayloft's front gap. Upstairs cover is one bale stack per branch.
+
+Six respawn candidates with explicit yaws (`spawnYaws`: shared physics faces a slot's
+spawn that way, other maps keep facing the origin): one per wing on the ground, facing
+the hub, plus the ring's west side and the east catwalk. Start slots S1/S2/S3 (south
+yard, east wing, ring) are ≥ 15 m apart and hidden from each other; of all 15 pairs only
+the two upstairs ones on the ring and the catwalk see each other. S3 was the ring's NW
+corner, where the rails left only a standing player's head reachable from the ground
+floor (torso/pelvis from 0 of 419 ground spots, real hitscan); it moved 4.3 m south along
+the ring (−5.25, 3, −1), where the west wing (open D7 edge) and the hub's south side
+(void's west opening) reach the body from 25 spots — any part from 107. Seven weapon spots
+(one per wing, the risky one under the void, the hayloft and the east catwalk's end)
+and two bear traps on optional cut-throughs (the stall aisle under the east catwalk, the
+west wing's north lane) — previews only.
+
+Measured (same method old → new; scratch analysis, 1 m grid, chest-to-chest rays):
+ground points seen from a point, mean 61% → 41%, best spot 80% → 67% (the hub);
+opposite wings see 7% (N↔S) and 1% (E↔W) of each other, side wings ≤ 1%.
+`barn.test.ts` keeps these checked: wing ↔ opposite/side < 10%, no deep-wing point sees
+two other wings ≥ 25%, and the ring's inner edge is seen from ≥ 45% of the hub floor.
+Real-character traversal: wing end ↔ wing end 6.7–6.8 s (the 23 m barn's longest run
+was ~4.3 s), ground → ring 2.2 s (ramp, stairs) / 3.8 s (hay steps).
+
+Local mode runs the barn untimed (`LocalRoundOptions.explore`) with Barn Shootout
+combat (`barnCombat`: health, disposable weapons on the `WEAPON_SPOTS`, working `TRAPS`,
+death and respawn over the `SPAWN_CANDIDATES` — see `simulation/barn/COMBAT.md`).
+Slots 1–2 are passive target dummies holding their home spot with sub-turning input
+(idle ragdolls creep ~1 m per 20 s on every map), resting 1.5 s after a hit so the
+knockback reads, and moving home to wherever they respawn. The footer readout adds
+draw calls, triangles, statics, boom, aim, yaw/pitch, position (`data-position`),
+combat ray cost and a JSON combat state (`data-combat`) for walkthrough scripts.
+
+Camera (`scene/arenas/barnCamera.ts`, barn only — rooftop keeps its fixed camera):
+third-person chase camera over the right shoulder. Pivot 1.05 m above the pelvis,
+4.2 m boom, 0.45 m shoulder offset, 65° FOV, rest pitch 10° down, aim pitch −30°…+35°
+(the boom follows downward pitch fully and upward pitch at 0.6×). Yaw is the aim and
+the body's facing (`MovementInput.facing`, turn rate `RAGDOLL.aimTurnSpeed`); WASD is
+camera-relative. Collision is a sphere cast (0.22 m, grown convex solids) against every
+shared collider plus camera-only solids for the shell (the wall mass outside the cross
+up to the roof, each wing's gable roof, a cap at the hub's eave). Under a low ceiling
+(a deck overhead, the roof near the eaves) a rising boom keeps its length and drops
+toward level first — bisected, so it moves continuously — and is only then pulled in:
+looking down under a deck squeezed the boom below 1.5 m in ~90% of cases, now ~24%.
+Pulling in is immediate, easing out takes ~0.3 s; a short boom cranes up to 1 m and
+fades the local character. Boom under 1.5 m in ~21% of all standable spots × yaws ×
+pitches (the 23 m barn: 16.5%; the wings are narrower). Look input (`input/look.ts`):
+Pointer Lock after a click in the arena (default; Esc releases) or drag-to-look.
+
+Visuals: the shell is generated in `buildBarn.ts` (one vertex-coloured mesh: planked
+walls with a timber frame and a deck-level ledger, gable roofs with rafters and collar
+ties above the camera's reach, the hub's clerestory and pyramid roof, floors, decks with
+undersides and fascia, ramp, stairs, landing, columns; a second mesh for the glowing
+window panes). `public/party-lab/maps/barn/barn-kit.glb` (≈ 250 KB, untextured) from
+`scripts/build-party-lab-barn-kit.mjs` holds the props and Big Barn's two doors, which
+hang flattened on the boarded south end wall. `barn.test.ts` casts view rays from
+player and camera positions to keep the shell closed. See `CREDITS.txt` next to the GLB.
 
 ## Assets
 

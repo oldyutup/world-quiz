@@ -13,6 +13,7 @@ import {
 } from "../../../shared/party-lab/network/protocol.js";
 import { restore } from "../../../shared/party-lab/simulation/ragdoll/character.js";
 import { IDLE_INPUT } from "../../../shared/party-lab/simulation/physics.js";
+import type { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 const { server, httpServer } = createPartyServer();
 let endpoint = "";
 type Peer = {
@@ -61,8 +62,9 @@ async function peer(code?: string, name = "Alice") {
   room.onMessage("feedback", (events: GameEvent[]) => p.events.push(...events));
   return p;
 }
+/** These rooms keep the default Rooftop Brawl selection, so the simulation is the rooftop one. */
 const local = (p: Peer) =>
-  matchMaker.getLocalRoomById(p.room.roomId) as PartyRoom;
+  matchMaker.getLocalRoomById(p.room.roomId) as PartyRoom & { game: OnlineRoundSimulation };
 const intent = (seq: number, round: number, moveX = 0) => ({
   seq,
   round,

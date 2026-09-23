@@ -2,12 +2,20 @@ import { GameStream } from "./gameStream";
 import { LINK, NetDiagnostics } from "./diagnostics";
 import {
   NET,
+  type AnyInputPacket,
+  type BarnInputPacket,
   type InputPacket,
   type GameSnapshot,
   type GameEvent,
   type PingPacket,
   type PongPacket,
 } from "../../../shared/party-lab/network/protocol";
+import {
+  isGameMode,
+  isModeSelection,
+  type ModeSelection,
+} from "../../../shared/party-lab/modes";
+import { shoulderEye } from "../../../shared/party-lab/simulation/barn/aim";
 import type { MovementInput } from "../input/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Client, Room } from "@colyseus/sdk";
@@ -33,6 +41,7 @@ const notices: Record<string, string> = {
     "Biraz yavaşla. 5 saniyede en fazla 4 mesaj gönderebilirsin.",
   INVALID_CHAT: "Mesajın 1–280 karakterlik düz metin olmalı.",
   INVALID_MESSAGE: "Bu işlem lobide desteklenmiyor.",
+  MODE_HOST_ONLY: "Oyun modunu yalnızca oda sahibi seçebilir.",
 };
 /** Colyseus CloseCode.MAY_TRY_RECONNECT: the SDK fires onclose at once and reconnects. */
 const MAY_TRY_RECONNECT = 4010;
@@ -69,6 +78,9 @@ export class LobbySession {
   private lastInputAt = -Infinity;
   private heldJump = false;
   private heldPunch = false;
+  private heldPickup = false;
+  /** Barn: the last aim sent, reused by neutral packets so pausing never turns the body. */
+  private lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
   private chatIds = new Set<string>();
   readonly diagnostics = new NetDiagnostics();
   private readonly createClient: () => Client;
@@ -177,6 +189,9 @@ export class LobbySession {
           round: state.round,
           seconds: state.seconds,
           winner: state.winner,
+          selection: isModeSelection(state.selection) ? state.selection : "rooftop_brawl",
+          mode: isGameMode(state.mode) ? state.mode : "rooftop_brawl",
+          hostId: state.hostId ?? "",
         });
       };
       room.onStateChange((state) => {
@@ -318,6 +333,16 @@ export class LobbySession {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected")
       this.room.send("ready", ready);
   }
+  /** Host only (the server enforces it): the mode of the next rounds. Clears every Ready. */
+  setMode(selection: ModeSelection) {
+    if (
+      this.room?.connection.isOpen &&
+      this.snapshot.status === "connected" &&
+      this.snapshot.phase === "waiting" &&
+      isModeSelection(selection)
+    )
+      this.room.send("mode", selection);
+  }
   /** Inputs the server has not consumed yet (by the latest snapshot's ack). */
   private inputBacklog() {
     const game = this.snapshot.game;
@@ -326,7 +351,7 @@ export class LobbySession {
     const ack = game.ack[self.slot];
     return this.inputSeq - (ack >= 0 ? ack : this.roundStart.seq - 1);
   }
-  sendInput(intent: MovementInput): InputPacket | null {
+  sendInput(intent: MovementInput): AnyInputPacket | null {
     if (
       !this.room?.connection.isOpen ||
       this.snapshot.status !== "connected" ||
@@ -334,8 +359,10 @@ export class LobbySession {
     )
       return null;
     const now = performance.now();
+    const barn = this.snapshot.mode === "barn_shootout";
     this.heldJump ||= intent.jump;
-    this.heldPunch ||= !!intent.punch;
+    this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
+    this.heldPickup ||= barn && !!intent.pickup;
     // While input is not being acknowledged, 60/s would only queue up and arrive as one
     // burst. Send the newest state at 10/s and carry pressed edges into it.
     if (
@@ -345,23 +372,58 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: InputPacket = {
-      seq: ++this.inputSeq,
-      round: this.snapshot.round,
-      moveX: intent.x,
-      moveZ: intent.z,
-      jumpPressed: this.heldJump,
-      punchPressed: this.heldPunch,
-      grabHeld: !!intent.grab,
-      liftHeld: !!intent.lift,
-    };
-    this.heldJump = this.heldPunch = false;
+    const packet: AnyInputPacket = barn
+      ? this.barnPacket(intent)
+      : {
+          seq: ++this.inputSeq,
+          round: this.snapshot.round,
+          moveX: intent.x,
+          moveZ: intent.z,
+          jumpPressed: this.heldJump,
+          punchPressed: this.heldPunch,
+          grabHeld: !!intent.grab,
+          liftHeld: !!intent.lift,
+        } satisfies InputPacket;
+    this.heldJump = this.heldPunch = this.heldPickup = false;
     if (this.roundStart.round !== packet.round)
       this.roundStart = { round: packet.round, seq: packet.seq };
     this.room.send("input", packet);
     this.lastInputAt = now;
     this.diagnostics.input(now);
     return packet;
+  }
+  /**
+   * Barn intent → wire packet. Movement is already camera-relative; the aim yaw is
+   * normalised exactly as the server does, so the local replay and the authority see
+   * the same numbers. A neutral intent (pause, hidden tab) keeps the last aim.
+   */
+  private barnPacket(intent: MovementInput): BarnInputPacket {
+    const aim = this.lastAim;
+    if (intent.facing !== undefined && Number.isFinite(intent.facing))
+      aim.yaw = Math.atan2(Math.sin(intent.facing), Math.cos(intent.facing));
+    if (intent.aimPitch !== undefined && Number.isFinite(intent.aimPitch))
+      aim.pitch = Math.max(-1.2, Math.min(1.2, intent.aimPitch));
+    const eye = intent.aimEye && [intent.aimEye.x, intent.aimEye.y, intent.aimEye.z].every(Number.isFinite) ? intent.aimEye : shoulderEye(aim.yaw);
+    const limit = (v: number) => Math.max(-4, Math.min(4, v));
+    aim.eye = { x: limit(eye.x), y: limit(eye.y), z: limit(eye.z) };
+    const viewTick = intent.viewTick !== undefined && Number.isFinite(intent.viewTick) ? Math.max(0, intent.viewTick) : 0;
+    return {
+      seq: ++this.inputSeq,
+      round: this.snapshot.round,
+      moveX: intent.x,
+      moveZ: intent.z,
+      jumpPressed: this.heldJump,
+      sprintHeld: !!intent.sprint,
+      attackPressed: this.heldPunch,
+      attackHeld: !!intent.attackHeld,
+      pickupPressed: this.heldPickup,
+      aimYaw: aim.yaw,
+      aimPitch: aim.pitch,
+      eyeX: aim.eye.x,
+      eyeY: aim.eye.y,
+      eyeZ: aim.eye.z,
+      viewTick: Math.round(viewTick * 100) / 100,
+    };
   }
   sendChat(text: string): boolean {
     if (
@@ -389,7 +451,8 @@ export class LobbySession {
     this.stream.reset();
     this.inputSeq = 0;
     this.roundStart = { round: -1, seq: 0 };
-    this.heldJump = this.heldPunch = false;
+    this.heldJump = this.heldPunch = this.heldPickup = false;
+    this.lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
     this.chatIds = new Set();
     const room = this.room;
     this.room = null;
@@ -434,6 +497,7 @@ export function useLobbySession() {
     diagnostics,
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
+    setMode: (selection: ModeSelection) => session.current?.setMode(selection),
     connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>
       session.current?.connect(action, nickname, code, costumeId),
     leave: () => session.current?.leave(),

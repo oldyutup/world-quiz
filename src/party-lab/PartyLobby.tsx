@@ -4,6 +4,13 @@ import type { NetDiagnostics } from "./network/diagnostics";
 import { linkDebugLines } from "./network/debugFormat";
 import { CHAT_INTENT_MS, followMessages, followScroll, initialChatFollow, jumpToLatest } from "./chatFollow";
 import { COSTUME_NAMES, COSTUME_SYMBOLS } from "./scene/visual/costumes";
+import { MODE_NAMES, MODE_SELECTIONS, type ModeSelection } from "../../shared/party-lab/modes";
+
+const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
+  rooftop_brawl: "Yumruk, tut, kaldır. Son ayakta kalan kazanır.",
+  barn_shootout: "Silah bul, nişan al. 2:30 sonunda en çok öldüren kazanır.",
+  mixed: "İlk tur rastgele, sonra turlar sırayla değişir.",
+};
 
 /** Opt-in (`?partyDebug=1`) link/chat timing line; refreshes on its own clock. */
 function LinkDebug({ diagnostics }: { diagnostics: NetDiagnostics }) {
@@ -15,8 +22,8 @@ function LinkDebug({ diagnostics }: { diagnostics: NetDiagnostics }) {
   return <pre className="pl-net-debug" aria-hidden="true">{linkDebugLines(diagnostics).join("\n")}</pre>;
 }
 
-export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls, controlsRef, diagnostics, debug }: {
-  lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onControls: () => void;
+export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onControls, controlsRef, diagnostics, debug }: {
+  lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onMode?: (selection: ModeSelection) => void; onControls: () => void;
   controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
   const [text, setText] = useState("");
@@ -30,6 +37,8 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
   const playersOnline = lobby.players.filter(player => player.connected);
   const readyCount = playersOnline.filter(player => player.ready).length;
   const ready = !!lobby.players.find(player => player.id === lobby.selfId)?.ready;
+  const isHost = !!lobby.selfId && lobby.hostId === lobby.selfId;
+  const host = lobby.players.find(player => player.id === lobby.hostId);
   const invite = new URL("/party-lab", window.location.origin);
   invite.searchParams.set("room", lobby.code);
   const pinToLatest = () => {
@@ -93,11 +102,26 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
               <input id="pl-invite" readOnly value={copyFallback === "code" ? lobby.code : invite.href} onFocus={event => event.target.select()} />
             </div>}
           </div>
+          <section className="pl-mode" aria-labelledby="pl-mode-title">
+            <div className="pl-room-roster-heading">
+              <h2 id="pl-mode-title">Oyun modu</h2>
+              <span>{isHost ? "Sen seçiyorsun" : host ? `${host.nickname} seçiyor` : ""}</span>
+            </div>
+            <div className="pl-mode-options" role="radiogroup" aria-label="Oyun modu">
+              {MODE_SELECTIONS.map(selection => <button key={selection} type="button" role="radio" aria-checked={lobby.selection === selection}
+                className={`pl-mode-option${lobby.selection === selection ? " is-selected" : ""}`} data-mode={selection}
+                disabled={!connected || !isHost} onClick={() => { if (lobby.selection !== selection) onMode?.(selection); }}>
+                <b>{MODE_NAMES[selection]}</b><small>{MODE_HINTS[selection]}</small>
+              </button>)}
+            </div>
+            <p className="pl-mode-next" role="status" data-next-mode={lobby.mode}>Sıradaki tur: <b>{MODE_NAMES[lobby.mode]}</b>
+              {!isHost && <span> · Modu yalnızca oda sahibi değiştirebilir.</span>}</p>
+          </section>
           <div className="pl-room-roster-heading"><h2>Oyuncular</h2><span>{playersOnline.length} / 3</span></div>
           <ul className="pl-room-roster" aria-label="Lobideki oyuncular">
             {lobby.players.map(player => <li key={player.id}>
               <span className="pl-lobby-avatar" style={{ borderColor: player.color }} aria-hidden="true">{COSTUME_SYMBOLS[player.costumeId]}</span>
-              <span className="pl-room-player"><b>{player.nickname}{player.id === lobby.selfId && <small>Sen</small>}</b><small className="pl-costume-name">{COSTUME_NAMES[player.costumeId]}</small></span>
+              <span className="pl-room-player"><b>{player.nickname}{player.id === lobby.selfId && <small>Sen</small>}{player.id === lobby.hostId && <small className="pl-host-tag">Oda sahibi</small>}</b><small className="pl-costume-name">{COSTUME_NAMES[player.costumeId]}</small></span>
               <span className={`pl-player-status${player.connected && player.ready ? " is-ready" : ""}`}>
                 <span aria-hidden="true">{!player.connected ? "↻" : player.ready ? "✓" : "○"}</span>{" "}
                 {player.connected ? (player.ready ? "Hazır" : "Hazır Değil") : "Yeniden bağlanıyor"}
@@ -116,7 +140,7 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
           <button className={`pl-button pl-create pl-ready-button${ready ? " is-ready" : ""}`} data-sfx="uiConfirm" disabled={!connected} aria-pressed={ready}
             onClick={() => onReady(!ready)}>{ready ? "✓ Hazırsın" : "Hazır"}<span aria-hidden="true">{ready ? "Hazır Değilim" : "→"}</span></button>
           {connected && lobby.link === "degraded" && <p className="pl-link-warning" role="status">Bağlantı yavaş: sunucudan veri gecikiyor. Bağlantı kesilmedi.</p>}
-          <p className="pl-hint">En az 2 kişi. Herkes hazır olunca 3 saniye içinde başlar.</p>
+          <p className="pl-hint">En az 2 kişi. Herkes hazır olunca 3 saniye içinde başlar. Mod değişince herkes yeniden hazır olur.</p>
         </footer>
       </section>
       <section className="pl-room-chat" aria-labelledby="pl-chat-title">

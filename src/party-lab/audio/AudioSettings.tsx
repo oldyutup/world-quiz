@@ -27,6 +27,14 @@ export const PREVIEWS: [SfxName, string][] = [
   ["uiClick", "Düğme"],
   ["uiConfirm", "Onay"],
   ["uiBack", "Geri"],
+  ["weaponPickup", "Ambar: silah alma"],
+  ["shotgunFire", "Ambar: pompalı"],
+  ["smgFire", "Ambar: hafif makineli"],
+  ["bulletHit", "Ambar: isabet"],
+  ["weaponEmpty", "Ambar: silah bitti"],
+  ["trapSnap", "Ambar: ayı kapanı"],
+  ["death", "Ambar: ölüm"],
+  ["respawn", "Ambar: yeniden doğma"],
 ];
 export default function AudioSettings({ disabled }: { disabled: boolean }) {
   const { audio, settings, saved, update } = usePartyAudio();

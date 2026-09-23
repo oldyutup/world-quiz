@@ -80,6 +80,7 @@ test("mailbox sequences, round epochs, edge consumption, held transitions and ex
 });
 const frame = (seq: number, tick: number, round = 1): GameSnapshot => ({
   v: NET.version,
+  mode: "rooftop_brawl",
   seq,
   tick,
   round,

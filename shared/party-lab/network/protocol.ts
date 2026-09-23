@@ -1,17 +1,23 @@
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
+import type { GameMode } from "../modes.js";
 export const NET = {
   // 3: rooftop arena. Prediction replays against the static map, so a client
   // built for another map must refuse this server's snapshots.
   // 4: ping/pong link diagnostics. An older server answers "ping" with an
   // INVALID_MESSAGE notice every second, so mismatched deploys are refused at join.
-  version: 4,
+  // 5: game modes (Rooftop Brawl / Barn Shootout / Mixed). A room can now run Barn
+  // rounds: a v4 page would render and predict the rooftop against barn poses, and a
+  // v4 server rejects the barn input packet. Every snapshot names its round's mode.
+  version: 5,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
   staleMs: 300,
   interpolationMs: 100,
   pingMs: 1000,
+  /** Barn lag compensation: the oldest view a shot may be resolved against. */
+  maxRewindMs: 250,
 } as const;
 export interface PingPacket {
   id: number;
@@ -36,6 +42,19 @@ export interface ServerDiagnostics {
   chatPatchAvgMs: number; // Chat receive → next state patch broadcast.
   chatPatchMaxMs: number;
   rooms: number;
+  /** This room: current simulation mode, exact encoded snapshot size, simulations built. */
+  mode?: GameMode;
+  snapshotBytes?: number;
+  simulations?: number;
+  /** Barn lag compensation, this round: shots resolved, last/max rewind, rejected/clamped views, lookup cost. */
+  rewind?: {
+    shots: number;
+    lastMs: number;
+    maxMs: number;
+    clampedOld: number;
+    rejectedFuture: number;
+    lookupUs: number;
+  };
 }
 export interface PongPacket {
   id: number;
@@ -64,21 +83,102 @@ export interface InputPacket {
   grabHeld: boolean;
   liftHeld: boolean;
 }
+/**
+ * Barn Shootout input: intent only, like the rooftop packet. Movement is already
+ * camera-relative (world X/Z, magnitude ≤ 1); the aim is a yaw/pitch plus a point on
+ * the camera's aim line near the shoulder (the simulation bounds it). `viewTick` is
+ * the server tick of the remote poses on screen when the packet was sent; the server
+ * validates and clamps it for lag compensation. Never a target, damage or result.
+ */
+export interface BarnInputPacket {
+  seq: number;
+  round: number;
+  moveX: number;
+  moveZ: number;
+  jumpPressed: boolean;
+  sprintHeld: boolean;
+  attackPressed: boolean;
+  attackHeld: boolean;
+  pickupPressed: boolean;
+  aimYaw: number;
+  aimPitch: number;
+  eyeX: number;
+  eyeY: number;
+  eyeZ: number;
+  viewTick: number;
+}
+export type AnyInputPacket = InputPacket | BarnInputPacket;
+export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export interface GameEvent extends FeedbackEvent {
   id: number;
   round: number;
   tick: number;
-  inputSeq?: number; // Originating punch edge, for local swing-only deduplication.
+  inputSeq?: number; // Originating punch/attack edge, for local presentation deduplication.
 }
 /** Only sent to this slot's client. Never accepted from a client. */
 export interface PredictionState {
   slot: number;
   velocities: Uint8Array; // Nine bodies × (linear XYZ, angular XYZ), Float32 LE.
-  controller: number[]; // facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs
+  controller: number[]; // Rooftop: facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs. Barn: empty.
+  /** Barn: BARN_PREDICTION_FIELDS Float64 LE values (character + own fighter state). */
+  barn?: Uint8Array;
 }
 export const VELOCITY_BYTES = 9 * 6 * 4;
+/**
+ * Barn prediction state (Float64, recipient only): what the local rig needs to replay
+ * movement, aim-facing, sprint, the idle anchor, trap hold, stagger, punches and its own
+ * weapon cadence exactly like the server. Float64 because the restore must be exact: a
+ * 180° aim flick is resolved by the sign of a tiny facing difference, and a Float32
+ * facing turned the replay the other way (a hard correction at 100 ms + jitter).
+ */
+export const BARN_PREDICTION_FIELDS = [
+  "facing",
+  "gait",
+  "jumpIn",
+  "sprint",
+  "anchored",
+  "anchorX",
+  "anchorZ",
+  "alive",
+  "punchHand",
+  "punchCooldown",
+  "punchAge",
+  "punchSwingCooldown",
+  "trapped",
+  "staggerTime",
+  "staggerPosture",
+  "staggerMobility",
+  "protection",
+  "weapon",
+  "ammo",
+  "weaponCooldown",
+  "bloom",
+  "aimPitch",
+] as const;
+export const BARN_PREDICTION_BYTES = BARN_PREDICTION_FIELDS.length * 8;
+/** Weapon codes on the wire: 0 unarmed, 1 shotgun, 2 SMG. */
+export const WEAPON_CODES = [null, "shotgun", "smg"] as const;
+/**
+ * Barn per-fighter values (small integers, msgpack packs each into 1–3 bytes):
+ * flags, HP, weapon code, ammo, kills, deaths, respawn in / protection / trap hold
+ * (deciseconds), aim pitch (centiradians, signed).
+ */
+export const BARN_FIGHTER_FIELDS = 10;
+export const BARN_FLAG = { alive: 1, present: 2, staggered: 4 } as const;
+export interface BarnSnapshot {
+  /** Three slots × BARN_FIGHTER_FIELDS. */
+  f: number[];
+  /** Active pickups: [spot index, weapon code] pairs. */
+  p: number[];
+  /** Telegraphed replacements: [spot index, progress 0–100] pairs. */
+  t: number[];
+  /** Traps in map order: [rearm in (ds, 0 = armed), since sprung (ds, capped 255)] pairs. */
+  r: number[];
+}
 export interface GameSnapshot {
   v: number;
+  /** The mode of the round this snapshot belongs to (never inferred from poses). */
+  mode: GameMode;
   seq: number;
   tick: number;
   round: number;
@@ -93,6 +193,7 @@ export interface GameSnapshot {
   ack: number[];
   transforms: Uint8Array;
   prediction?: PredictionState;
+  barn?: BarnSnapshot;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -147,6 +248,72 @@ export function validateInput(value: unknown): InputPacket | null {
   z /= length;
   return { ...p, moveX: x, moveZ: z };
 }
+const barnKeys = [
+  "seq",
+  "round",
+  "moveX",
+  "moveZ",
+  "jumpPressed",
+  "sprintHeld",
+  "attackPressed",
+  "attackHeld",
+  "pickupPressed",
+  "aimYaw",
+  "aimPitch",
+  "eyeX",
+  "eyeY",
+  "eyeZ",
+  "viewTick",
+];
+/** Aim pitch accepted from a client (the simulation clamps it again); eye point range. */
+const BARN_PITCH_LIMIT = 1.2,
+  BARN_EYE_LIMIT = 4;
+export function validateBarnInput(value: unknown): BarnInputPacket | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as BarnInputPacket;
+  if (
+    Object.keys(p).length !== barnKeys.length ||
+    Object.keys(p).some((k) => !barnKeys.includes(k))
+  )
+    return null;
+  if (
+    !Number.isSafeInteger(p.seq) ||
+    p.seq < 0 ||
+    !Number.isSafeInteger(p.round) ||
+    p.round < 1
+  )
+    return null;
+  if (
+    ![p.moveX, p.moveZ, p.aimYaw, p.aimPitch, p.eyeX, p.eyeY, p.eyeZ, p.viewTick].every(
+      (v) => typeof v === "number" && Number.isFinite(v)
+    ) ||
+    p.viewTick < 0 ||
+    Math.abs(p.aimYaw) > 1e4
+  )
+    return null;
+  if (
+    ![p.jumpPressed, p.sprintHeld, p.attackPressed, p.attackHeld, p.pickupPressed].every(
+      (v) => typeof v === "boolean"
+    )
+  )
+    return null;
+  let x = Math.max(-1, Math.min(1, p.moveX)),
+    z = Math.max(-1, Math.min(1, p.moveZ));
+  const length = Math.max(1, Math.hypot(x, z));
+  x /= length;
+  z /= length;
+  const eye = (v: number) => Math.max(-BARN_EYE_LIMIT, Math.min(BARN_EYE_LIMIT, v));
+  return {
+    ...p,
+    moveX: x,
+    moveZ: z,
+    aimYaw: Math.atan2(Math.sin(p.aimYaw), Math.cos(p.aimYaw)),
+    aimPitch: Math.max(-BARN_PITCH_LIMIT, Math.min(BARN_PITCH_LIMIT, p.aimPitch)),
+    eyeX: eye(p.eyeX),
+    eyeY: eye(p.eyeY),
+    eyeZ: eye(p.eyeZ),
+  };
+}
 export const neutralIntent = (): MovementInput => ({
   x: 0,
   z: 0,
@@ -166,7 +333,12 @@ export class InputMailbox {
   private packet: InputPacket | null = null;
   private jump = false;
   private punch = false;
-  accept(value: unknown, round: number, now: number) {
+  // Barn: the latest barn packet and its edges (a round is one mode; `accept` picks the validator).
+  private barnPacket: BarnInputPacket | null = null;
+  private pickup = false;
+  private attackViewTick = -1;
+  accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
+    if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
     const p = validateInput(value);
     // Transport limits traffic; valid ordered packets may arrive together after network jitter.
     if (!p || p.round !== round || p.seq <= this.seq) return false;
@@ -177,11 +349,32 @@ export class InputMailbox {
       this.punchSeq = p.seq;
     }
     this.packet = p;
+    this.barnPacket = null;
+    this.received = now;
+    return true;
+  }
+  private acceptBarn(value: unknown, round: number, now: number) {
+    const p = validateBarnInput(value);
+    if (!p || p.round !== round || p.seq <= this.seq) return false;
+    this.seq = p.seq;
+    const last = this.barnPacket;
+    this.jump ||= p.jumpPressed && !last?.jumpPressed;
+    this.pickup ||= p.pickupPressed && !last?.pickupPressed;
+    // The attack edge keeps the sequence and view of the packet that carried it.
+    if (p.attackPressed && !last?.attackPressed && !this.punch) {
+      this.punch = true;
+      this.punchSeq = p.seq;
+      this.attackViewTick = p.viewTick;
+    }
+    this.barnPacket = p;
+    this.packet = null;
     this.received = now;
     return true;
   }
   read(now: number): MovementInput {
     if (now - this.received > NET.staleMs) this.clear();
+    const b = this.barnPacket;
+    if (b) return this.readBarn(b);
     const p = this.packet;
     if (p) {
       this.processedSeq = this.seq;
@@ -201,10 +394,33 @@ export class InputMailbox {
     this.jump = this.punch = false;
     return result;
   }
+  private readBarn(p: BarnInputPacket): MovementInput {
+    this.processedSeq = this.seq;
+    this.processedRound = p.round;
+    const attack = this.punch;
+    this.processedPunchSeq = attack ? this.punchSeq : this.seq;
+    const result: MovementInput = {
+      x: p.moveX,
+      z: p.moveZ,
+      jump: this.jump,
+      sprint: p.sprintHeld,
+      facing: p.aimYaw,
+      aimPitch: p.aimPitch,
+      aimEye: { x: p.eyeX, y: p.eyeY, z: p.eyeZ },
+      attack,
+      attackHeld: p.attackHeld,
+      pickup: this.pickup,
+      viewTick: attack ? this.attackViewTick : p.viewTick,
+    };
+    this.jump = this.punch = this.pickup = false;
+    return result;
+  }
   clear() {
     this.packet = null;
-    this.jump = this.punch = false;
+    this.barnPacket = null;
+    this.jump = this.punch = this.pickup = false;
     this.received = -Infinity;
     this.punchSeq = this.processedPunchSeq = -1;
+    this.attackViewTick = -1;
   }
 }

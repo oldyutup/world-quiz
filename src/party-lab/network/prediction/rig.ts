@@ -2,6 +2,7 @@ import { createArenaWorld } from "../../../../shared/party-lab/simulation/world"
 import {
   arenaMap,
   ONLINE_ARENA_MAP_ID,
+  spawnYaw,
 } from "../../../../shared/party-lab/maps";
 import { createCharacter } from "../../../../shared/party-lab/simulation/ragdoll/character";
 import {
@@ -47,7 +48,7 @@ export class PredictionRig {
   alternateIn = 0;
   private disposed = false;
   constructor(readonly slot: PlayerId) {
-    this.character = createCharacter(this.world, slot, this.map.spawns[slot]);
+    this.character = createCharacter(this.world, slot, this.map.spawns[slot], spawnYaw(this.map, slot));
     // Populate static query structures before grounded tests on a restored snapshot.
     this.world.step();
   }

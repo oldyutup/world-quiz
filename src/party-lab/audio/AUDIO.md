@@ -79,6 +79,14 @@ Only the last released hand emits release/throw: torso speed below 2.5 selects
 release; otherwise throw, with clamped speed/10 intensity. Round/KO/elimination
 grip cleanup produces no fake throws. Recovery plays once on KO → RECOVERING.
 
+Barn Shootout cues (local barn only; the rooftop never emits them), with previews in
+settings: `weaponPickup` (two-note click), `shotgunFire` (heavy noise boom, priority 2),
+`smgFire` (short noise pop, 50 ms gate for ≈ 9.5 rounds/s), `bulletHit` (thwack per
+struck target per shot, intensity = damage / 60), `weaponEmpty` (click-poof when the
+last round removes the weapon), `trapSnap`, `death` and `respawn`. Punches reuse
+`punchSwing` and the part hit cues. `CameraFeel` also shakes on heavy `bulletHit`,
+`trapSnap` and `death` involving the local player.
+
 ## Intensity, spam prevention and performance
 
 - Punch intensity: existing part-weighted impact power / knockout head threshold
