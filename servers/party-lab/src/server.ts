@@ -19,6 +19,9 @@ export function createPartyServer() {
     transport: new WebSocketTransport({
       server: httpServer,
       maxPayload: 2048,
+      // Protocol-level ping every 3 s; a socket with two unanswered pings is terminated
+      // on the third check, i.e. after 6–9 s without any pong. Browsers answer pings
+      // natively (not throttled with the tab). The seat is then held RECONNECT_SECONDS.
       pingInterval: 3000,
       pingMaxRetries: 2,
       verifyClient: (info: {

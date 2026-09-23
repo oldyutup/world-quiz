@@ -1,12 +1,16 @@
 import { GameStream } from "./gameStream";
-import type {
-  InputPacket,
-  GameSnapshot,
-  GameEvent,
+import { LINK, NetDiagnostics } from "./diagnostics";
+import {
+  NET,
+  type InputPacket,
+  type GameSnapshot,
+  type GameEvent,
+  type PingPacket,
+  type PongPacket,
 } from "../../../shared/party-lab/network/protocol";
 import type { MovementInput } from "../input/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Room } from "@colyseus/sdk";
+import type { Client, Room } from "@colyseus/sdk";
 import { selectedCostumeId, type SelectableCostumeId } from "../../../shared/party-lab/costumes";
 import { createLobbyClient, lobbyError } from "./client";
 import { admissionOptions } from "./admission";
@@ -30,6 +34,24 @@ const notices: Record<string, string> = {
   INVALID_CHAT: "Mesajın 1–280 karakterlik düz metin olmalı.",
   INVALID_MESSAGE: "Bu işlem lobide desteklenmiyor.",
 };
+/** Colyseus CloseCode.MAY_TRY_RECONNECT: the SDK fires onclose at once and reconnects. */
+const MAY_TRY_RECONNECT = 4010;
+const HEALTH_CHECK_MS = 250;
+
+/** Opt-in overlay (`?partyDebug=1`), also in production: the lag reports come from real play. */
+export function partyDebugEnabled() {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("partyDebug")
+  );
+}
+const pageHidden = () => typeof document !== "undefined" && document.hidden;
+
+export interface LobbySessionOptions {
+  createClient?: () => Client;
+  /** Ask the server for loop diagnostics in each pong. */
+  debug?: boolean;
+}
 
 /** One in-memory session per mounted Party Lab root. No accounts or persisted tokens. */
 export class LobbySession {
@@ -39,10 +61,26 @@ export class LobbySession {
   private inputSeq = 0;
   private disposed = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private pingTimer: ReturnType<typeof setInterval> | undefined;
+  private healthTimer: ReturnType<typeof setInterval> | undefined;
+  private pingId = 0;
+  private lastHealthCheck = -1;
+  private roundStart = { round: -1, seq: 0 };
+  private lastInputAt = -Infinity;
+  private heldJump = false;
+  private heldPunch = false;
+  private chatIds = new Set<string>();
+  readonly diagnostics = new NetDiagnostics();
+  private readonly createClient: () => Client;
+  private readonly debug: boolean;
   constructor(
     private readonly publish: (snapshot: LobbySnapshot) => void,
-    readonly stream = new GameStream()
-  ) {}
+    readonly stream = new GameStream(),
+    options: LobbySessionOptions = {}
+  ) {
+    this.createClient = options.createClient ?? createLobbyClient;
+    this.debug = options.debug ?? false;
+  }
 
   private update(change: Partial<LobbySnapshot>) {
     this.snapshot = { ...this.snapshot, ...change };
@@ -65,7 +103,7 @@ export class LobbySession {
     this.update({ ...EMPTY_LOBBY, status: "connecting" });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const client = createLobbyClient();
+      const client = this.createClient();
       const pending =
         action === "create"
           ? client.create<LobbyState>("party_lab", admissionOptions("create", nickname, code, costumeId))
@@ -93,7 +131,12 @@ export class LobbySession {
         maxDelay: 2000,
         maxEnqueuedMessages: 0,
       });
+      this.diagnostics.reset();
       const current = () => !this.disposed && this.room === room;
+      // Every server frame proves the socket is alive (lobby: patches + pongs).
+      const heard = () => this.diagnostics.serverMessage(performance.now());
+      let chatPrimed = false; // history present at join is not "received" now
+      this.chatIds = new Set();
       const copyState = (state: LobbyState) => {
         if (!current() || !state?.players) return;
         const players: LobbyPlayer[] = [];
@@ -110,15 +153,22 @@ export class LobbySession {
             participating: player.participating,
           })
         );
-        state.messages.forEach((message) =>
+        const known = this.chatIds;
+        this.chatIds = new Set();
+        state.messages.forEach((message) => {
           messages.push({
             id: message.id,
             playerId: message.playerId,
             nickname: message.nickname,
             text: message.text,
             sentAt: message.sentAt,
-          })
-        );
+          });
+          this.chatIds.add(message.id);
+          if (chatPrimed && !known.has(message.id) && message.playerId !== room.sessionId)
+            this.diagnostics.chatReceived(message.id, message.sentAt, performance.now(), Date.now());
+        });
+        chatPrimed = true;
+        // A fresh array/object every patch: React must never see a mutated message list.
         this.update({
           code: state.code,
           players,
@@ -129,24 +179,46 @@ export class LobbySession {
           winner: state.winner,
         });
       };
-      room.onStateChange(copyState);
+      room.onStateChange((state) => {
+        if (!current()) return;
+        heard();
+        copyState(state);
+      });
       room.onMessage("snapshot", (game: GameSnapshot) => {
-        if (current() && this.stream.snapshots.push(game, performance.now()))
-          this.update({ game });
+        if (!current()) return;
+        const now = performance.now();
+        heard();
+        const accepted = this.stream.snapshots.push(game, now);
+        this.diagnostics.snapshot(Number(game?.seq), accepted, now);
+        if (accepted) this.update({ game });
       });
       room.onMessage("feedback", (events: GameEvent[]) => {
-        if (current()) this.stream.acceptEvents(events, !document.hidden);
+        if (!current()) return;
+        heard();
+        this.stream.acceptEvents(events, !pageHidden());
       });
       room.onMessage("notice", (code: string) => {
-        if (current())
-          this.update({ notice: notices[code] ?? "İşlem tamamlanamadı." });
-      });
-      room.onDrop(() => {
         if (!current()) return;
+        heard();
+        this.update({ notice: notices[code] ?? "İşlem tamamlanamadı." });
+      });
+      room.onMessage("pong", (pong: PongPacket) => {
+        if (!current()) return;
+        heard();
+        if (
+          pong &&
+          [pong.id, pong.t, pong.s].every((v) => typeof v === "number" && Number.isFinite(v))
+        )
+          this.diagnostics.pong(pong, performance.now(), Date.now());
+      });
+      room.onDrop((code, reason) => {
+        if (!current()) return;
+        this.diagnostics.dropped(code, reason, performance.now());
         this.stream.clearPresentation();
         this.update({
           status: "reconnecting",
           game: null,
+          link: "good",
           notice: "Bağlantı kesildi. Yeniden bağlanılıyor…",
         });
         clearTimeout(this.reconnectTimer);
@@ -164,15 +236,20 @@ export class LobbySession {
       room.onReconnect(() => {
         if (!current()) return;
         clearTimeout(this.reconnectTimer);
-        this.update({ status: "connected", notice: "Yeniden bağlandın." });
+        this.diagnostics.reconnected(performance.now());
+        this.update({ status: "connected", link: "good", notice: "Yeniden bağlandın." });
         copyState(room.state);
+        this.ping();
       });
-      room.onLeave(() => {
+      room.onLeave((code, reason) => {
         if (!current()) return;
         clearTimeout(this.reconnectTimer);
+        this.stopTimers();
+        this.diagnostics.closed(code, reason);
         this.room = null;
         this.update({
           status: "disconnected",
+          link: "good",
           notice: "Odadan ayrıldın veya bağlantı süresi doldu.",
         });
       });
@@ -185,7 +262,9 @@ export class LobbySession {
         selfId: room.sessionId,
         notice: "",
       });
+      heard();
       copyState(room.state);
+      this.startTimers();
     } catch (error) {
       if (!this.disposed && generation === this.generation) {
         this.generation++;
@@ -196,9 +275,56 @@ export class LobbySession {
     }
   }
 
+  private startTimers() {
+    this.stopTimers();
+    this.lastHealthCheck = -1;
+    this.ping();
+    this.pingTimer = setInterval(() => this.ping(), NET.pingMs);
+    this.healthTimer = setInterval(() => this.checkHealth(), HEALTH_CHECK_MS);
+  }
+  private stopTimers() {
+    clearInterval(this.pingTimer);
+    clearInterval(this.healthTimer);
+    this.pingTimer = this.healthTimer = undefined;
+  }
+  private ping() {
+    const room = this.room;
+    if (!room?.connection.isOpen || this.snapshot.status !== "connected") return;
+    const packet: PingPacket = { id: ++this.pingId, t: performance.now() };
+    if (this.debug) packet.diag = true;
+    room.send("ping", packet);
+  }
+  /** Link quality from data freshness; a silently dead socket is recycled. */
+  checkHealth(now = performance.now()) {
+    const room = this.room;
+    if (!room || this.snapshot.status !== "connected") return;
+    // A late tick means this page was busy (arena load, GC, frozen tab); queued socket
+    // events run after it, so data only *looks* late. Don't blame the link for that tick.
+    const gap = this.lastHealthCheck >= 0 ? now - this.lastHealthCheck : 0;
+    this.lastHealthCheck = now;
+    if (gap > HEALTH_CHECK_MS * 2.4) return;
+    if (this.diagnostics.dead(now)) {
+      // Browsers can take minutes to notice a dead TCP path (Wi-Fi/NAT change). 4010 fires
+      // onclose immediately and reuses the SDK's normal reconnection to the same seat.
+      this.diagnostics.deadSocketResets++;
+      room.connection.close(MAY_TRY_RECONNECT, "CLIENT_SILENCE");
+      return;
+    }
+    const link = this.diagnostics.quality(now, this.snapshot.phase);
+    if (link !== this.snapshot.link) this.update({ link });
+  }
+
   setReady(ready: boolean) {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected")
       this.room.send("ready", ready);
+  }
+  /** Inputs the server has not consumed yet (by the latest snapshot's ack). */
+  private inputBacklog() {
+    const game = this.snapshot.game;
+    const self = this.snapshot.players.find((p) => p.id === this.snapshot.selfId);
+    if (!game || !self || game.round !== this.roundStart.round) return 0;
+    const ack = game.ack[self.slot];
+    return this.inputSeq - (ack >= 0 ? ack : this.roundStart.seq - 1);
   }
   sendInput(intent: MovementInput): InputPacket | null {
     if (
@@ -207,17 +333,34 @@ export class LobbySession {
       this.snapshot.phase !== "playing"
     )
       return null;
+    const now = performance.now();
+    this.heldJump ||= intent.jump;
+    this.heldPunch ||= !!intent.punch;
+    // While input is not being acknowledged, 60/s would only queue up and arrive as one
+    // burst. Send the newest state at 10/s and carry pressed edges into it.
+    if (
+      this.inputBacklog() > LINK.unackedInputs &&
+      now - this.lastInputAt < LINK.stalledInputIntervalMs
+    ) {
+      this.diagnostics.inputsCoalesced++;
+      return null;
+    }
     const packet: InputPacket = {
       seq: ++this.inputSeq,
       round: this.snapshot.round,
       moveX: intent.x,
       moveZ: intent.z,
-      jumpPressed: intent.jump,
-      punchPressed: !!intent.punch,
+      jumpPressed: this.heldJump,
+      punchPressed: this.heldPunch,
       grabHeld: !!intent.grab,
       liftHeld: !!intent.lift,
     };
+    this.heldJump = this.heldPunch = false;
+    if (this.roundStart.round !== packet.round)
+      this.roundStart = { round: packet.round, seq: packet.seq };
     this.room.send("input", packet);
+    this.lastInputAt = now;
+    this.diagnostics.input(now);
     return packet;
   }
   sendChat(text: string): boolean {
@@ -241,9 +384,13 @@ export class LobbySession {
   }
   private release() {
     clearTimeout(this.reconnectTimer);
+    this.stopTimers();
     this.generation++;
     this.stream.reset();
     this.inputSeq = 0;
+    this.roundStart = { round: -1, seq: 0 };
+    this.heldJump = this.heldPunch = false;
+    this.chatIds = new Set();
     const room = this.room;
     this.room = null;
     if (room) {
@@ -265,9 +412,12 @@ export function useLobbySession() {
   const [snapshot, setSnapshot] = useState<LobbySnapshot>(EMPTY_LOBBY);
   const session = useRef<LobbySession | null>(null);
   const [stream] = useState(() => new GameStream());
+  const [debug] = useState(partyDebugEnabled);
+  const [diagnostics, setDiagnostics] = useState<NetDiagnostics | null>(null);
   useEffect(() => {
-    const local = new LobbySession(setSnapshot, stream);
+    const local = new LobbySession(setSnapshot, stream, { debug });
     session.current = local;
+    setDiagnostics(local.diagnostics);
     return () => {
       local.dispose();
       session.current = null;
@@ -280,6 +430,8 @@ export function useLobbySession() {
   return {
     snapshot,
     stream,
+    debug,
+    diagnostics,
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
     connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>

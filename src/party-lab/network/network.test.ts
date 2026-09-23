@@ -7,7 +7,7 @@ import {
   TRANSFORM_BYTES,
   type GameSnapshot,
 } from "../../../shared/party-lab/network/protocol";
-import { GameStream, SnapshotBuffer } from "./gameStream";
+import { GameStream, PLAYOUT, SnapshotBuffer } from "./gameStream";
 import { serverEndpoint } from "./endpoint";
 const input = (seq = 1) => ({
   seq,
@@ -107,7 +107,7 @@ test("snapshots are bounded, ordered, delayed, and reset without interpolating a
   assert.equal(buffer.frames.length, 1);
   for (let i = 6; i < 50; i++)
     buffer.push(frame(i, 120 + i * 3, 2), 160 + i * 50);
-  assert.ok(buffer.frames.length <= 12);
+  assert.ok(buffer.frames.length <= PLAYOUT.frames);
   assert.equal(
     buffer.push({ ...frame(99, 400, 2), transforms: new Uint8Array(2) }, 2000),
     false
@@ -188,4 +188,65 @@ test("hidden or settings-paused presentation consumes IDs without replaying an a
   assert.equal(stream.drain(1, 1000).length, 0);
   stream.acceptEvents([{ ...event, id: 4 }]);
   assert.equal(stream.drain(1, 1000).length, 1);
+});
+/** TCP-like delivery: per-snapshot delay, never before the previous one; a stall holds everything. */
+function playout(stallMs: number, jitter = 0) {
+  const buffer = new SnapshotBuffer(),
+    step = 1000 / 60,
+    queue: { due: number; s: GameSnapshot }[] = [];
+  let last = 0,
+    maxSkip = 0,
+    previous = -1,
+    backwards = 0,
+    beyondNewest = 0;
+  for (let i = 0; i < 600; i++) {
+    const now = i * step;
+    if (i % 3 === 0) {
+      let due = now + 40 + ((i * 7919) % 97) / 97 * jitter;
+      if (stallMs && now + 40 >= 4000 && now + 40 < 4000 + stallMs)
+        due = Math.max(due, 4000 + stallMs);
+      last = Math.max(last, due);
+      queue.push({ due: last, s: frame(i + 1, 600 + i) });
+    }
+    while (queue[0]?.due <= now) buffer.push(queue.shift()!.s, now);
+    if (!buffer.sample(now)) continue;
+    if (previous >= 0) {
+      maxSkip = Math.max(maxSkip, buffer.renderMs - previous - step);
+      if (buffer.renderMs < previous - 1e-9) backwards++;
+    }
+    if (buffer.renderMs > (buffer.latest!.snapshot.tick * 1000) / NET.physicsHz + 1e-9)
+      beyondNewest++;
+    previous = buffer.renderMs;
+  }
+  return { maxSkip, backwards, beyondNewest };
+}
+test("remote playout catches up after 300–800 ms stalls instead of skipping, never runs backwards or extrapolates", () => {
+  for (const stall of [300, 500, 800]) {
+    const r = playout(stall);
+    assert.ok(r.maxSkip < 20, `${stall} ms stall: max one-frame skip ${r.maxSkip.toFixed(1)} ms (was ≈ stall − 117 ms)`);
+    assert.equal(r.backwards, 0);
+    assert.equal(r.beyondNewest, 0);
+  }
+  const jittery = playout(0, 80);
+  assert.ok(jittery.maxSkip < 10, `0–80 ms jitter skip ${jittery.maxSkip.toFixed(1)} ms`);
+  assert.equal(jittery.backwards, 0);
+  const outage = playout(1500);
+  assert.ok(outage.maxSkip > PLAYOUT.snapMs / 2, "a >1 s outage still snaps to the present");
+  assert.equal(outage.backwards, 0);
+});
+test("playout clock restarts with a new round and after clear()", () => {
+  const buffer = new SnapshotBuffer();
+  buffer.push(frame(1, 600), 0);
+  buffer.push(frame(2, 603), 50);
+  buffer.sample(60);
+  // Ticks are room-lifetime monotonic; a new round only resets the playout clock.
+  buffer.push(frame(3, 900, 2), 5000);
+  const sample = buffer.sample(5001)!;
+  assert.equal(sample.a.snapshot.round, 2);
+  assert.ok(Math.abs(buffer.renderMs - (15000 + 1 - NET.interpolationMs)) < 1e-6);
+  buffer.clear();
+  assert.equal(buffer.sample(6000), null);
+  buffer.push(frame(4, 960, 2), 6000);
+  buffer.sample(6000);
+  assert.ok(Math.abs(buffer.renderMs - (16000 - NET.interpolationMs)) < 1e-6);
 });

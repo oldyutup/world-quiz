@@ -3,13 +3,56 @@ import type { FeedbackEvent } from "../feedback/events.js";
 export const NET = {
   // 3: rooftop arena. Prediction replays against the static map, so a client
   // built for another map must refuse this server's snapshots.
-  version: 3,
+  // 4: ping/pong link diagnostics. An older server answers "ping" with an
+  // INVALID_MESSAGE notice every second, so mismatched deploys are refused at join.
+  version: 4,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
   staleMs: 300,
   interpolationMs: 100,
+  pingMs: 1000,
 } as const;
+export interface PingPacket {
+  id: number;
+  t: number; // Client clock, echoed untouched; the server never interprets it.
+  diag?: boolean; // Opt-in server loop diagnostics (debug overlay only).
+}
+/** Rolling server-loop window; process-wide values cover every room in the process. */
+export interface ServerDiagnostics {
+  windowMs: number;
+  stepAvgMs: number;
+  stepMaxMs: number;
+  tickGapMaxMs: number; // Longest wall-clock gap between fixed-step callbacks.
+  catchUpSteps: number; // Steps run back-to-back to recover from a late callback.
+  snapshotAvgMs: number; // Snapshot build + per-client send.
+  snapshotMaxMs: number;
+  loopDelayP99Ms: number; // Node event-loop delay.
+  loopDelayMaxMs: number;
+  gcMaxMs: number;
+  cpuPercent: number; // Of one core, whole process.
+  heapMb: number;
+  rssMb: number;
+  chatPatchAvgMs: number; // Chat receive → next state patch broadcast.
+  chatPatchMaxMs: number;
+  rooms: number;
+}
+export interface PongPacket {
+  id: number;
+  t: number;
+  s: number; // Server Date.now() when the pong was sent.
+  d?: ServerDiagnostics;
+}
+export function validatePing(value: unknown): PingPacket | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as Record<string, unknown>;
+  if (Object.keys(p).some((k) => k !== "id" && k !== "t" && k !== "diag"))
+    return null;
+  if (!Number.isSafeInteger(p.id) || (p.id as number) < 0) return null;
+  if (typeof p.t !== "number" || !Number.isFinite(p.t)) return null;
+  if (p.diag !== undefined && typeof p.diag !== "boolean") return null;
+  return { id: p.id as number, t: p.t, diag: p.diag === true };
+}
 export type OnlinePhase = "waiting" | "countdown" | "playing" | "results";
 export interface InputPacket {
   seq: number;

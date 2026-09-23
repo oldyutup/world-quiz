@@ -1,29 +1,58 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CHAT_MAX_LENGTH, type LobbySnapshot } from "./network/types";
+import type { NetDiagnostics } from "./network/diagnostics";
+import { linkDebugLines } from "./network/debugFormat";
+import { CHAT_INTENT_MS, followMessages, followScroll, initialChatFollow, jumpToLatest } from "./chatFollow";
 import { COSTUME_NAMES, COSTUME_SYMBOLS } from "./scene/visual/costumes";
 
-export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls, controlsRef }: {
+/** Opt-in (`?partyDebug=1`) link/chat timing line; refreshes on its own clock. */
+function LinkDebug({ diagnostics }: { diagnostics: NetDiagnostics }) {
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => redraw(n => n + 1), 500);
+    return () => clearInterval(timer);
+  }, []);
+  return <pre className="pl-net-debug" aria-hidden="true">{linkDebugLines(diagnostics).join("\n")}</pre>;
+}
+
+export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls, controlsRef, diagnostics, debug }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onControls: () => void;
-  controlsRef?: RefObject<HTMLButtonElement>;
+  controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
   const [text, setText] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [copyFallback, setCopyFallback] = useState<"code" | "invite" | null>(null);
   const history = useRef<HTMLDivElement>(null);
-  const followMessages = useRef(true);
+  const follow = useRef(initialChatFollow());
+  const readerIntent = useRef(-Infinity);
+  const [unread, setUnread] = useState(0);
   const connected = lobby.status === "connected";
   const playersOnline = lobby.players.filter(player => player.connected);
   const readyCount = playersOnline.filter(player => player.ready).length;
   const ready = !!lobby.players.find(player => player.id === lobby.selfId)?.ready;
   const invite = new URL("/party-lab", window.location.origin);
   invite.searchParams.set("room", lobby.code);
-  const lastMessage = lobby.messages[lobby.messages.length - 1];
+  const pinToLatest = () => {
+    const element = history.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  };
+  // Layout effect: the newest message is on screen in the same paint it is committed.
+  useLayoutEffect(() => {
+    const next = followMessages(follow.current, lobby.messages, lobby.selfId);
+    follow.current = next.state;
+    if (next.pin) pinToLatest();
+    setUnread(next.state.unread);
+    const last = lobby.messages[lobby.messages.length - 1];
+    if (last) diagnostics?.chatRendered(last.id, performance.now());
+  }, [lobby.messages, lobby.selfId, diagnostics]);
+  // Size changes (window, notices, being re-shown after Controls) keep a follower pinned.
   useEffect(() => {
     const element = history.current;
-    if (element && (followMessages.current || lastMessage?.playerId === lobby.selfId)) {
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [lastMessage?.id, lastMessage?.playerId, lobby.selfId]);
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => { if (follow.current.following) pinToLatest(); });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   async function copy(kind: "code" | "invite") {
     try {
@@ -86,13 +115,20 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
             : `${readyCount} / ${playersOnline.length} oyuncu hazır`}</p>
           <button className={`pl-button pl-create pl-ready-button${ready ? " is-ready" : ""}`} data-sfx="uiConfirm" disabled={!connected} aria-pressed={ready}
             onClick={() => onReady(!ready)}>{ready ? "✓ Hazırsın" : "Hazır"}<span aria-hidden="true">{ready ? "Hazır Değilim" : "→"}</span></button>
+          {connected && lobby.link === "degraded" && <p className="pl-link-warning" role="status">Bağlantı yavaş: sunucudan veri gecikiyor. Bağlantı kesilmedi.</p>}
           <p className="pl-hint">En az 2 kişi. Herkes hazır olunca 3 saniye içinde başlar.</p>
         </footer>
       </section>
       <section className="pl-room-chat" aria-labelledby="pl-chat-title">
         <header className="pl-chat-heading"><h2 id="pl-chat-title">Oda Sohbeti</h2><p className="pl-hint">Son 40 mesaj. Oda kapanınca sohbet silinir.</p></header>
+        <div className="pl-chat-body">
         <div className="pl-chat-history" role="log" aria-label="Sohbet mesajları" aria-live="polite" tabIndex={0} ref={history}
-          onScroll={event => { const el = event.currentTarget; followMessages.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }}>
+          onWheel={() => { readerIntent.current = performance.now(); }} onTouchMove={() => { readerIntent.current = performance.now(); }}
+          onPointerDown={() => { readerIntent.current = performance.now(); }} onKeyDown={() => { readerIntent.current = performance.now(); }}
+          onScroll={event => {
+            follow.current = followScroll(follow.current, event.currentTarget, performance.now() - readerIntent.current < CHAT_INTENT_MS);
+            setUnread(follow.current.unread);
+          }}>
           {lobby.messages.length === 0 && <div className="pl-chat-empty"><span aria-hidden="true">“</span><p>İlk selam senden gelsin.</p><small>Tur başlamadan biraz sohbet?</small></div>}
           {lobby.messages.map(message => <div className={`pl-chat-message${message.playerId === lobby.selfId ? " is-self" : ""}`} key={message.id}>
             <div><b>{message.nickname}</b>{message.playerId === lobby.selfId && <span className="pl-chat-self">Sen</span>}
@@ -100,7 +136,11 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onControls
             <p>{message.text}</p>
           </div>)}
         </div>
-        <form className="pl-chat-compose" onSubmit={event => { event.preventDefault(); if (onChat(text)) { followMessages.current = true; setText(""); } }}>
+        {unread > 0 && <button type="button" className="pl-chat-jump" onClick={() => { follow.current = jumpToLatest(follow.current); setUnread(0); pinToLatest(); }}>
+          <span aria-hidden="true">↓</span> {unread} yeni mesaj</button>}
+        </div>
+        {debug && diagnostics && <LinkDebug diagnostics={diagnostics} />}
+        <form className="pl-chat-compose" onSubmit={event => { event.preventDefault(); if (onChat(text)) setText(""); }}>
           <label htmlFor="pl-chat-message">Mesajın</label>
           <div className="pl-join-row"><input id="pl-chat-message" value={text} maxLength={CHAT_MAX_LENGTH}
             placeholder="Bir şeyler yaz…" autoComplete="off" disabled={!connected} aria-describedby="pl-chat-limit"

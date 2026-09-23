@@ -51,8 +51,10 @@ authority at 60 Hz. Edges apply only on the first tick of their record. Duplicat
 sequences cannot advance the rig, and replay emits no audio. Restoring velocities,
 controller cooldowns and punch state before replay prevents cumulative edge effects.
 
-History is bounded by 48 records **and 18 replay ticks (300 ms)**. Overflow or
-snapshots older than 300 ms suspend prediction rather than extending uncertainty.
+History is bounded by 48 records **and 30 replay ticks (500 ms)**. Overflow or
+snapshots older than 500 ms suspend prediction rather than extending uncertainty.
+(Originally 18 ticks / 300 ms; widened after jitter measurements — see
+[NETWORK.md](NETWORK.md).)
 Disconnect, settings, hidden tabs and round changes clear input history and visual
 correction. Reconnect requires a fresh authoritative snapshot and does not replay
 old commands. Round reset also clears the local ACK and restores server spawn state.
@@ -212,8 +214,8 @@ contact and packet-loss conditions were not comprehensively measured. No remote
 proxies means contact presentation may overlap before correction. Entering a grip
 or KO returns to the 100 ms authoritative timeline and can visibly correct. These
 mechanics intentionally remain latency-sensitive. Rapier solver caches are not
-networked, so replay is approximate rather than bit-identical. Under >300 ms
-snapshot/input uncertainty prediction falls back safely. Do not add speculative
+networked, so replay is approximate rather than bit-identical. Under >500 ms
+snapshot/input uncertainty (originally 300 ms) prediction falls back safely. Do not add speculative
 hit/grab outcomes to conceal those limits.
 
 ## LAN testing

@@ -2,6 +2,18 @@ export const MAX_PLAYERS = 3;
 export const CHAT_MAX_LENGTH = 280;
 export const CHAT_HISTORY_LIMIT = 40;
 export const RECONNECT_SECONDS = 15;
+/**
+ * Colyseus flood guard. It counts in a FIXED one-second window and, when exceeded,
+ * silently detaches the client (no more snapshots, input ignored) and closes the
+ * socket with 4002 only after the reconnect grace — the SDK never reconnects from
+ * 4002. Input is 60/s, so the former 90/s cap was tripped by the burst of queued
+ * packets a ~0.5–1 s uplink stall releases (measured: 91 in-window after a 1 s
+ * stall). Handlers are cheap and input is latest-wins; this only stops floods.
+ * Clients also coalesce input to 10/s while their input goes unacknowledged.
+ */
+export const MAX_MESSAGES_PER_SECOND = 300;
+/** Diagnostics pings are 1/s; anything faster is ignored without a reply. */
+export const PING_MIN_INTERVAL_MS = 200;
 
 export function nickname(value: unknown): string {
   if (typeof value !== "string" || value.length > 64) throw new Error("INVALID_NICKNAME");

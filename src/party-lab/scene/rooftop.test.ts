@@ -88,7 +88,7 @@ test("rooftop is the default and only online map; ids are validated", () => {
   assert.deepEqual(Object.keys(ARENA_MAPS).sort(), ["rooftop", "test"]);
   assert.ok(isArenaMapId("test") && isArenaMapId("rooftop"));
   assert.ok(!isArenaMapId("toString") && !isArenaMapId("") && !isArenaMapId(3));
-  assert.equal(NET.version, 3);
+  assert.equal(NET.version, 4);
 });
 
 test("rooftop data is finite, inside the 14 × 11 m roof and matches the audited layout", () => {

@@ -23,6 +23,8 @@ import type { InputPacket } from "../../../shared/party-lab/network/protocol";
 import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
+import type { NetDiagnostics } from "../network/diagnostics";
+import { linkDebugLines } from "../network/debugFormat";
 import { NET, neutralIntent } from "../../../shared/party-lab/network/protocol";
 import { ONLINE_ARENA_MAP_ID } from "../../../shared/party-lab/maps";
 import { usePartyAudio } from "../audio/PartyAudio";
@@ -54,6 +56,8 @@ interface Props {
   sendInput: (input: MovementInput) => InputPacket | null | undefined;
   onLeave: () => void;
   onControls: () => void;
+  diagnostics?: NetDiagnostics | null;
+  debug?: boolean;
 }
 const conditions = ["Aktif", "Sersem", "Baygın", "Toparlanıyor"];
 function OnlineView({
@@ -63,7 +67,13 @@ function OnlineView({
   paused,
   sendInput,
   performanceLabel,
-}: Props & { performanceLabel: React.RefObject<HTMLSpanElement> }) {
+  netLabel,
+  diagnostics,
+  debug = false,
+}: Props & {
+  performanceLabel: React.RefObject<HTMLSpanElement>;
+  netLabel: React.RefObject<HTMLPreElement>;
+}) {
   const { gl, camera, size } = useThree();
   const { audio, settings } = usePartyAudio();
   const self = lobby.players.find((p) => p.id === lobby.selfId);
@@ -74,9 +84,7 @@ function OnlineView({
   const accumulator = useRef(0);
   const follow = useRef(new Vector3());
   const followTarget = useRef(new Vector3());
-  const debug =
-    import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).has("partyDebug");
+  const netRefresh = useRef(0);
   const qa = useRef(new Quaternion()),
     qb = useRef(new Quaternion());
   const feel = useRef(new CameraFeel());
@@ -120,6 +128,20 @@ function OnlineView({
     document.addEventListener("visibilitychange", visibility);
     return () => document.removeEventListener("visibilitychange", visibility);
   }, [stream, audio, sendInput]);
+  // Debug only: main-thread stalls (Chrome) separate a client hitch from a network one.
+  useEffect(() => {
+    if (!debug || !diagnostics || typeof PerformanceObserver === "undefined") return;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries())
+          diagnostics.longTask(entry.duration, performance.now());
+      });
+      observer.observe({ entryTypes: ["longtask"] });
+      return () => observer.disconnect();
+    } catch {
+      return; // Long Tasks API is Chromium-only.
+    }
+  }, [debug, diagnostics]);
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReduced(media.matches);
@@ -183,6 +205,7 @@ function OnlineView({
   ]);
   useFrame((_frame, dt) => {
     const start = performance.now();
+    if (debug) diagnostics?.frame(dt * 1000, start);
     const enabled =
       !paused &&
       !document.hidden &&
@@ -316,6 +339,11 @@ function OnlineView({
     );
     camera.position.x += x;
     camera.position.y += y;
+    netRefresh.current += dt;
+    if (debug && diagnostics && netLabel.current && netRefresh.current >= 0.5) {
+      netRefresh.current = 0;
+      netLabel.current.textContent = linkDebugLines(diagnostics, start).join("\n");
+    }
     const stats = sample.current;
     stats.frames++;
     stats.seconds += dt;
@@ -357,7 +385,8 @@ function OnlineView({
 export default function OnlineArena(props: Props) {
   const { lobby, onLeave, onControls, bindings } = props;
   const viewport = useRef<HTMLDivElement>(null),
-    performanceLabel = useRef<HTMLSpanElement>(null);
+    performanceLabel = useRef<HTMLSpanElement>(null),
+    netLabel = useRef<HTMLPreElement>(null);
   const game = lobby.game;
   const self = lobby.players.find((p) => p.id === lobby.selfId);
   const result =
@@ -388,9 +417,18 @@ export default function OnlineArena(props: Props) {
           Odadan Ayrıl
         </button>
       </header>
-      <p className="pl-online-status" role="status">
+      <p
+        className={`pl-online-status${
+          lobby.status === "connected" && lobby.link === "degraded"
+            ? " is-degraded"
+            : ""
+        }`}
+        role="status"
+      >
         {lobby.status === "connected"
-          ? "Sunucuya bağlı"
+          ? lobby.link === "degraded"
+            ? "Bağlantı yavaş: sunucudan veri gecikiyor. Bağlantı kesilmedi."
+            : "Sunucuya bağlı"
           : lobby.status === "reconnecting"
           ? "Bağlantı kesildi. Yeniden bağlanılıyor…"
           : "Bağlantı kapandı."}
@@ -413,7 +451,11 @@ export default function OnlineArena(props: Props) {
             gl={{ antialias: true, alpha: true }}
             fallback={<p>Bu arena için WebGL 2 gerekiyor.</p>}
           >
-            <OnlineView {...props} performanceLabel={performanceLabel} />
+            <OnlineView
+              {...props}
+              performanceLabel={performanceLabel}
+              netLabel={netLabel}
+            />
           </Canvas>
         </GraphicsBoundary>
         <div className="pl-round-hud">
@@ -505,6 +547,7 @@ export default function OnlineArena(props: Props) {
         </span>
         <span ref={performanceLabel} />
       </footer>
+      {props.debug && <pre className="pl-net-debug" ref={netLabel} aria-hidden="true" />}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type {
   OnlinePhase,
 } from "../../../shared/party-lab/network/protocol";
 import type { SelectableCostumeId } from "../../../shared/party-lab/costumes";
+import type { LinkQuality } from "./diagnostics";
 export interface LobbyPlayer {
   id: string;
   nickname: string;
@@ -30,6 +31,7 @@ export interface LobbyState {
   players: { forEach(callback: (player: LobbyPlayer) => void): void };
   messages: { forEach(callback: (message: ChatMessage) => void): void };
 }
+/** Socket lifecycle. Link quality (good/degraded) is tracked separately in `link`. */
 export type ConnectionStatus =
   | "idle"
   | "connecting"
@@ -48,6 +50,8 @@ export interface LobbySnapshot {
   messages: ChatMessage[];
   notice: string;
   game: GameSnapshot | null;
+  /** "degraded" while the socket is open but data is late (see LINK thresholds). */
+  link: LinkQuality;
 }
 export const EMPTY_LOBBY: LobbySnapshot = {
   status: "idle",
@@ -61,6 +65,7 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   seconds: 0,
   winner: -1,
   game: null,
+  link: "good",
 };
 
 export function normalizeNickname(value: string) {

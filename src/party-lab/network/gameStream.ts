@@ -5,6 +5,22 @@ import {
   type GameEvent,
 } from "../../../shared/party-lab/network/protocol";
 import { SFX_NAMES } from "../audio/events";
+/**
+ * Remote playout clock. The target is unchanged (latest arrival + elapsed − delay),
+ * but the render clock follows it at a bounded rate instead of jumping: TCP
+ * delivers a stall's snapshots as one burst, and jumping to the new target skipped
+ * 180/380/680 ms of motion in one frame after 300/500/800 ms stalls. Following at
+ * ≤2× turns that into a brief fast-forward (measured max step 13–17 ms), cut
+ * ±80 ms jitter skips from 67 to 3 ms and held fewer frames. It never extrapolates
+ * past the newest snapshot; outages longer than snapMs still snap.
+ */
+export const PLAYOUT = {
+  followMs: 250, // rate = 1 + lag / followMs, clamped
+  minRate: 0.5,
+  maxRate: 2,
+  snapMs: 1000,
+  frames: 24, // 1.2 s at 20 Hz: enough history to catch up after snapMs
+} as const;
 export interface BufferedSnapshot {
   snapshot: GameSnapshot;
   values: Float32Array;
@@ -13,6 +29,7 @@ export interface BufferedSnapshot {
 export class SnapshotBuffer {
   frames: BufferedSnapshot[] = [];
   private sequence = -1;
+  private sampledAt = -1;
   renderMs = 0;
   constructor(readonly delayMs: number = NET.interpolationMs) {}
   get latest() {
@@ -55,20 +72,28 @@ export class SnapshotBuffer {
     ) {
       this.frames = [];
       this.renderMs = (snapshot.tick * 1000) / NET.physicsHz - this.delayMs;
+      this.sampledAt = -1;
     }
     this.sequence = snapshot.seq;
     this.frames.push({ snapshot, values, received: now });
-    if (this.frames.length > 12) this.frames.shift();
+    if (this.frames.length > PLAYOUT.frames) this.frames.shift();
     return true;
   }
   sample(now: number) {
     const latest = this.frames[this.frames.length - 1];
     if (!latest) return null;
     const end = (latest.snapshot.tick * 1000) / NET.physicsHz;
-    this.renderMs = Math.min(
-      end,
-      Math.max(this.renderMs, end + now - latest.received - this.delayMs)
-    );
+    const target = Math.min(end, end + now - latest.received - this.delayMs);
+    if (this.sampledAt < 0) this.renderMs = target;
+    else {
+      const dt = Math.max(0, Math.min(100, now - this.sampledAt));
+      const lag = target - this.renderMs;
+      if (lag > PLAYOUT.snapMs) this.renderMs = target;
+      else
+        this.renderMs += dt * Math.max(PLAYOUT.minRate, Math.min(PLAYOUT.maxRate, 1 + lag / PLAYOUT.followMs));
+      this.renderMs = Math.min(this.renderMs, end);
+    }
+    this.sampledAt = now;
     while (
       this.frames.length > 2 &&
       (this.frames[1].snapshot.tick * 1000) / NET.physicsHz <= this.renderMs
@@ -91,6 +116,7 @@ export class SnapshotBuffer {
     this.frames = [];
     this.sequence = -1;
     this.renderMs = 0;
+    this.sampledAt = -1;
   }
 }
 /** Events are never reconstructed from poses; IDs are monotonic for the room lifetime. */

@@ -53,8 +53,11 @@ still require Colyseus seat reservations/reconnect credentials.
 
 Friends-only internet deployment (Railway server + private `/party-lab` gate on
 Vercel) is documented in [DEPLOY.md](DEPLOY.md). `GET /health` on the server port
-returns `{"ok":true,"service":"party-lab","protocol":3}`. Admission carries the
+returns `{"ok":true,"service":"party-lab","protocol":4}`. Admission carries the
 network protocol version; a mismatched client is rejected with `PROTOCOL_MISMATCH`.
+Link diagnostics (`?partyDebug=1`), thresholds, logs and the local bad-network proxy
+(`scripts/netem-proxy.mjs`) are described in
+[shared/party-lab/NETWORK.md](../../shared/party-lab/NETWORK.md).
 
 For a compiled long-lived process:
 

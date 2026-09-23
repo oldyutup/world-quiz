@@ -11,7 +11,7 @@ import {
   type GameSnapshot,
 } from "../../../shared/party-lab/network/protocol";
 import { LocalPrediction, canPredict } from "./prediction/localPrediction";
-import { InputHistory } from "./prediction/history";
+import { InputHistory, PREDICTION_LIMITS } from "./prediction/history";
 import { RigCorrection, correctionTier } from "./prediction/correction";
 import {
   GameStream,
@@ -102,7 +102,7 @@ test("bounded history removes acknowledged records and retains later input exact
     [3]
   );
   for (let i = 4; i < 100; i++) history.add(packet(i), 1, i * 16);
-  assert.ok(history.records.length <= 18);
+  assert.ok(history.records.length <= PREDICTION_LIMITS.replayTicks);
   history.clear();
   assert.equal(history.records.length, 0);
 });
@@ -240,11 +240,12 @@ test("disconnect, stale snapshots and new rounds clear history/smoothing; reconn
     f.local.reconcile(frame(f.server, 1, 30), 30);
     assert.equal(f.local.active, true);
     assert.equal(f.local.history.records.length, 0);
-    f.local.advance(packet(2, { moveX: 1 }), 1, 400);
+    const stale = 30 + PREDICTION_LIMITS.staleMs + 50;
+    f.local.advance(packet(2, { moveX: 1 }), 1, stale);
     assert.equal(f.local.active, false, "stale snapshot freezes prediction");
-    const spawn = frame(f.server, -1, 410);
+    const spawn = frame(f.server, -1, stale + 10);
     spawn.snapshot.round = 2;
-    f.local.reconcile(spawn, 410);
+    f.local.reconcile(spawn, stale + 10);
     assert.equal(f.local.lastAck, -1);
     assert.equal(f.local.history.records.length, 0);
     assert.equal(f.local.correction.active, false);

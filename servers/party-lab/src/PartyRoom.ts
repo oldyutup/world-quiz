@@ -9,10 +9,13 @@ import {
   InputMailbox,
   NET,
   neutralIntent,
+  validatePing,
   type OnlinePhase,
   type GameEvent,
+  type PongPacket,
 } from "../../../shared/party-lab/network/protocol.js";
 import { allowedOrigin } from "./origin.js";
+import { LoopMetrics, processMetrics } from "./diagnostics.js";
 import { randomUUID } from "node:crypto";
 import {
   Room,
@@ -26,8 +29,10 @@ import { selectedCostumeId, type SelectableCostumeId } from "../../../shared/par
 import {
   ChatLimiter,
   chatText,
+  MAX_MESSAGES_PER_SECOND,
   MAX_PLAYERS,
   nickname,
+  PING_MIN_INTERVAL_MS,
   RECONNECT_SECONDS,
 } from "./validation.js";
 
@@ -66,6 +71,9 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   private mailboxes = new Map<string, InputMailbox>();
   private events: GameEvent[] = [];
   private participants = new Set<string>();
+  private lastPing = new Map<string, number>();
+  private droppedAt = new Map<string, number>();
+  readonly loop = new LoopMetrics(() => this.roomId);
   readonly metrics = {
     steps: 0,
     stepMs: 0,
@@ -103,9 +111,11 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.syncGameState();
   }
   private tick() {
+    const now = performance.now();
+    // Measured before the lobby early-return so event-loop stalls show up in any phase.
+    this.loop.tick(now);
     if (this.game.phase === "waiting") return;
-    const now = performance.now(),
-      before = this.game.phase;
+    const before = this.game.phase;
     const intent = PLAYERS.map(() => neutralIntent());
     for (const [id, p] of this.state.players) {
       const input = this.mailboxes.get(id)!;
@@ -129,6 +139,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.metrics.steps++;
     this.metrics.stepMs += ms;
     this.metrics.maxStepMs = Math.max(this.metrics.maxStepMs, ms);
+    this.loop.step(ms);
     const phase = this.game.phase as OnlinePhase;
     if (before !== phase) {
       for (const input of this.mailboxes.values()) input.clear();
@@ -167,6 +178,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       }
       this.metrics.snapshots++;
       this.metrics.serializeMs += performance.now() - start;
+      this.loop.snapshot(performance.now() - start);
       this.metrics.snapshotBytes =
         predictionBytes +
         snapshot.transforms.byteLength +
@@ -176,6 +188,17 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         this.events = [];
       }
     }
+  }
+
+  /** Colyseus hook: chat appended since the last patch leaves in this one. */
+  onBeforePatch() {
+    this.loop.patch(performance.now());
+  }
+  private log(event: string, client: Client, detail = "") {
+    // Session IDs only: nicknames are user-chosen text and stay out of host logs.
+    console.info(
+      `[party-lab] room ${this.roomId} ${event} ${client.sessionId} phase=${this.game?.phase ?? "-"}${detail}`
+    );
   }
 
   // Validate before creating a room/reserving a seat, including direct SDK callers.
@@ -198,7 +221,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.state.code = this.roomId;
     this.setPrivate(true);
     this.setPatchRate(100);
-    this.maxMessagesPerSecond = 90;
+    this.maxMessagesPerSecond = MAX_MESSAGES_PER_SECOND;
+    processMetrics().rooms++;
     this.setFixedTimestep(() => this.tick(), NET.physicsHz);
     this.onMessage("input", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
@@ -238,9 +262,25 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
           sentAt: Date.now(),
         });
         appendChat(this.state, message);
+        this.loop.chatReceived(performance.now());
       } catch {
         client.send("notice", "INVALID_CHAT");
       }
+    });
+    // Link diagnostics: echo the client's clock for RTT plus server time for offset.
+    this.onMessage("ping", (client, data: unknown) => {
+      const ping = validatePing(data),
+        now = performance.now();
+      if (
+        !ping ||
+        now - (this.lastPing.get(client.sessionId) ?? -Infinity) <
+          PING_MIN_INTERVAL_MS
+      )
+        return;
+      this.lastPing.set(client.sessionId, now);
+      const pong: PongPacket = { id: ping.id, t: ping.t, s: Date.now() };
+      if (ping.diag) pong.d = this.loop.report();
+      client.send("pong", pong);
     });
     this.onMessage("*", (client) => {
       client.send("notice", "INVALID_MESSAGE");
@@ -278,7 +318,9 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.limiters.set(client.sessionId, new ChatLimiter());
   }
 
-  async onDrop(client: Client) {
+  async onDrop(client: Client, code?: number) {
+    this.droppedAt.set(client.sessionId, performance.now());
+    this.log("drop", client, ` code=${code ?? "-"}`);
     const player = this.state.players.get(client.sessionId);
     if (player) {
       player.connected = false;
@@ -300,11 +342,21 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     }
   }
   onReconnect(client: Client) {
+    const dropped = this.droppedAt.get(client.sessionId);
+    this.droppedAt.delete(client.sessionId);
+    this.log(
+      "reconnect",
+      client,
+      dropped === undefined ? "" : ` after=${Math.round(performance.now() - dropped)}ms`
+    );
     const player = this.state.players.get(client.sessionId);
     if (player) player.connected = true;
     this.mailboxes.get(client.sessionId)?.clear();
   }
-  onLeave(client: Client) {
+  onLeave(client: Client, code?: number) {
+    this.log("leave", client, ` code=${code ?? "-"}`);
+    this.lastPing.delete(client.sessionId);
+    this.droppedAt.delete(client.sessionId);
     const player = this.state.players.get(client.sessionId);
     if (player?.participating) {
       this.game.remove(player.slot as PlayerId);
@@ -321,6 +373,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.tryStart();
   }
   onDispose() {
+    if (this.game) processMetrics().rooms--;
     this.game?.dispose();
     this.mailboxes.clear();
     this.events = [];

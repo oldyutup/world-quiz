@@ -8,7 +8,7 @@
   this data; nothing is derived from rendered meshes or the GLB.
 - `ONLINE_ARENA_MAP_ID` (rooftop) is the only online map. `OnlineRoundSimulation`
   and `PredictionRig` both use it. Changing the online map requires bumping
-  `NET.version` (now 3) so stale clients reject snapshots instead of predicting
+  `NET.version` (now 4; 4 added link diagnostics) so stale clients reject snapshots instead of predicting
   on the wrong geometry.
 - Local mode defaults to `DEFAULT_ARENA_MAP_ID` (rooftop); the original platform
   (`test`) stays selectable from the local arena header for debugging.

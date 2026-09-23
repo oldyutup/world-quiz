@@ -209,7 +209,14 @@ body:has(.party-lab) {
 .party-lab.pl-room .pl-hint { font-size: 13px; }
 .party-lab .pl-room-chat { padding: 28px; display: flex; flex-direction: column; background: oklch(22% 0.014 65); }
 .party-lab .pl-chat-heading { padding-bottom: 20px; border-bottom: 1px solid var(--pl-border); flex-shrink: 0; }
-.party-lab .pl-chat-history { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; scrollbar-gutter: stable; padding: 8px 8px 8px 2px; margin-block: 12px; }
+.party-lab .pl-chat-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* overflow-anchor: none — the browser must not re-scroll the log when the 40-message cap
+   removes the top entry; following the newest message is decided in chatFollow.ts. */
+.party-lab .pl-chat-history { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; overflow-wrap: anywhere; scrollbar-gutter: stable; padding: 8px 8px 8px 2px; margin-block: 12px; }
+.party-lab .pl-chat-jump { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 14px; border: 1px solid var(--pl-border); border-radius: 999px; background: var(--pl-accent); color: var(--pl-bg); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 18px oklch(10% 0.01 65 / 45%); }
+.party-lab .pl-chat-jump:hover { background: var(--pl-accent-hover); }
+.party-lab .pl-link-warning { margin-top: 8px; color: var(--pl-accent); font-size: 13px; }
+.party-lab .pl-net-debug { margin: 8px 0 0; max-height: 9em; overflow: auto; color: var(--pl-muted); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .party-lab .pl-chat-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 16px; color: var(--pl-muted); text-align: center; }
 .party-lab .pl-chat-empty > span { height: 50px; color: var(--pl-accent); font: 64px/1 Georgia, serif; }
 .party-lab .pl-chat-empty p { color: var(--pl-ink); font-size: 16px; }
@@ -476,4 +483,5 @@ body:has(.party-lab) {
 @media (max-width: 600px) { .party-lab .pl-volume-row { grid-template-columns: 100px 1fr 42px; gap: 8px; } }
 
 .party-lab .pl-online-status { color: var(--pl-muted); margin: 0 0 12px; font-size: 14px; }
+.party-lab .pl-online-status.is-degraded { color: var(--pl-accent); }
 .party-lab .pl-online-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--pl-muted); font-size: 12px; padding-top: 10px; }
