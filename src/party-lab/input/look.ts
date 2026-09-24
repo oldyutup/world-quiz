@@ -14,6 +14,11 @@ import { isUIInput } from "./device";
  * `claimsClick` tells the gameplay mouse bindings which presses belong to looking:
  * the click that acquires the lock (any button) and, in drag mode, the drag button —
  * so taking the lock never also punches or fires.
+ *
+ * `onLockLost` reports a lock the page did not give up itself: Esc (the browser's own
+ * unlock gesture, never intercepted here), focus or tab loss. The arena opens its menu
+ * on it. Releases asked for through `setEnabled(false)` / `setMode` / `dispose` do not
+ * report: the caller already knows.
  */
 export type LookMode = "lock" | "drag";
 export type LookStatus = "unlocked" | "locked" | "dragging" | "error";
@@ -38,7 +43,7 @@ export function saveLookMode(mode: LookMode) {
   }
 }
 
-export function bindLook(surface: HTMLElement, initialMode: LookMode, onStatus: (status: LookStatus) => void) {
+export function bindLook(surface: HTMLElement, initialMode: LookMode, onStatus: (status: LookStatus) => void, onLockLost?: () => void) {
   let mode = initialMode,
     enabled = true,
     dragging = false,
@@ -95,7 +100,11 @@ export function bindLook(surface: HTMLElement, initialMode: LookMode, onStatus: 
   }
   function lockChange() {
     if (locked()) set("locked");
-    else if (status === "locked") set("unlocked");
+    else if (status === "locked") {
+      // Still "locked" here means nobody on the page asked for this release.
+      set("unlocked");
+      onLockLost?.();
+    }
     dx = dy = 0;
   }
   const lockError = () => set("error");
@@ -134,26 +143,27 @@ export function bindLook(surface: HTMLElement, initialMode: LookMode, onStatus: 
     },
     setMode(next: LookMode) {
       if (next === mode) return;
+      // Status first: the release that follows is the page's own, not a lost lock.
+      set("unlocked");
       release();
       mode = next;
-      set("unlocked");
     },
     /** Settings open / tab hidden: drop the lock and any drag. */
     setEnabled(value: boolean) {
       enabled = value;
       if (!value) {
-        release();
         set("unlocked");
+        release();
       }
     },
     dispose() {
-      release();
       surface.removeEventListener("mousedown", mouseDown);
       window.removeEventListener("mousemove", mouseMove);
       window.removeEventListener("mouseup", mouseUp);
       document.removeEventListener("pointerlockchange", lockChange);
       document.removeEventListener("pointerlockerror", lockError);
       window.removeEventListener("blur", release);
+      release();
     },
   };
 }

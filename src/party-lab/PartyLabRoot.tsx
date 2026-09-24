@@ -96,7 +96,7 @@ function PartyLab() {
         {network.snapshot.phase === 'waiting'
           ? <PartyLobby controlsRef={controlsEntry} lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onMode={network.setMode} onControls={() => setControlsOpen(true)} diagnostics={network.diagnostics} debug={network.debug} />
           : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
-              <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} onLeave={leave} diagnostics={network.diagnostics} debug={network.debug}/>
+              <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} diagnostics={network.diagnostics} debug={network.debug}/>
             </Suspense>}
       </div>
       {settings}

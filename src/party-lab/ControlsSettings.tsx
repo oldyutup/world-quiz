@@ -17,6 +17,7 @@ export default function ControlsSettings({
   inArena,
   online = false,
   saved,
+  embedded = false,
 }: {
   bindings: Bindings;
   onChange: (bindings: Bindings) => void;
@@ -24,6 +25,8 @@ export default function ControlsSettings({
   inArena: boolean;
   online?: boolean;
   saved: boolean;
+  /** Inside the online arena's Esc menu (no page chrome; closing returns to the menu). */
+  embedded?: boolean;
 }) {
   const [capture, setCapture] = useState<{
     action: Action;
@@ -68,22 +71,25 @@ export default function ControlsSettings({
     });
   }, [capture, bindings, onChange]);
 
+  const Main = embedded ? "div" : "main";
   return (
-    <div className="party-lab pl-settings" data-party-controls>
-      <header className="pl-topbar">
-        <span className="pl-brand">
-          torble<span className="pl-brand-divider">/</span>party lab
-        </span>
+    <div className={embedded ? "pl-settings pl-settings-embedded" : "party-lab pl-settings"} data-party-controls>
+      <header className={embedded ? "pl-menu-panel-head" : "pl-topbar"}>
+        {!embedded && (
+          <span className="pl-brand">
+            torble<span className="pl-brand-divider">/</span>party lab
+          </span>
+        )}
         <button
           className="pl-button pl-join"
           onClick={onClose}
           data-sfx="uiBack"
           disabled={!!capture}
         >
-          {inArena ? "Oyuna Dön" : "Lobiye Dön"}
+          {embedded ? "← Menüye Dön" : inArena ? "Oyuna Dön" : "Lobiye Dön"}
         </button>
       </header>
-      <main className="pl-settings-main">
+      <Main className="pl-settings-main">
         <span className="pl-eyebrow">Senin oyunun, senin tuşların</span>
         <h1 ref={title} tabIndex={-1}>
           Kontroller
@@ -193,7 +199,7 @@ export default function ControlsSettings({
           kullanılabilir; tarayıcı ve sistem kısayolları ayrılmıştır.
         </p>
         <AudioSettings disabled={!!capture} />
-      </main>
+      </Main>
     </div>
   );
 }

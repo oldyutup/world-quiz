@@ -11,6 +11,7 @@ import { PredictionRig } from "./rig";
 import { BarnPredictionRig, canPredictBarn } from "./barnRig";
 import { InputHistory, PREDICTION_LIMITS, type PendingInput } from "./history";
 import { RigCorrection } from "./correction";
+import { Quaternion } from "three";
 
 export function canPredict(snapshot: GameSnapshot, slot: number) {
   return (
@@ -69,6 +70,11 @@ export class LocalPrediction {
   private heldConstraint = false;
   private raw = new Float32Array(63);
   private visual = new Float32Array(63);
+  /** The pose one tick before the newest predicted tick (see pose()). */
+  private previous = new Float32Array(63);
+  private hasPrevious = false;
+  private blended = new Float32Array(63);
+  private carried = new Float32Array(63);
   constructor(readonly slot: PlayerId, readonly mode: GameMode = "rooftop_brawl") {
     this.rig = mode === "barn_shootout" ? new BarnPredictionRig(slot) : new PredictionRig(slot);
   }
@@ -78,6 +84,10 @@ export class LocalPrediction {
     const shots: PredictedShot[] = [];
     const p = record.packet;
     for (let i = 0; i < record.ticks; i++) {
+      if (i === record.ticks - 1) {
+        this.rig.pose(this.previous);
+        this.hasPrevious = true;
+      }
       const began = performance.now();
       let result: { valid: boolean; swing: boolean; jumped: boolean };
       if (this.rig instanceof BarnPredictionRig) {
@@ -137,6 +147,8 @@ export class LocalPrediction {
     }
     const wasActive = this.active;
     const before = this.pose(0)?.slice();
+    // The newest tick as predicted so far, to keep interpolating when nothing is left to replay.
+    const carried = this.hasPrevious ? this.rig.pose(this.carried) : null;
     if (
       !this.predictable(s) ||
       this.heldConstraint ||
@@ -148,6 +160,7 @@ export class LocalPrediction {
       return;
     }
     this.active = true;
+    this.hasPrevious = false;
     for (const record of this.history.records) {
       const replay = this.run(record);
       if (!replay.valid) {
@@ -157,6 +170,14 @@ export class LocalPrediction {
       // A replay can fire a round no first run showed (its timing moved): show it now.
       for (const shot of replay.shots) this.lateShots.push({ ...shot, tick: 0 });
       this.metrics.replaySteps += record.ticks;
+    }
+    if (!this.hasPrevious && carried) {
+      // Every input acknowledged (a very short round trip): the restored state is the
+      // newest tick. The tick before it moves with the same correction.
+      const current = this.rig.pose(this.raw);
+      for (let i = 0; i < 63; i += 7)
+        for (let k = 0; k < 3; k++) this.previous[i + k] += current[i + k] - carried[i + k];
+      this.hasPrevious = true;
     }
     if (wasActive && before && !newRound) {
       const { error, tier } = this.correction.begin(
@@ -193,6 +214,7 @@ export class LocalPrediction {
     if (!this.active) {
       if (!this.rig.restore(frame.snapshot, frame.values)) return null;
       this.active = true;
+      this.hasPrevious = false;
     }
     if (packet.seq <= this.history.lastSeq) return null;
     if (!this.history.add(packet, ticks, now)) {
@@ -210,10 +232,19 @@ export class LocalPrediction {
     }
     return result;
   }
-  pose(dt: number) {
-    return this.active
-      ? this.correction.apply(this.rig.pose(this.raw), dt, this.visual)
-      : null;
+  /**
+   * The local pose to draw. Prediction advances in whole 60 Hz ticks, but frames do not
+   * line up with ticks: the arena passes `alpha`, its leftover frame time in ticks (0–1),
+   * and the pose is drawn that far from the tick before the newest to the newest — the
+   * same presentation as the local arena. Drawing the newest tick alone showed a frame
+   * with no step, then one with two, whenever frame timing sat near a tick boundary
+   * (measured: 45% of frames on a steady 60 Hz display).
+   */
+  pose(dt: number, alpha = 1) {
+    if (!this.active) return null;
+    const current = this.rig.pose(this.raw);
+    const shown = this.hasPrevious && alpha < 1 ? blendPoses(this.previous, current, Math.max(0, alpha), this.blended) : current;
+    return this.correction.apply(shown, dt, this.visual);
   }
   suspend() {
     this.active = false;
@@ -222,9 +253,20 @@ export class LocalPrediction {
     this.latest = null;
     this.lastAck = -1;
     this.heldConstraint = false;
+    this.hasPrevious = false;
   }
   dispose() {
     this.suspend();
     this.rig.dispose();
   }
+}
+/** Nine bodies: positions lerped, rotations slerped, `t` of the way from `a` to `b`. */
+function blendPoses(a: Float32Array, b: Float32Array, t: number, out: Float32Array) {
+  for (let i = 0; i < 63; i += 7) {
+    out[i] = a[i] + (b[i] - a[i]) * t;
+    out[i + 1] = a[i + 1] + (b[i + 1] - a[i + 1]) * t;
+    out[i + 2] = a[i + 2] + (b[i + 2] - a[i + 2]) * t;
+    Quaternion.slerpFlat(out as unknown as number[], i + 3, a as unknown as number[], i + 3, b as unknown as number[], i + 3, t);
+  }
+  return out;
 }

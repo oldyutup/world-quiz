@@ -151,6 +151,31 @@ test("pausing (settings) or switching modes releases the lock; dispose cleans up
     assert.equal(win.listeners + doc.listeners + surface.listeners, 0);
   }));
 
+test("a lock the browser ends (Esc, focus loss) is reported once; the page's own releases are not", () =>
+  environment(({ win, doc, surface }) => {
+    let lost = 0;
+    const look = bindLook(surface, "lock", () => {}, () => lost++);
+    const exit = () => (doc as unknown as { exitPointerLock(): void }).exitPointerLock();
+    surface.dispatchEvent(event("mousedown", { button: 0 }));
+    exit(); // Esc: the browser releases the lock
+    assert.equal(lost, 1);
+    exit(); // a stray second change while unlocked
+    assert.equal(lost, 1, "reported once per lock");
+    surface.dispatchEvent(event("mousedown", { button: 0 }));
+    win.dispatchEvent(event("blur")); // focus loss: this module releases, but nobody asked for it
+    assert.equal(lost, 2);
+    surface.dispatchEvent(event("mousedown", { button: 0 }));
+    look.setEnabled(false); // menu / settings: the caller asked
+    assert.equal(doc.pointerLockElement, null);
+    look.setEnabled(true);
+    surface.dispatchEvent(event("mousedown", { button: 0 }));
+    look.setMode("drag");
+    look.setMode("lock");
+    surface.dispatchEvent(event("mousedown", { button: 0 }));
+    look.dispose();
+    assert.equal(lost, 2, "setEnabled(false), setMode and dispose are not losses");
+  }));
+
 test("clicks on UI inside the arena (buttons, selects) never take the lock", () =>
   environment(({ doc, surface, ui }) => {
     const look = bindLook(surface, "lock", () => {});

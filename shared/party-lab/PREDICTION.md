@@ -67,13 +67,38 @@ controller state before replay. Error severity uses the larger pelvis/torso
 position error, with additional whole-rig displacement and pelvis angle guards.
 Small corrections are one coherent rigid translation/rotation applied only to
 rendered poses, preserving anatomical geometry. No corrective force is applied
-to physics. The remaining visual offset decays quadratically to exactly zero.
+to physics. The remaining visual offset eases to exactly zero over the tier's time.
+Tiny and small offsets use a cubic that starts at the offset's current velocity: the
+everyday ones come from the server using an input one tick earlier or later (~77 mm at
+walking speed, then smaller ones on the next snapshots), and a new one continues the
+motion of the one it replaces. The earlier quadratic ease moved at full correction
+speed on its first frame (a 77 mm correction took 26% off that frame's step) and did
+so again on each following snapshot. Medium offsets (stall recovery) keep the
+quadratic, which converges faster and keeps later errors under the hard limit.
+
+The everyday blend takes 300 ms (2026-09-24; it was 60 ms tiny / 120 ms small). While
+walking, nearly every non-zero reconciliation is exactly one tick (77 mm walking, 107 mm
+sprinting) and most are not real: when inputs reach the server right at its tick
+boundary, the acknowledgement alternates between two inputs while the server has run the
+same ticks, so one snapshot reads a tick ahead and a following one a tick behind (the
+sign follows whether the newest input was already acknowledged). Headed Chrome, walking:
+0–8 a second on localhost (it depends on the drifting send/tick phase), 3–9 a second at
+70 ms RTT ±10 ms; every one exactly ±1 tick and followed by one of the other sign. Replay
+itself is exact: all other snapshots correct 0 mm. Over 120 ms these moved the body ±20%
+of walking speed in ~10 Hz surges, and the Barn chase camera, which follows the drawn
+pelvis, moved the whole view with it. Over 300 ms opposite flips cancel and a lasting
+one-tick shift changes the walk by at most ~8%. Measured per-frame step unevenness (RMS):
+Barn walk/sprint/strafe/turn on localhost, pelvis 7.8–8.7% → 4.6–5.0% and camera
+6.1–6.8% → 3.6–4.9%, the same as an open-loop run that never shows a correction (4.2–4.4%,
+3.8–4.5%); at 70 ms RTT, Barn and Rooftop pelvis 7.3–11.2% → 2.0–5.2%. Input response,
+hard corrections and both cameras are unchanged; the drawn body sits up to one tick from
+the newest prediction a little longer.
 
 | Error tier | Render correction |
 | --- | --- |
 | Position/angle/limb errors all below 0.0001 | None |
-| Root error ≤0.015 m | 60 ms blend |
-| Root error ≤0.15 m | 120 ms blend |
+| Root error ≤0.015 m | 300 ms blend |
+| Root error ≤0.15 m | 300 ms blend |
 | Root error ≤1 m | 180 ms blend |
 | Root >1 m, any part >1.25 m, pelvis angle >90°, nonfinite error | Immediate correction; no visual offset |
 
@@ -104,6 +129,27 @@ The browser frame loop accumulates fixed ticks, sends at most one packet per
 frame, and predicts at most three ticks per frame. At 30 FPS it sends approximately
 30 packets/s with two local ticks per record. A >250 ms frame stall clears intent
 instead of creating a catch-up burst. Rendering FPS never controls server physics.
+
+Presentation (2026-09-24; `scene/frameClock.ts`, `LocalPrediction.pose(dt, alpha)`):
+
+- The local body is drawn between the tick before the newest predicted tick and the
+  newest, `alpha` = the accumulator's leftover in ticks, as the local test arena always
+  did. Drawing the newest tick alone gave frames with no step followed by frames with
+  two whenever frame timing sat near a tick boundary: 45% of frames on a steady 60 Hz
+  display (0/1/2 ticks = 74/178/75), a 30 FPS look, and above 60 Hz the body only
+  moved on ~60 of every 360 frames.
+- Frames advance by a smoothed step (mean of the last 8 frame intervals). In headed
+  Chrome on macOS the times a page can read ran 15–19 ms apart on a 60 Hz panel with
+  no dropped frame; moving by them stepped everything ±12% unevenly. Remote playback is
+  sampled on the same clock. The debug overlay still reports raw frame times.
+- The accumulator restarts at half a tick (round start, Esc menu closed, tab back), not
+  0, so a steady display runs exactly one tick and one input per frame. A 2-tick input
+  can be acknowledged when the server has used it for one tick, which cost a one-tick
+  correction each time.
+
+Measured (headed Chrome, M2, 60 Hz, one client, walking): local-body frame-to-frame jerk
+5.6–6.9% → 1.1–1.6% mean (p95 18–50% → 2.9–4.4%), chase/overview camera 8.5–9.0% → 0.8–1.5%,
+remote bodies ~10% → 3.1–3.4%; 0 frames without a step or with a double step.
 
 Camera follow uses the presented local pelvis, including its prediction and
 correction, with independent 120 ms exponential smoothing. Horizontal follow is

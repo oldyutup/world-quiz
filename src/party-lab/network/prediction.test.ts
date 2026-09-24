@@ -134,6 +134,76 @@ test("correction tiers converge, preserve rig geometry and hard-correct invalid/
     assert.equal(smoothing.active, false);
   }
 });
+test("everyday corrections ease in and a following one continues the motion; medium keeps the quadratic", () => {
+  const rest = new Float32Array(63);
+  for (let i = 0; i < 9; i++) {
+    rest[i * 7] = i * 0.1;
+    rest[i * 7 + 6] = 1;
+  }
+  const shifted = (dx: number) => {
+    const p = rest.slice();
+    for (let i = 0; i < 63; i += 7) p[i] += dx;
+    return p;
+  };
+  // A one-tick slip at walking speed (77 mm), then the next snapshot finds 26 mm more.
+  const smoothing = new RigCorrection();
+  assert.equal(smoothing.begin(shifted(0.077), rest).tier, "small");
+  const drawn = [0.077];
+  for (let f = 0; f < 3; f++) drawn.push(smoothing.apply(rest, 1 / 60)[0] - rest[0]);
+  const before = smoothing.apply(rest, 0).slice();
+  const after = shifted(-0.026);
+  smoothing.begin(before, after);
+  for (let f = 0; f < 12; f++) drawn.push(smoothing.apply(after, 1 / 60)[0] - rest[0]);
+  const steps = drawn.slice(1).map((x, i) => x - drawn[i]);
+  // The quadratic moved 26% of a walking step (77 mm) on the first frame.
+  assert.ok(Math.abs(steps[0]) < 0.006, `onset ${steps[0]}`);
+  // Frame-to-frame change of the correction's own motion: 20 mm at the quadratic's onset.
+  const jumps = [Math.abs(steps[0]), ...steps.slice(1).map((d, i) => Math.abs(d - steps[i]))];
+  assert.ok(Math.max(...jumps) < 0.008, `largest frame-to-frame change ${Math.max(...jumps)}`);
+  assert.ok(Math.abs(smoothing.apply(after, 0.3)[0] - after[0]) < 1e-9, "settles on the new pose");
+  assert.equal(smoothing.active, false);
+  // Medium (stall recovery): unchanged quadratic ease.
+  const medium = new RigCorrection();
+  assert.equal(medium.begin(shifted(0.6), rest).tier, "medium");
+  const eased = medium.apply(rest, 0.03)[0] - rest[0];
+  assert.ok(Math.abs(eased - 0.6 * (1 - 0.03 / 0.18) ** 2) < 1e-6);
+});
+test("one-tick acknowledgement flips while walking barely change the drawn step", () => {
+  // Inputs reaching the server right at its tick boundary: the acknowledgement alternates
+  // between two inputs while the server has run the same ticks, so snapshots read one tick
+  // (77 mm at walking speed) ahead, then behind (measured up to 8–9 a second while walking).
+  const rest = new Float32Array(63);
+  for (let i = 0; i < 9; i++) {
+    rest[i * 7] = i * 0.1;
+    rest[i * 7 + 6] = 1;
+  }
+  const at = (x: number) => {
+    const p = rest.slice();
+    for (let i = 0; i < 63; i += 7) p[i] += x;
+    return p;
+  };
+  const step = 0.077;
+  const worst = (flips: (snapshot: number) => boolean) => {
+    const smoothing = new RigCorrection();
+    let slip = 0;
+    const drawn: number[] = [];
+    for (let f = 1, snapshot = 0; f <= 150; f++) {
+      if (f % 3 === 0 && flips(++snapshot)) {
+        const before = smoothing.apply(at((f - 1) * step + slip), 0).slice();
+        slip = slip ? 0 : step;
+        smoothing.begin(before, at((f - 1) * step + slip));
+      }
+      drawn.push(smoothing.apply(at(f * step + slip), 1 / 60)[0] - rest[0]);
+    }
+    const steps = drawn.slice(30).map((x, i) => x - drawn[29 + i]);
+    return Math.max(...steps.map((s) => Math.abs(s - step) / step));
+  };
+  // Eased over 60/120 ms these moved the body 22% faster or slower than the walk.
+  assert.ok(worst((n) => n % 2 === 0) < 0.05, `flip every other snapshot: ${worst((n) => n % 2 === 0)}`);
+  assert.ok(worst(() => true) < 0.05, `flip every snapshot: ${worst(() => true)}`);
+  // A lasting one-tick shift still settles, gently (21% before).
+  assert.ok(worst((n) => n === 10) < 0.1, `single shift: ${worst((n) => n === 10)}`);
+});
 test("articulated prediction uses nine bodies/eight joints; unacknowledged movement replays after restoration", () => {
   const f = fixture();
   try {
@@ -394,6 +464,70 @@ test("invalid authoritative velocity/pose data cannot poison the local articulat
     assert.ok(f.local.rig.valid());
     f.local.reconcile(frame(f.server, -1, 100), 100);
     assert.equal(f.local.active, true);
+  } finally {
+    f.close();
+  }
+});
+
+test("drawn local pose interpolates between the last two predicted ticks: even steps whatever the frame/tick phase", () => {
+  const f = fixture();
+  try {
+    const close = (a: ArrayLike<number>, b: ArrayLike<number>) => Array.from(a).every((v, i) => Math.abs(v - b[i]) < 1e-6);
+    f.local.reconcile(frame(f.server), 0);
+    assert.ok(close(f.local.pose(0, 0.3)!.slice(), f.local.pose(0, 1)!), "nothing to interpolate from right after a restore");
+    // Straight back from the spawn, clear of the other player and the deck (~3 m).
+    const input = { x: 0, z: -1, jump: false };
+    let seq = 0,
+      now = 0;
+    // The server runs the same ticks and acknowledges every third frame (as in play).
+    const run = (ticks: number, n: number) => {
+      f.local.advance(packet(++seq, { moveZ: -1 }), ticks, now);
+      for (let i = 0; i < ticks; i++) f.server.step([input]);
+      if (n % 3 === 0) f.local.reconcile(frame(f.server, seq, now), now);
+    };
+    for (let n = 0; n < 20; n++, now += 1000 / 60) run(1, n);
+    // At alpha 1 the newest tick is drawn (the arenas' old presentation), once any
+    // reconciliation blend has settled.
+    f.local.pose(0.3, 1);
+    assert.equal(f.local.correction.active, false);
+    assert.ok(close(f.local.pose(0, 1)!, f.local.rig.pose()));
+    assert.ok(!close(f.local.pose(0, 0.5)!, f.local.rig.pose()), "half a tick back while moving");
+    // A steady 60 Hz display with the tick phase on the boundary: the frame's clock reading
+    // wanders ±0.8 ms, so frames run 0, 1 or 2 ticks (as measured in the arenas).
+    const drawn: number[] = [],
+      newest: number[] = [],
+      dts: number[] = [];
+    let acc = 0,
+      jitter = 0;
+    for (let n = 0; n < 30; n++) {
+      const next = (n % 3 === 0 ? 0.8 : n % 3 === 1 ? -0.8 : 0.3) / 1000;
+      const dt = 1 / 60 + next - jitter;
+      jitter = next;
+      dts.push(dt);
+      now += dt * 1000;
+      acc += dt;
+      const ticks = acc + 1e-6 >= 1 / 60 ? Math.min(3, Math.floor((acc + 1e-6) * 60)) : 0;
+      if (ticks > 0) {
+        acc -= ticks / 60;
+        run(ticks, n);
+      }
+      drawn.push(f.local.pose(dt, Math.min(1, acc * 60))![2]);
+      newest.push(f.local.rig.pose()[2]);
+    }
+    // Speed on screen: each frame's step over that frame's time.
+    const steps = (xs: number[]) => xs.slice(1).map((x, i) => (xs[i] - x) / dts[i + 1]);
+    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
+    // A step far from its neighbourhood's (the body is still speeding up a little).
+    const irregular = (xs: number[]) => {
+      const s = steps(xs);
+      return s.filter((d, i) => {
+        const m = median(s.slice(Math.max(0, i - 3), i + 4));
+        return d < 0.4 * m || d > 1.6 * m;
+      }).length;
+    };
+    assert.ok(irregular(newest) > 10, `the newest tick alone judders (${irregular(newest)} irregular frames)`);
+    assert.equal(irregular(drawn), 0, "interpolated drawing steps evenly");
+    assert.ok(f.local.rig.valid());
   } finally {
     f.close();
   }

@@ -255,3 +255,38 @@ test("Escape also cancels capture while the candidate key is still held", async 
   await tick();
   assert.deepEqual(results, [null]);
 });
+/** A blur of some element inside the page, as the window's capture-phase listener sees it. */
+const elementBlur = () =>
+  Object.defineProperty(event("blur"), "target", { value: { tagName: "BUTTON" } });
+test("the slot button's own blur (disabled as capture starts) does not cancel; the next key is assigned", async () => {
+  const target = new EventTarget();
+  const results: (string | null)[] = [];
+  captureBinding((b) => results.push(b), target);
+  // Chrome blurs a focused button once it becomes disabled; the window's capture
+  // listener sees that element blur on its way down. It used to cancel every capture.
+  target.dispatchEvent(elementBlur());
+  await tick();
+  assert.deepEqual(results, []);
+  target.dispatchEvent(event("keydown", { code: "KeyT" }));
+  target.dispatchEvent(event("keyup", { code: "KeyT" }));
+  await tick();
+  assert.deepEqual(results, ["KeyT"]);
+});
+test("the window itself losing focus still cancels capture, and a new capture works after it", async () => {
+  const results: (string | null)[] = [];
+  const first = new EventTarget();
+  captureBinding((b) => results.push(b), first);
+  first.dispatchEvent(event("keydown", { code: "KeyG" }));
+  first.dispatchEvent(event("blur")); // target === the window: Alt-Tab, another app
+  assert.deepEqual([...results], [null]);
+  // (Node's EventTarget keeps boolean-capture listeners after removal, so the next
+  // capture gets its own target; browsers detach them.)
+  const next = new EventTarget();
+  captureBinding((b) => results.push(b), next);
+  next.dispatchEvent(elementBlur());
+  next.dispatchEvent(event("mousedown", { button: 2 }));
+  next.dispatchEvent(event("mouseup", { button: 2 }));
+  next.dispatchEvent(event("contextmenu"));
+  await tick();
+  assert.deepEqual(results, [null, "MouseRight"]);
+});

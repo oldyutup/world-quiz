@@ -550,3 +550,61 @@ body:has(.party-lab) {
 .party-lab .pl-online-status { color: var(--pl-muted); margin: 0 0 12px; font-size: 14px; }
 .party-lab .pl-online-status.is-degraded { color: var(--pl-accent); }
 .party-lab .pl-online-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--pl-muted); font-size: 12px; padding-top: 10px; }
+
+/* ─── Immersive online arena (Rooftop + Barn): the arena fills the page; only gameplay
+   HUD sits on it. Everything else is in the Esc menu. Lobby and local arena unchanged. */
+body:has(.pl-immersive) { overflow: hidden; }
+.party-lab.pl-playground.pl-immersive { position: relative; height: 100vh; height: 100dvh; min-height: 360px; padding: 8px; gap: 0; }
+.party-lab.pl-immersive .pl-viewport { border-radius: 16px; }
+.party-lab .pl-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.party-lab .pl-menu-button {
+  position: absolute; top: 14px; left: 14px;
+  display: inline-flex; align-items: center; gap: 7px;
+  width: 112px; height: 36px; padding: 0 8px 0 11px;
+  border: 1px solid var(--pl-border); border-radius: 10px;
+  background: oklch(20% 0.03 180 / 82%); color: var(--pl-ink);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.party-lab .pl-menu-button:hover { background: oklch(27% 0.035 180 / 94%); }
+.party-lab .pl-menu-button kbd { margin-left: auto; padding: 1px 5px; border-radius: 5px; color: var(--pl-muted); font-size: 10px; font-weight: 600; }
+.party-lab.pl-immersive .pl-viewport[data-mode="rooftop_brawl"] .pl-round-hud { left: 136px; }
+/* Connection / spectator chips and the debug panel, under the menu button (Barn) or roster (Rooftop). */
+.party-lab .pl-arena-side { position: absolute; top: 60px; left: 14px; display: grid; justify-items: start; gap: 8px; max-width: min(620px, calc(100% - 28px)); pointer-events: none; }
+.party-lab .pl-viewport[data-mode="rooftop_brawl"] .pl-arena-side { top: 102px; }
+.party-lab .pl-arena-side .pl-arena-chip { margin: 0; padding: 6px 12px; border: 1px solid var(--pl-border); border-radius: 999px; background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); font-size: 12px; }
+.party-lab .pl-arena-side .pl-online-status.is-degraded { color: var(--pl-accent); }
+.party-lab .pl-debug-panel { padding: 8px 10px; border-radius: 10px; background: oklch(14% 0.02 60 / 84%); color: var(--pl-ink); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.party-lab .pl-debug-panel[hidden] { display: none; }
+.party-lab .pl-debug-panel .pl-perf { display: block; }
+.party-lab .pl-debug-panel .pl-net-debug { margin: 6px 0 0; max-height: none; color: var(--pl-muted); }
+/* First seconds of a round: the controls line. Bottom centre, never over the crosshair. */
+.party-lab .pl-control-hint {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  max-width: calc(100% - 32px); padding: 8px 16px; border-radius: 999px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); font-size: 13px; text-align: center;
+  pointer-events: none; opacity: 0; transition: opacity 700ms ease-out;
+}
+.party-lab .pl-control-hint[data-shown="true"] { opacity: 1; transition-duration: 200ms; }
+.party-lab .pl-viewport[data-mode="barn_shootout"] .pl-control-hint { bottom: 124px; }
+/* Esc menu: over the arena (outside the Pointer Lock element); the match goes on behind it. */
+.party-lab .pl-menu-overlay { position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; padding: 16px; border-radius: 16px; background: oklch(12% 0.015 60 / 60%); }
+.party-lab .pl-menu { display: grid; gap: 9px; width: min(360px, 100%); max-height: 100%; overflow: auto; padding: 22px 22px 16px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 96%); box-shadow: 0 24px 70px oklch(8% 0.01 65 / 45%); }
+.party-lab .pl-menu h2 { font-size: 26px; }
+.party-lab .pl-menu-note { margin: -6px 0 6px; color: var(--pl-muted); font-size: 12px; }
+.party-lab .pl-menu .pl-button { width: 100%; min-height: 44px; padding: 9px 16px; border-radius: 11px; }
+.party-lab .pl-menu .pl-menu-primary { margin-top: 0; justify-content: center; }
+.party-lab .pl-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; min-height: 44px; padding-left: 16px; color: var(--pl-ink); font-size: 14px; font-weight: 700; }
+.party-lab .pl-menu-row select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--pl-border); border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; color: var(--pl-ink); background: var(--pl-surface-raised); cursor: pointer; }
+.party-lab .pl-menu-room { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--pl-border); color: var(--pl-muted); font-size: 13px; }
+.party-lab .pl-menu-room b { color: var(--pl-ink); letter-spacing: 0.12em; }
+.party-lab .pl-menu-room .pl-invite-link { margin: 0; min-height: 36px; font-size: 13px; }
+.party-lab .pl-menu-copy { color: var(--pl-accent); font-size: 12px; }
+.party-lab .pl-menu-copy:empty { display: none; }
+.party-lab .pl-menu .pl-menu-leave { color: oklch(85% 0.085 30); }
+.party-lab .pl-menu-panel { width: min(880px, 100%); max-height: 100%; overflow: auto; padding: 18px 28px 26px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 97%); }
+.party-lab .pl-menu-panel-head { display: flex; justify-content: flex-start; }
+.party-lab .pl-menu-panel-head .pl-button { min-height: 40px; padding: 8px 14px; }
+.party-lab .pl-settings-embedded .pl-settings-main { max-width: none; margin: 0; }
+.party-lab .pl-settings-embedded h1 { margin: 14px 0 10px; font-size: 48px; }
+.party-lab .pl-menu-audio .pl-audio-settings { margin-top: 8px; padding-top: 12px; border-top: 0; }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-control-hint { transition: none; } }

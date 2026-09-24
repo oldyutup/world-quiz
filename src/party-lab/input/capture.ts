@@ -52,7 +52,13 @@ export function captureBinding(
       }, 0);
     }
   }
-  function cancel() {
+  /**
+   * Only the window itself losing focus (another app, another tab) cancels. A capture
+   * listener on the window also sees every element's blur on its way down, including
+   * the slot button's own blur when it is disabled for the capture: that is not a cancel.
+   */
+  function blur(event: Event) {
+    if (event.target !== target) return;
     dispose();
     onCapture(null);
   }
@@ -64,7 +70,7 @@ export function captureBinding(
       target.removeEventListener(type, up, true);
     for (const type of ["click", "contextmenu"])
       target.removeEventListener(type, block, true);
-    target.removeEventListener("blur", cancel, true);
+    target.removeEventListener("blur", blur, true);
   }
   for (const type of ["keydown", "mousedown"])
     target.addEventListener(type, down, true);
@@ -72,6 +78,6 @@ export function captureBinding(
     target.addEventListener(type, up, true);
   for (const type of ["click", "contextmenu"])
     target.addEventListener(type, block, true);
-  target.addEventListener("blur", cancel, true);
+  target.addEventListener("blur", blur, true);
   return dispose;
 }

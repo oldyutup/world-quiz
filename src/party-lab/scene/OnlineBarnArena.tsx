@@ -9,7 +9,6 @@ import { PLAYERS, type PlayerId } from "./players";
 import { PARTS } from "./ragdoll/config";
 import { bindKeyboard } from "../input/keyboard";
 import { actionBindingLabel, type Bindings } from "../input/bindings";
-import { ACTIONS, ACTION_LABELS, BARN_ACTION_LABELS } from "../input/actions";
 import { bindLook, loadLookMode, saveLookMode, type LookController, type LookMode, type LookStatus } from "../input/look";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics";
 import { LocalPrediction, type PredictedShot } from "../network/prediction/localPrediction";
@@ -35,6 +34,9 @@ import { BARN_COMBAT } from "../../../shared/party-lab/simulation/barn/config";
 import { shotDirections, weaponRange, type WeaponKind } from "../../../shared/party-lab/simulation/barn/weapons";
 import { castHistoric, type HistoricView } from "../../../shared/party-lab/simulation/barn/rewind";
 import { MODE_NAMES } from "../../../shared/party-lab/modes";
+import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
+import { controlHint } from "./arenaMenu";
+import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
 import { BARN_CAMERA, barnCameraBlockers, clampPitch, ownCharacterOpacity, smoothing, updateChaseCamera } from "./arenas/barnCamera";
@@ -72,10 +74,12 @@ interface Props {
   lobby: LobbySnapshot;
   stream: GameStream;
   bindings: Bindings;
+  /** The arena is hidden (Controls opened from the lobby): no input, no presentation. */
   paused: boolean;
   sendInput: (input: MovementInput) => AnyInputPacket | null | undefined;
   onLeave: () => void;
-  onControls: () => void;
+  onBindings: (bindings: Bindings) => void;
+  bindingsSaved: boolean;
   diagnostics?: NetDiagnostics | null;
   debug?: boolean;
 }
@@ -130,13 +134,20 @@ function BarnOnlineView({
   stream,
   bindings,
   paused,
+  menuOpen,
   sendInput,
   diagnostics,
   debug = false,
   look,
   hud,
   viewport,
-}: Props & { look: MutableRefObject<LookController | null>; hud: MutableRefObject<Hud>; viewport: RefObject<HTMLDivElement> }) {
+}: Props & {
+  /** Esc menu over the arena: local input stops, the match and its presentation go on. */
+  menuOpen: boolean;
+  look: MutableRefObject<LookController | null>;
+  hud: MutableRefObject<Hud>;
+  viewport: RefObject<HTMLDivElement>;
+}) {
   const { gl, camera } = useThree();
   const { audio, settings } = usePartyAudio();
   const self = lobby.players.find((p) => p.id === lobby.selfId);
@@ -144,7 +155,7 @@ function BarnOnlineView({
   const beans = useRef<(Group | null)[]>([]);
   const controls = useRef<ReturnType<typeof bindKeyboard> | null>(null);
   const prediction = useRef<LocalPrediction | null>(null);
-  const accumulator = useRef(0);
+  const accumulator = useRef(ACCUMULATOR_START);
   const aim = useRef({ yaw: 0, pitch: BARN_CAMERA.restPitch });
   const aimReady = useRef(false);
   const wasAlive = useRef(true);
@@ -167,6 +178,7 @@ function BarnOnlineView({
   const netRefresh = useRef(0);
   const feed = useRef<{ text: string; until: number }[]>([]);
   const sample = useRef({ seconds: 0, frames: 0, jsMs: 0, hitConfirmMs: NaN, lastShotAt: -1, localShots: 0 });
+  const clock = useRef(new FrameClock());
   const [reduced, setReduced] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   // Chase camera lens (restored for other views).
@@ -212,7 +224,7 @@ function BarnOnlineView({
       stream.discardEvents();
       controls.current?.clear();
       prediction.current?.suspend();
-      accumulator.current = 0;
+      accumulator.current = ACCUMULATOR_START;
       sendInput(neutralIntent());
       audio.stopAll();
       feel.current.clear();
@@ -245,13 +257,13 @@ function BarnOnlineView({
       feel.current.clear();
     };
   }, [gl, audio, sendInput]);
-  const active = !paused && lobby.status === "connected" && lobby.phase === "playing" && !!self?.participating;
+  const active = !paused && !menuOpen && lobby.status === "connected" && lobby.phase === "playing" && !!self?.participating;
   useLayoutEffect(() => {
     controls.current?.setBindings(bindings);
     controls.current?.setSuspended(!active);
     if (!active) {
       prediction.current?.suspend();
-      accumulator.current = 0;
+      accumulator.current = ACCUMULATOR_START;
       sendInput(neutralIntent());
       audio.stopAll();
       feel.current.clear();
@@ -337,15 +349,19 @@ function BarnOnlineView({
     }
   };
 
-  useFrame((frame, dt) => {
+  useFrame((frame, rendererDt) => {
     const start = performance.now();
-    if (debug) diagnostics?.frame(dt * 1000, start);
+    // Presentation runs on a smoothed frame clock (see frameClock.ts).
+    const dt = clock.current.step(frameTime(start), rendererDt);
+    const shownAt = clock.current.time;
+    // The debug overlay reports real frame hitches, not the smoothed step.
+    if (debug) diagnostics?.frame(rendererDt * 1000, start);
     const enabled = active && !document.hidden;
     const predictor = prediction.current;
     const latest = stream.snapshots.latest;
     const current = latest?.snapshot.mode === "barn_shootout" ? latest : null;
     if (enabled && current) predictor?.reconcile(current, start);
-    if (!paused) {
+    if (!paused && !menuOpen) {
       const { dx, dy } = look.current?.consume() ?? { dx: 0, dy: 0 };
       aim.current.yaw -= dx * BARN_CAMERA.sensitivity;
       aim.current.pitch = clampPitch(aim.current.pitch + dy * BARN_CAMERA.sensitivity);
@@ -370,7 +386,7 @@ function BarnOnlineView({
     if (!enabled || dt > 0.25) {
       controls.current?.clear();
       predictor?.suspend();
-      accumulator.current = 0;
+      accumulator.current = ACCUMULATOR_START;
       if (dt > 0.25) sendInput(neutralIntent());
     } else {
       accumulator.current += Math.min(dt, 0.05);
@@ -397,8 +413,8 @@ function BarnOnlineView({
       // Rounds a reconciliation revealed that no first run showed: once, now.
       if (predictor) for (const shot of predictor.lateShots.splice(0)) presentLocalShot(shot);
     }
-    const localPose = enabled ? predictor?.pose(Math.min(dt, 0.1)) : null;
-    const sampled = stream.snapshots.sample(start);
+    const localPose = enabled ? predictor?.pose(Math.min(dt, 0.1), Math.min(1, accumulator.current * NET.physicsHz)) : null;
+    const sampled = stream.snapshots.sample(shownAt);
     if (!sampled || sampled.b.snapshot.mode !== "barn_shootout") return;
     viewTick.current = (stream.snapshots.renderMs * NET.physicsHz) / 1000;
     const { a, b, alpha } = sampled;
@@ -704,7 +720,7 @@ function BarnOnlineView({
 
 /** Barn Shootout online: third-person chase camera, server-authoritative combat. */
 export default function OnlineBarnArena(props: Props) {
-  const { lobby, onLeave, onControls, bindings, paused } = props;
+  const { lobby, onLeave, bindings, paused } = props;
   const viewport = useRef<HTMLDivElement>(null);
   const hud = useRef<Hud>(emptyHud());
   const [lookMode, setLookMode] = useState<LookMode>(loadLookMode);
@@ -712,70 +728,42 @@ export default function OnlineBarnArena(props: Props) {
   const look = useRef<LookController | null>(null);
   const lookModeNow = useRef(lookMode);
   lookModeNow.current = lookMode;
+  const menu = useArenaMenu(!paused);
+  const menuOpen = menu.view !== null;
+  const inputOff = paused || menuOpen;
+  const debugPanel = useDebugPanel(!!props.debug);
   const game = lobby.game;
   const self = lobby.players.find((p) => p.id === lobby.selfId);
   useEffect(() => {
-    if (!paused) viewport.current?.focus();
-  }, [paused]);
+    if (!inputOff) viewport.current?.focus();
+  }, [inputOff]);
+  // A lock the browser ended (Esc, focus loss) opens the menu; the page never re-locks on its
+  // own: after "Oyuna Dön" the look prompt asks for a click, and that click only takes the lock.
+  const { lockEnded } = menu;
   useEffect(() => {
     const surface = viewport.current;
     if (!surface) return;
-    const controller = bindLook(surface, lookModeNow.current, setLookStatus);
+    const controller = bindLook(surface, lookModeNow.current, setLookStatus, lockEnded);
     look.current = controller;
     return () => {
       controller.dispose();
       look.current = null;
     };
-  }, []);
+  }, [lockEnded]);
   useEffect(() => {
     look.current?.setMode(lookMode);
     saveLookMode(lookMode);
   }, [lookMode]);
   useEffect(() => {
-    look.current?.setEnabled(!paused);
-  }, [paused]);
+    look.current?.setEnabled(!inputOff);
+  }, [inputOff]);
   const scores = lobby.players
     .filter((p) => !game || game.mask & (1 << p.slot))
     .map((p) => ({ player: p, f: fighterOf(game ?? undefined, p.slot) }))
     .sort((x, y) => (y.f?.kills ?? 0) - (x.f?.kills ?? 0) || (x.f?.deaths ?? 0) - (y.f?.deaths ?? 0));
   const winner = lobby.winner >= 0 ? lobby.players.find((p) => p.slot === lobby.winner) : null;
   return (
-    <div className="party-lab pl-playground">
-      <header className="pl-arena-header">
-        <div>
-          <span className="pl-eyebrow">PARTY LAB / ONLINE · {lobby.code} · {MODE_NAMES.barn_shootout.toLocaleUpperCase("tr-TR")}</span>
-          <h2>Ambar Çatışması</h2>
-        </div>
-        <label className="pl-map-select pl-look-select">
-          <span>Bakış</span>
-          <select
-            value={lookMode}
-            onChange={(event) => {
-              setLookMode(event.target.value as LookMode);
-              requestAnimationFrame(() => viewport.current?.focus());
-            }}
-          >
-            <option value="lock">İmleç kilidi</option>
-            <option value="drag">Sürükleyerek bak</option>
-          </select>
-        </label>
-        <button className="pl-button pl-join" onClick={onControls}>
-          Kontroller
-        </button>
-        <button className="pl-button pl-join" data-sfx="uiBack" onClick={onLeave}>
-          Odadan Ayrıl
-        </button>
-      </header>
-      <p className={`pl-online-status${lobby.status === "connected" && lobby.link === "degraded" ? " is-degraded" : ""}`} role="status">
-        {lobby.status === "connected"
-          ? lobby.link === "degraded"
-            ? "Bağlantı yavaş: sunucudan veri gecikiyor. Bağlantı kesilmedi."
-            : "Sunucuya bağlı"
-          : lobby.status === "reconnecting"
-          ? "Bağlantı kesildi. Yeniden bağlanılıyor…"
-          : "Bağlantı kapandı."}
-        {!self?.participating ? " · İzliyorsun. Sonraki tur lobide hazır olabilirsin." : ""}
-      </p>
+    <div className="party-lab pl-playground pl-immersive" data-mode="barn_shootout">
       <div
         className="pl-viewport"
         tabIndex={0}
@@ -793,8 +781,9 @@ export default function OnlineBarnArena(props: Props) {
           gl={{ antialias: true, alpha: true }}
           fallback={<p>Bu arena için WebGL 2 gerekiyor.</p>}
         >
-          <BarnOnlineView {...props} look={look} hud={hud} viewport={viewport} />
+          <BarnOnlineView {...props} menuOpen={menuOpen} look={look} hud={hud} viewport={viewport} />
         </Canvas>
+        <MenuButton onOpen={() => menu.setView("main")} />
         <div className="pl-barn-top" aria-label="Süre ve skor">
           <span className="pl-barn-timer" ref={(el) => void (hud.current.timer = el)} aria-label="Kalan süre">
             {Math.floor((game?.seconds ?? lobby.seconds) / 60)}:{String((game?.seconds ?? lobby.seconds) % 60).padStart(2, "0")}
@@ -819,6 +808,14 @@ export default function OnlineBarnArena(props: Props) {
           ))}
         </ol>
         <pre className="pl-barn-feed" aria-live="polite" ref={(el) => void (hud.current.feed = el)} />
+        <div className="pl-arena-side">
+          <ArenaStatus lobby={lobby} spectating={!self?.participating} />
+          {/* Always present: the performance line also carries the automation readout (data-combat). */}
+          <div className="pl-debug-panel" hidden={!debugPanel.open} aria-hidden="true">
+            <span className="pl-perf" ref={(el) => void (hud.current.performance = el)} />
+            {props.debug && <pre className="pl-net-debug" ref={(el) => void (hud.current.net = el)} />}
+          </div>
+        </div>
         <div className="pl-damage-vignette" aria-hidden="true" ref={(el) => void (hud.current.vignette = el)} />
         <div className="pl-hitmarker" aria-hidden="true" ref={(el) => void (hud.current.hitmarker = el)} />
         <div className="pl-crosshair" aria-hidden="true" ref={(el) => void (hud.current.crosshair = el)} />
@@ -841,18 +838,16 @@ export default function OnlineBarnArena(props: Props) {
           <strong>Öldün!</strong>
           <span ref={(el) => void (hud.current.deathTime = el)} />
         </div>
-        {lookMode === "lock" && lookStatus !== "locked" && !paused && lobby.phase !== "results" && (
+        {lookMode === "lock" && lookStatus !== "locked" && !inputOff && lobby.phase !== "results" && (
           <div className="pl-arena-message pl-look-prompt" role="status">
             <strong>{lookStatus === "error" ? "İmleç kilitlenemedi" : "Bakmak için arenaya tıkla"}</strong>
             <span>
               {lookStatus === "error"
-                ? "Tekrar tıkla ya da Bakış menüsünden “Sürükleyerek bak”ı seç."
-                : "Fare ya da trackpad ile çevir · WASD kameraya göre · Esc imleci bırakır"}
+                ? "Tekrar tıkla ya da Esc menüsündeki Bakış ayarından “Sürükleyerek bak”ı seç."
+                : "Fare ya da trackpad ile çevir · Esc menü"}
             </span>
           </div>
         )}
-        {lookMode === "lock" && lookStatus === "locked" && <div className="pl-look-chip">Esc: imleci bırak</div>}
-        {lookMode === "drag" && lookStatus !== "dragging" && <div className="pl-look-chip">Bakmak için basılı tutup sürükle</div>}
         {(lobby.phase === "countdown" || lobby.phase === "results" || !game) && (
           <div className={`pl-arena-message pl-round-message${lobby.phase === "results" ? " pl-result-pulse" : ""}`} role="status">
             <strong style={winner ? { color: winner.color } : undefined}>
@@ -867,16 +862,23 @@ export default function OnlineBarnArena(props: Props) {
             </span>
           </div>
         )}
+        <ControlHint text={controlHint(bindings, "barn", lookMode)} playing={lobby.phase === "playing"} replay={menu.hintReplay} hidden={menuOpen} />
       </div>
-      <footer className="pl-online-footer">
-        <span>
-          {ACTIONS.filter((a) => a === "punch" || a === "grab" || a === "lift" || a === "jump")
-            .map((a) => `${actionBindingLabel(bindings, a)}: ${BARN_ACTION_LABELS[a] ?? ACTION_LABELS[a]}`)
-            .join(" · ")}
-        </span>
-        <span ref={(el) => void (hud.current.performance = el)} />
-      </footer>
-      {props.debug && <pre className="pl-net-debug" ref={(el) => void (hud.current.net = el)} aria-hidden="true" />}
+      {menu.view && (
+        <ArenaMenu
+          view={menu.view}
+          setView={menu.setView}
+          onResume={() => menu.setView(null)}
+          onLeave={onLeave}
+          lobby={lobby}
+          modeName={MODE_NAMES.barn_shootout}
+          bindings={bindings}
+          onBindings={props.onBindings}
+          bindingsSaved={props.bindingsSaved}
+          look={{ mode: lookMode, onChange: setLookMode }}
+          debug={props.debug ? { open: debugPanel.open, onToggle: debugPanel.toggle } : null}
+        />
+      )}
     </div>
   );
 }

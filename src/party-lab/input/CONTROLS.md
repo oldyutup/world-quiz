@@ -32,7 +32,13 @@ disconnect, stale snapshots and round changes. See
   scoped context menu handling, focus/visibility cleanup and suspension.
 - `capture.ts`: captures down/up/click in the input layer. The opening click and
   repeated opener key are ignored. Assignment completes after release so the
-  resulting click cannot activate another settings button. Escape cancels.
+  resulting click cannot activate another settings button. Escape cancels, and so
+  does the window itself losing focus (another app or tab). An element's blur does
+  not: the window's capture-phase listener sees those too, including the slot
+  button's own blur when Chrome drops focus from it as it becomes disabled for the
+  capture. Until 2026-09-24 that blur cancelled every capture ~15 ms after the click
+  ("Tuş atama iptal edildi.", no key assignable) on every revision since the controls
+  were added.
 - `storage.ts`: guarded localStorage access and version validation. Denied writes
   leave working session controls and display a clear persistence warning.
 - `ControlsSettings.tsx`: Turkish settings, available from landing and arena.
@@ -73,7 +79,7 @@ One binding can mean different gameplay per mode. Kaldır (Shift by default) lif
 grabbed player on the rooftop; in the barn, `scene/arenas/barnControls.ts` reads the
 same held action as Sprint (`MovementInput.sprint`) and sends no lift. No action was
 added, so saved `party-lab-controls-v1` maps stay valid and a rebound Kaldır key also
-sprints in the barn. The barn footer shows "Koş"; settings note "Ambarda: Koş".
+sprints in the barn. The barn's controls line shows "koş"; settings note "Ambarda: Koş".
 
 The shared ragdoll controller applies sprint: target speed and step cadence ×
 `RAGDOLL.sprintMultiplier` (1.4), eased by a 0…1 `Character.sprint` blend over
@@ -87,8 +93,8 @@ In the barn the same bindings are read contextually (`barnIntent`): Yumruk (F / 
 click) is the attack — a punch unarmed, a shot armed, and held for the SMG's automatic
 fire (`attackHeld` from `InputManager.isActionDown`) — and Tut (E / right click) picks up
 the nearest weapon (`pickup`, the pressed edge). The rooftop's punch/grab/lift fields are
-never sent in the barn, so no grab or lift can start there. The footer shows "Saldır
-(yumruk / ateş)" and "Silah al"; settings add "Ambarda: …".
+never sent in the barn, so no grab or lift can start there. The controls line shows
+"ateş/yumruk" and "silah al"; settings add "Ambarda: …".
 
 Pointer Lock: while locked, the browser sends mouse events to the lock element, so the
 barn binds gameplay mouse presses to the viewport (`KeyboardOptions.mouseSurface`). The
@@ -96,6 +102,37 @@ click that acquires the lock is look input: `LookController.claimsClick` claims 
 (recorded as it requests the lock, so the listener order does not matter) and
 `bindKeyboard`'s `claimMouse` drops it — taking the lock never punches or fires. In drag
 mode the left button looks and F attacks. The rooftop passes no options (unchanged).
+
+## Online arena: immersive layout and Esc menu
+
+Online rounds (Rooftop and Barn) fill the page (`.pl-immersive`, 8 px margin); the page
+header, connection line, footer bindings and debug text are gone from the flow. Gameplay
+HUD stays on the arena. Connection trouble and spectating show as a small chip (the
+healthy "Sunucuya bağlı" stays for screen readers only). A controls line built from the
+current bindings (`scene/arenaMenu.ts controlHint`) shows while the round opens and fades
+5 s into play; it returns after visiting Kontroller. The lobby and the local test arena
+keep their layouts.
+
+Esc (or the small "Menü" button) opens `ArenaMenu` (`scene/ArenaChrome.tsx`): Oyuna Dön,
+Kontroller (this same `ControlsSettings`, `embedded`), Ses (`AudioSettings`), Bakış (barn),
+Tam Ekran (optional Fullscreen API on `<html>`, user gesture only), Debug bilgileri (only
+with `?partyDebug=1`; the collapsed panel is the same readout as before), room code +
+invite copy, Odadan Ayrıl. It is **not a pause**: the server, round clock and other
+players continue and the arena keeps rendering behind it. Only local input stops (held
+keys cleared, a neutral input sent, prediction suspended), exactly as when Controls
+opens. Esc in a sub-view goes back to the menu; Esc in the menu returns to the game.
+Binding capture swallows its own Esc (window capture phase), so it never closes the menu.
+
+Pointer Lock (barn): Esc while locked is the browser's; the page never intercepts it.
+`bindLook`'s `onLockLost` fires for a lock the page did not release itself (Esc, focus or
+tab loss) and opens the menu; `setEnabled(false)`/`setMode`/`dispose` never report. A
+key press while still locked, or within `ESC_UNLOCK_GRACE_MS` (350 ms) of the lock
+ending, is the same Esc and is ignored (`EscapeGate`), whichever order the browser
+delivers them in. "Oyuna Dön" never re-locks by itself: the "Bakmak için arenaya tıkla"
+prompt returns and that click only takes the lock (claimed, never fires). Leaving
+fullscreen during play opens the menu the same way. Chrome's automation Esc (CDP) does
+not end Pointer Lock, so tests end it with `document.exitPointerLock()` — the same
+page-visible event.
 
 ## Gameplay compatibility
 

@@ -15,7 +15,6 @@ import { PLAYERS } from "./players";
 import { PARTS } from "./ragdoll/config";
 import { bindKeyboard } from "../input/keyboard";
 import type { Bindings } from "../input/bindings";
-import { bindingLabel } from "../input/bindings";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics";
 import { LocalPrediction } from "../network/prediction/localPrediction";
 import type { PlayerId } from "./players";
@@ -30,6 +29,10 @@ import { NET, neutralIntent } from "../../../shared/party-lab/network/protocol";
 import { ONLINE_ARENA_MAP_ID } from "../../../shared/party-lab/maps";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
+import { MODE_NAMES } from "../../../shared/party-lab/modes";
+import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
+import { controlHint } from "./arenaMenu";
+import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 
 class GraphicsBoundary extends Component<
   { children: ReactNode },
@@ -53,10 +56,12 @@ interface Props {
   lobby: LobbySnapshot;
   stream: GameStream;
   bindings: Bindings;
+  /** The arena is hidden (Controls opened from the lobby): no input, no presentation. */
   paused: boolean;
   sendInput: (input: MovementInput) => AnyInputPacket | null | undefined;
   onLeave: () => void;
-  onControls: () => void;
+  onBindings: (bindings: Bindings) => void;
+  bindingsSaved: boolean;
   diagnostics?: NetDiagnostics | null;
   debug?: boolean;
 }
@@ -66,12 +71,15 @@ function OnlineView({
   stream,
   bindings,
   paused,
+  menuOpen,
   sendInput,
   performanceLabel,
   netLabel,
   diagnostics,
   debug = false,
 }: Props & {
+  /** Esc menu over the arena: local input stops, the match and its presentation go on. */
+  menuOpen: boolean;
   performanceLabel: React.RefObject<HTMLSpanElement>;
   netLabel: React.RefObject<HTMLPreElement>;
 }) {
@@ -82,7 +90,7 @@ function OnlineView({
   const controls = useRef<ReturnType<typeof bindKeyboard> | null>(null);
   const base = useRef(new Vector3());
   const prediction = useRef<LocalPrediction | null>(null);
-  const accumulator = useRef(0);
+  const accumulator = useRef(ACCUMULATOR_START);
   const follow = useRef(new Vector3());
   const followTarget = useRef(new Vector3());
   const netRefresh = useRef(0);
@@ -90,9 +98,11 @@ function OnlineView({
     qb = useRef(new Quaternion());
   const feel = useRef(new CameraFeel());
   const sample = useRef({ seconds: 0, frames: 0, renderMs: 0 });
+  const clock = useRef(new FrameClock());
   const [reduced, setReduced] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+  const inputOff = paused || menuOpen;
   useEffect(() => {
     if (self?.slot === undefined) return;
     let cancelled = false;
@@ -120,7 +130,7 @@ function OnlineView({
         stream.discardEvents();
         controls.current?.clear();
         prediction.current?.suspend();
-        accumulator.current = 0;
+        accumulator.current = ACCUMULATOR_START;
         sendInput(neutralIntent());
         audio.stopAll();
         feel.current.clear();
@@ -161,7 +171,7 @@ function OnlineView({
     const adapter = bindKeyboard(gl.domElement, bindings);
     controls.current = adapter;
     adapter.setSuspended(
-      paused ||
+      inputOff ||
         lobby.status !== "connected" ||
         lobby.phase !== "playing" ||
         !self?.participating
@@ -177,38 +187,45 @@ function OnlineView({
   useLayoutEffect(() => {
     controls.current?.setBindings(bindings);
     controls.current?.setSuspended(
-      paused ||
+      inputOff ||
         lobby.status !== "connected" ||
         lobby.phase !== "playing" ||
         !self?.participating
     );
     if (
-      paused ||
+      inputOff ||
       lobby.status !== "connected" ||
       lobby.phase !== "playing" ||
       !self?.participating
     ) {
       prediction.current?.suspend();
-      accumulator.current = 0;
-      follow.current.set(0, 0, 0);
+      accumulator.current = ACCUMULATOR_START;
+      // Behind the Esc menu the round (and this camera's follow) goes on.
+      if (paused || !menuOpen) follow.current.set(0, 0, 0);
       sendInput(neutralIntent());
       audio.stopAll();
       feel.current.clear();
     }
   }, [
     bindings,
+    inputOff,
     paused,
+    menuOpen,
     lobby.status,
     lobby.phase,
     self?.participating,
     sendInput,
     audio,
   ]);
-  useFrame((_frame, dt) => {
+  useFrame((_frame, rendererDt) => {
     const start = performance.now();
-    if (debug) diagnostics?.frame(dt * 1000, start);
+    // Presentation runs on a smoothed frame clock (see frameClock.ts).
+    const dt = clock.current.step(frameTime(start), rendererDt);
+    const shownAt = clock.current.time;
+    // The debug overlay reports real frame hitches, not the smoothed step.
+    if (debug) diagnostics?.frame(rendererDt * 1000, start);
     const enabled =
-      !paused &&
+      !inputOff &&
       !document.hidden &&
       lobby.status === "connected" &&
       lobby.phase === "playing" &&
@@ -219,7 +236,7 @@ function OnlineView({
     if (!enabled || dt > 0.25) {
       controls.current?.clear();
       predictor?.suspend();
-      accumulator.current = 0;
+      accumulator.current = ACCUMULATOR_START;
       if (dt > 0.25) sendInput(neutralIntent());
     } else {
       accumulator.current += Math.min(dt, 0.05);
@@ -248,8 +265,13 @@ function OnlineView({
         }
       }
     }
-    const localPose = enabled ? predictor?.pose(Math.min(dt, 0.1)) : null;
-    const frame = stream.snapshots.sample(start);
+    const localPose = enabled
+      ? predictor?.pose(
+          Math.min(dt, 0.1),
+          Math.min(1, accumulator.current * NET.physicsHz)
+        )
+      : null;
+    const frame = stream.snapshots.sample(shownAt);
     camera.position.copy(base.current);
     if (!frame) return;
     const { a, b, alpha } = frame;
@@ -391,10 +413,13 @@ export default function OnlineArena(props: Props) {
   return props.lobby.mode === "barn_shootout" ? <OnlineBarnArena {...props} /> : <OnlineRooftopArena {...props} />;
 }
 function OnlineRooftopArena(props: Props) {
-  const { lobby, onLeave, onControls, bindings } = props;
+  const { lobby, onLeave, bindings, paused } = props;
   const viewport = useRef<HTMLDivElement>(null),
     performanceLabel = useRef<HTMLSpanElement>(null),
     netLabel = useRef<HTMLPreElement>(null);
+  const menu = useArenaMenu(!paused);
+  const menuOpen = menu.view !== null;
+  const debugPanel = useDebugPanel(!!props.debug);
   const game = lobby.game;
   const self = lobby.players.find((p) => p.id === lobby.selfId);
   const result =
@@ -405,51 +430,17 @@ function OnlineRooftopArena(props: Props) {
           `Oyuncu ${lobby.winner + 1}`
         } kazandı!`;
   useEffect(() => {
-    if (!props.paused) viewport.current?.focus();
-  }, [props.paused]);
+    if (!paused && !menuOpen) viewport.current?.focus();
+  }, [paused, menuOpen]);
   return (
-    <div className="party-lab pl-playground">
-      <header className="pl-arena-header">
-        <div>
-          <span className="pl-eyebrow">PARTY LAB / ONLINE · {lobby.code}</span>
-          <h2>Aynı arena. Gerçek arkadaşlar.</h2>
-        </div>
-        <button className="pl-button pl-join" onClick={onControls}>
-          Kontroller
-        </button>
-        <button
-          className="pl-button pl-join"
-          data-sfx="uiBack"
-          onClick={onLeave}
-        >
-          Odadan Ayrıl
-        </button>
-      </header>
-      <p
-        className={`pl-online-status${
-          lobby.status === "connected" && lobby.link === "degraded"
-            ? " is-degraded"
-            : ""
-        }`}
-        role="status"
-      >
-        {lobby.status === "connected"
-          ? lobby.link === "degraded"
-            ? "Bağlantı yavaş: sunucudan veri gecikiyor. Bağlantı kesilmedi."
-            : "Sunucuya bağlı"
-          : lobby.status === "reconnecting"
-          ? "Bağlantı kesildi. Yeniden bağlanılıyor…"
-          : "Bağlantı kapandı."}
-        {!self?.participating
-          ? " · İzliyorsun. Sonraki tur lobide hazır olabilirsin."
-          : ""}
-      </p>
+    <div className="party-lab pl-playground pl-immersive" data-mode="rooftop_brawl">
       <div
         className="pl-viewport"
         tabIndex={0}
         ref={viewport}
         role="region"
         aria-label="Online 3D arena"
+        data-mode="rooftop_brawl"
         onPointerDown={() => viewport.current?.focus()}
       >
         <GraphicsBoundary>
@@ -461,11 +452,13 @@ function OnlineRooftopArena(props: Props) {
           >
             <OnlineView
               {...props}
+              menuOpen={menuOpen}
               performanceLabel={performanceLabel}
               netLabel={netLabel}
             />
           </Canvas>
         </GraphicsBoundary>
+        <MenuButton onOpen={() => menu.setView("main")} />
         <div className="pl-round-hud">
           <ul className="pl-roster">
             {lobby.players.map((p) => (
@@ -509,6 +502,14 @@ function OnlineRooftopArena(props: Props) {
           </ul>
           <span className="pl-round-clock">{lobby.seconds} sn</span>
         </div>
+        <div className="pl-arena-side">
+          <ArenaStatus lobby={lobby} spectating={!self?.participating} />
+          {/* Always present: the performance line is also the automation readout. */}
+          <div className="pl-debug-panel" hidden={!debugPanel.open} aria-hidden="true">
+            <span className="pl-perf" ref={performanceLabel} />
+            {props.debug && <pre className="pl-net-debug" ref={netLabel} />}
+          </div>
+        </div>
         {(lobby.phase === "countdown" ||
           lobby.phase === "results" ||
           !game) && (
@@ -534,28 +535,27 @@ function OnlineRooftopArena(props: Props) {
             </span>
           </div>
         )}
+        <ControlHint
+          text={controlHint(bindings, "rooftop")}
+          playing={lobby.phase === "playing"}
+          replay={menu.hintReplay}
+          hidden={menuOpen}
+        />
       </div>
-      <footer className="pl-online-footer">
-        <span>
-          {bindings.punch
-            .filter(Boolean)
-            .map((b) => bindingLabel(b!))
-            .join(" / ")}
-          : Yumruk ·{" "}
-          {bindings.grab
-            .filter(Boolean)
-            .map((b) => bindingLabel(b!))
-            .join(" / ")}
-          : Tut ·{" "}
-          {bindings.lift
-            .filter(Boolean)
-            .map((b) => bindingLabel(b!))
-            .join(" / ")}
-          : Kaldır
-        </span>
-        <span ref={performanceLabel} />
-      </footer>
-      {props.debug && <pre className="pl-net-debug" ref={netLabel} aria-hidden="true" />}
+      {menu.view && (
+        <ArenaMenu
+          view={menu.view}
+          setView={menu.setView}
+          onResume={() => menu.setView(null)}
+          onLeave={onLeave}
+          lobby={lobby}
+          modeName={MODE_NAMES.rooftop_brawl}
+          bindings={bindings}
+          onBindings={props.onBindings}
+          bindingsSaved={props.bindingsSaved}
+          debug={props.debug ? { open: debugPanel.open, onToggle: debugPanel.toggle } : null}
+        />
+      )}
     </div>
   );
 }
