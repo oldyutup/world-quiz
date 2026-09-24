@@ -1,5 +1,9 @@
 # Online Barn Shootout (Phase 2)
 
+> Since protocol 6 ([LAYER_ONLINE.md](LAYER_ONLINE.md)) there is a third mode, Katman Kaosu, and
+> Mixed plays all three once per shuffled cycle instead of alternating two. Barn's own packets,
+> snapshot section and rules below are unchanged.
+
 Barn Shootout is an online Party Lab mode next to Rooftop Brawl. Rooftop gameplay and the
 network hardening in [NETWORK.md](NETWORK.md) are unchanged. The combat rules are in
 [simulation/barn/COMBAT.md](simulation/barn/COMBAT.md), and the map in

@@ -19,6 +19,8 @@ import {
 } from "../../../shared/party-lab/network/protocol.js";
 import { BarnRoundSimulation, BARN_MATCH } from "../../../shared/party-lab/simulation/barnRound.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
+import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layerRound.js";
+import { LAYER_TICKS } from "../../../shared/party-lab/simulation/layers/config.js";
 import { ROUND } from "../../../shared/party-lab/simulation/roundLogic.js";
 import { newWeapon } from "../../../shared/party-lab/simulation/barn/weapons.js";
 
@@ -76,7 +78,17 @@ async function close(...list: Peer[]) {
 /** Jump a phase to its last 30 ms (the fixed-step loop then finishes it for real). */
 function skip(room: PartyRoom) {
   const game = room.game as unknown as { elapsed: number; phase: string; round: { elapsed: number; phase: string } };
-  if (room.game instanceof BarnRoundSimulation) {
+  if (room.game instanceof LayerRoundSimulation) {
+    // Countdown/results: to their last ticks. Play: everyone but the lowest slot falls out (last alive wins).
+    const round = room.game.round;
+    if (round.phase === "playing") {
+      for (const id of room.game.game.slots.slice(1))
+        for (const part of Object.values(room.game.physics.players[id].parts)) {
+          const p = part.body.translation();
+          part.body.setTranslation({ x: p.x, y: p.y - 60, z: p.z }, true);
+        }
+    } else round.tick = (round.phase === "countdown" ? LAYER_TICKS.countdown : LAYER_TICKS.results) - 2;
+  } else if (room.game instanceof BarnRoundSimulation) {
     const d = game.phase === "countdown" ? BARN_MATCH.countdown : game.phase === "playing" ? BARN_MATCH.duration : BARN_MATCH.results;
     game.elapsed = d - 0.03;
   } else {
@@ -139,7 +151,7 @@ test("mode selector: the creator is host; only the host changes it; everyone see
   assert.equal(room.state.players.get(a.room.sessionId)?.ready, false, "changing the mode clears Ready");
   a.room.send("mode", "mixed");
   await until(() => [a, b].every((p) => p.room.state.selection === "mixed"));
-  assert.ok(["rooftop_brawl", "barn_shootout"].includes(b.room.state.mode), "Mixed shows the actual next mode");
+  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos"].includes(b.room.state.mode), "Mixed shows the actual next mode");
   await close(a, b);
 });
 
@@ -202,7 +214,7 @@ test("barn round over real sockets: explicit mode, barn packets acknowledged, ro
   await close(a, b);
 });
 
-test("Mixed: random first mode, then alternates; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
+test("Mixed: all three modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
   const a = await create("Alice"),
     b = await join(a.room.roomId, "Bobby");
   const room = local(a);
@@ -224,7 +236,9 @@ test("Mixed: random first mode, then alternates; each switch rebuilds and dispos
       memory.push(process.memoryUsage().heapUsed / 1048576);
     }
   }
-  for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `alternates (${played.join(",")})`);
+  for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `no repeat (${played.join(",")})`);
+  for (let c = 0; c + 3 <= played.length; c += 3)
+    assert.deepEqual([...played.slice(c, c + 3)].sort(), ["barn_shootout", "layer_chaos", "rooftop_brawl"], `cycle ${c / 3} has every mode once (${played.join(",")})`);
   assert.equal(room.simulations.created, 1 + played.length - (played[0] === "rooftop_brawl" ? 1 : 0));
   assert.equal(room.simulations.disposed, room.simulations.created - 1);
   const growth = memory[memory.length - 1] - memory[0];
@@ -235,7 +249,7 @@ test("Mixed: random first mode, then alternates; each switch rebuilds and dispos
   a.room.send("mode", old.mode === "barn_shootout" ? "rooftop_brawl" : "barn_shootout");
   await until(() => room.upcoming !== old.mode);
   await playRound(room, [a, b]);
-  assert.throws(() => (old as BarnRoundSimulation | OnlineRoundSimulation).physics.world.step(), "a disposed world cannot be stepped");
+  assert.throws(() => (old as BarnRoundSimulation | OnlineRoundSimulation | LayerRoundSimulation).physics.world.step(), "a disposed world cannot be stepped");
   await close(a, b);
 });
 

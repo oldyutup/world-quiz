@@ -53,7 +53,7 @@ installed or built.
    - one replica (default). Do not add replicas/regions: rooms and room codes live in one process's memory.
 5. Settings → Networking → **Generate Domain**. If asked for a port, use the one in the log
    line `Party Lab authoritative server listening at ws://0.0.0.0:<PORT>`.
-6. Check `https://<domain>/health` → `{"ok":true,"service":"party-lab","protocol":5}`.
+6. Check `https://<domain>/health` → `{"ok":true,"service":"party-lab","protocol":6}`.
    The protocol must match the deployed frontend: deploy Railway and Vercel together
    when it changes. Settings to confirm (single replica, no App Sleeping, region, logs)
    are listed in [NETWORK.md](../../shared/party-lab/NETWORK.md#railway-verify-manually-nothing-was-changed-remotely).

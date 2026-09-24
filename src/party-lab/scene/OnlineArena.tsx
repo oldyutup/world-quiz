@@ -20,6 +20,7 @@ import { LocalPrediction } from "../network/prediction/localPrediction";
 import type { PlayerId } from "./players";
 import type { AnyInputPacket } from "../../../shared/party-lab/network/protocol";
 import OnlineBarnArena from "./OnlineBarnArena";
+import OnlineLayerArena from "./OnlineLayerArena";
 import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
@@ -410,7 +411,9 @@ function OnlineView({
  * never guesses it from poses or map data. Rooftop Brawl keeps its original view.
  */
 export default function OnlineArena(props: Props) {
-  return props.lobby.mode === "barn_shootout" ? <OnlineBarnArena {...props} /> : <OnlineRooftopArena {...props} />;
+  if (props.lobby.mode === "barn_shootout") return <OnlineBarnArena {...props} />;
+  if (props.lobby.mode === "layer_chaos") return <OnlineLayerArena {...props} />;
+  return <OnlineRooftopArena {...props} />;
 }
 function OnlineRooftopArena(props: Props) {
   const { lobby, onLeave, bindings, paused } = props;

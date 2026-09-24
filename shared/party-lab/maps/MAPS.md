@@ -136,8 +136,23 @@ window panes). `public/party-lab/maps/barn/barn-kit.glb` (≈ 250 KB, untextured
 hang flattened on the boarded south end wall. `barn.test.ts` casts view rays from
 player and camera positions to keep the shell closed. See `CREDITS.txt` next to the GLB.
 
+## Katman Kaosu ("Katmanlar") — local and online
+
+`layers.ts`: four stacked fields of flush 2 m hex tiles (85 / 79 / 78 / 55 = 297) at
+16.5 / 11 / 5.5 / 0 m. The tiles break, so they are gameplay state, not map colliders:
+`LAYERS_MAP` has no static colliders and is not in `ARENA_MAPS` (its id is the separate
+`TileArenaId`); the tile field (`simulation/layers/tiles.ts`) adds one convex prism
+collider per tile and disables it when the tile goes. The local arena lists it after the
+static maps; online it is `MODE_MAP.layer_chaos` (protocol 6). Rules, camera and numbers:
+`simulation/layers/LAYERS.md`; online: `../LAYER_ONLINE.md`.
+
 ## Assets
 
 `public/party-lab/maps/rooftop/rooftop-kit.glb` (≈178 KB) is generated from the
 CC0 Downtown City MegaKit (Standard) by `scripts/build-party-lab-rooftop-kit.mjs`;
 the raw pack stays outside the repository. See `CREDITS.txt` next to the GLB.
+
+`public/party-lab/maps/layers/layers-kit.glb` (≈217 KB, vertex-coloured, untextured)
+is Katman Kaosu's background scenery only (clouds, floating islands, ruins, grass hex
+columns), built from CC0 Quaternius and Kenney packs by
+`scripts/build-party-lab-layers-kit.mjs`; no gameplay tile or collider comes from it.

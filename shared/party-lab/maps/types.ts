@@ -6,6 +6,11 @@
  * Coordinates: metres, +Y up, +Z toward the fixed camera, main floor at y = 0.
  */
 export type ArenaMapId = "rooftop" | "test" | "barn";
+/**
+ * Katman Kaosu's tile field (layers.ts), local and online (MODE_MAP.layer_chaos). Not in the
+ * static map registry: its tiles are gameplay state (they break), added to the world by the tile field.
+ */
+export type TileArenaId = "layers";
 
 export interface Vec3 {
   readonly x: number;
@@ -73,7 +78,7 @@ export interface LethalEdge {
 }
 
 export interface ArenaMap {
-  readonly id: ArenaMapId;
+  readonly id: ArenaMapId | TileArenaId;
   readonly name: string;
   /** Main walkable floor footprint at y = 0. */
   readonly bounds: {

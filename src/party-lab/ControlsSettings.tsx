@@ -25,7 +25,7 @@ export default function ControlsSettings({
   inArena: boolean;
   online?: boolean;
   saved: boolean;
-  /** Inside the online arena's Esc menu (no page chrome; closing returns to the menu). */
+  /** Inside an arena's Esc menu (no page chrome; closing returns to the menu). */
   embedded?: boolean;
 }) {
   const [capture, setCapture] = useState<{
@@ -100,7 +100,11 @@ export default function ControlsSettings({
         </p>
         <p className="pl-settings-note">
           Bir atamayı seç, sonra yeni tuşa basıp bırak. ESC ile iptal et.{" "}
-          {online ? "Girişlerin durduruldu; online tur devam ediyor." : inArena && "Arena duraklatıldı."}
+          {online
+            ? "Girişlerin durduruldu; online tur devam ediyor."
+            : embedded
+            ? "Girişlerin durduruldu; tur arkada devam ediyor."
+            : inArena && "Arena duraklatıldı."}
         </p>
         <div
           className="pl-settings-feedback"

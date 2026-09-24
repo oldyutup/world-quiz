@@ -9,7 +9,10 @@ export const NET = {
   // 5: game modes (Rooftop Brawl / Barn Shootout / Mixed). A room can now run Barn
   // rounds: a v4 page would render and predict the rooftop against barn poses, and a
   // v4 server rejects the barn input packet. Every snapshot names its round's mode.
-  version: 5,
+  // 6: Katman Kaosu (layer_chaos) online. A new mode, input packet, snapshot tile section
+  // and prediction block; a v5 page would render a layer round as the rooftop and a v5
+  // server rejects the layer packet. Mixed rotates all three modes.
+  version: 6,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -46,6 +49,13 @@ export interface ServerDiagnostics {
   mode?: GameMode;
   snapshotBytes?: number;
   simulations?: number;
+  /** Katman Kaosu, this round: encoded `layers` section size, tiles armed (not gone) and gone, section build cost. */
+  layers?: {
+    sectionBytes: number;
+    armed: number;
+    gone: number;
+    encodeUs: number;
+  };
   /** Barn lag compensation, this round: shots resolved, last/max rewind, rejected/clamped views, lookup cost. */
   rewind?: {
     shots: number;
@@ -107,8 +117,23 @@ export interface BarnInputPacket {
   eyeZ: number;
   viewTick: number;
 }
-export type AnyInputPacket = InputPacket | BarnInputPacket;
+/**
+ * Katman Kaosu input: intent only. Movement is camera-relative world X/Z (magnitude ≤ 1,
+ * normalised by `normalizeMove` on both ends); jump and punch are edges, sprint is held.
+ * Never a tile, a hit, an elimination or a result: the server decides all of those.
+ */
+export interface LayerInputPacket {
+  seq: number;
+  round: number;
+  moveX: number;
+  moveZ: number;
+  jumpPressed: boolean;
+  sprintHeld: boolean;
+  punchPressed: boolean;
+}
+export type AnyInputPacket = InputPacket | BarnInputPacket | LayerInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
+export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
 export interface GameEvent extends FeedbackEvent {
   id: number;
   round: number;
@@ -119,9 +144,11 @@ export interface GameEvent extends FeedbackEvent {
 export interface PredictionState {
   slot: number;
   velocities: Uint8Array; // Nine bodies × (linear XYZ, angular XYZ), Float32 LE.
-  controller: number[]; // Rooftop: facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs. Barn: empty.
+  controller: number[]; // Rooftop: facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs. Barn, layers: empty.
   /** Barn: BARN_PREDICTION_FIELDS Float64 LE values (character + own fighter state). */
   barn?: Uint8Array;
+  /** Katman Kaosu: LAYER_PREDICTION_FIELDS Float64 LE values. */
+  layers?: Uint8Array;
 }
 export const VELOCITY_BYTES = 9 * 6 * 4;
 /**
@@ -156,6 +183,51 @@ export const BARN_PREDICTION_FIELDS = [
   "aimPitch",
 ] as const;
 export const BARN_PREDICTION_BYTES = BARN_PREDICTION_FIELDS.length * 8;
+/**
+ * Katman Kaosu prediction state (Float64, recipient only): the character's controller
+ * state and the own fighter's punch and stagger timers, so the local rig replays
+ * movement, sprint blend, jump cooldown, punches and staggers like the server. The tile
+ * state it replays against comes from the snapshot's `layers` section.
+ */
+export const LAYER_PREDICTION_FIELDS = [
+  "facing",
+  "gait",
+  "jumpIn",
+  "sprint",
+  "alive",
+  "punchHand",
+  "punchCooldown",
+  "punchAge",
+  "punchSwingCooldown",
+  "staggerTime",
+  "staggerPosture",
+  "staggerMobility",
+] as const;
+export const LAYER_PREDICTION_BYTES = LAYER_PREDICTION_FIELDS.length * 8;
+/** Katman Kaosu per-fighter flags (`LayerSnapshot.f`). */
+export const LAYER_FLAG = { inMatch: 1, alive: 2, body: 4, staggered: 8, forfeit: 16 } as const;
+/** Round result codes (`LayerSnapshot.r`). */
+export const LAYER_RESULTS = [null, "survivor", "all-fell", "timeout", "forfeit"] as const;
+/**
+ * Katman Kaosu's tile state, complete in every snapshot (idempotent: a late joiner or a
+ * reconnect has the exact field from its first snapshot; no tile events to miss):
+ * - `t`: round tick. In play, the tick the next step's rules use; in results, the tick
+ *   the round ended on; 0 before play.
+ * - `g`: GONE bitset, one bit per tile id (297 bits, 38 bytes, LSB first).
+ * - `a`: armed tiles not yet GONE, three bytes each: tile id (uint16 LE) and age in ticks
+ *   (t − armTick, ≤ 255; a tile never lasts longer than 78). Its GONE tick follows from
+ *   the rules (`breakTicks`); untouched tiles follow the fixed collapse schedule.
+ * - `f`: per slot, LAYER_FLAG bits. `o`: per slot, the round tick eliminated (−1: not).
+ * - `r`: LAYER_RESULTS index of the finished round (0 while undecided).
+ */
+export interface LayerSnapshot {
+  t: number;
+  g: Uint8Array;
+  a: Uint8Array;
+  f: number[];
+  o: number[];
+  r: number;
+}
 /** Weapon codes on the wire: 0 unarmed, 1 shotgun, 2 SMG. */
 export const WEAPON_CODES = [null, "shotgun", "smg"] as const;
 /**
@@ -194,6 +266,7 @@ export interface GameSnapshot {
   transforms: Uint8Array;
   prediction?: PredictionState;
   barn?: BarnSnapshot;
+  layers?: LayerSnapshot;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -204,6 +277,19 @@ export const CONDITIONS = [
   "KNOCKED_OUT",
   "RECOVERING",
 ] as const;
+/**
+ * Movement axes as the server applies them: each clamped to [−1, 1], then scaled down to
+ * a length of at most 1. The layer client normalises before sending, so its prediction
+ * replays exactly the numbers the server uses.
+ */
+export function normalizeMove(moveX: number, moveZ: number) {
+  let x = Math.max(-1, Math.min(1, moveX)),
+    z = Math.max(-1, Math.min(1, moveZ));
+  const length = Math.max(1, Math.hypot(x, z));
+  x /= length;
+  z /= length;
+  return { x, z };
+}
 const keys = [
   "seq",
   "round",
@@ -314,6 +400,18 @@ export function validateBarnInput(value: unknown): BarnInputPacket | null {
     eyeZ: eye(p.eyeZ),
   };
 }
+const layerKeys = ["seq", "round", "moveX", "moveZ", "jumpPressed", "sprintHeld", "punchPressed"];
+/** Strict keys, finite numbers, booleans; movement normalised (`normalizeMove`). */
+export function validateLayerInput(value: unknown): LayerInputPacket | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as LayerInputPacket;
+  if (Object.keys(p).length !== layerKeys.length || Object.keys(p).some((k) => !layerKeys.includes(k))) return null;
+  if (!Number.isSafeInteger(p.seq) || p.seq < 0 || !Number.isSafeInteger(p.round) || p.round < 1) return null;
+  if (![p.moveX, p.moveZ].every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  if (![p.jumpPressed, p.sprintHeld, p.punchPressed].every((v) => typeof v === "boolean")) return null;
+  const move = normalizeMove(p.moveX, p.moveZ);
+  return { ...p, moveX: move.x, moveZ: move.z };
+}
 export const neutralIntent = (): MovementInput => ({
   x: 0,
   z: 0,
@@ -337,8 +435,11 @@ export class InputMailbox {
   private barnPacket: BarnInputPacket | null = null;
   private pickup = false;
   private attackViewTick = -1;
+  // Katman Kaosu: the latest layer packet (its edges share `jump` / `punch`).
+  private layerPacket: LayerInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
     if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
+    if (mode === "layer_chaos") return this.acceptLayer(value, round, now);
     const p = validateInput(value);
     // Transport limits traffic; valid ordered packets may arrive together after network jitter.
     if (!p || p.round !== round || p.seq <= this.seq) return false;
@@ -349,6 +450,24 @@ export class InputMailbox {
       this.punchSeq = p.seq;
     }
     this.packet = p;
+    this.barnPacket = null;
+    this.layerPacket = null;
+    this.received = now;
+    return true;
+  }
+  private acceptLayer(value: unknown, round: number, now: number) {
+    const p = validateLayerInput(value);
+    if (!p || p.round !== round || p.seq <= this.seq) return false;
+    this.seq = p.seq;
+    const last = this.layerPacket;
+    this.jump ||= p.jumpPressed && !last?.jumpPressed;
+    // The punch edge keeps the sequence of the packet that carried it (swing echo dedupe).
+    if (p.punchPressed && !last?.punchPressed && !this.punch) {
+      this.punch = true;
+      this.punchSeq = p.seq;
+    }
+    this.layerPacket = p;
+    this.packet = null;
     this.barnPacket = null;
     this.received = now;
     return true;
@@ -368,6 +487,7 @@ export class InputMailbox {
     }
     this.barnPacket = p;
     this.packet = null;
+    this.layerPacket = null;
     this.received = now;
     return true;
   }
@@ -375,6 +495,8 @@ export class InputMailbox {
     if (now - this.received > NET.staleMs) this.clear();
     const b = this.barnPacket;
     if (b) return this.readBarn(b);
+    const l = this.layerPacket;
+    if (l) return this.readLayer(l);
     const p = this.packet;
     if (p) {
       this.processedSeq = this.seq;
@@ -391,6 +513,14 @@ export class InputMailbox {
           lift: p.liftHeld,
         }
       : neutralIntent();
+    this.jump = this.punch = false;
+    return result;
+  }
+  private readLayer(p: LayerInputPacket): MovementInput {
+    this.processedSeq = this.seq;
+    this.processedRound = p.round;
+    this.processedPunchSeq = this.punch ? this.punchSeq : -1;
+    const result: MovementInput = { x: p.moveX, z: p.moveZ, jump: this.jump, punch: this.punch, sprint: p.sprintHeld };
     this.jump = this.punch = false;
     return result;
   }
@@ -418,6 +548,7 @@ export class InputMailbox {
   clear() {
     this.packet = null;
     this.barnPacket = null;
+    this.layerPacket = null;
     this.jump = this.punch = this.pickup = false;
     this.received = -Infinity;
     this.punchSeq = this.processedPunchSeq = -1;

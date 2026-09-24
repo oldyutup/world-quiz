@@ -4,10 +4,13 @@ import { PARTS } from "./ragdoll/config.js";
 import {
   BARN_PREDICTION_BYTES,
   BARN_PREDICTION_FIELDS,
+  LAYER_PREDICTION_BYTES,
+  LAYER_PREDICTION_FIELDS,
   VELOCITY_BYTES,
   type PredictionState,
 } from "../network/protocol.js";
 import { weaponCode, type BarnFighter } from "./barn/combat.js";
+import type { LayerFighter } from "./layers/brawl.js";
 
 export function capturePredictionState(
   character: Character,
@@ -80,6 +83,41 @@ export function readBarnPredictionState(bytes: unknown): Record<(typeof BARN_PRE
     const v = view.getFloat64(i * 8, true);
     if (!Number.isFinite(v)) return null;
     out[BARN_PREDICTION_FIELDS[i]] = v;
+  }
+  return out;
+}
+
+/** Katman Kaosu: velocities plus the character's controller state and the own fighter's punch/stagger timers (Float64). */
+export function captureLayerPredictionState(character: Character, fighter: LayerFighter, alive: boolean): PredictionState {
+  const { velocities } = capturePredictionState(character, { nextPunchHand: 0, alternateIn: 0, punches: [] });
+  const layers = new Uint8Array(LAYER_PREDICTION_BYTES),
+    view = new DataView(layers.buffer);
+  const values: Record<(typeof LAYER_PREDICTION_FIELDS)[number], number> = {
+    facing: character.facing,
+    gait: character.gait,
+    jumpIn: character.jumpIn,
+    sprint: character.sprint,
+    alive: alive ? 1 : 0,
+    punchHand: fighter.punchHand,
+    punchCooldown: fighter.punchCooldown,
+    punchAge: fighter.punch.age,
+    punchSwingCooldown: fighter.punch.cooldown,
+    staggerTime: fighter.stagger.time,
+    staggerPosture: fighter.stagger.posture,
+    staggerMobility: fighter.stagger.mobility,
+  };
+  LAYER_PREDICTION_FIELDS.forEach((name, i) => view.setFloat64(i * 8, values[name], true));
+  return { slot: character.id, velocities, controller: [], layers };
+}
+/** Reads a layer prediction section back into named numbers (null if malformed). */
+export function readLayerPredictionState(bytes: unknown): Record<(typeof LAYER_PREDICTION_FIELDS)[number], number> | null {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength !== LAYER_PREDICTION_BYTES) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = {} as Record<(typeof LAYER_PREDICTION_FIELDS)[number], number>;
+  for (let i = 0; i < LAYER_PREDICTION_FIELDS.length; i++) {
+    const v = view.getFloat64(i * 8, true);
+    if (!Number.isFinite(v)) return null;
+    out[LAYER_PREDICTION_FIELDS[i]] = v;
   }
   return out;
 }

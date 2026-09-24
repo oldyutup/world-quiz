@@ -9,7 +9,8 @@ import { MODE_NAMES, MODE_SELECTIONS, type ModeSelection } from "../../shared/pa
 const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   rooftop_brawl: "Yumruk, tut, kaldır. Son ayakta kalan kazanır.",
   barn_shootout: "Silah bul, nişan al. 2:30 sonunda en çok öldüren kazanır.",
-  mixed: "İlk tur rastgele, sonra turlar sırayla değişir.",
+  layer_chaos: "Bastığın karo kırılır, katman katman düş. En alttan düşmeyen kazanır.",
+  mixed: "Üç mod karışık sırayla; aynı mod art arda gelmez.",
 };
 
 /** Opt-in (`?partyDebug=1`) link/chat timing line; refreshes on its own clock. */

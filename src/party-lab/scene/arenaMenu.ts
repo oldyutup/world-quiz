@@ -3,10 +3,11 @@ import { bindingLabel, type Binding, type Bindings } from "../input/bindings";
 import type { LookMode } from "../input/look";
 
 /**
- * The Esc menu over an online arena. It is NOT a pause: the server keeps simulating,
- * the round clock keeps running and the other players keep playing. Opening it only
- * stops this player's local input (held keys released, a neutral input sent, local
- * prediction suspended) until it closes.
+ * The Esc menu over an immersive arena (online Rooftop and Barn, local Katman Kaosu). It
+ * is NOT a pause: the server (or the local simulation) keeps simulating, the round clock
+ * keeps running and the other players or bots keep playing. Opening it only stops this
+ * player's local input (held keys released, a neutral input sent, local prediction
+ * suspended) until it closes.
  */
 export type MenuView = "main" | "controls" | "audio";
 
@@ -58,9 +59,17 @@ function movement(bindings: Bindings) {
 }
 
 /** The short controls line shown for a few seconds when a round opens (current bindings). */
-export function controlHint(bindings: Bindings, mode: "rooftop" | "barn", lookMode: LookMode = "lock") {
+export function controlHint(bindings: Bindings, mode: "rooftop" | "barn" | "layers", lookMode: LookMode = "lock") {
   const parts =
-    mode === "barn"
+    mode === "layers"
+      ? [
+          `${movement(bindings)} hareket`,
+          `${primary(bindings, "lift")} koş`,
+          `${primary(bindings, "jump")} zıpla`,
+          `${primary(bindings, "punch")} it`,
+          ...(lookMode === "drag" ? ["sürükleyerek bak"] : []),
+        ]
+      : mode === "barn"
       ? [
           `${movement(bindings)} hareket`,
           `${primary(bindings, "lift")} koş`,

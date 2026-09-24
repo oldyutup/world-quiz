@@ -188,8 +188,8 @@ body:has(.party-lab) {
 .party-lab .pl-room-roster-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 /* Lobby game mode: host picks, everyone sees the choice and the actual next round. */
 .party-lab .pl-mode { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--pl-border); }
-.party-lab .pl-mode-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.party-lab .pl-mode-option { display: grid; gap: 4px; align-content: start; min-height: 88px; padding: 10px 12px; border: 1px solid var(--pl-border); border-radius: 12px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; text-align: left; cursor: pointer; }
+.party-lab .pl-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.party-lab .pl-mode-option { display: grid; gap: 4px; align-content: start; min-height: 72px; padding: 10px 12px; border: 1px solid var(--pl-border); border-radius: 12px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; text-align: left; cursor: pointer; }
 .party-lab .pl-mode-option b { font-size: 14px; }
 .party-lab .pl-mode-option small { color: var(--pl-muted); font-size: 12px; line-height: 1.35; }
 .party-lab .pl-mode-option:hover:not(:disabled) { border-color: var(--pl-muted); }
@@ -551,8 +551,9 @@ body:has(.party-lab) {
 .party-lab .pl-online-status.is-degraded { color: var(--pl-accent); }
 .party-lab .pl-online-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--pl-muted); font-size: 12px; padding-top: 10px; }
 
-/* ─── Immersive online arena (Rooftop + Barn): the arena fills the page; only gameplay
-   HUD sits on it. Everything else is in the Esc menu. Lobby and local arena unchanged. */
+/* ─── Immersive arena (online Rooftop + Barn, local Katman Kaosu): the arena fills the page;
+   only gameplay HUD sits on it. Everything else is in the Esc menu. Lobby and the other
+   local test maps unchanged. */
 body:has(.pl-immersive) { overflow: hidden; }
 .party-lab.pl-playground.pl-immersive { position: relative; height: 100vh; height: 100dvh; min-height: 360px; padding: 8px; gap: 0; }
 .party-lab.pl-immersive .pl-viewport { border-radius: 16px; }
@@ -567,10 +568,11 @@ body:has(.pl-immersive) { overflow: hidden; }
 }
 .party-lab .pl-menu-button:hover { background: oklch(27% 0.035 180 / 94%); }
 .party-lab .pl-menu-button kbd { margin-left: auto; padding: 1px 5px; border-radius: 5px; color: var(--pl-muted); font-size: 10px; font-weight: 600; }
-.party-lab.pl-immersive .pl-viewport[data-mode="rooftop_brawl"] .pl-round-hud { left: 136px; }
+.party-lab.pl-immersive .pl-viewport:is([data-mode="rooftop_brawl"], [data-mode="layer_chaos"]) .pl-round-hud { left: 136px; }
 /* Connection / spectator chips and the debug panel, under the menu button (Barn) or roster (Rooftop). */
 .party-lab .pl-arena-side { position: absolute; top: 60px; left: 14px; display: grid; justify-items: start; gap: 8px; max-width: min(620px, calc(100% - 28px)); pointer-events: none; }
 .party-lab .pl-viewport[data-mode="rooftop_brawl"] .pl-arena-side { top: 102px; }
+.party-lab .pl-viewport[data-mode="layer_chaos"] .pl-arena-side { top: 84px; max-width: min(480px, calc(100% - 28px)); }
 .party-lab .pl-arena-side .pl-arena-chip { margin: 0; padding: 6px 12px; border: 1px solid var(--pl-border); border-radius: 999px; background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); font-size: 12px; }
 .party-lab .pl-arena-side .pl-online-status.is-degraded { color: var(--pl-accent); }
 .party-lab .pl-debug-panel { padding: 8px 10px; border-radius: 10px; background: oklch(14% 0.02 60 / 84%); color: var(--pl-ink); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -608,3 +610,13 @@ body:has(.pl-immersive) { overflow: hidden; }
 .party-lab .pl-settings-embedded h1 { margin: 14px 0 10px; font-size: 48px; }
 .party-lab .pl-menu-audio .pl-audio-settings { margin-top: 8px; padding-top: 12px; border-top: 0; }
 @media (prefers-reduced-motion: reduce) { .party-lab .pl-control-hint { transition: none; } }
+/* Katman Kaosu (local, immersive): anti-stall banner, spectator label, debug readout (in the debug panel). */
+.party-lab .pl-layer-banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); padding: 10px 26px; border-radius: 14px; background: oklch(24% 0.05 30 / 88%); color: oklch(92% 0.09 60); font-size: 28px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0; pointer-events: none; }
+.party-lab .pl-layer-banner:empty { display: none; }
+.party-lab .pl-layer-spectate { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 7px 14px; border-radius: 999px; background: oklch(22% 0.03 180 / 90%); color: var(--pl-ink); font-size: 14px; white-space: nowrap; pointer-events: none; }
+.party-lab .pl-layer-spectate span { color: var(--pl-muted); }
+.party-lab .pl-layer-debug { margin: 0; font-size: 10.5px; white-space: pre-wrap; }
+/* Messages size to their text, not to half the arena (left: 50%); on short screens the look
+   prompt sits just above the bottom line, clear of the round message and the roster. */
+.party-lab .pl-viewport[data-mode="layer_chaos"] .pl-arena-message { width: max-content; }
+@media (max-height: 620px) { .party-lab .pl-viewport[data-mode="layer_chaos"] .pl-look-prompt { top: auto; bottom: 64px; transform: translateX(-50%); } }

@@ -2,9 +2,11 @@ import { GameStream } from "./gameStream";
 import { LINK, NetDiagnostics } from "./diagnostics";
 import {
   NET,
+  normalizeMove,
   type AnyInputPacket,
   type BarnInputPacket,
   type InputPacket,
+  type LayerInputPacket,
   type GameSnapshot,
   type GameEvent,
   type PingPacket,
@@ -359,7 +361,8 @@ export class LobbySession {
     )
       return null;
     const now = performance.now();
-    const barn = this.snapshot.mode === "barn_shootout";
+    const barn = this.snapshot.mode === "barn_shootout",
+      layers = this.snapshot.mode === "layer_chaos";
     this.heldJump ||= intent.jump;
     this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
     this.heldPickup ||= barn && !!intent.pickup;
@@ -374,6 +377,8 @@ export class LobbySession {
     }
     const packet: AnyInputPacket = barn
       ? this.barnPacket(intent)
+      : layers
+      ? this.layerPacket(intent)
       : {
           seq: ++this.inputSeq,
           round: this.snapshot.round,
@@ -391,6 +396,23 @@ export class LobbySession {
     this.lastInputAt = now;
     this.diagnostics.input(now);
     return packet;
+  }
+  /**
+   * Katman Kaosu intent → wire packet: camera-relative movement normalised exactly as the
+   * server does (so the local replay uses the server's numbers), jump and punch edges
+   * (carried through coalescing), sprint held. Nothing else.
+   */
+  private layerPacket(intent: MovementInput): LayerInputPacket {
+    const move = normalizeMove(Number.isFinite(intent.x) ? intent.x : 0, Number.isFinite(intent.z) ? intent.z : 0);
+    return {
+      seq: ++this.inputSeq,
+      round: this.snapshot.round,
+      moveX: move.x,
+      moveZ: move.z,
+      jumpPressed: this.heldJump,
+      sprintHeld: !!intent.sprint,
+      punchPressed: this.heldPunch,
+    };
   }
   /**
    * Barn intent → wire packet. Movement is already camera-relative; the aim yaw is

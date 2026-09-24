@@ -1,0 +1,22 @@
+layers-kit.glb — Party Lab "Katman Kaosu" sky scenery kit ("Gök Petekleri")
+
+Sources (all CC0 1.0 Universal, Public Domain Dedication,
+https://creativecommons.org/publicdomain/zero/1.0/, per each pack's License.txt):
+  Quaternius — Platformer Game Kit (Dec 2021)   https://quaternius.com
+  Kenney — Nature Kit 2.1                        https://www.kenney.nl
+  Kenney — Platformer Kit 4.1                    https://www.kenney.nl
+Attribution is not required; credit is given here voluntarily.
+
+Only this curated subset is included:
+  Quaternius: Cloud_1, Cloud_2, Cloud_3, RockPlatforms_Large, RockPlatforms_Medium,
+              RockPlatform_Tall, Rock_2, Tree, Bush
+  Kenney Nature: statue_column, statue_columnDamaged, statue_obelisk, statue_ring
+  Kenney Platformer: block-grass-hexagon, block-grass-overhang-hexagon, flag
+
+Changes: merged into one GLB; each model baked to one primitive with positions,
+normals and vertex colours (UVs, tangents and the colormap texture dropped; the
+Platformer Kit's atlas colours sampled per triangle and re-tinted to a pastel
+palette); all materials opaque with metalness 0; re-pivoted to bottom-centre;
+Quaternius scaled 0.5×. Visual only: no gameplay collider comes from this file.
+Rebuild with:
+  node scripts/build-party-lab-layers-kit.mjs [path/to/PartyLabCollapseAssets]

@@ -63,11 +63,34 @@ import { BarnBridge, HELD_SCALE, MUZZLE, type HeldView } from "./arenas/barnView
 import { BARN_COMBAT } from "../../../shared/party-lab/simulation/barn/config";
 import type { BarnHit, BarnNotice, BarnShot } from "../../../shared/party-lab/simulation/barn/combat";
 import { GRIP, HIT_GLOW, PUNCH_GLOW, SHIELD_GLOW, UP, VIEW_KICK, WEAPON_NAMES } from "./arenas/barnPresentation";
+import LayerPlayground, { type LayerHudElements, type LayerSnapshot } from "./layers/LayerPlayground";
+import LayerHud from "./layers/LayerHud";
+import { LAYER_CHAOS } from "../../../shared/party-lab/simulation/layers/config";
+import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
+import { controlHint } from "./arenaMenu";
 
+/**
+ * What the local arena can open: every shared static map, plus Katman Kaosu's tile
+ * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/).
+ */
+type LocalArenaId = ArenaMapId | "layers";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers"];
+const localArenaName = (id: LocalArenaId) => (id === "layers" ? LAYER_CHAOS.label : arenaMap(id).name);
+/**
+ * Katman Kaosu opens immersive, like the online arenas (ArenaChrome): the arena fills the
+ * page, only gameplay HUD sits on it, and settings, map and player count move into the
+ * Esc menu. The other local test maps keep the header/footer test layout.
+ */
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers"]);
+/** `?layerDebug=1` / `?partyDebug=1`: Katman Kaosu's debug readout starts open. */
+const debugAtStart = () => {
+  const query = new URLSearchParams(window.location.search);
+  return query.has("layerDebug") || query.has("partyDebug");
+};
 /** Maps that run untimed with standing dummies instead of bots and the rooftop round. */
-const EXPLORE_MAPS: ReadonlySet<ArenaMapId> = new Set(["barn"]);
+const EXPLORE_MAPS: ReadonlySet<LocalArenaId> = new Set(["barn"]);
 /** Maps whose local test runs Barn Shootout combat (health, weapons, traps, respawn). */
-const BARN_COMBAT_MAPS: ReadonlySet<ArenaMapId> = new Set(["barn"]);
+const BARN_COMBAT_MAPS: ReadonlySet<LocalArenaId> = new Set(["barn"]);
 
 type ArenaStatus = "loading" | "ready" | "error" | "graphics-error";
 interface BarnHudElements {
@@ -701,9 +724,12 @@ function Playground({
   );
 }
 
-export default function ArenaScene({ onExit, bindings, paused, onControls, costumeId }: {
+export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved, paused, onControls, costumeId }: {
   onExit: () => void;
   bindings: Bindings;
+  /** Rebinding from the immersive arena's Esc menu (the test layout opens the full page). */
+  onBindings: (bindings: Bindings) => void;
+  bindingsSaved: boolean;
   paused: boolean;
   onControls: () => void;
   costumeId: SelectableCostumeId;
@@ -717,10 +743,25 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
     return () => query.removeEventListener("change", changed);
   }, []);
   const [status, setStatus] = useState<ArenaStatus>("loading");
-  const [mapId, setMapId] = useState<ArenaMapId>(DEFAULT_ARENA_MAP_ID);
+  const [mapId, setMapId] = useState<LocalArenaId>(DEFAULT_ARENA_MAP_ID);
   const [round, setRound] = useState<RoundSnapshot | null>(null);
   const explore = EXPLORE_MAPS.has(mapId);
   const barn = mapId === "barn";
+  // Katman Kaosu (local): its own playground, HUD and 2–3 player choice.
+  const layers = mapId === "layers";
+  const [layerPlayers, setLayerPlayers] = useState<2 | 3>(3);
+  const [layerSnapshot, setLayerSnapshot] = useState<LayerSnapshot | null>(null);
+  const layerHud = useRef<LayerHudElements>({ debug: null, banner: null });
+  /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu). */
+  const chaseCamera = barn || layers;
+  const immersive = IMMERSIVE_MAPS.has(mapId);
+  // Immersive only: the Esc menu (never a pause — the local round and bots go on) and the
+  // debug readout, which is collapsed unless asked for.
+  const menu = useArenaMenu(immersive && !paused);
+  const menuOpen = menu.view !== null;
+  const inputOff = paused || menuOpen;
+  const [openDebugAtStart] = useState(debugAtStart);
+  const debugPanel = useDebugPanel(true, openDebugAtStart);
   const barnCombat = BARN_COMBAT_MAPS.has(mapId);
   const [lookMode, setLookMode] = useState<LookMode>(loadLookMode);
   const [lookStatus, setLookStatus] = useState<LookStatus>("unlocked");
@@ -737,53 +778,66 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
   });
 
   useEffect(() => {
-    if (!paused) viewport.current?.focus();
-  }, [paused]);
-  // Barn only: pointer lock / drag look on the arena viewport.
+    if (!inputOff) viewport.current?.focus();
+  }, [inputOff]);
+  // Barn and Katman Kaosu: pointer lock / drag look on the arena viewport. A lock the
+  // browser ends (Esc, focus loss) opens the menu in the immersive arena only.
+  const { lockEnded } = menu;
   useEffect(() => {
     const surface = viewport.current;
-    if (!barn || !surface) return;
-    const controller = bindLook(surface, lookModeNow.current, setLookStatus);
+    if (!chaseCamera || !surface) return;
+    const controller = bindLook(surface, lookModeNow.current, setLookStatus, lockEnded);
     look.current = controller;
     return () => {
       controller.dispose();
       look.current = null;
       setLookStatus("unlocked");
     };
-  }, [barn]);
+  }, [chaseCamera, lockEnded]);
   useEffect(() => {
     look.current?.setMode(lookMode);
     saveLookMode(lookMode);
   }, [lookMode]);
   useEffect(() => {
-    look.current?.setEnabled(!paused);
-  }, [paused, barn]);
+    look.current?.setEnabled(!inputOff);
+  }, [inputOff, chaseCamera]);
+  function chooseMap(next: LocalArenaId) {
+    menu.setView(null);
+    setStatus("loading");
+    setRound(null);
+    setLayerSnapshot(null);
+    setMapId(next);
+    // Keep arrow keys for the game, not for switching maps mid-round.
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
+  function chooseLayerPlayers(next: 2 | 3) {
+    menu.setView(null);
+    setStatus("loading");
+    setLayerSnapshot(null);
+    setLayerPlayers(next);
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
+  const layerOut = layerSnapshot?.phase === "playing" && !layerSnapshot.alive[0];
 
+  const mapSelect = (
+    <select value={mapId} onChange={(event) => chooseMap(event.target.value as LocalArenaId)}>
+      {LOCAL_ARENA_IDS.map((id) => (
+        <option key={id} value={id}>{localArenaName(id)}</option>
+      ))}
+    </select>
+  );
   return (
-    <div className="party-lab pl-playground">
-      <header className="pl-arena-header">
+    <div className={`party-lab pl-playground${immersive ? " pl-immersive" : ""}`} data-mode={layers ? LAYER_CHAOS.mode : undefined}>
+      {!immersive && <header className="pl-arena-header">
         <div>
-          <span className="pl-eyebrow">PARTY LAB / YEREL TEST · {arenaMap(mapId).name.toLocaleUpperCase("tr-TR")}</span>
+          <span className="pl-eyebrow">PARTY LAB / YEREL TEST · {localArenaName(mapId).toLocaleUpperCase("tr-TR")}</span>
           <h2>Biraz hareket, biraz kaos.</h2>
         </div>
         <label className="pl-map-select">
           <span>Harita</span>
-          <select
-            value={mapId}
-            onChange={(event) => {
-              setStatus("loading");
-              setRound(null);
-              setMapId(event.target.value as ArenaMapId);
-              // Keep arrow keys for the game, not for switching maps mid-round.
-              requestAnimationFrame(() => viewport.current?.focus());
-            }}
-          >
-            {ARENA_MAP_IDS.map((id) => (
-              <option key={id} value={id}>{arenaMap(id).name}</option>
-            ))}
-          </select>
+          {mapSelect}
         </label>
-        {barn && (
+        {chaseCamera && (
           <label className="pl-map-select pl-look-select">
             <span>Bakış</span>
             <select
@@ -802,16 +856,18 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
         <button className="pl-button pl-join" type="button" onClick={onExit} data-sfx="uiBack">
           Lobiye Dön
         </button>
-      </header>
+      </header>}
       <div
         className="pl-viewport"
         ref={viewport}
         tabIndex={0}
         role="region"
-        aria-label="Yerel 3D test arenası"
-        aria-describedby="pl-controls"
-        data-look={barn ? lookMode : undefined}
+        aria-label={layers ? `${LAYER_CHAOS.label} · yerel arena` : "Yerel 3D test arenası"}
+        aria-describedby={immersive ? undefined : "pl-controls"}
+        data-look={chaseCamera ? lookMode : undefined}
         data-combat={barnCombat ? "barn" : undefined}
+        data-mode={layers ? LAYER_CHAOS.mode : undefined}
+        data-arena={mapId}
         onPointerDown={() => viewport.current?.focus()}
       >
         <SceneBoundary onError={() => setStatus("graphics-error")}>
@@ -825,22 +881,63 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
               </div>
             }
           >
-            <Playground
-              key={mapId}
-              mapId={mapId}
-              onStatus={setStatus}
-              onRound={setRound}
-              hud={combatHud}
-              bindings={bindings}
-              paused={paused}
-              audio={audio}
-              shakeEnabled={settings.cameraShake && !reducedMotion}
-              look={look}
-              costumeId={costumeId}
-            />
+            {mapId === "layers" ? (
+              <LayerPlayground
+                key={`layers-${layerPlayers}`}
+                players={layerPlayers}
+                onStatus={setStatus}
+                onSnapshot={setLayerSnapshot}
+                hud={layerHud}
+                bindings={bindings}
+                paused={paused}
+                menuOpen={menuOpen}
+                audio={audio}
+                shakeEnabled={settings.cameraShake && !reducedMotion}
+                look={look}
+                costumeId={costumeId}
+              />
+            ) : (
+              <Playground
+                key={mapId}
+                mapId={mapId}
+                onStatus={setStatus}
+                onRound={setRound}
+                hud={combatHud}
+                bindings={bindings}
+                paused={paused}
+                audio={audio}
+                shakeEnabled={settings.cameraShake && !reducedMotion}
+                look={look}
+                costumeId={costumeId}
+              />
+            )}
           </Canvas>
         </SceneBoundary>
-        {status === "ready" && round && (
+        {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
+        {layers && status === "ready" && layerSnapshot && (
+          <>
+            <LayerHud snapshot={layerSnapshot} hud={layerHud} debugOpen={debugPanel.open} />
+            {lookMode === "lock" && lookStatus !== "locked" && !inputOff && layerSnapshot.phase !== "results" && (
+              <div className="pl-arena-message pl-look-prompt" role="status">
+                <strong>{lookStatus === "error" ? "İmleç kilitlenemedi" : "Kamerayı çevirmek için arenaya tıkla"}</strong>
+                <span>
+                  {lookStatus === "error"
+                    ? "Tekrar tıkla ya da Esc menüsündeki Bakış ayarından “Sürükleyerek bak”ı seç."
+                    : "Fare ya da trackpad ile çevir · Esc menü"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+        {layers && (
+          <ControlHint
+            text={controlHint(bindings, "layers", lookMode)}
+            playing={layerSnapshot?.phase === "playing"}
+            replay={menu.hintReplay}
+            hidden={menuOpen || layerOut}
+          />
+        )}
+        {!layers && status === "ready" && round && (
           <>
             <div className="pl-round-hud">
               <ul className="pl-roster" aria-label="Oyuncu durumları">
@@ -1014,7 +1111,7 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
           </div>
         )}
       </div>
-      <footer className="pl-arena-footer" id="pl-controls">
+      {!immersive && <footer className="pl-arena-footer" id="pl-controls">
         <div>
           {ACTIONS.map(action => <span key={action}>
             <kbd>{actionBindingLabel(bindings, action)}</kbd> {(barn && BARN_ACTION_LABELS[action]) || ACTION_LABELS[action]}
@@ -1027,7 +1124,37 @@ export default function ArenaScene({ onExit, bindings, paused, onControls, costu
         >
           {barnCombat ? "1 oyuncu + 2 hedef kukla · Yerel çatışma testi" : explore ? "1 oyuncu + 2 kukla · Yerleşim testi" : "1 oyuncu + 2 yerel bot · Aktif ragdoll testi"}
         </span>
-      </footer>
+      </footer>}
+      {menu.view && (
+        <ArenaMenu
+          view={menu.view}
+          setView={menu.setView}
+          onResume={() => menu.setView(null)}
+          onLeave={onExit}
+          leaveLabel="Lobiye Dön"
+          lobby={null}
+          modeName={localArenaName(mapId)}
+          bindings={bindings}
+          onBindings={onBindings}
+          bindingsSaved={bindingsSaved}
+          look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
+          debug={{ open: debugPanel.open, onToggle: debugPanel.toggle }}
+        >
+          <label className="pl-menu-row">
+            <span>Harita</span>
+            {mapSelect}
+          </label>
+          {layers && (
+            <label className="pl-menu-row">
+              <span>Oyuncu</span>
+              <select value={layerPlayers} onChange={(event) => chooseLayerPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
+                <option value={3}>3 (sen + 2 bot)</option>
+                <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+          )}
+        </ArenaMenu>
+      )}
     </div>
   );
 }

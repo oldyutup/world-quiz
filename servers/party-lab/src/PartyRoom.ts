@@ -1,11 +1,12 @@
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
+import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layerRound.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import {
   DEFAULT_MODE_SELECTION,
   isModeSelection,
-  otherMode,
+  MixedRotation,
   upcomingMode,
   type GameMode,
   type ModeSelection,
@@ -75,7 +76,9 @@ function options(value: unknown): {
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters): OnlineSimulation {
-  return mode === "barn_shootout" ? new BarnRoundSimulation(counters) : new OnlineRoundSimulation(counters);
+  if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
+  if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
+  return new OnlineRoundSimulation(counters);
 }
 /** Events whose `inputSeq` lets the actor's client skip its own predicted presentation. */
 const LOCAL_ECHO = new Set(["punchSwing", "shotgunFire", "smgFire"]);
@@ -93,7 +96,9 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, null);
+  /** Mixed: all three modes once per cycle, shuffled, never the same mode twice in a row. */
+  readonly rotation = new MixedRotation();
+  upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
   /** Join order (the host is the earliest-joined connected player). */
   private joined = new Map<string, number>();
   private joinCounter = 0;
@@ -166,7 +171,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   private setSelection(selection: ModeSelection) {
     if (selection === this.selection) return;
     this.selection = selection;
-    this.upcoming = upcomingMode(selection, null);
+    if (selection === "mixed") this.rotation.reset();
+    this.upcoming = upcomingMode(selection, this.rotation);
     // A different game is a new decision: everyone confirms again.
     for (const p of this.state.players.values()) p.ready = false;
     this.syncGameState();
@@ -222,8 +228,11 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (before !== phase) {
       for (const input of this.mailboxes.values()) input.clear();
       if (phase === "waiting") this.resetReady();
-      // Mixed: once a round is under way the next one is the other mode.
-      if (phase === "playing" && this.selection === "mixed") this.upcoming = otherMode(this.game.mode);
+      // Mixed: once a round is under way its mode is used up; the lobby shows the next one.
+      if (phase === "playing" && this.selection === "mixed") {
+        this.rotation.played();
+        this.upcoming = this.rotation.next;
+      }
     }
     this.syncGameState();
     if (
@@ -254,7 +263,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
           predictionBytes,
           prediction.velocities.byteLength +
             (prediction.barn?.byteLength ?? 0) +
-            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined }).length
+            (prediction.layers?.byteLength ?? 0) +
+            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined, layers: undefined }).length
         );
         if (measure)
           wireBytes = Math.max(wireBytes, getMessageBytes.raw(Protocol.ROOM_DATA, "snapshot", message).byteLength);
@@ -267,6 +277,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         snapshot.transforms.byteLength +
         JSON.stringify({ ...snapshot, transforms: undefined }).length;
       if (measure && wireBytes) this.metrics.snapshotWireBytes = wireBytes;
+      if (measure && snapshot.layers && this.game instanceof LayerRoundSimulation)
+        this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "layers", snapshot.layers).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "layers", null).byteLength;
       if (this.events.length) {
         if (measure || this.metrics.feedbackBytes === 0)
           this.metrics.feedbackBytes += getMessageBytes.raw(Protocol.ROOM_DATA, "feedback", this.events).byteLength;
@@ -424,6 +436,12 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       snapshotBytes: this.metrics.snapshotWireBytes,
       simulations: this.simulations.created,
     };
+    if (this.game instanceof LayerRoundSimulation) {
+      const field = this.game.field;
+      let armed = 0;
+      for (let id = 0; id < field.tiles.length; id++) if (!field.gone[id] && field.armTick[id] >= 0) armed++;
+      report.layers = { sectionBytes: this.game.section.bytes, armed, gone: field.stats.gone, encodeUs: this.game.section.encodeMs * 1000 };
+    }
     if (this.game instanceof BarnRoundSimulation) {
       const r = this.game.rewind;
       report.rewind = {

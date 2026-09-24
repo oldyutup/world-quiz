@@ -1,6 +1,7 @@
 import type { BufferedSnapshot } from "../gameStream";
 import {
   isBarnPacket,
+  isLayerPacket,
   type AnyInputPacket,
   type GameSnapshot,
 } from "../../../../shared/party-lab/network/protocol";
@@ -9,6 +10,7 @@ import type { GameMode } from "../../../../shared/party-lab/modes";
 import type { WeaponKind } from "../../../../shared/party-lab/simulation/barn/weapons";
 import { PredictionRig } from "./rig";
 import { BarnPredictionRig, canPredictBarn } from "./barnRig";
+import { canPredictLayer, LayerPredictionRig } from "./layerRig";
 import { InputHistory, PREDICTION_LIMITS, type PendingInput } from "./history";
 import { RigCorrection } from "./correction";
 import { Quaternion } from "three";
@@ -34,11 +36,12 @@ export interface PredictedShot {
 /**
  * Local articulated prediction and reconciliation for one mode. Rooftop Brawl uses the
  * rooftop rig and packet; Barn Shootout the barn rig (movement, aim-facing, sprint,
- * idle anchor, trap hold, stagger, punches and its own weapon cadence). History,
- * windows and correction tiers are shared and unchanged.
+ * idle anchor, trap hold, stagger, punches and its own weapon cadence); Katman Kaosu the
+ * layer rig (movement, sprint, jump, punches, stagger, and the tile colliders present on
+ * each replayed tick). History, windows and correction tiers are shared and unchanged.
  */
 export class LocalPrediction {
-  readonly rig: PredictionRig | BarnPredictionRig;
+  readonly rig: PredictionRig | BarnPredictionRig | LayerPredictionRig;
   readonly history = new InputHistory();
   readonly correction = new RigCorrection();
   readonly metrics = {
@@ -76,7 +79,7 @@ export class LocalPrediction {
   private blended = new Float32Array(63);
   private carried = new Float32Array(63);
   constructor(readonly slot: PlayerId, readonly mode: GameMode = "rooftop_brawl") {
-    this.rig = mode === "barn_shootout" ? new BarnPredictionRig(slot) : new PredictionRig(slot);
+    this.rig = mode === "barn_shootout" ? new BarnPredictionRig(slot) : mode === "layer_chaos" ? new LayerPredictionRig(slot) : new PredictionRig(slot);
   }
   private run(record: PendingInput) {
     let swing = false,
@@ -95,8 +98,11 @@ export class LocalPrediction {
         const barn = this.rig.stepPacket(p, i === 0);
         if (barn.shot && this.present(barn.shot.life, barn.shot.round)) shots.push({ kind: barn.shot.kind, spread: barn.shot.spread, tick: i });
         result = barn;
+      } else if (this.rig instanceof LayerPredictionRig) {
+        if (!isLayerPacket(p)) return { valid: false, swing: false, jumped: false, shots };
+        result = this.rig.stepPacket(p, i === 0);
       } else {
-        if (isBarnPacket(p)) return { valid: false, swing: false, jumped: false, shots };
+        if (isBarnPacket(p) || isLayerPacket(p)) return { valid: false, swing: false, jumped: false, shots };
         result = this.rig.step({
           x: p.moveX,
           z: p.moveZ,
@@ -119,7 +125,17 @@ export class LocalPrediction {
     return true;
   }
   private predictable(snapshot: GameSnapshot) {
-    return this.mode === "barn_shootout" ? canPredictBarn(snapshot, this.slot) : canPredict(snapshot, this.slot);
+    if (this.mode === "barn_shootout") return canPredictBarn(snapshot, this.slot);
+    if (this.mode === "layer_chaos") return canPredictLayer(snapshot, this.slot);
+    return canPredict(snapshot, this.slot);
+  }
+  /**
+   * Katman Kaosu: the round tick of the newest predicted tick, plus `alpha` toward the next
+   * (the presented pose's tick; its tiles are drawn on it). Null when not predicting.
+   */
+  predictedTick(alpha = 1) {
+    if (!this.active || !(this.rig instanceof LayerPredictionRig)) return null;
+    return this.rig.tick - 1 + Math.max(0, Math.min(1, alpha));
   }
   reconcile(frame: BufferedSnapshot, now: number) {
     const s = frame.snapshot;
@@ -194,8 +210,8 @@ export class LocalPrediction {
     this.metrics.reconcileMs += performance.now() - began;
   }
   advance(packet: AnyInputPacket, ticks: number, now: number) {
-    // Rooftop grips/lift are server-driven presentation; the barn has neither.
-    this.heldConstraint = !isBarnPacket(packet) && (packet.grabHeld || packet.liftHeld);
+    // Rooftop grips/lift are server-driven presentation; the barn and the layers have neither.
+    this.heldConstraint = "grabHeld" in packet && (packet.grabHeld || packet.liftHeld);
     const frame = this.latest;
     if (
       !frame ||

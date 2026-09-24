@@ -61,6 +61,8 @@ test("controls line: built from the player's current bindings, Esc menu last", (
   assert.equal(controlHint(bindings, "rooftop"), "WASD hareket · Space zıpla · F yumruk · E tut · Shift kaldır · Esc menü");
   assert.equal(controlHint(bindings, "barn"), "WASD hareket · Shift koş · Space zıpla · F ateş/yumruk · E silah al · Esc menü");
   assert.match(controlHint(bindings, "barn", "drag"), /E silah al · sürükleyerek bak · Esc menü$/);
+  assert.equal(controlHint(bindings, "layers"), "WASD hareket · Shift koş · Space zıpla · F it · Esc menü");
+  assert.equal(controlHint(bindings, "layers", "drag"), "WASD hareket · Shift koş · Space zıpla · F it · sürükleyerek bak · Esc menü");
   const rebound = changeBinding(changeBinding(bindings, "punch", 0, "KeyJ")!, "moveForward", 0, "KeyZ")!;
   assert.match(controlHint(rebound, "rooftop"), /^ZASD hareket · .* J yumruk/);
   const arrows = changeBinding(changeBinding(bindings, "moveForward", 1, null)!, "moveForward", 0, "ArrowUp")!;

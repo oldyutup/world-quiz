@@ -112,7 +112,7 @@ function PartyLab() {
         </div>
       }>
         <div hidden={controlsOpen}>
-          <ArenaScene onExit={() => setInArena(false)} bindings={bindings} paused={controlsOpen} onControls={() => setControlsOpen(true)} costumeId={costumeId} />
+          <ArenaScene onExit={() => setInArena(false)} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onControls={() => setControlsOpen(true)} costumeId={costumeId} />
         </div>
         {settings}
       </Suspense>

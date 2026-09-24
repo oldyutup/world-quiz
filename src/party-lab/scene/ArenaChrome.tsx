@@ -7,9 +7,9 @@ import type { LobbySnapshot } from "../network/types";
 import { EscapeGate, HINT_MS, escapeStep, type MenuView } from "./arenaMenu";
 
 /*
- * Immersive online arena chrome, shared by Rooftop Brawl and Barn Shootout: the arena
- * fills the page, gameplay HUD sits on it, and everything else lives in the Esc menu.
- * The menu never pauses the match (see arenaMenu.ts).
+ * Immersive arena chrome, shared by online Rooftop Brawl and Barn Shootout and the local
+ * Katman Kaosu: the arena fills the page, gameplay HUD sits on it, and everything else
+ * lives in the Esc menu. The menu never pauses the match (see arenaMenu.ts).
  */
 
 type FullscreenDocument = Document & { webkitFullscreenElement?: Element | null; webkitFullscreenEnabled?: boolean; webkitExitFullscreen?: () => Promise<void> | void };
@@ -116,10 +116,13 @@ export function ArenaStatus({ lobby, spectating }: { lobby: LobbySnapshot; spect
   );
 }
 
-/** `?partyDebug=1` only: collapsed during play, opened from the menu, kept for this page session. */
-let debugPanelOpen = false;
-export function useDebugPanel(debug: boolean) {
-  const [open, setOpen] = useState(debug && debugPanelOpen);
+/**
+ * Available with `debug` (online: `?partyDebug=1`; the local arena always): collapsed
+ * during play unless `openAtStart`, opened from the menu, kept for this page session.
+ */
+let debugPanelOpen: boolean | null = null;
+export function useDebugPanel(debug: boolean, openAtStart = false) {
+  const [open, setOpen] = useState(() => debug && (debugPanelOpen ?? openAtStart));
   const toggle = useCallback(() => {
     setOpen((value) => (debugPanelOpen = !value));
   }, []);
@@ -132,17 +135,22 @@ interface MenuProps {
   /** Close and return to play (the arena decides what the next click does). */
   onResume: () => void;
   onLeave: () => void;
-  lobby: LobbySnapshot;
+  /** "Odadan Ayrıl" online; the local arena says where it goes. */
+  leaveLabel?: string;
+  /** The online room (code, invite link); null in the local arena. */
+  lobby: LobbySnapshot | null;
   modeName: string;
   bindings: Bindings;
   onBindings: (bindings: Bindings) => void;
   bindingsSaved: boolean;
   look?: { mode: LookMode; onChange: (mode: LookMode) => void };
   debug?: { open: boolean; onToggle: () => void } | null;
+  /** Extra setting rows under the look mode (the local arena's map and player count). */
+  children?: ReactNode;
 }
 
-/** Esc menu over the arena. The online match keeps running behind it. */
-export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, bindings, onBindings, bindingsSaved, look, debug }: MenuProps) {
+/** Esc menu over the arena. The match (online or local) keeps running behind it. */
+export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odadan Ayrıl", lobby, modeName, bindings, onBindings, bindingsSaved, look, debug, children }: MenuProps) {
   const resume = useRef<HTMLButtonElement>(null);
   const openers = { controls: useRef<HTMLButtonElement>(null), audio: useRef<HTMLButtonElement>(null) };
   const cameFrom = useRef<MenuView>("main");
@@ -167,9 +175,10 @@ export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, b
     (from === "main" ? resume : openers[from]).current?.focus();
     cameFrom.current = "main";
   }, [view]);
-  const invite = new URL("/party-lab", window.location.origin);
-  invite.searchParams.set("room", lobby.code);
   async function copyInvite() {
+    if (!lobby) return;
+    const invite = new URL("/party-lab", window.location.origin);
+    invite.searchParams.set("room", lobby.code);
     try {
       await navigator.clipboard.writeText(invite.href);
       setCopy("Davet bağlantısı kopyalandı.");
@@ -181,7 +190,7 @@ export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, b
   if (view === "controls")
     body = (
       <div className="pl-menu-panel">
-        <ControlsSettings embedded bindings={bindings} onChange={onBindings} saved={bindingsSaved} inArena online onClose={() => setView("main")} />
+        <ControlsSettings embedded bindings={bindings} onChange={onBindings} saved={bindingsSaved} inArena online={!!lobby} onClose={() => setView("main")} />
       </div>
     );
   else if (view === "audio")
@@ -198,7 +207,9 @@ export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, b
   else
     body = (
       <div className="pl-menu" data-party-controls>
-        <span className="pl-eyebrow">{modeName} · Oda {lobby.code}</span>
+        <span className="pl-eyebrow">
+          {modeName} · {lobby ? `Oda ${lobby.code}` : "Yerel"}
+        </span>
         <h2 id="pl-menu-title">Menü</h2>
         <p className="pl-menu-note">Maç arkada sürüyor; bu bir duraklatma değil.</p>
         <button ref={resume} className="pl-button pl-create pl-menu-primary" data-sfx="uiConfirm" onClick={onResume}>
@@ -219,6 +230,7 @@ export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, b
             </select>
           </label>
         )}
+        {children}
         {fullscreenSupported() && (
           <button className="pl-button pl-join" aria-pressed={fullscreen} onClick={() => void toggleFullscreen()}>
             {fullscreen ? "Tam Ekrandan Çık" : "Tam Ekran"}
@@ -229,19 +241,23 @@ export function ArenaMenu({ view, setView, onResume, onLeave, lobby, modeName, b
             Debug bilgileri: {debug.open ? "Açık" : "Kapalı"}
           </button>
         )}
-        <div className="pl-menu-room">
-          <span>
-            Oda kodu <b>{lobby.code}</b>
-          </span>
-          <button className="pl-invite-link" onClick={() => void copyInvite()}>
-            Daveti kopyala
-          </button>
-        </div>
-        <p className="pl-menu-copy" role="status">
-          {copy}
-        </p>
+        {lobby && (
+          <>
+            <div className="pl-menu-room">
+              <span>
+                Oda kodu <b>{lobby.code}</b>
+              </span>
+              <button className="pl-invite-link" onClick={() => void copyInvite()}>
+                Daveti kopyala
+              </button>
+            </div>
+            <p className="pl-menu-copy" role="status">
+              {copy}
+            </p>
+          </>
+        )}
         <button className="pl-button pl-quiet pl-menu-leave" data-sfx="uiBack" onClick={onLeave}>
-          Odadan Ayrıl
+          {leaveLabel}
         </button>
       </div>
     );
