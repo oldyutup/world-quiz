@@ -171,12 +171,9 @@ body:has(.party-lab) {
   border-radius: 20px;
   background: var(--pl-surface);
 }
-.party-lab .pl-room-friends { display: flex; flex-direction: column; }
-.party-lab .pl-room-details { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: clamp(20px, 3dvh, 32px) 28px 0; }
-.party-lab .pl-room-heading h1 { margin: 8px 0; font: 700 28px/1.2 "DM Sans", system-ui, sans-serif; letter-spacing: -0.035em; }
-.party-lab .pl-room-heading > p { font-size: 14px; color: var(--pl-muted); }
-.party-lab .pl-room-heading .pl-eyebrow { font-size: 12px; letter-spacing: 0.08em; }
-.party-lab .pl-room-invite { margin-block: 24px; padding-block: 16px; border-block: 1px solid var(--pl-border); }
+.party-lab .pl-room-friends { --pl-room-space: 20px; display: flex; flex-direction: column; }
+.party-lab .pl-room-details { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 28px 28px 0; }
+.party-lab .pl-room-invite { margin-bottom: var(--pl-room-space); padding-bottom: var(--pl-room-space); border-bottom: 1px solid var(--pl-border); }
 .party-lab .pl-room-code-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .party-lab .pl-room-code-row .pl-hint { margin: 0; display: block; }
 .party-lab .pl-room-code { display: block; color: var(--pl-ink); font-size: 24px; font-weight: 600; letter-spacing: 0.14em; font-variant-numeric: tabular-nums; }
@@ -186,24 +183,42 @@ body:has(.party-lab) {
 .party-lab .pl-copy-status { color: var(--pl-sage); font-size: 13px; }
 .party-lab .pl-copy-status:not(:empty), .party-lab .pl-copy-fallback { margin-top: 10px; }
 .party-lab .pl-room-roster-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-/* Lobby game mode: host picks, everyone sees the choice and the actual next round. */
-.party-lab .pl-mode { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--pl-border); }
-.party-lab .pl-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-.party-lab .pl-mode-option { display: grid; gap: 4px; align-content: start; min-height: 72px; padding: 10px 12px; border: 1px solid var(--pl-border); border-radius: 12px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; text-align: left; cursor: pointer; }
+/* Lobby game mode: one row (the host's button opens the list), everyone sees the choice
+   and, in Mixed, the actual next round. The list is fixed-positioned by PartyLobby. */
+.party-lab .pl-mode { margin-bottom: var(--pl-room-space); padding-bottom: var(--pl-room-space); border-bottom: 1px solid var(--pl-border); }
+.party-lab .pl-mode-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.party-lab .pl-mode-label { display: grid; gap: 2px; min-width: 0; }
+.party-lab .pl-mode-label > span { color: var(--pl-muted); font-size: 13px; }
+.party-lab .pl-mode-picker { margin-left: auto; min-width: 0; }
+.party-lab .pl-mode-trigger { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-height: 44px; padding: 8px 12px 8px 14px; border: 1px solid var(--pl-border); border-radius: 10px; background: var(--pl-surface-raised); color: var(--pl-ink); font: inherit; font-size: 14px; cursor: pointer; transition: border-color 160ms ease-out, background-color 160ms ease-out; }
+.party-lab .pl-mode-trigger b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-lab button.pl-mode-trigger:hover:not(:disabled), .party-lab .pl-mode-trigger[aria-expanded="true"] { border-color: var(--pl-accent); }
+.party-lab .pl-mode-trigger.is-static { padding-right: 0; border-color: transparent; background: transparent; cursor: default; }
+.party-lab .pl-mode-chevron { flex-shrink: 0; width: 12px; height: 12px; fill: none; stroke: var(--pl-muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease-out; }
+.party-lab .pl-mode-trigger[aria-expanded="true"] .pl-mode-chevron { transform: rotate(180deg); stroke: var(--pl-accent); }
+.party-lab .pl-mode-popover { position: fixed; z-index: 30; display: grid; gap: 4px; padding: 6px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--pl-border); border-radius: 14px; background: var(--pl-surface); box-shadow: 0 18px 48px oklch(8% 0.01 65 / 55%); animation: pl-mode-popover-in 140ms ease-out; }
+.party-lab .pl-mode-popover[data-side="top"] { animation-name: pl-mode-popover-up; }
+@keyframes pl-mode-popover-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pl-mode-popover-up { from { opacity: 0; transform: translateY(4px); } }
+.party-lab .pl-mode-popover [role="listbox"] { display: grid; gap: 2px; }
+.party-lab .pl-mode-option { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--pl-ink); font: inherit; text-align: left; cursor: pointer; }
+.party-lab .pl-mode-option > span:first-child { display: grid; gap: 2px; min-width: 0; }
 .party-lab .pl-mode-option b { font-size: 14px; }
 .party-lab .pl-mode-option small { color: var(--pl-muted); font-size: 12px; line-height: 1.35; }
-.party-lab .pl-mode-option:hover:not(:disabled) { border-color: var(--pl-muted); }
-.party-lab .pl-mode-option.is-selected { border-color: var(--pl-accent); background: oklch(33% 0.04 75); }
-.party-lab .pl-mode-option.is-selected b { color: var(--pl-accent); }
-.party-lab .pl-mode-option:disabled { cursor: default; }
-.party-lab .pl-mode-option:disabled:not(.is-selected) { opacity: 0.62; }
+.party-lab .pl-mode-option:hover { background: var(--pl-surface-raised); }
+.party-lab .pl-mode-option:focus-visible { outline-offset: -2px; }
+.party-lab .pl-mode-option.is-selected { border-color: oklch(82% 0.085 75 / 45%); background: oklch(31% 0.035 75); }
+.party-lab .pl-mode-option.is-selected b, .party-lab .pl-mode-check { color: var(--pl-accent); }
+.party-lab .pl-mode-check { width: 14px; flex-shrink: 0; font-size: 14px; font-weight: 700; }
+.party-lab .pl-mode-popover-note { margin: 2px 6px 0; padding: 8px 6px 4px; border-top: 1px solid var(--pl-border); color: var(--pl-muted); font-size: 12px; }
 .party-lab .pl-mode-next { margin-top: 10px; color: var(--pl-muted); font-size: 13px; }
 .party-lab .pl-mode-next b { color: var(--pl-ink); }
 .party-lab .pl-room-player .pl-host-tag { color: var(--pl-accent); }
-@media (max-width: 560px) { .party-lab .pl-mode-options { grid-template-columns: minmax(0, 1fr); } .party-lab .pl-mode-option { min-height: 0; } }
+@media (max-width: 420px) { .party-lab .pl-mode-picker { flex-basis: 100%; } .party-lab .pl-mode-trigger { width: 100%; justify-content: space-between; } }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-mode-popover { animation: none; } .party-lab .pl-mode-chevron { transition: none; } }
 .party-lab .pl-room-layout h2 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
 .party-lab .pl-room-roster-heading > span { color: var(--pl-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
-.party-lab .pl-room-roster { list-style: none; padding: 0; margin: 12px 0 20px; }
+.party-lab .pl-room-roster { list-style: none; padding: 0; margin: 12px 0 var(--pl-room-space); }
 .party-lab .pl-room-roster li { min-height: 64px; display: flex; gap: 12px; align-items: center; padding-block: 12px; }
 .party-lab .pl-room-roster li + li { border-top: 1px solid var(--pl-border); }
 .party-lab .pl-lobby-avatar { width: 34px; height: 36px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid; border-radius: 12px; background: var(--pl-surface-raised); font-size: 20px; line-height: 1; }
@@ -232,6 +247,10 @@ body:has(.party-lab) {
 .party-lab .pl-chat-jump:hover { background: var(--pl-accent-hover); }
 .party-lab .pl-link-warning { margin-top: 8px; color: var(--pl-accent); font-size: 13px; }
 .party-lab .pl-net-debug { margin: 8px 0 0; max-height: 9em; overflow: auto; color: var(--pl-muted); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* `?partyDebug=1` only: the lobby's link readout drops down from the top bar, never inside the chat. */
+.party-lab .pl-room-nav { position: relative; }
+.party-lab .pl-debug-panel.pl-lobby-debug-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: min(640px, calc(100vw - 32px)); max-height: min(60dvh, 420px); overflow: auto; border: 1px solid var(--pl-border); background: oklch(14% 0.02 60 / 96%); box-shadow: 0 18px 48px oklch(8% 0.01 65 / 55%); }
+.party-lab .pl-debug-panel.pl-lobby-debug-panel .pl-net-debug { margin: 0; }
 .party-lab .pl-chat-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 16px; color: var(--pl-muted); text-align: center; }
 .party-lab .pl-chat-empty > span { height: 50px; color: var(--pl-accent); font: 64px/1 Georgia, serif; }
 .party-lab .pl-chat-empty p { color: var(--pl-ink); font-size: 16px; }
@@ -249,27 +268,27 @@ body:has(.party-lab) {
 .party-lab .pl-chat-compose input { height: 48px; }
 .party-lab .pl-chat-notice { color: var(--pl-accent); font-size: 13px; overflow-wrap: anywhere; max-height: 4.5em; overflow-y: auto; }
 .party-lab .pl-chat-notice:not(:empty) { margin-top: 8px; }
-@media (min-width: 801px) and (max-height: 800px) {
-  .party-lab .pl-room-details { padding: 20px 24px 0; }
-  .party-lab .pl-room-invite { margin-block: 18px; padding-block: 12px; }
-  .party-lab .pl-room-roster { margin-block: 8px 12px; }
-  .party-lab .pl-room-roster li { min-height: 58px; padding-block: 10px; }
-  .party-lab .pl-room-ready { padding: 16px 24px 18px; }
-  .party-lab .pl-room-chat { padding: 24px; }
+/* Desktop: this column is exactly as tall as the chat. Its spacing follows the window height;
+   if that still runs short (copy fallback, link warning, short browser windows) only the
+   player list gives up height and scrolls, so the code, the mode and Ready stay in view. */
+/* Spacing runs 16 → 32 px and player rows 54 → 88 px between 720 and ~1060 px of window height. */
+@media (min-width: 801px) {
+  .party-lab .pl-room-friends { --pl-room-space: clamp(14px, calc(5dvh - 20px), 32px); }
+  .party-lab .pl-room-details > :not(.pl-room-roster) { flex-shrink: 0; }
+  .party-lab .pl-room-roster { min-height: 54px; margin-top: 8px; overflow-y: auto; overscroll-behavior: contain; }
+  .party-lab .pl-room-roster li { min-height: clamp(54px, calc(10dvh - 18px), 88px); padding-block: clamp(8px, 1.2dvh, 12px); }
+  .party-lab .pl-room-ready { padding: clamp(14px, 2.2dvh, 20px) 28px 28px; }
 }
 /* Browser toolbars can leave substantially less room than the screen resolution. */
-@media (min-width: 801px) and (max-height: 740px) {
-  .party-lab .pl-room-details { padding-top: 16px; }
-  .party-lab .pl-room-heading > p { display: none; }
-  .party-lab .pl-room-invite { margin-block: 14px; padding-block: 10px; }
-  .party-lab .pl-room-roster { margin-bottom: 8px; }
-  .party-lab .pl-room-roster li { min-height: 54px; padding-block: 8px; }
-  .party-lab .pl-room-ready { padding-block: 14px; }
+@media (min-width: 801px) and (max-height: 800px) {
+  .party-lab .pl-room-details { padding: 24px 24px 0; }
+  .party-lab .pl-room-ready { padding-inline: 24px; padding-bottom: 24px; }
+  .party-lab .pl-room-chat { padding: 24px; }
 }
 @media (max-width: 800px) {
   .party-lab.pl-room { height: auto; min-height: 100dvh; padding: 16px; gap: 16px; }
   .party-lab.pl-room .pl-topbar { flex-wrap: wrap; gap: 8px; }
-  .party-lab .pl-room-nav { margin-left: auto; gap: 0; }
+  .party-lab .pl-room-nav { margin-left: auto; gap: 0; flex-wrap: wrap; justify-content: flex-end; }
   .party-lab.pl-room .pl-room-nav .pl-button { padding-inline: 10px; font-size: 13px; }
   .party-lab .pl-room-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; max-width: 560px; gap: 16px; }
   .party-lab .pl-room-details { overflow: visible; padding: 20px 20px 0; }
