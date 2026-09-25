@@ -1,5 +1,9 @@
 # Online Katman Kaosu (Phase 2)
 
+> Since protocol 7 ([COLOR_ONLINE.md](COLOR_ONLINE.md)) Renk Kaosu is a fourth online mode and
+> Mixed rotates all four. Katman Kaosu's packet, tile section, prediction and rules below are
+> unchanged (the layer packet is now shared with Renk Kaosu).
+
 Katman Kaosu (`layer_chaos`) is the third online Party Lab mode, next to Rooftop Brawl and
 Barn Shootout, for 2–3 players. Its rules, map, camera and scenery are the approved local
 ones ([simulation/layers/LAYERS.md](simulation/layers/LAYERS.md)) with no retuning. Rooftop and

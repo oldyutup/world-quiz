@@ -25,10 +25,13 @@ function prismPoints() {
   return new Float32Array(points);
 }
 
+/** Where a hex tile sits: its centre and walking surface (Katman Kaosu's and Renk Kaosu's tiles). */
+export type HexSlot = Pick<LayerTile, "x" | "z" | "top">;
+
 /** One static convex prism collider per tile, flush with its neighbours (no gap). */
-export function createTileColliders(world: RAPIER.World) {
+export function createTileColliders(world: RAPIER.World, tiles: readonly HexSlot[] = LAYER_TILES) {
   const hull = prismPoints();
-  return LAYER_TILES.map((tile) => {
+  return tiles.map((tile) => {
     const desc = RAPIER.ColliderDesc.convexHull(hull);
     if (!desc) throw new Error("Invalid tile collider");
     desc.setTranslation(tile.x, tile.top, tile.z).setFriction(ARENA_FRICTION);
@@ -40,7 +43,7 @@ export function createTileColliders(world: RAPIER.World) {
  * answers ray queries until the next world step; parked, it does not — so the
  * controller's support ray is exact on the tick it goes.
  */
-export function parkTileCollider(collider: RAPIER.Collider, tile: LayerTile) {
+export function parkTileCollider(collider: RAPIER.Collider, tile: HexSlot) {
   collider.setEnabled(false);
   collider.setTranslation({ x: tile.x, y: PARKED_Y, z: tile.z });
 }
@@ -48,7 +51,7 @@ export function parkTileCollider(collider: RAPIER.Collider, tile: LayerTile) {
  * Back in place and enabled. Ray queries only see it again after the next world step
  * (Rapier updates its query structure while stepping).
  */
-export function restoreTileCollider(collider: RAPIER.Collider, tile: LayerTile) {
+export function restoreTileCollider(collider: RAPIER.Collider, tile: HexSlot) {
   collider.setTranslation({ x: tile.x, y: tile.top, z: tile.z });
   collider.setEnabled(true);
 }

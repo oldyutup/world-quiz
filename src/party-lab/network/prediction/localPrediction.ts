@@ -11,6 +11,7 @@ import type { WeaponKind } from "../../../../shared/party-lab/simulation/barn/we
 import { PredictionRig } from "./rig";
 import { BarnPredictionRig, canPredictBarn } from "./barnRig";
 import { canPredictLayer, LayerPredictionRig } from "./layerRig";
+import { canPredictColor, ColorPredictionRig } from "./colorRig";
 import { InputHistory, PREDICTION_LIMITS, type PendingInput } from "./history";
 import { RigCorrection } from "./correction";
 import { Quaternion } from "three";
@@ -38,10 +39,12 @@ export interface PredictedShot {
  * rooftop rig and packet; Barn Shootout the barn rig (movement, aim-facing, sprint,
  * idle anchor, trap hold, stagger, punches and its own weapon cadence); Katman Kaosu the
  * layer rig (movement, sprint, jump, punches, stagger, and the tile colliders present on
- * each replayed tick). History, windows and correction tiers are shared and unchanged.
+ * each replayed tick); Renk Kaosu the colour rig (the same fighter, and the colour field's
+ * colliders on each replayed tick). History, windows and correction tiers are shared and
+ * unchanged.
  */
 export class LocalPrediction {
-  readonly rig: PredictionRig | BarnPredictionRig | LayerPredictionRig;
+  readonly rig: PredictionRig | BarnPredictionRig | LayerPredictionRig | ColorPredictionRig;
   readonly history = new InputHistory();
   readonly correction = new RigCorrection();
   readonly metrics = {
@@ -79,7 +82,14 @@ export class LocalPrediction {
   private blended = new Float32Array(63);
   private carried = new Float32Array(63);
   constructor(readonly slot: PlayerId, readonly mode: GameMode = "rooftop_brawl") {
-    this.rig = mode === "barn_shootout" ? new BarnPredictionRig(slot) : mode === "layer_chaos" ? new LayerPredictionRig(slot) : new PredictionRig(slot);
+    this.rig =
+      mode === "barn_shootout"
+        ? new BarnPredictionRig(slot)
+        : mode === "layer_chaos"
+        ? new LayerPredictionRig(slot)
+        : mode === "color_chaos"
+        ? new ColorPredictionRig(slot)
+        : new PredictionRig(slot);
   }
   private run(record: PendingInput) {
     let swing = false,
@@ -98,7 +108,7 @@ export class LocalPrediction {
         const barn = this.rig.stepPacket(p, i === 0);
         if (barn.shot && this.present(barn.shot.life, barn.shot.round)) shots.push({ kind: barn.shot.kind, spread: barn.shot.spread, tick: i });
         result = barn;
-      } else if (this.rig instanceof LayerPredictionRig) {
+      } else if (this.rig instanceof LayerPredictionRig || this.rig instanceof ColorPredictionRig) {
         if (!isLayerPacket(p)) return { valid: false, swing: false, jumped: false, shots };
         result = this.rig.stepPacket(p, i === 0);
       } else {
@@ -127,14 +137,15 @@ export class LocalPrediction {
   private predictable(snapshot: GameSnapshot) {
     if (this.mode === "barn_shootout") return canPredictBarn(snapshot, this.slot);
     if (this.mode === "layer_chaos") return canPredictLayer(snapshot, this.slot);
+    if (this.mode === "color_chaos") return canPredictColor(snapshot, this.slot);
     return canPredict(snapshot, this.slot);
   }
   /**
-   * Katman Kaosu: the round tick of the newest predicted tick, plus `alpha` toward the next
-   * (the presented pose's tick; its tiles are drawn on it). Null when not predicting.
+   * Katman Kaosu and Renk Kaosu: the round tick of the newest predicted tick, plus `alpha`
+   * toward the next (the presented pose's tick; its tiles are drawn on it). Null when not predicting.
    */
   predictedTick(alpha = 1) {
-    if (!this.active || !(this.rig instanceof LayerPredictionRig)) return null;
+    if (!this.active || !(this.rig instanceof LayerPredictionRig || this.rig instanceof ColorPredictionRig)) return null;
     return this.rig.tick - 1 + Math.max(0, Math.min(1, alpha));
   }
   reconcile(frame: BufferedSnapshot, now: number) {

@@ -4,7 +4,8 @@ This is the historical Phase 4B.1 checkpoint report. **Current Phase 4B.2 behavi
 rates, protocol additions and validation are documented in [PREDICTION.md](PREDICTION.md);
 link reliability, thresholds and chat realtime behavior in [NETWORK.md](NETWORK.md);
 game modes and online Barn Shootout (protocol 5) in [BARN_ONLINE.md](BARN_ONLINE.md); online
-Katman Kaosu and the three-mode Mixed rotation (protocol 6) in [LAYER_ONLINE.md](LAYER_ONLINE.md).**
+Katman Kaosu (protocol 6) in [LAYER_ONLINE.md](LAYER_ONLINE.md); online Renk Kaosu and the
+four-mode Mixed rotation (protocol 7) in [COLOR_ONLINE.md](COLOR_ONLINE.md).**
 Server authority and the round/membership policies below remain in effect.
 
 ## Scope and checkpoint

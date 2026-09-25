@@ -66,26 +66,30 @@ import { GRIP, HIT_GLOW, PUNCH_GLOW, SHIELD_GLOW, UP, VIEW_KICK, WEAPON_NAMES } 
 import LayerPlayground, { type LayerHudElements, type LayerSnapshot } from "./layers/LayerPlayground";
 import LayerHud from "./layers/LayerHud";
 import { LAYER_CHAOS } from "../../../shared/party-lab/simulation/layers/config";
+import ColorPlayground, { type ColorHudElements, type ColorSnapshot } from "./colors/ColorPlayground";
+import ColorHud from "./colors/ColorHud";
+import { COLOR_CHAOS } from "../../../shared/party-lab/simulation/colors/config";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
 
 /**
  * What the local arena can open: every shared static map, plus Katman Kaosu's tile
- * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/).
+ * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/)
+ * and Renk Kaosu's colour field (local only for now, see scene/colors/).
  */
-type LocalArenaId = ArenaMapId | "layers";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers"];
-const localArenaName = (id: LocalArenaId) => (id === "layers" ? LAYER_CHAOS.label : arenaMap(id).name);
+type LocalArenaId = ArenaMapId | "layers" | "colors";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors"];
+const localArenaName = (id: LocalArenaId) => (id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : arenaMap(id).name);
 /**
- * Katman Kaosu opens immersive, like the online arenas (ArenaChrome): the arena fills the
- * page, only gameplay HUD sits on it, and settings, map and player count move into the
- * Esc menu. The other local test maps keep the header/footer test layout.
+ * Katman Kaosu and Renk Kaosu open immersive, like the online arenas (ArenaChrome): the
+ * arena fills the page, only gameplay HUD sits on it, and settings, map and player count
+ * move into the Esc menu. The other local test maps keep the header/footer test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers"]);
-/** `?layerDebug=1` / `?partyDebug=1`: Katman Kaosu's debug readout starts open. */
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors"]);
+/** `?layerDebug=1` / `?colorDebug=1` / `?partyDebug=1`: the tile modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
-  return query.has("layerDebug") || query.has("partyDebug");
+  return query.has("layerDebug") || query.has("colorDebug") || query.has("partyDebug");
 };
 /** Maps that run untimed with standing dummies instead of bots and the rooftop round. */
 const EXPLORE_MAPS: ReadonlySet<LocalArenaId> = new Set(["barn"]);
@@ -752,8 +756,16 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [layerPlayers, setLayerPlayers] = useState<2 | 3>(3);
   const [layerSnapshot, setLayerSnapshot] = useState<LayerSnapshot | null>(null);
   const layerHud = useRef<LayerHudElements>({ debug: null, banner: null });
-  /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu). */
-  const chaseCamera = barn || layers;
+  // Renk Kaosu (local): its own playground, HUD and 2–3 player choice.
+  const colors = mapId === "colors";
+  const [colorPlayers, setColorPlayers] = useState<2 | 3>(3);
+  const [colorSnapshot, setColorSnapshot] = useState<ColorSnapshot | null>(null);
+  const colorHud = useRef<ColorHudElements>({ debug: null, callout: null, timer: null, bar: null });
+  /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
+  const tileMode = layers || colors;
+  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : undefined;
+  /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu). */
+  const chaseCamera = barn || tileMode;
   const immersive = IMMERSIVE_MAPS.has(mapId);
   // Immersive only: the Esc menu (never a pause — the local round and bots go on) and the
   // debug readout, which is collapsed unless asked for.
@@ -806,6 +818,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setStatus("loading");
     setRound(null);
     setLayerSnapshot(null);
+    setColorSnapshot(null);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
     requestAnimationFrame(() => viewport.current?.focus());
@@ -817,7 +830,15 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setLayerPlayers(next);
     requestAnimationFrame(() => viewport.current?.focus());
   }
+  function chooseColorPlayers(next: 2 | 3) {
+    menu.setView(null);
+    setStatus("loading");
+    setColorSnapshot(null);
+    setColorPlayers(next);
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
   const layerOut = layerSnapshot?.phase === "playing" && !layerSnapshot.alive[0];
+  const colorOut = colorSnapshot?.phase === "playing" && !colorSnapshot.alive[0];
 
   const mapSelect = (
     <select value={mapId} onChange={(event) => chooseMap(event.target.value as LocalArenaId)}>
@@ -827,7 +848,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     </select>
   );
   return (
-    <div className={`party-lab pl-playground${immersive ? " pl-immersive" : ""}`} data-mode={layers ? LAYER_CHAOS.mode : undefined}>
+    <div className={`party-lab pl-playground${immersive ? " pl-immersive" : ""}`} data-mode={modeId}>
       {!immersive && <header className="pl-arena-header">
         <div>
           <span className="pl-eyebrow">PARTY LAB / YEREL TEST · {localArenaName(mapId).toLocaleUpperCase("tr-TR")}</span>
@@ -862,11 +883,11 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
         ref={viewport}
         tabIndex={0}
         role="region"
-        aria-label={layers ? `${LAYER_CHAOS.label} · yerel arena` : "Yerel 3D test arenası"}
+        aria-label={tileMode ? `${localArenaName(mapId)} · yerel arena` : "Yerel 3D test arenası"}
         aria-describedby={immersive ? undefined : "pl-controls"}
         data-look={chaseCamera ? lookMode : undefined}
         data-combat={barnCombat ? "barn" : undefined}
-        data-mode={layers ? LAYER_CHAOS.mode : undefined}
+        data-mode={modeId}
         data-arena={mapId}
         onPointerDown={() => viewport.current?.focus()}
       >
@@ -888,6 +909,21 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
                 onStatus={setStatus}
                 onSnapshot={setLayerSnapshot}
                 hud={layerHud}
+                bindings={bindings}
+                paused={paused}
+                menuOpen={menuOpen}
+                audio={audio}
+                shakeEnabled={settings.cameraShake && !reducedMotion}
+                look={look}
+                costumeId={costumeId}
+              />
+            ) : mapId === "colors" ? (
+              <ColorPlayground
+                key={`colors-${colorPlayers}`}
+                players={colorPlayers}
+                onStatus={setStatus}
+                onSnapshot={setColorSnapshot}
+                hud={colorHud}
                 bindings={bindings}
                 paused={paused}
                 menuOpen={menuOpen}
@@ -937,7 +973,30 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
             hidden={menuOpen || layerOut}
           />
         )}
-        {!layers && status === "ready" && round && (
+        {colors && status === "ready" && colorSnapshot && (
+          <>
+            <ColorHud snapshot={colorSnapshot} hud={colorHud} debugOpen={debugPanel.open} />
+            {lookMode === "lock" && lookStatus !== "locked" && !inputOff && colorSnapshot.phase !== "results" && (
+              <div className="pl-arena-message pl-look-prompt" role="status">
+                <strong>{lookStatus === "error" ? "İmleç kilitlenemedi" : "Kamerayı çevirmek için arenaya tıkla"}</strong>
+                <span>
+                  {lookStatus === "error"
+                    ? "Tekrar tıkla ya da Esc menüsündeki Bakış ayarından “Sürükleyerek bak”ı seç."
+                    : "Fare ya da trackpad ile çevir · Esc menü"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+        {colors && (
+          <ControlHint
+            text={controlHint(bindings, "colors", lookMode)}
+            playing={colorSnapshot?.phase === "playing"}
+            replay={menu.hintReplay}
+            hidden={menuOpen || colorOut}
+          />
+        )}
+        {!tileMode && status === "ready" && round && (
           <>
             <div className="pl-round-hud">
               <ul className="pl-roster" aria-label="Oyuncu durumları">
@@ -1148,6 +1207,15 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
             <label className="pl-menu-row">
               <span>Oyuncu</span>
               <select value={layerPlayers} onChange={(event) => chooseLayerPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
+                <option value={3}>3 (sen + 2 bot)</option>
+                <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+          )}
+          {colors && (
+            <label className="pl-menu-row">
+              <span>Oyuncu</span>
+              <select value={colorPlayers} onChange={(event) => chooseColorPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
                 <option value={3}>3 (sen + 2 bot)</option>
                 <option value={2}>2 (sen + 1 bot)</option>
               </select>

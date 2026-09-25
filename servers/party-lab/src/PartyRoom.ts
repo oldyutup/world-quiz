@@ -2,6 +2,8 @@ import { initializePhysics } from "../../../shared/party-lab/simulation/physics.
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
 import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layerRound.js";
+import { ColorRoundSimulation } from "../../../shared/party-lab/simulation/colorRound.js";
+import { NO_COLOR } from "../../../shared/party-lab/simulation/colors/layouts.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import {
   DEFAULT_MODE_SELECTION,
@@ -78,6 +80,7 @@ function options(value: unknown): {
 export function createSimulation(mode: GameMode, counters: RoomCounters): OnlineSimulation {
   if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
   if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
+  if (mode === "color_chaos") return new ColorRoundSimulation(counters);
   return new OnlineRoundSimulation(counters);
 }
 /** Events whose `inputSeq` lets the actor's client skip its own predicted presentation. */
@@ -96,7 +99,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  /** Mixed: all three modes once per cycle, shuffled, never the same mode twice in a row. */
+  /** Mixed: all four modes once per cycle, shuffled, never the same mode twice in a row. */
   readonly rotation = new MixedRotation();
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
   /** Join order (the host is the earliest-joined connected player). */
@@ -279,6 +282,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       if (measure && wireBytes) this.metrics.snapshotWireBytes = wireBytes;
       if (measure && snapshot.layers && this.game instanceof LayerRoundSimulation)
         this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "layers", snapshot.layers).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "layers", null).byteLength;
+      if (measure && snapshot.colors && this.game instanceof ColorRoundSimulation)
+        this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "colors", snapshot.colors).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "colors", null).byteLength;
       if (this.events.length) {
         if (measure || this.metrics.feedbackBytes === 0)
           this.metrics.feedbackBytes += getMessageBytes.raw(Protocol.ROOM_DATA, "feedback", this.events).byteLength;
@@ -332,7 +337,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         .get(client.sessionId)
         ?.accept(data, this.game.roundId, performance.now(), this.game.mode);
     });
-    // Host only, lobby only: Rooftop Brawl, Barn Shootout or Mixed. Clears every Ready.
+    // Host only, lobby only: one of the modes or Mixed. Clears every Ready.
     this.onMessage("mode", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
       if (!p?.connected || this.game.phase !== "waiting" || !isModeSelection(data)) return;
@@ -441,6 +446,18 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       let armed = 0;
       for (let id = 0; id < field.tiles.length; id++) if (!field.gone[id] && field.armTick[id] >= 0) armed++;
       report.layers = { sectionBytes: this.game.section.bytes, armed, gone: field.stats.gone, encodeUs: this.game.section.encodeMs * 1000 };
+    }
+    if (this.game instanceof ColorRoundSimulation) {
+      const cycle = this.game.schedule.cycle;
+      let present = 0,
+        marked = 0,
+        grey = 0;
+      for (let id = 0; id < cycle.present.length; id++) {
+        present += cycle.present[id];
+        marked += cycle.warned[id];
+        if (cycle.present[id] && cycle.colors[id] === NO_COLOR) grey++;
+      }
+      report.colors = { sectionBytes: this.game.section.bytes, cycle: cycle.index, present, marked, grey, encodeUs: this.game.section.encodeMs * 1000 };
     }
     if (this.game instanceof BarnRoundSimulation) {
       const r = this.game.rewind;

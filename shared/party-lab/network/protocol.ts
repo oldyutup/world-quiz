@@ -12,7 +12,10 @@ export const NET = {
   // 6: Katman Kaosu (layer_chaos) online. A new mode, input packet, snapshot tile section
   // and prediction block; a v5 page would render a layer round as the rooftop and a v5
   // server rejects the layer packet. Mixed rotates all three modes.
-  version: 6,
+  // 7: Renk Kaosu (color_chaos) online. A new mode and snapshot colour section (the shove
+  // modes' input packet and prediction block are shared); a v6 page cannot draw or predict a
+  // colour round and a v6 server refuses the mode. Mixed rotates all four modes.
+  version: 7,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -54,6 +57,15 @@ export interface ServerDiagnostics {
     sectionBytes: number;
     armed: number;
     gone: number;
+    encodeUs: number;
+  };
+  /** Renk Kaosu, this round: encoded `colors` section size, cycle, tiles present / marked / grey, section build cost. */
+  colors?: {
+    sectionBytes: number;
+    cycle: number;
+    present: number;
+    marked: number;
+    grey: number;
     encodeUs: number;
   };
   /** Barn lag compensation, this round: shots resolved, last/max rewind, rejected/clamped views, lookup cost. */
@@ -118,9 +130,10 @@ export interface BarnInputPacket {
   viewTick: number;
 }
 /**
- * Katman Kaosu input: intent only. Movement is camera-relative world X/Z (magnitude ≤ 1,
- * normalised by `normalizeMove` on both ends); jump and punch are edges, sprint is held.
- * Never a tile, a hit, an elimination or a result: the server decides all of those.
+ * Katman Kaosu and Renk Kaosu input (the shove modes): intent only. Movement is
+ * camera-relative world X/Z (magnitude ≤ 1, normalised by `normalizeMove` on both ends);
+ * jump and punch are edges, sprint is held. Never a tile, a colour, a hit, an elimination
+ * or a result: the server decides all of those.
  */
 export interface LayerInputPacket {
   seq: number;
@@ -147,7 +160,7 @@ export interface PredictionState {
   controller: number[]; // Rooftop: facing, gait, jump cooldown, next hand, alternate cooldown, two age/cooldown pairs. Barn, layers: empty.
   /** Barn: BARN_PREDICTION_FIELDS Float64 LE values (character + own fighter state). */
   barn?: Uint8Array;
-  /** Katman Kaosu: LAYER_PREDICTION_FIELDS Float64 LE values. */
+  /** Katman Kaosu and Renk Kaosu (the shove fighter): LAYER_PREDICTION_FIELDS Float64 LE values. */
   layers?: Uint8Array;
 }
 export const VELOCITY_BYTES = 9 * 6 * 4;
@@ -184,10 +197,10 @@ export const BARN_PREDICTION_FIELDS = [
 ] as const;
 export const BARN_PREDICTION_BYTES = BARN_PREDICTION_FIELDS.length * 8;
 /**
- * Katman Kaosu prediction state (Float64, recipient only): the character's controller
- * state and the own fighter's punch and stagger timers, so the local rig replays
+ * Katman Kaosu / Renk Kaosu prediction state (Float64, recipient only): the character's
+ * controller state and the own fighter's punch and stagger timers, so the local rig replays
  * movement, sprint blend, jump cooldown, punches and staggers like the server. The tile
- * state it replays against comes from the snapshot's `layers` section.
+ * state it replays against comes from the snapshot's `layers` or `colors` section.
  */
 export const LAYER_PREDICTION_FIELDS = [
   "facing",
@@ -204,9 +217,9 @@ export const LAYER_PREDICTION_FIELDS = [
   "staggerMobility",
 ] as const;
 export const LAYER_PREDICTION_BYTES = LAYER_PREDICTION_FIELDS.length * 8;
-/** Katman Kaosu per-fighter flags (`LayerSnapshot.f`). */
+/** Katman Kaosu and Renk Kaosu per-fighter flags (`LayerSnapshot.f`, `ColorFieldSnapshot.f`). */
 export const LAYER_FLAG = { inMatch: 1, alive: 2, body: 4, staggered: 8, forfeit: 16 } as const;
-/** Round result codes (`LayerSnapshot.r`). */
+/** Round result codes (`LayerSnapshot.r`, `ColorFieldSnapshot.r`). */
 export const LAYER_RESULTS = [null, "survivor", "all-fell", "timeout", "forfeit"] as const;
 /**
  * Katman Kaosu's tile state, complete in every snapshot (idempotent: a late joiner or a
@@ -224,6 +237,35 @@ export interface LayerSnapshot {
   t: number;
   g: Uint8Array;
   a: Uint8Array;
+  f: number[];
+  o: number[];
+  r: number;
+}
+/**
+ * Renk Kaosu's colour field, complete in every snapshot (idempotent: a late joiner or a
+ * reconnect has the exact floor from its first snapshot; there are no tile events):
+ * - `t`: round tick, as `LayerSnapshot.t`.
+ * - `n`: colour cycle (1-based) the drawn tick belongs to; `k`: its ticks
+ *   [start, announce, drop, restore] (they follow from `n`; the client checks they do).
+ * - `h`: the cycle's target colour (0–3). Sent from the cycle's start, so every screen can
+ *   reveal it on the announce tick of its own timeline; the client never shows it earlier.
+ * - `p`: tiles there this cycle (bitset, 85 bits = 11 bytes, LSB first); `g`: of those, the
+ *   grey ones (no colour, never the target, gone at this drop); `m`: marked ("DARALIYOR":
+ *   coloured now, grey next cycle).
+ * - `c`: colour per tile, 2 bits each (22 bytes; meaningless where a tile has none).
+ * - `f`, `o`, `r`: as LayerSnapshot.
+ * Standing on round tick τ of the cycle: the target colour always; every other tile of `p`
+ * before `drop`. From `restore` on, the tiles with a colour this cycle (`p` minus `g`).
+ */
+export interface ColorFieldSnapshot {
+  t: number;
+  n: number;
+  k: number[];
+  h: number;
+  p: Uint8Array;
+  g: Uint8Array;
+  m: Uint8Array;
+  c: Uint8Array;
   f: number[];
   o: number[];
   r: number;
@@ -267,6 +309,7 @@ export interface GameSnapshot {
   prediction?: PredictionState;
   barn?: BarnSnapshot;
   layers?: LayerSnapshot;
+  colors?: ColorFieldSnapshot;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -435,11 +478,11 @@ export class InputMailbox {
   private barnPacket: BarnInputPacket | null = null;
   private pickup = false;
   private attackViewTick = -1;
-  // Katman Kaosu: the latest layer packet (its edges share `jump` / `punch`).
+  // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
     if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
-    if (mode === "layer_chaos") return this.acceptLayer(value, round, now);
+    if (mode === "layer_chaos" || mode === "color_chaos") return this.acceptLayer(value, round, now);
     const p = validateInput(value);
     // Transport limits traffic; valid ordered packets may arrive together after network jitter.
     if (!p || p.round !== round || p.seq <= this.seq) return false;

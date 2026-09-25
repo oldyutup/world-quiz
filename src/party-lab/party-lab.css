@@ -639,3 +639,48 @@ body:has(.pl-immersive) { overflow: hidden; }
    prompt sits just above the bottom line, clear of the round message and the roster. */
 .party-lab .pl-viewport[data-mode="layer_chaos"] .pl-arena-message { width: max-content; }
 @media (max-height: 620px) { .party-lab .pl-viewport[data-mode="layer_chaos"] .pl-look-prompt { top: auto; bottom: 64px; transform: translateX(-50%); } }
+/* Renk Kaosu (local, immersive): target chip (colour + symbol + reaction timer), the big
+   call on each announcement, the debug readout. The swatch and call carry the colour; text
+   on them is the colour's own ink, so blue and yellow both read. */
+.party-lab.pl-immersive .pl-viewport[data-mode="color_chaos"] .pl-round-hud { left: 136px; }
+.party-lab .pl-viewport[data-mode="color_chaos"] .pl-arena-side { top: 84px; max-width: min(520px, calc(100% - 28px)); }
+.party-lab .pl-viewport[data-mode="color_chaos"] .pl-arena-message { width: max-content; max-width: calc(100% - 32px); }
+.party-lab .pl-viewport[data-mode="color_chaos"] .pl-round-message { top: 104px; }
+@media (max-height: 620px) { .party-lab .pl-viewport[data-mode="color_chaos"] .pl-look-prompt { top: auto; bottom: 64px; transform: translateX(-50%); } }
+.party-lab .pl-color-target {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+  min-width: 250px; padding: 8px 14px 12px 8px; border: 1px solid var(--pl-border); border-radius: 14px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); pointer-events: none;
+}
+.party-lab .pl-color-target[data-phase="preview"] { grid-template-columns: minmax(0, 1fr); padding-left: 14px; }
+.party-lab .pl-color-swatch { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; box-shadow: inset 0 0 0 2px oklch(100% 0 0 / 35%); }
+.party-lab .pl-color-swatch .pl-color-symbol { width: 30px; height: 30px; }
+.party-lab .pl-color-name { display: grid; line-height: 1.1; }
+.party-lab .pl-color-name b { font-size: 26px; font-weight: 800; letter-spacing: 0.04em; color: var(--pl-ink); }
+.party-lab .pl-color-name small { margin-top: 3px; color: var(--pl-muted); font-size: 12px; }
+.party-lab .pl-color-target[data-phase="unsafe"] .pl-color-name small { color: var(--pl-accent); }
+.party-lab .pl-color-timer { min-width: 2.6ch; font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.party-lab .pl-color-bar { position: absolute; left: 10px; right: 10px; bottom: 5px; height: 4px; border-radius: 3px; background: oklch(40% 0.02 180 / 60%); overflow: hidden; }
+.party-lab .pl-color-bar > span { display: block; height: 100%; transform-origin: left center; transform: scaleX(0); }
+.party-lab .pl-color-callout {
+  position: absolute; top: 38%; left: 50%; transform: translate(-50%, -50%);
+  padding: 8px 34px 10px; border-radius: 22px; font-size: clamp(44px, 7vw, 84px); font-weight: 900; letter-spacing: 0.05em; line-height: 1;
+  box-shadow: 0 10px 40px oklch(10% 0.02 280 / 35%), inset 0 0 0 3px oklch(100% 0 0 / 40%);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+}
+.party-lab .pl-color-callout:empty { display: none; }
+.party-lab .pl-color-swatch-final { background: repeating-linear-gradient(135deg, #1b1822 0 7px, #f4f2f7 7px 14px); }
+/* Daralma: a small tag under the target chip for the whole cycle that marks tiles to
+   leave — dashed border like the marked tiles; it pops in, then breathes. */
+.party-lab .pl-color-shrink {
+  position: absolute; top: 98px; left: 50%; transform: translateX(-50%);
+  padding: 5px 14px 6px; border: 2px dashed oklch(98% 0 0 / 90%); border-radius: 10px;
+  background: oklch(24% 0.02 290 / 92%); color: oklch(98% 0 0); font-size: 17px; font-weight: 900; letter-spacing: 0.08em;
+  white-space: nowrap; pointer-events: none;
+  animation: pl-shrink-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both, pl-shrink-breathe 1.1s ease-in-out 0.45s infinite alternate;
+}
+@keyframes pl-shrink-in { from { opacity: 0; transform: translateX(-50%) scale(1.6); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes pl-shrink-breathe { from { opacity: 1; } to { opacity: 0.62; } }
+.party-lab .pl-color-debug { margin: 0; font-size: 10.5px; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-color-callout { transition: none; } .party-lab .pl-color-shrink { animation: none; } }

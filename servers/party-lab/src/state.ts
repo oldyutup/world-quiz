@@ -35,7 +35,7 @@ export const LobbyState = schema(
     round: t.number(),
     seconds: t.number(),
     winner: t.number(),
-    /** Host's choice: rooftop_brawl, barn_shootout or mixed. */
+    /** Host's choice: rooftop_brawl, barn_shootout, layer_chaos, color_chaos or mixed. */
     selection: t.string(),
     /** The current round's mode during a round; in the lobby, the next round's (Mixed resolved). */
     mode: t.string(),

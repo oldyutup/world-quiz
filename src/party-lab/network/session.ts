@@ -362,7 +362,7 @@ export class LobbySession {
       return null;
     const now = performance.now();
     const barn = this.snapshot.mode === "barn_shootout",
-      layers = this.snapshot.mode === "layer_chaos";
+      layers = this.snapshot.mode === "layer_chaos" || this.snapshot.mode === "color_chaos";
     this.heldJump ||= intent.jump;
     this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
     this.heldPickup ||= barn && !!intent.pickup;
@@ -398,7 +398,7 @@ export class LobbySession {
     return packet;
   }
   /**
-   * Katman Kaosu intent → wire packet: camera-relative movement normalised exactly as the
+   * Katman Kaosu / Renk Kaosu intent → wire packet: camera-relative movement normalised exactly as the
    * server does (so the local replay uses the server's numbers), jump and punch edges
    * (carried through coalescing), sprint held. Nothing else.
    */

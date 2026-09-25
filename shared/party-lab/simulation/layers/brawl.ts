@@ -30,6 +30,17 @@ export interface LayerShove {
 }
 
 const REST_ARM: ArmDrive = { shoulder: -0.25, elbow: -0.35 };
+/**
+ * A shove punch's tuning. Katman Kaosu's is LAYER_CHAOS.punch (the default everywhere);
+ * Renk Kaosu passes its own (COLOR_CHAOS.punch).
+ */
+export interface ShoveTuning {
+  readonly cooldown: number;
+  /** Horizontal and upward velocity change (m/s) given to every body part. */
+  readonly push: number;
+  readonly lift: number;
+  readonly stagger: { readonly time: number; readonly posture: number; readonly mobility: number };
+}
 /** Timers count seconds in 1/60 steps; this absorbs the rounding (0.35 s is exactly 21 steps). */
 const EPSILON = 1e-9;
 export const freshLayerFighter = (id: PlayerId): LayerFighter => ({
@@ -63,7 +74,8 @@ export class LayerBrawl {
   readonly stats = { punches: 0, hits: 0, staggers: 0 };
   constructor(
     readonly physics: PlaygroundPhysics,
-    private readonly feedback: FeedbackSink = silentFeedback
+    private readonly feedback: FeedbackSink = silentFeedback,
+    readonly tuning: ShoveTuning = LAYER_CHAOS.punch
   ) {}
 
   reset() {
@@ -87,7 +99,7 @@ export class LayerBrawl {
     this.shoves.length = 0;
     for (const f of this.fighters) {
       const character = this.physics.players[f.id];
-      const { input, swing } = stepLayerFighter(f, character, inputs[f.id] ?? IDLE_INPUT, this.drives[f.id], dt);
+      const { input, swing } = stepLayerFighter(f, character, inputs[f.id] ?? IDLE_INPUT, this.drives[f.id], dt, this.tuning);
       if (swing) {
         this.stats.punches++;
         this.feedback({ name: "punchSwing", actor: f.id, x: character.body.translation().x });
@@ -124,7 +136,7 @@ export class LayerBrawl {
       this.stats.hits++;
       const target = this.fighters[best.target],
         along = unit({ x: best.direction.x, y: 0, z: best.direction.z }),
-        p = LAYER_CHAOS.punch;
+        p = this.tuning;
       push(this.physics.players[best.target], { x: along.x * p.push, y: p.lift, z: along.z * p.push });
       const staggered = target.stagger.time <= EPSILON;
       if (staggered) {
@@ -153,7 +165,14 @@ export class LayerBrawl {
  * no aim facing (the body turns toward its movement), no grab or lift — and whether a
  * punch started.
  */
-export function stepLayerFighter(f: LayerFighter, character: Character, input: MovementInput, drive: CharacterDrive, dt: number): { input: MovementInput; swing: boolean } {
+export function stepLayerFighter(
+  f: LayerFighter,
+  character: Character,
+  input: MovementInput,
+  drive: CharacterDrive,
+  dt: number,
+  tuning: ShoveTuning = LAYER_CHAOS.punch
+): { input: MovementInput; swing: boolean } {
   f.flash = Math.max(0, f.flash - dt);
   f.punchCooldown = Math.max(0, f.punchCooldown - dt);
   tickPunch(f.punch, dt);
@@ -166,7 +185,7 @@ export function stepLayerFighter(f: LayerFighter, character: Character, input: M
     f.punch = newPunch();
     f.punch.age = 0;
     f.punchHand = f.punchHand === 0 ? 1 : 0;
-    f.punchCooldown = LAYER_CHAOS.punch.cooldown;
+    f.punchCooldown = tuning.cooldown;
     swing = true;
   }
   // The stagger's seconds are staggered steps: drive with it, then count this step off.

@@ -7,10 +7,11 @@
  */
 export type ArenaMapId = "rooftop" | "test" | "barn";
 /**
- * Katman Kaosu's tile field (layers.ts), local and online (MODE_MAP.layer_chaos). Not in the
- * static map registry: its tiles are gameplay state (they break), added to the world by the tile field.
+ * Katman Kaosu's tile field (layers.ts), local and online (MODE_MAP.layer_chaos), and Renk
+ * Kaosu's colour field (colors.ts, local only). Not in the static map registry: their tiles
+ * are gameplay state (they break or drop), added to the world by the tile field.
  */
-export type TileArenaId = "layers";
+export type TileArenaId = "layers" | "colors";
 
 export interface Vec3 {
   readonly x: number;

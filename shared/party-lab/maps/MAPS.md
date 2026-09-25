@@ -146,6 +146,16 @@ collider per tile and disables it when the tile goes. The local arena lists it a
 static maps; online it is `MODE_MAP.layer_chaos` (protocol 6). Rules, camera and numbers:
 `simulation/layers/LAYERS.md`; online: `../LAYER_ONLINE.md`.
 
+## Renk Kaosu ("Renkler")
+
+`colors.ts`: one field of 85 flush 2 m hex tiles (Katman Kaosu's L1 disc) at y = 0. Its
+tiles drop and come back, so like Katman Kaosu's they are gameplay state: `COLORS_MAP` has
+no static colliders and is not in `ARENA_MAPS` (`TileArenaId` "colors"); the colour tile
+field (`simulation/colors/field.ts`) owns one prism collider per tile. The local arena lists
+it; online it is `MODE_MAP.color_chaos` (protocol 7). Rules and numbers:
+`simulation/colors/COLORS.md`; online: `../COLOR_ONLINE.md`. Its background is generated
+geometry (no asset file).
+
 ## Assets
 
 `public/party-lab/maps/rooftop/rooftop-kit.glb` (≈178 KB) is generated from the
