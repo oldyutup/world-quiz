@@ -5,6 +5,7 @@ import {
   normalizeMove,
   type AnyInputPacket,
   type BarnInputPacket,
+  type BombInputPacket,
   type InputPacket,
   type LayerInputPacket,
   type GameSnapshot,
@@ -362,6 +363,7 @@ export class LobbySession {
       return null;
     const now = performance.now();
     const barn = this.snapshot.mode === "barn_shootout",
+      bomb = this.snapshot.mode === "bomb_tag",
       layers = this.snapshot.mode === "layer_chaos" || this.snapshot.mode === "color_chaos";
     this.heldJump ||= intent.jump;
     this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
@@ -377,6 +379,8 @@ export class LobbySession {
     }
     const packet: AnyInputPacket = barn
       ? this.barnPacket(intent)
+      : bomb
+      ? this.bombPacket(intent)
       : layers
       ? this.layerPacket(intent)
       : {
@@ -396,6 +400,21 @@ export class LobbySession {
     this.lastInputAt = now;
     this.diagnostics.input(now);
     return packet;
+  }
+  /** Bomba Sende intent plus the authoritative remote timeline being viewed for capped rewind. */
+  private bombPacket(intent: MovementInput): BombInputPacket {
+    const move = normalizeMove(Number.isFinite(intent.x) ? intent.x : 0, Number.isFinite(intent.z) ? intent.z : 0);
+    const viewTick = Number.isFinite(intent.viewTick) ? Math.max(0, Math.round(intent.viewTick!)) : 0;
+    return {
+      seq: ++this.inputSeq,
+      round: this.snapshot.round,
+      moveX: move.x,
+      moveZ: move.z,
+      jumpPressed: this.heldJump,
+      sprintHeld: !!intent.sprint,
+      punchPressed: this.heldPunch,
+      viewTick,
+    };
   }
   /**
    * Katman Kaosu / Renk Kaosu intent → wire packet: camera-relative movement normalised exactly as the

@@ -15,11 +15,13 @@ export class CameraFeel {
       "bulletHit",
       "trapSnap",
       "death",
+      // Bomba Sende only.
+      "bombBlast",
     ].includes(event.name);
     if (!local || !impact || impactLevel(event.intensity ?? 0) !== "HEAVY")
       return;
     this.remaining = 0.15;
-    this.strength = event.name === "knockout" || event.name === "death" ? 0.035 : 0.022;
+    this.strength = event.name === "knockout" || event.name === "death" || event.name === "bombBlast" ? 0.035 : 0.022;
   }
   step(dt: number, enabled: boolean): [number, number] {
     if (!enabled) this.clear();

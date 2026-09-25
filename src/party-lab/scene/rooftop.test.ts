@@ -90,9 +90,9 @@ test("rooftop is the local default and Rooftop Brawl's online map; ids are valid
   assert.deepEqual(Object.keys(ARENA_MAPS).sort(), ["barn", "rooftop", "test"]);
   assert.ok(isArenaMapId("test") && isArenaMapId("rooftop"));
   assert.ok(!isArenaMapId("toString") && !isArenaMapId("") && !isArenaMapId(3));
-  // 5 = game modes (Barn Shootout online); 6 = Katman Kaosu online; 7 = Renk Kaosu online.
+  // 5 = Barn; 6 = Katman; 7 = Renk; 8 = Bomba Sende online.
   // Rooftop Brawl's wire content is unchanged apart from `mode`.
-  assert.equal(NET.version, 7);
+  assert.equal(NET.version, 8);
 });
 
 test("rooftop data is finite, inside the 14 × 11 m roof and matches the audited layout", () => {

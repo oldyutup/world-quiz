@@ -1,29 +1,31 @@
-import type { ArenaMapId, TileArenaId } from "./maps/types.js";
+import type { ArenaMapId, ModeArenaId, TileArenaId } from "./maps/types.js";
 
 /**
  * Online game modes. Every round is played in exactly one mode, chosen by the
  * server before the round starts and sent explicitly (lobby state and every
  * snapshot). Clients never infer the mode from geometry or a map name.
  */
-export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos"] as const;
+export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag"] as const;
 export type GameMode = (typeof GAME_MODES)[number];
 /** What the room host picks in the lobby: one mode, or all of them in a shuffled rotation. */
-export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "mixed"] as const;
+export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "mixed"] as const;
 export type ModeSelection = (typeof MODE_SELECTIONS)[number];
 
 export const DEFAULT_MODE_SELECTION: ModeSelection = "rooftop_brawl";
 
-export const MODE_MAP: Readonly<Record<GameMode, ArenaMapId | TileArenaId>> = {
+export const MODE_MAP: Readonly<Record<GameMode, ArenaMapId | TileArenaId | ModeArenaId>> = {
   rooftop_brawl: "rooftop",
   barn_shootout: "barn",
   layer_chaos: "layers",
   color_chaos: "colors",
+  bomb_tag: "bomb",
 };
 export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   rooftop_brawl: "Çatı Kavgası",
   barn_shootout: "Ambar Çatışması",
   layer_chaos: "Katman Kaosu",
   color_chaos: "Renk Kaosu",
+  bomb_tag: "Bomba Sende",
   mixed: "Karışık",
 };
 
@@ -51,7 +53,7 @@ export function mixedCycle(previous: GameMode | null, random: () => number = Mat
 }
 
 /**
- * The server's Mixed sequence. Each cycle holds all four modes once in a shuffled
+ * The server's Mixed sequence. Each cycle holds all five modes once in a shuffled
  * order and the next cycle is reshuffled, never repeating the mode just played. `next`
  * is what the lobby shows before Ready; it is consumed only once a round of it reaches
  * play (a cancelled countdown keeps it). No voting.

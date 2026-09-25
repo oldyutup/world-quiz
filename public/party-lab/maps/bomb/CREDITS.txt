@@ -1,0 +1,23 @@
+bomb-kit.glb — Party Lab "Bomba Sende" props ("Oyun Parkı")
+
+Sources (all CC0 1.0 Universal, Public Domain Dedication,
+https://creativecommons.org/publicdomain/zero/1.0/, per each pack's License.txt, or, for
+the Toon Shooter Game Kit, as stated on its poly.pizza bundle page — see the Barn's
+CREDITS.txt):
+  Quaternius — Platformer Game Kit (Dec 2021)   https://quaternius.com
+  Kenney — Nature Kit 2.1                        https://www.kenney.nl
+  Quaternius — Toon Shooter Game Kit             https://poly.pizza/l/qraiSXoAru
+Attribution is not required; credit is given here voluntarily.
+
+Only this curated subset is included:
+  Quaternius: Bomb, Cube_Crate, Cloud_1, Cloud_2, Cloud_3
+  Kenney Nature: pot_large, plant_bushDetailed, flower_yellowA, flower_purpleA
+  Quaternius Toon Shooter: Bear Trap (the slow traps; the same model as the Barn's)
+
+Changes: merged into one GLB; each model baked to one primitive with positions,
+normals and vertex colours (UVs, tangents and textures dropped; flat materials mapped
+to one palette; the bear trap two-toned by height); all materials opaque with
+metalness 0; re-pivoted to bottom-centre; scaled (the crate to a 1 m cube). Visual only: no gameplay collider comes from this
+file (the arena geometry is generated from the shared map data).
+Rebuild with:
+  node scripts/build-party-lab-bomb-kit.mjs [path/to/PartyLabCollapseAssets] [path/to/PartyLabBarnAssets]

@@ -22,6 +22,7 @@ import type { AnyInputPacket } from "../../../shared/party-lab/network/protocol"
 import OnlineBarnArena from "./OnlineBarnArena";
 import OnlineLayerArena from "./OnlineLayerArena";
 import OnlineColorArena from "./OnlineColorArena";
+import OnlineBombArena from "./OnlineBombArena";
 import type { MovementInput } from "../input/types";
 import type { LobbySnapshot } from "../network/types";
 import type { GameStream } from "../network/gameStream";
@@ -415,6 +416,7 @@ export default function OnlineArena(props: Props) {
   if (props.lobby.mode === "barn_shootout") return <OnlineBarnArena {...props} />;
   if (props.lobby.mode === "layer_chaos") return <OnlineLayerArena {...props} />;
   if (props.lobby.mode === "color_chaos") return <OnlineColorArena {...props} />;
+  if (props.lobby.mode === "bomb_tag") return <OnlineBombArena {...props} />;
   return <OnlineRooftopArena {...props} />;
 }
 function OnlineRooftopArena(props: Props) {

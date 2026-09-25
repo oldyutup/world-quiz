@@ -117,9 +117,9 @@ const sameCycle = (a: ColorCycleState, b: ColorCycleState, label: string) => {
 
 // ─── Protocol, mode ─────────────────────────────────────────────────────────
 
-test("protocol 7: Renk Kaosu is a game mode (lobby order, Karışık last); its packet is the shove-mode intent (colour, tile, target and result claims refused)", () => {
-  assert.equal(NET.version, 7);
-  assert.deepEqual([...MODE_SELECTIONS], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "mixed"]);
+test("protocol 8: Renk Kaosu remains before Bomba Sende and Karışık in the compact picker", () => {
+  assert.equal(NET.version, 8);
+  assert.deepEqual([...MODE_SELECTIONS], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "mixed"]);
   assert.equal(MODE_NAMES.color_chaos, "Renk Kaosu");
   assert.equal(MODE_MAP.color_chaos, "colors");
   const valid: LayerInputPacket = { seq: 4, round: 2, moveX: 1, moveZ: 1, jumpPressed: false, sprintHeld: true, punchPressed: false };

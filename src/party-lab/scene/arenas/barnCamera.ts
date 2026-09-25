@@ -134,6 +134,11 @@ function fromCollider(c: ArenaCollider): Convex {
   return { label: c.role, planes: [...b, plane(n, r)] };
 }
 
+/** Camera solids for shared colliders (Bomba Sende's chase camera uses these too). */
+export function colliderBlockers(colliders: readonly ArenaCollider[]): Convex[] {
+  return colliders.map(fromCollider);
+}
+
 /**
  * Everything the camera must stay out of: every shared gameplay collider plus
  * camera-only solids for the visual shell — the wall mass outside the cross carried
@@ -141,7 +146,7 @@ function fromCollider(c: ArenaCollider): Convex {
  * at the hub's eave (its pyramid roof is higher still).
  */
 export function barnCameraBlockers(map: ArenaMap): Convex[] {
-  const out = map.colliders.map(fromCollider);
+  const out = colliderBlockers(map.colliders);
   const t = WALL_THICKNESS,
     top = SHELL.hubPeak + 2;
   for (const w of WALL_BLOCKS) out.push(box("shell-wall", { x: w.x[0], y: 0, z: w.z[0] }, { x: w.x[1], y: top, z: w.z[1] }));

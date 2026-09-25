@@ -156,6 +156,26 @@ it; online it is `MODE_MAP.color_chaos` (protocol 7). Rules and numbers:
 `simulation/colors/COLORS.md`; online: `../COLOR_ONLINE.md`. Its background is generated
 geometry (no asset file).
 
+## Oyun Parkı ("bomb") — Bomba Sende, local and online
+
+`bomb.ts`: a 20 × 20 m walled rooftop playground (x, z −10…10, floor y 0), symmetric under a
+half turn. The perimeter is a 1 m brick parapet with a glass guard to 3.2 m (one collider,
+≥ 2 m over every standable top), so nothing is lethal. Inside:
+- an open plaza in the middle;
+- two 2.0 m L-wall pockets (NW, SE; two 2 m exits each);
+- an AC-unit corner (NE) and a crate corner (SW), 1.1 m, hop-able;
+- two 1.0 m catwalks along the N and S walls with 24° ramps;
+- two jump shortcuts (a 1.5 m gap from each catwalk's end to the corner's 2.5 m top);
+- two 0.9 m hop walls (E, W);
+- three slow traps (`BOMB_TRAPS`), flat on the floor in a loose triangle on the plaza ring:
+  gameplay state, not colliders (`simulation/bomb/traps.ts`), and the one thing without a
+  half-turn twin.
+
+19 static colliders. The map is not in `ARENA_MAPS` (the rooftop test pins its keys): its
+id is `ModeArenaId` "bomb"; online it is `MODE_MAP.bomb_tag` (protocol 8), while the
+local arena lists it after the tile modes. Rules, numbers, bots and camera:
+`simulation/bomb/BOMB.md`; online architecture: `../BOMB_ONLINE.md`.
+
 ## Assets
 
 `public/party-lab/maps/rooftop/rooftop-kit.glb` (≈178 KB) is generated from the
@@ -166,3 +186,9 @@ the raw pack stays outside the repository. See `CREDITS.txt` next to the GLB.
 is Katman Kaosu's background scenery only (clouds, floating islands, ruins, grass hex
 columns), built from CC0 Quaternius and Kenney packs by
 `scripts/build-party-lab-layers-kit.mjs`; no gameplay tile or collider comes from it.
+
+`public/party-lab/maps/bomb/bomb-kit.glb` (≈ 125 KB, vertex-coloured, untextured) holds Bomba
+Sende's props only: the bomb, the crates (stretched over their colliders), the slow traps'
+jaws (the Barn's bear trap model, recoloured), ledge planters and clouds. It is built from
+CC0 Quaternius and Kenney packs by `scripts/build-party-lab-bomb-kit.mjs`. The rest of the playground (floor, walls, AC units,
+catwalks, ramps, hop walls, glass) is generated from `bomb.ts`.

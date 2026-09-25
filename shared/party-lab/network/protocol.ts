@@ -15,7 +15,9 @@ export const NET = {
   // 7: Renk Kaosu (color_chaos) online. A new mode and snapshot colour section (the shove
   // modes' input packet and prediction block are shared); a v6 page cannot draw or predict a
   // colour round and a v6 server refuses the mode. Mixed rotates all four modes.
-  version: 7,
+  // 8: Bomba Sende (bomb_tag) online. Adds its compact intent, self-contained bomb/trap
+  // snapshot and prediction state; Mixed rotates all five modes.
+  version: 8,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -24,6 +26,8 @@ export const NET = {
   pingMs: 1000,
   /** Barn lag compensation: the oldest view a shot may be resolved against. */
   maxRewindMs: 250,
+  /** Bomba Sende proximity rewind. Nine 60 Hz poses cover interpolation + normal RTT. */
+  maxBombRewindMs: 150,
 } as const;
 export interface PingPacket {
   id: number;
@@ -66,6 +70,14 @@ export interface ServerDiagnostics {
     present: number;
     marked: number;
     grey: number;
+    encodeUs: number;
+  };
+  /** Bomba Sende: compact section and current authoritative state. */
+  bomb?: {
+    sectionBytes: number;
+    carrier: number;
+    armedTraps: number;
+    slowed: number;
     encodeUs: number;
   };
   /** Barn lag compensation, this round: shots resolved, last/max rewind, rejected/clamped views, lookup cost. */
@@ -144,8 +156,13 @@ export interface LayerInputPacket {
   sprintHeld: boolean;
   punchPressed: boolean;
 }
-export type AnyInputPacket = InputPacket | BarnInputPacket | LayerInputPacket;
+/** Bomba Sende intent. `viewTick` is the server snapshot timeline on screen, never a target. */
+export interface BombInputPacket extends LayerInputPacket {
+  viewTick: number;
+}
+export type AnyInputPacket = InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
+export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
 export interface GameEvent extends FeedbackEvent {
   id: number;
@@ -162,6 +179,8 @@ export interface PredictionState {
   barn?: Uint8Array;
   /** Katman Kaosu and Renk Kaosu (the shove fighter): LAYER_PREDICTION_FIELDS Float64 LE values. */
   layers?: Uint8Array;
+  /** Bomba Sende: fighter timers plus authoritative carrier/slow modifiers for replay. */
+  bomb?: Uint8Array;
 }
 export const VELOCITY_BYTES = 9 * 6 * 4;
 /**
@@ -217,6 +236,8 @@ export const LAYER_PREDICTION_FIELDS = [
   "staggerMobility",
 ] as const;
 export const LAYER_PREDICTION_BYTES = LAYER_PREDICTION_FIELDS.length * 8;
+export const BOMB_PREDICTION_FIELDS = [...LAYER_PREDICTION_FIELDS, "carrier", "slowTicks"] as const;
+export const BOMB_PREDICTION_BYTES = BOMB_PREDICTION_FIELDS.length * 8;
 /** Katman Kaosu and Renk Kaosu per-fighter flags (`LayerSnapshot.f`, `ColorFieldSnapshot.f`). */
 export const LAYER_FLAG = { inMatch: 1, alive: 2, body: 4, staggered: 8, forfeit: 16 } as const;
 /** Round result codes (`LayerSnapshot.r`, `ColorFieldSnapshot.r`). */
@@ -270,6 +291,25 @@ export interface ColorFieldSnapshot {
   o: number[];
   r: number;
 }
+/**
+ * Bomba Sende's complete authoritative state. All timers are absolute round ticks:
+ * `e` fuse end, `n` next-fuse start, `b` no-tag-back expiry, `x` trap rearm ticks and
+ * `s` player slow expiries. `a` is the three armed-trap bits. `f/o/r` mirror layer rounds.
+ */
+export interface BombSnapshot {
+  t: number;
+  c: number;
+  e: number;
+  n: number;
+  p: number;
+  b: number;
+  a: number;
+  x: number[];
+  s: number[];
+  f: number[];
+  o: number[];
+  r: number;
+}
 /** Weapon codes on the wire: 0 unarmed, 1 shotgun, 2 SMG. */
 export const WEAPON_CODES = [null, "shotgun", "smg"] as const;
 /**
@@ -310,6 +350,7 @@ export interface GameSnapshot {
   barn?: BarnSnapshot;
   layers?: LayerSnapshot;
   colors?: ColorFieldSnapshot;
+  bomb?: BombSnapshot;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -455,6 +496,16 @@ export function validateLayerInput(value: unknown): LayerInputPacket | null {
   const move = normalizeMove(p.moveX, p.moveZ);
   return { ...p, moveX: move.x, moveZ: move.z };
 }
+const bombKeys = [...layerKeys, "viewTick"];
+export function validateBombInput(value: unknown): BombInputPacket | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as BombInputPacket;
+  if (Object.keys(p).length !== bombKeys.length || Object.keys(p).some((k) => !bombKeys.includes(k))) return null;
+  if (!Number.isSafeInteger(p.viewTick) || p.viewTick < 0) return null;
+  const { viewTick: _, ...layer } = p;
+  const valid = validateLayerInput(layer);
+  return valid ? { ...valid, viewTick: p.viewTick } : null;
+}
 export const neutralIntent = (): MovementInput => ({
   x: 0,
   z: 0,
@@ -480,8 +531,10 @@ export class InputMailbox {
   private attackViewTick = -1;
   // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
+  private bombPacket: BombInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
     if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
+    if (mode === "bomb_tag") return this.acceptBomb(value, round, now);
     if (mode === "layer_chaos" || mode === "color_chaos") return this.acceptLayer(value, round, now);
     const p = validateInput(value);
     // Transport limits traffic; valid ordered packets may arrive together after network jitter.
@@ -493,6 +546,25 @@ export class InputMailbox {
       this.punchSeq = p.seq;
     }
     this.packet = p;
+    this.barnPacket = null;
+    this.layerPacket = null;
+    this.bombPacket = null;
+    this.received = now;
+    return true;
+  }
+  private acceptBomb(value: unknown, round: number, now: number) {
+    const p = validateBombInput(value);
+    if (!p || p.round !== round || p.seq <= this.seq) return false;
+    this.seq = p.seq;
+    const last = this.bombPacket;
+    this.jump ||= p.jumpPressed && !last?.jumpPressed;
+    if (p.punchPressed && !last?.punchPressed && !this.punch) {
+      this.punch = true;
+      this.punchSeq = p.seq;
+      this.attackViewTick = p.viewTick;
+    }
+    this.bombPacket = p;
+    this.packet = null;
     this.barnPacket = null;
     this.layerPacket = null;
     this.received = now;
@@ -512,6 +584,7 @@ export class InputMailbox {
     this.layerPacket = p;
     this.packet = null;
     this.barnPacket = null;
+    this.bombPacket = null;
     this.received = now;
     return true;
   }
@@ -531,6 +604,7 @@ export class InputMailbox {
     this.barnPacket = p;
     this.packet = null;
     this.layerPacket = null;
+    this.bombPacket = null;
     this.received = now;
     return true;
   }
@@ -538,6 +612,8 @@ export class InputMailbox {
     if (now - this.received > NET.staleMs) this.clear();
     const b = this.barnPacket;
     if (b) return this.readBarn(b);
+    const bomb = this.bombPacket;
+    if (bomb) return this.readBomb(bomb);
     const l = this.layerPacket;
     if (l) return this.readLayer(l);
     const p = this.packet;
@@ -556,6 +632,21 @@ export class InputMailbox {
           lift: p.liftHeld,
         }
       : neutralIntent();
+    this.jump = this.punch = false;
+    return result;
+  }
+  private readBomb(p: BombInputPacket): MovementInput {
+    this.processedSeq = this.seq;
+    this.processedRound = p.round;
+    this.processedPunchSeq = this.punch ? this.punchSeq : -1;
+    const result: MovementInput = {
+      x: p.moveX,
+      z: p.moveZ,
+      jump: this.jump,
+      punch: this.punch,
+      sprint: p.sprintHeld,
+      viewTick: this.punch ? this.attackViewTick : p.viewTick,
+    };
     this.jump = this.punch = false;
     return result;
   }
@@ -592,6 +683,7 @@ export class InputMailbox {
     this.packet = null;
     this.barnPacket = null;
     this.layerPacket = null;
+    this.bombPacket = null;
     this.jump = this.punch = this.pickup = false;
     this.received = -Infinity;
     this.punchSeq = this.processedPunchSeq = -1;

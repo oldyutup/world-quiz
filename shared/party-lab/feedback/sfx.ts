@@ -60,4 +60,7 @@ export const SFX: Record<SfxName, Recipe> = {
   trapSnap: tone(720, 170, 0.18, 0.6, 0.27, 2, 0.1),
   death: { ...tone(330, 85, 0.6, 0.05, 0.22, 2, 0.2), wobble: 30 },
   respawn: { ...tone(260, 520, 0.3, 0.02, 0.15, 1, 0.3), notes: [1, 1.5] },
+  bombTick: tone(1250, 900, 0.05, 0.35, 0.13, 2, 0.2),
+  bombPass: { ...tone(520, 820, 0.16, 0.06, 0.17, 2, 0.15), notes: [1, 1.5] },
+  bombBlast: tone(95, 30, 0.75, 0.95, 0.34, 2, 0.3),
 };

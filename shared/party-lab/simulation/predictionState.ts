@@ -6,6 +6,8 @@ import {
   BARN_PREDICTION_FIELDS,
   LAYER_PREDICTION_BYTES,
   LAYER_PREDICTION_FIELDS,
+  BOMB_PREDICTION_BYTES,
+  BOMB_PREDICTION_FIELDS,
   VELOCITY_BYTES,
   type PredictionState,
 } from "../network/protocol.js";
@@ -118,6 +120,49 @@ export function readLayerPredictionState(bytes: unknown): Record<(typeof LAYER_P
     const v = view.getFloat64(i * 8, true);
     if (!Number.isFinite(v)) return null;
     out[LAYER_PREDICTION_FIELDS[i]] = v;
+  }
+  return out;
+}
+
+/** Bomba Sende: layer fighter state plus the two movement modifiers applied this tick. */
+export function captureBombPredictionState(
+  character: Character,
+  fighter: LayerFighter,
+  alive: boolean,
+  carrier: boolean,
+  slowTicks: number
+): PredictionState {
+  const { velocities } = capturePredictionState(character, { nextPunchHand: 0, alternateIn: 0, punches: [] });
+  const bomb = new Uint8Array(BOMB_PREDICTION_BYTES),
+    view = new DataView(bomb.buffer);
+  const values: Record<(typeof BOMB_PREDICTION_FIELDS)[number], number> = {
+    facing: character.facing,
+    gait: character.gait,
+    jumpIn: character.jumpIn,
+    sprint: character.sprint,
+    alive: alive ? 1 : 0,
+    punchHand: fighter.punchHand,
+    punchCooldown: fighter.punchCooldown,
+    punchAge: fighter.punch.age,
+    punchSwingCooldown: fighter.punch.cooldown,
+    staggerTime: fighter.stagger.time,
+    staggerPosture: fighter.stagger.posture,
+    staggerMobility: fighter.stagger.mobility,
+    carrier: carrier ? 1 : 0,
+    slowTicks,
+  };
+  BOMB_PREDICTION_FIELDS.forEach((name, i) => view.setFloat64(i * 8, values[name], true));
+  return { slot: character.id, velocities, controller: [], bomb };
+}
+
+export function readBombPredictionState(bytes: unknown): Record<(typeof BOMB_PREDICTION_FIELDS)[number], number> | null {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength !== BOMB_PREDICTION_BYTES) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = {} as Record<(typeof BOMB_PREDICTION_FIELDS)[number], number>;
+  for (let i = 0; i < BOMB_PREDICTION_FIELDS.length; i++) {
+    const v = view.getFloat64(i * 8, true);
+    if (!Number.isFinite(v)) return null;
+    out[BOMB_PREDICTION_FIELDS[i]] = v;
   }
   return out;
 }

@@ -684,3 +684,78 @@ body:has(.pl-immersive) { overflow: hidden; }
 @keyframes pl-shrink-breathe { from { opacity: 1; } to { opacity: 0.62; } }
 .party-lab .pl-color-debug { margin: 0; font-size: 10.5px; white-space: pre-wrap; }
 @media (prefers-reduced-motion: reduce) { .party-lab .pl-color-callout { transition: none; } .party-lab .pl-color-shrink { animation: none; } }
+/* Bomba Sende (local, immersive): player cards that show the bomb, the bomb chip (carrier +
+   fuse timer), the big call on passes and blasts, the off-screen pointer, the red edge while
+   you hold the bomb, the debug readout. Red means the bomb; nothing else uses it. */
+.party-lab.pl-immersive .pl-viewport[data-mode="bomb_tag"] .pl-round-hud { left: 136px; right: auto; }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-arena-side { top: 84px; max-width: min(540px, calc(100% - 28px)); }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-arena-message { width: max-content; max-width: min(560px, calc(100% - 32px)); }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-round-message { top: 104px; }
+@media (max-height: 620px) { .party-lab .pl-viewport[data-mode="bomb_tag"] .pl-look-prompt { top: auto; bottom: 64px; transform: translateX(-50%); } }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-roster li { transition: border-color 160ms ease-out, box-shadow 160ms ease-out; }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-roster li[data-bomb="lit"] { border-color: oklch(66% 0.21 28); box-shadow: 0 0 0 2px oklch(66% 0.21 28 / 45%); }
+.party-lab .pl-viewport[data-mode="bomb_tag"] .pl-roster li[data-bomb="next"] { border: 1px dashed oklch(70% 0.17 28); }
+.party-lab .pl-bomb-status { display: inline-flex; align-items: center; gap: 4px; }
+.party-lab .pl-roster li[data-bomb="lit"] .pl-bomb-status { color: oklch(78% 0.16 28); font-weight: 700; }
+.party-lab .pl-bomb-icon { width: 14px; height: 14px; flex-shrink: 0; color: oklch(24% 0.02 300); }
+.party-lab .pl-roster .pl-bomb-icon, .party-lab .pl-bomb-chip .pl-bomb-icon { color: oklch(30% 0.02 300); filter: drop-shadow(0 0 1px oklch(100% 0 0 / 70%)); }
+.party-lab .pl-bomb-icon-spark { fill: #ffd34d; animation: pl-bomb-spark 0.18s steps(2) infinite; }
+@keyframes pl-bomb-spark { 50% { fill: #ff7a3c; } }
+.party-lab .pl-bomb-chip {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px;
+  min-width: 260px; padding: 8px 14px 12px 8px; border: 1px solid var(--pl-border); border-radius: 14px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); pointer-events: none;
+}
+.party-lab .pl-bomb-chip[data-mine] { border-color: oklch(66% 0.21 28); background: oklch(30% 0.09 28 / 92%); }
+.party-lab .pl-bomb-chip[data-phase="pending"] { opacity: 0.92; }
+.party-lab .pl-bomb-chip-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: oklch(94% 0.01 90); }
+.party-lab .pl-bomb-chip-icon .pl-bomb-icon { width: 30px; height: 30px; }
+.party-lab .pl-bomb-chip-name { display: grid; line-height: 1.1; min-width: 0; }
+.party-lab .pl-bomb-chip-name b { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.party-lab .pl-bomb-chip-name small { margin-top: 3px; color: var(--pl-muted); font-size: 12px; white-space: nowrap; }
+.party-lab .pl-bomb-chip[data-mine] .pl-bomb-chip-name small { color: oklch(90% 0.05 40); }
+.party-lab .pl-bomb-fuse { min-width: 3ch; font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.party-lab .pl-bomb-chip[data-panic="true"] .pl-bomb-fuse { color: oklch(72% 0.2 28); animation: pl-bomb-panic 0.5s ease-in-out infinite alternate; }
+@keyframes pl-bomb-panic { from { transform: scale(1); } to { transform: scale(1.12); } }
+.party-lab .pl-bomb-bar { position: absolute; left: 10px; right: 10px; bottom: 5px; height: 4px; border-radius: 3px; background: oklch(40% 0.02 180 / 60%); overflow: hidden; }
+.party-lab .pl-bomb-bar > span { display: block; height: 100%; transform-origin: left center; transform: scaleX(0); background: oklch(70% 0.2 28); }
+.party-lab .pl-bomb-callout {
+  position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%);
+  padding: 8px 32px 10px; border-radius: 22px; font-size: clamp(40px, 6.5vw, 78px); font-weight: 900; letter-spacing: 0.04em; line-height: 1;
+  box-shadow: 0 10px 40px oklch(10% 0.02 280 / 35%), inset 0 0 0 3px oklch(100% 0 0 / 35%);
+  background: oklch(24% 0.02 280 / 92%); color: oklch(98% 0 0);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+}
+.party-lab .pl-bomb-callout:empty { display: none; }
+.party-lab .pl-bomb-callout[data-tone="bomb"] { background: oklch(58% 0.22 28); }
+.party-lab .pl-bomb-callout[data-tone="safe"] { background: oklch(66% 0.15 150); color: oklch(20% 0.03 150); }
+.party-lab .pl-bomb-callout[data-tone="boom"] { background: oklch(76% 0.17 60); color: oklch(22% 0.04 40); }
+.party-lab .pl-bomb-callout[data-tone="trap"] { background: oklch(81% 0.16 78); color: oklch(24% 0.05 60); }
+.party-lab .pl-bomb-callout[data-small="true"] { top: 42%; padding: 6px 18px 7px; border-radius: 14px; font-size: 22px; letter-spacing: 0.02em; }
+.party-lab .pl-bomb-vignette { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, oklch(60% 0.23 28 / 55%) 100%); }
+.party-lab .pl-bomb-arrow {
+  --angle: 0rad;
+  position: absolute; left: 0; top: 0; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 50%; background: oklch(20% 0.03 180 / 86%);
+  box-shadow: 0 0 0 2px currentColor; pointer-events: none;
+}
+.party-lab .pl-bomb-arrow[data-shown="false"] { display: none; }
+.party-lab .pl-bomb-arrow .pl-bomb-icon { width: 20px; height: 20px; color: oklch(96% 0.01 90); }
+.party-lab .pl-bomb-arrow[data-kind="target"] .pl-bomb-icon { display: none; }
+.party-lab .pl-bomb-arrow[data-kind="target"]::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+.party-lab .pl-bomb-arrow-head {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 10px solid currentColor;
+  transform: rotate(var(--angle)) translate(24px, -50%); transform-origin: 0 0;
+}
+.party-lab .pl-bomb-debug { margin: 0; font-size: 10.5px; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-bomb-icon-spark, .party-lab .pl-bomb-chip[data-panic="true"] .pl-bomb-fuse { animation: none; } }
+/* Narrower than the menu button + three cards + a centred chip: the chip moves to the top right,
+   and on phone widths (the cards wrap) under them. */
+@media (max-width: 1320px) { .party-lab .pl-bomb-chip { left: auto; right: 14px; transform: none; } }
+@media (max-width: 720px) {
+  .party-lab .pl-bomb-chip { top: 112px; right: 8px; min-width: 0; max-width: calc(100% - 16px); }
+  .party-lab .pl-bomb-chip-name b { font-size: 18px; }
+  .party-lab .pl-viewport[data-mode="bomb_tag"] .pl-round-message { top: 190px; }
+}

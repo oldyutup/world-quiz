@@ -34,6 +34,10 @@ export const SFX_NAMES = [
   "trapSnap",
   "death",
   "respawn",
+  // Bomba Sende (shared by local and authoritative online presentation).
+  "bombTick",
+  "bombPass",
+  "bombBlast",
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 export interface FeedbackEvent {

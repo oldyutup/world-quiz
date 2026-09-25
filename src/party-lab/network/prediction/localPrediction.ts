@@ -1,6 +1,7 @@
 import type { BufferedSnapshot } from "../gameStream";
 import {
   isBarnPacket,
+  isBombPacket,
   isLayerPacket,
   type AnyInputPacket,
   type GameSnapshot,
@@ -12,6 +13,7 @@ import { PredictionRig } from "./rig";
 import { BarnPredictionRig, canPredictBarn } from "./barnRig";
 import { canPredictLayer, LayerPredictionRig } from "./layerRig";
 import { canPredictColor, ColorPredictionRig } from "./colorRig";
+import { BombPredictionRig, canPredictBomb } from "./bombRig";
 import { InputHistory, PREDICTION_LIMITS, type PendingInput } from "./history";
 import { RigCorrection } from "./correction";
 import { Quaternion } from "three";
@@ -44,7 +46,7 @@ export interface PredictedShot {
  * unchanged.
  */
 export class LocalPrediction {
-  readonly rig: PredictionRig | BarnPredictionRig | LayerPredictionRig | ColorPredictionRig;
+  readonly rig: PredictionRig | BarnPredictionRig | LayerPredictionRig | ColorPredictionRig | BombPredictionRig;
   readonly history = new InputHistory();
   readonly correction = new RigCorrection();
   readonly metrics = {
@@ -89,6 +91,8 @@ export class LocalPrediction {
         ? new LayerPredictionRig(slot)
         : mode === "color_chaos"
         ? new ColorPredictionRig(slot)
+        : mode === "bomb_tag"
+        ? new BombPredictionRig(slot)
         : new PredictionRig(slot);
   }
   private run(record: PendingInput) {
@@ -108,6 +112,9 @@ export class LocalPrediction {
         const barn = this.rig.stepPacket(p, i === 0);
         if (barn.shot && this.present(barn.shot.life, barn.shot.round)) shots.push({ kind: barn.shot.kind, spread: barn.shot.spread, tick: i });
         result = barn;
+      } else if (this.rig instanceof BombPredictionRig) {
+        if (!isBombPacket(p)) return { valid: false, swing: false, jumped: false, shots };
+        result = this.rig.stepPacket(p, i === 0);
       } else if (this.rig instanceof LayerPredictionRig || this.rig instanceof ColorPredictionRig) {
         if (!isLayerPacket(p)) return { valid: false, swing: false, jumped: false, shots };
         result = this.rig.stepPacket(p, i === 0);
@@ -138,6 +145,7 @@ export class LocalPrediction {
     if (this.mode === "barn_shootout") return canPredictBarn(snapshot, this.slot);
     if (this.mode === "layer_chaos") return canPredictLayer(snapshot, this.slot);
     if (this.mode === "color_chaos") return canPredictColor(snapshot, this.slot);
+    if (this.mode === "bomb_tag") return canPredictBomb(snapshot, this.slot);
     return canPredict(snapshot, this.slot);
   }
   /**
@@ -145,7 +153,7 @@ export class LocalPrediction {
    * toward the next (the presented pose's tick; its tiles are drawn on it). Null when not predicting.
    */
   predictedTick(alpha = 1) {
-    if (!this.active || !(this.rig instanceof LayerPredictionRig || this.rig instanceof ColorPredictionRig)) return null;
+    if (!this.active || !(this.rig instanceof LayerPredictionRig || this.rig instanceof ColorPredictionRig || this.rig instanceof BombPredictionRig)) return null;
     return this.rig.tick - 1 + Math.max(0, Math.min(1, alpha));
   }
   reconcile(frame: BufferedSnapshot, now: number) {

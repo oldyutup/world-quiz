@@ -12,6 +12,12 @@ export type ArenaMapId = "rooftop" | "test" | "barn";
  * are gameplay state (they break or drop), added to the world by the tile field.
  */
 export type TileArenaId = "layers" | "colors";
+/**
+ * Arenas that belong to one local game mode and are not in the static registry either:
+ * Bomba Sende's walled playground (bomb.ts, local and online). Its geometry is static, but the
+ * rooftop test pins ARENA_MAPS's keys and the local test header lists only those.
+ */
+export type ModeArenaId = "bomb";
 
 export interface Vec3 {
   readonly x: number;
@@ -43,7 +49,9 @@ export type ColliderRole =
   | "crate"
   | "stall"
   | "barrel"
-  | "post";
+  | "post"
+  // Bomba Sende ("Oyun Parkı")
+  | "hop";
 
 interface ColliderBase {
   readonly role: ColliderRole;
@@ -79,7 +87,7 @@ export interface LethalEdge {
 }
 
 export interface ArenaMap {
-  readonly id: ArenaMapId | TileArenaId;
+  readonly id: ArenaMapId | TileArenaId | ModeArenaId;
   readonly name: string;
   /** Main walkable floor footprint at y = 0. */
   readonly bounds: {

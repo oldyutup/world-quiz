@@ -12,7 +12,8 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   barn_shootout: "Silah bul, nişan al. 2:30 sonunda en çok öldüren kazanır.",
   layer_chaos: "Bastığın karo kırılır, katman katman düş. En alttan düşmeyen kazanır.",
   color_chaos: "Hedef renge koş; diğer renkler düşer. Son ayakta kalan kazanır.",
-  mixed: "Dört mod karışık sırayla; aynı mod art arda gelmez.",
+  bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
+  mixed: "Beş mod karışık sırayla; aynı mod art arda gelmez.",
 };
 
 /** Opt-in (`?partyDebug=1`) link/chat timing lines; refresh on their own clock while shown. */

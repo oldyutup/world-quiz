@@ -69,28 +69,36 @@ import { LAYER_CHAOS } from "../../../shared/party-lab/simulation/layers/config"
 import ColorPlayground, { type ColorHudElements, type ColorSnapshot } from "./colors/ColorPlayground";
 import ColorHud from "./colors/ColorHud";
 import { COLOR_CHAOS } from "../../../shared/party-lab/simulation/colors/config";
+import BombPlayground, { type BombHudElements, type BombSnapshot } from "./bomb/BombPlayground";
+import BombHud from "./bomb/BombHud";
+import { BOMB_TAG } from "../../../shared/party-lab/simulation/bomb/config";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
 
 /**
  * What the local arena can open: every shared static map, plus Katman Kaosu's tile
- * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/)
- * and Renk Kaosu's colour field (local only for now, see scene/colors/).
+ * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/),
+ * Renk Kaosu's colour field (see scene/colors/) and Bomba Sende's local playground,
+ * see scene/bomb/).
  */
-type LocalArenaId = ArenaMapId | "layers" | "colors";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors"];
-const localArenaName = (id: LocalArenaId) => (id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : arenaMap(id).name);
+type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb"];
+const localArenaName = (id: LocalArenaId) =>
+  id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : arenaMap(id).name;
 /**
- * Katman Kaosu and Renk Kaosu open immersive, like the online arenas (ArenaChrome): the
- * arena fills the page, only gameplay HUD sits on it, and settings, map and player count
- * move into the Esc menu. The other local test maps keep the header/footer test layout.
+ * Katman Kaosu, Renk Kaosu and Bomba Sende open immersive, like the online arenas
+ * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
+ * and player count move into the Esc menu. The other local test maps keep the header/footer
+ * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors"]);
-/** `?layerDebug=1` / `?colorDebug=1` / `?partyDebug=1`: the tile modes' debug readout starts open. */
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb"]);
+/** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
-  return query.has("layerDebug") || query.has("colorDebug") || query.has("partyDebug");
+  return query.has("layerDebug") || query.has("colorDebug") || query.has("bombDebug") || query.has("partyDebug");
 };
+/** `?bombDebug=1`: Bomba Sende's debug readout and keys exist at all (without it the mode has none). */
+const bombDebugTools = () => new URLSearchParams(window.location.search).has("bombDebug");
 /** Maps that run untimed with standing dummies instead of bots and the rooftop round. */
 const EXPLORE_MAPS: ReadonlySet<LocalArenaId> = new Set(["barn"]);
 /** Maps whose local test runs Barn Shootout combat (health, weapons, traps, respawn). */
@@ -761,11 +769,19 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [colorPlayers, setColorPlayers] = useState<2 | 3>(3);
   const [colorSnapshot, setColorSnapshot] = useState<ColorSnapshot | null>(null);
   const colorHud = useRef<ColorHudElements>({ debug: null, callout: null, timer: null, bar: null });
+  // Bomba Sende (local): its own playground, HUD and 2–3 player choice.
+  const bomb = mapId === "bomb";
+  const [bombPlayers, setBombPlayers] = useState<2 | 3>(3);
+  const [bombSnapshot, setBombSnapshot] = useState<BombSnapshot | null>(null);
+  const bombHud = useRef<BombHudElements>({ debug: null, fuse: null, bar: null, callout: null, arrow: null, vignette: null });
+  const [bombTools] = useState(bombDebugTools);
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
-  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : undefined;
-  /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu). */
-  const chaseCamera = barn || tileMode;
+  /** A mode with its own playground and HUD (the tile modes, Bomba Sende). */
+  const modePlayground = tileMode || bomb;
+  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : undefined;
+  /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
+  const chaseCamera = barn || modePlayground;
   const immersive = IMMERSIVE_MAPS.has(mapId);
   // Immersive only: the Esc menu (never a pause — the local round and bots go on) and the
   // debug readout, which is collapsed unless asked for.
@@ -819,6 +835,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setRound(null);
     setLayerSnapshot(null);
     setColorSnapshot(null);
+    setBombSnapshot(null);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
     requestAnimationFrame(() => viewport.current?.focus());
@@ -837,8 +854,16 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setColorPlayers(next);
     requestAnimationFrame(() => viewport.current?.focus());
   }
+  function chooseBombPlayers(next: 2 | 3) {
+    menu.setView(null);
+    setStatus("loading");
+    setBombSnapshot(null);
+    setBombPlayers(next);
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
   const layerOut = layerSnapshot?.phase === "playing" && !layerSnapshot.alive[0];
   const colorOut = colorSnapshot?.phase === "playing" && !colorSnapshot.alive[0];
+  const bombOut = bombSnapshot?.phase === "playing" && !bombSnapshot.alive[0];
 
   const mapSelect = (
     <select value={mapId} onChange={(event) => chooseMap(event.target.value as LocalArenaId)}>
@@ -883,7 +908,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
         ref={viewport}
         tabIndex={0}
         role="region"
-        aria-label={tileMode ? `${localArenaName(mapId)} · yerel arena` : "Yerel 3D test arenası"}
+        aria-label={modePlayground ? `${localArenaName(mapId)} · yerel arena` : "Yerel 3D test arenası"}
         aria-describedby={immersive ? undefined : "pl-controls"}
         data-look={chaseCamera ? lookMode : undefined}
         data-combat={barnCombat ? "barn" : undefined}
@@ -931,6 +956,22 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
                 shakeEnabled={settings.cameraShake && !reducedMotion}
                 look={look}
                 costumeId={costumeId}
+              />
+            ) : mapId === "bomb" ? (
+              <BombPlayground
+                key={`bomb-${bombPlayers}`}
+                players={bombPlayers}
+                onStatus={setStatus}
+                onSnapshot={setBombSnapshot}
+                hud={bombHud}
+                bindings={bindings}
+                paused={paused}
+                menuOpen={menuOpen}
+                audio={audio}
+                shakeEnabled={settings.cameraShake && !reducedMotion}
+                look={look}
+                costumeId={costumeId}
+                tools={bombTools}
               />
             ) : (
               <Playground
@@ -996,7 +1037,30 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
             hidden={menuOpen || colorOut}
           />
         )}
-        {!tileMode && status === "ready" && round && (
+        {bomb && status === "ready" && bombSnapshot && (
+          <>
+            <BombHud snapshot={bombSnapshot} hud={bombHud} debugOpen={bombTools && debugPanel.open} />
+            {lookMode === "lock" && lookStatus !== "locked" && !inputOff && bombSnapshot.phase !== "results" && (
+              <div className="pl-arena-message pl-look-prompt" role="status">
+                <strong>{lookStatus === "error" ? "İmleç kilitlenemedi" : "Kamerayı çevirmek için arenaya tıkla"}</strong>
+                <span>
+                  {lookStatus === "error"
+                    ? "Tekrar tıkla ya da Esc menüsündeki Bakış ayarından “Sürükleyerek bak”ı seç."
+                    : "Fare ya da trackpad ile çevir · Esc menü"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+        {bomb && (
+          <ControlHint
+            text={controlHint(bindings, "bomb", lookMode)}
+            playing={bombSnapshot?.phase === "playing"}
+            replay={menu.hintReplay}
+            hidden={menuOpen || bombOut}
+          />
+        )}
+        {!modePlayground && status === "ready" && round && (
           <>
             <div className="pl-round-hud">
               <ul className="pl-roster" aria-label="Oyuncu durumları">
@@ -1197,7 +1261,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={{ open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={bomb && !bombTools ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1216,6 +1280,15 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
             <label className="pl-menu-row">
               <span>Oyuncu</span>
               <select value={colorPlayers} onChange={(event) => chooseColorPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
+                <option value={3}>3 (sen + 2 bot)</option>
+                <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+          )}
+          {bomb && (
+            <label className="pl-menu-row">
+              <span>Oyuncu</span>
+              <select value={bombPlayers} onChange={(event) => chooseBombPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
                 <option value={3}>3 (sen + 2 bot)</option>
                 <option value={2}>2 (sen + 1 bot)</option>
               </select>

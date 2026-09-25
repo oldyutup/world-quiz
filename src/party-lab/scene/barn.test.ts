@@ -227,8 +227,8 @@ test("barn is selectable locally and is Barn Shootout's online map; rooftop stay
   assert.equal(MODE_MAP.rooftop_brawl, "rooftop");
   // 5 = game modes: a room can run Barn rounds, which a protocol-4 page would render and
   // predict as the rooftop, so mismatched pages are refused at join. 6 = Katman Kaosu online,
-  // 7 = Renk Kaosu online (Barn's own wire content unchanged).
-  assert.equal(NET.version, 7, "online Barn Shootout (5), Katman Kaosu (6) and Renk Kaosu (7) changed the wire format");
+  // 7 = Renk Kaosu online; 8 = Bomba Sende online (Barn's own wire content unchanged).
+  assert.equal(NET.version, 8, "Bomba Sende online adds protocol 8");
   assert.equal(new LocalRoundSimulation(() => 0.5).map.id, "rooftop", "local default unchanged");
 });
 

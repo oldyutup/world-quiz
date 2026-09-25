@@ -3,6 +3,7 @@ import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onli
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
 import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layerRound.js";
 import { ColorRoundSimulation } from "../../../shared/party-lab/simulation/colorRound.js";
+import { BombRoundSimulation } from "../../../shared/party-lab/simulation/bombRound.js";
 import { NO_COLOR } from "../../../shared/party-lab/simulation/colors/layouts.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import {
@@ -81,6 +82,7 @@ export function createSimulation(mode: GameMode, counters: RoomCounters): Online
   if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
   if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
   if (mode === "color_chaos") return new ColorRoundSimulation(counters);
+  if (mode === "bomb_tag") return new BombRoundSimulation(counters);
   return new OnlineRoundSimulation(counters);
 }
 /** Events whose `inputSeq` lets the actor's client skip its own predicted presentation. */
@@ -99,7 +101,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  /** Mixed: all four modes once per cycle, shuffled, never the same mode twice in a row. */
+  /** Mixed: all five modes once per cycle, shuffled, never the same mode twice in a row. */
   readonly rotation = new MixedRotation();
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
   /** Join order (the host is the earliest-joined connected player). */
@@ -267,7 +269,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
           prediction.velocities.byteLength +
             (prediction.barn?.byteLength ?? 0) +
             (prediction.layers?.byteLength ?? 0) +
-            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined, layers: undefined }).length
+            (prediction.bomb?.byteLength ?? 0) +
+            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined, layers: undefined, bomb: undefined }).length
         );
         if (measure)
           wireBytes = Math.max(wireBytes, getMessageBytes.raw(Protocol.ROOM_DATA, "snapshot", message).byteLength);
@@ -284,6 +287,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "layers", snapshot.layers).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "layers", null).byteLength;
       if (measure && snapshot.colors && this.game instanceof ColorRoundSimulation)
         this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "colors", snapshot.colors).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "colors", null).byteLength;
+      if (measure && snapshot.bomb && this.game instanceof BombRoundSimulation)
+        this.game.section.bytes = getMessageBytes.raw(Protocol.ROOM_DATA, "bomb", snapshot.bomb).byteLength - getMessageBytes.raw(Protocol.ROOM_DATA, "bomb", null).byteLength;
       if (this.events.length) {
         if (measure || this.metrics.feedbackBytes === 0)
           this.metrics.feedbackBytes += getMessageBytes.raw(Protocol.ROOM_DATA, "feedback", this.events).byteLength;
@@ -468,6 +473,24 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         clampedOld: r.clampedOld,
         rejectedFuture: r.rejectedFuture,
         lookupUs: r.shots ? (r.lookupMs / r.shots) * 1000 : 0,
+      };
+    }
+    if (this.game instanceof BombRoundSimulation) {
+      const r = this.game.rewind;
+      report.bomb = {
+        sectionBytes: this.game.section.bytes,
+        carrier: this.game.game.bomb.carrier ?? -1,
+        armedTraps: this.game.game.traps.traps.filter((trap) => trap.armed).length,
+        slowed: this.game.game.traps.slowed.filter((ticks) => ticks > 0).length,
+        encodeUs: this.game.section.encodeMs * 1000,
+      };
+      report.rewind = {
+        shots: r.tags,
+        lastMs: r.lastMs,
+        maxMs: r.maxMs,
+        clampedOld: r.clampedOld,
+        rejectedFuture: r.rejectedFuture,
+        lookupUs: r.tags ? (r.lookupMs / r.tags) * 1000 : 0,
       };
     }
     return report;
