@@ -1,3 +1,4 @@
+import type { PropOnlineEvent } from "../../../shared/party-lab/simulation/prophunt/wire";
 import {
   NET,
   TRANSFORM_BYTES,
@@ -124,6 +125,19 @@ export const LOCAL_SHOT_MS = 1500;
 const SHOT_NAMES = new Set(["shotgunFire", "smgFire"]);
 /** Events are never reconstructed from poses; IDs are monotonic for the room lifetime. */
 export class GameStream {
+  private propHead = -1;
+  private propEvents: PropOnlineEvent[] = [];
+  acceptPropEvent(event: PropOnlineEvent, visible = true) {
+    if (!event || !Number.isSafeInteger(event.eid) || event.eid <= this.propHead) return;
+    this.propHead = event.eid;
+    if (visible && this.presentationEnabled) this.propEvents.push(event);
+    if (this.propEvents.length > 128) this.propEvents.shift();
+  }
+  drainProp(round: number, tick: number) {
+    const due = this.propEvents.filter((e) => e.round === round && e.tick <= tick);
+    this.propEvents = this.propEvents.filter((e) => e.round > round || (e.round === round && e.tick > tick));
+    return due;
+  }
   readonly snapshots = new SnapshotBuffer();
   private eventHead = 0;
   private events: GameEvent[] = [];
@@ -152,6 +166,7 @@ export class GameStream {
     if (!enabled) this.discardEvents();
   }
   discardEvents() {
+    this.propEvents = [];
     this.events = [];
   }
   acceptEvents(batch: GameEvent[], visible = true) {
@@ -207,10 +222,12 @@ export class GameStream {
     return ready;
   }
   clearPresentation() {
+    this.propEvents = [];
     this.snapshots.clear();
     this.events = [];
   }
   reset() {
+    this.propHead = -1;
     this.clearPresentation();
     this.eventHead = 0;
     this.localSwings.clear();

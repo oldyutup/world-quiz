@@ -582,7 +582,7 @@ test("barn input packet bytes: typical 60 Hz uplink", () => {
 
 // ─── Modes and presentation plumbing ────────────────────────────────────────
 
-test("modes: a fixed selection is that mode; Mixed plays all five once per shuffled cycle, never twice in a row", async () => {
+test("modes: a fixed selection is that mode; Mixed plays all six once per shuffled cycle, never twice in a row", async () => {
   const { upcomingMode, mixedCycle, MixedRotation, GAME_MODES, isModeSelection, isGameMode, MODE_MAP } = await import("../../../shared/party-lab/modes");
   const rotation = new MixedRotation(() => 0.5);
   assert.equal(upcomingMode("rooftop_brawl", rotation), "rooftop_brawl");
@@ -590,19 +590,19 @@ test("modes: a fixed selection is that mode; Mixed plays all five once per shuff
   assert.equal(upcomingMode("layer_chaos", rotation), "layer_chaos");
   assert.equal(upcomingMode("color_chaos", rotation), "color_chaos");
   assert.equal(upcomingMode("bomb_tag", rotation), "bomb_tag");
-  // Every random stream: each cycle is a permutation of the five modes and never starts with the last one played.
+  // Every random stream: each cycle is a permutation of the six modes and never starts with the last one played.
   let seed = 1;
   const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
   const mixed = new MixedRotation(random);
   const played: string[] = [];
   const firsts = new Map<string, number>();
-  for (let i = 0; i < 4000; i++) {
+  for (let i = 0; i < 6000; i++) {
     const next = upcomingMode("mixed", mixed);
     assert.equal(mixed.next, next, "peeking does not consume");
     played.push(next);
     mixed.played();
   }
-  assert.equal(GAME_MODES.length, 5);
+  assert.equal(GAME_MODES.length, 6);
   for (let c = 0; c < played.length / GAME_MODES.length; c++) {
     const cycle = played.slice(c * GAME_MODES.length, c * GAME_MODES.length + GAME_MODES.length);
     assert.deepEqual([...cycle].sort(), [...GAME_MODES].sort(), `cycle ${c} has every mode once`);
@@ -616,7 +616,7 @@ test("modes: a fixed selection is that mode; Mixed plays all five once per shuff
   assert.notEqual(mixedCycle("layer_chaos", () => 0)[0], "layer_chaos");
   assert.notEqual(mixedCycle("color_chaos", () => 0)[0], "color_chaos");
   assert.ok(isModeSelection("mixed") && isModeSelection("layer_chaos") && isModeSelection("color_chaos") && !isGameMode("mixed") && !isModeSelection("toString") && !isModeSelection(1));
-  assert.deepEqual(MODE_MAP, { rooftop_brawl: "rooftop", barn_shootout: "barn", layer_chaos: "layers", color_chaos: "colors", bomb_tag: "bomb" });
+  assert.deepEqual(MODE_MAP, { rooftop_brawl: "rooftop", barn_shootout: "barn", layer_chaos: "layers", color_chaos: "colors", bomb_tag: "bomb", prop_hunt: "prophunt" });
 });
 
 test("local shots: each predicted shot suppresses exactly one confirmed echo of that weapon; late or unpredicted echoes still play", async () => {

@@ -14,10 +14,11 @@ export type ArenaMapId = "rooftop" | "test" | "barn";
 export type TileArenaId = "layers" | "colors";
 /**
  * Arenas that belong to one local game mode and are not in the static registry either:
- * Bomba Sende's walled playground (bomb.ts, local and online). Its geometry is static, but the
- * rooftop test pins ARENA_MAPS's keys and the local test header lists only those.
+ * Bomba Sende's walled playground (bomb.ts, local and online) and Saklambaç's forest camp
+ * (propHunt.ts, local only). Their geometry is static, but the rooftop test pins ARENA_MAPS's
+ * keys and the local test header lists only those.
  */
-export type ModeArenaId = "bomb";
+export type ModeArenaId = "bomb" | "prophunt";
 
 export interface Vec3 {
   readonly x: number;
@@ -51,7 +52,16 @@ export type ColliderRole =
   | "barrel"
   | "post"
   // Bomba Sende ("Oyun Parkı")
-  | "hop";
+  | "hop"
+  // Saklambaç ("Orman Kampı")
+  | "boundary"
+  | "glass"
+  | "roof"
+  | "woodpile"
+  | "tent"
+  | "firepit"
+  | "furniture"
+  | "prop";
 
 interface ColliderBase {
   readonly role: ColliderRole;

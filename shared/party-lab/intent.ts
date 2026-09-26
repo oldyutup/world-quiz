@@ -45,4 +45,6 @@ export interface MovementInput {
    * it out and shots resolve against the current poses.
    */
   viewTick?: number;
+  /** Prop Hunt manual whistle edge. */
+  whistle?: boolean;
 }

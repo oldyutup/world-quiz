@@ -20,6 +20,11 @@ function colliderDesc(c: ArenaCollider): RAPIER.ColliderDesc {
   return desc;
 }
 
+/** One more static collider in an existing world (Saklambaç's decoys change every round). */
+export function addStaticCollider(world: RAPIER.World, collider: ArenaCollider): RAPIER.Collider {
+  return world.createCollider(colliderDesc(collider));
+}
+
 /** Identical static arena for authority, the local reference mode and prediction. */
 export function createArenaWorld(map: ArenaMap) {
   const world = new RAPIER.World({ x: 0, y: RAGDOLL.gravity, z: 0 });

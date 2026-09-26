@@ -85,9 +85,9 @@ const hit = (sim: Sim, x: number, y: number, z: number) =>
 
 // ─── Protocol ───────────────────────────────────────────────────────────────
 
-test("protocol 8: a strict layer packet (intent only), its mailbox edges, and packets of other modes refused", () => {
+test("protocol 9: a strict layer packet (intent only), its mailbox edges, and packets of other modes refused", () => {
   // 8 adds Bomba Sende; the layer packet remains unchanged.
-  assert.equal(NET.version, 8);
+  assert.equal(NET.version, 9);
   const valid: LayerInputPacket = { seq: 4, round: 2, moveX: 1, moveZ: 1, jumpPressed: false, sprintHeld: true, punchPressed: false };
   const v = validateLayerInput(valid)!;
   assert.ok(Math.abs(Math.hypot(v.moveX, v.moveZ) - 1) < 1e-12, "diagonal normalised to length 1");

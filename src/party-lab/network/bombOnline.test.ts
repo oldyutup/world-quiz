@@ -42,8 +42,8 @@ function poses(snapshot: GameSnapshot) {
   for (let i = 0; i < out.length; i++) out[i] = view.getFloat32(i * 4, true);
   return out;
 }
-test("protocol 8 bomb packet is strict intent only and measured", () => {
-  assert.equal(NET.version, 8);
+test("protocol 9 bomb packet is strict intent only and measured", () => {
+  assert.equal(NET.version, 9);
   const valid: BombInputPacket = { seq: 12345, round: 3, moveX: -0.7071067811865475, moveZ: 0.7071067811865476, jumpPressed: false, sprintHeld: true, punchPressed: true, viewTick: 765432 };
   assert.ok(validateBombInput(valid));
   for (const claim of [{ target: 1 }, { carrier: 0 }, { transfer: true }, { trap: 2 }, { slowed: true }, { fuse: 99 }, { winner: 0 }])
@@ -70,7 +70,7 @@ test("countdown, random valid carrier, exact 14 s absolute fuse and recipient pr
   const snapshot = sim.snapshot([-1, -1, -1]), section = decodeBombSnapshot(snapshot.bomb)!;
   assert.equal(section.fuseEnd! - section.tick, BOMB_TICKS.fuse - 1);
   assert.equal(snapshot.mode, "bomb_tag");
-  assert.equal(snapshot.v, 8);
+  assert.equal(snapshot.v, 9);
   const prediction = sim.prediction(0);
   assert.equal(prediction.bomb?.byteLength, BOMB_PREDICTION_BYTES);
   assert.ok(readBombPredictionState(prediction.bomb));

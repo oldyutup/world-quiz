@@ -72,33 +72,40 @@ import { COLOR_CHAOS } from "../../../shared/party-lab/simulation/colors/config"
 import BombPlayground, { type BombHudElements, type BombSnapshot } from "./bomb/BombPlayground";
 import BombHud from "./bomb/BombHud";
 import { BOMB_TAG } from "../../../shared/party-lab/simulation/bomb/config";
+import PropHuntPlayground, { type PropHudElements, type PropSnapshot } from "./prophunt/PropHuntPlayground";
+import PropHuntHud from "./prophunt/PropHuntHud";
+import { PROP_HUNT } from "../../../shared/party-lab/simulation/prophunt/config";
+import type { PropRole } from "../../../shared/party-lab/maps/propHunt";
+import type { SeekerView } from "./prophunt/propCamera";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
 
 /**
  * What the local arena can open: every shared static map, plus Katman Kaosu's tile
  * field (also an online mode; the local arena adds bots and debug tools, see scene/layers/),
- * Renk Kaosu's colour field (see scene/colors/) and Bomba Sende's local playground,
- * see scene/bomb/).
+ * Renk Kaosu's colour field (see scene/colors/), Bomba Sende's local playground (see
+ * scene/bomb/) and Saklambaç's forest camp (local only, see scene/prophunt/).
  */
-type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb"];
+type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt"];
 const localArenaName = (id: LocalArenaId) =>
-  id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : arenaMap(id).name;
+  id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
- * Katman Kaosu, Renk Kaosu and Bomba Sende open immersive, like the online arenas
+ * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb"]);
-/** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt"]);
+/** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
-  return query.has("layerDebug") || query.has("colorDebug") || query.has("bombDebug") || query.has("partyDebug");
+  return query.has("layerDebug") || query.has("colorDebug") || query.has("bombDebug") || query.has("propDebug") || query.has("partyDebug");
 };
 /** `?bombDebug=1`: Bomba Sende's debug readout and keys exist at all (without it the mode has none). */
 const bombDebugTools = () => new URLSearchParams(window.location.search).has("bombDebug");
+/** `?propDebug=1`: Saklambaç's debug readout and keys (without it the mode has no technical panel). */
+const propDebugTools = () => new URLSearchParams(window.location.search).has("propDebug");
 /** Maps that run untimed with standing dummies instead of bots and the rooftop round. */
 const EXPLORE_MAPS: ReadonlySet<LocalArenaId> = new Set(["barn"]);
 /** Maps whose local test runs Barn Shootout combat (health, weapons, traps, respawn). */
@@ -775,11 +782,20 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [bombSnapshot, setBombSnapshot] = useState<BombSnapshot | null>(null);
   const bombHud = useRef<BombHudElements>({ debug: null, fuse: null, bar: null, callout: null, arrow: null, vignette: null });
   const [bombTools] = useState(bombDebugTools);
+  // Saklambaç (local): its own playground, HUD and role choice (the human seeks or hides; bots fill the rest).
+  const prophunt = mapId === "prophunt";
+  const [propRole, setPropRole] = useState<PropRole>("hider");
+  const [propSnapshot, setPropSnapshot] = useState<PropSnapshot | null>(null);
+  const propHud = useRef<PropHudElements>({ debug: null, timer: null, bar: null, callout: null, prompt: null, crosshair: null, blind: null, blindTime: null, sense: null, senseGlow: null, reveals: [null, null, null] });
+  /** The seeker's camera (V or the Esc menu): the shoulder view by default; kept across rounds and role changes for this visit. */
+  const [propView, setPropView] = useState<SeekerView>("third");
+  const [propProximity, setPropProximity] = useState(true);
+  const [propTools] = useState(propDebugTools);
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
-  /** A mode with its own playground and HUD (the tile modes, Bomba Sende). */
-  const modePlayground = tileMode || bomb;
-  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : undefined;
+  /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
+  const modePlayground = tileMode || bomb || prophunt;
+  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
   const chaseCamera = barn || modePlayground;
   const immersive = IMMERSIVE_MAPS.has(mapId);
@@ -836,6 +852,8 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setLayerSnapshot(null);
     setColorSnapshot(null);
     setBombSnapshot(null);
+    setPropSnapshot(null);
+    setPropProximity(true);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
     requestAnimationFrame(() => viewport.current?.focus());
@@ -861,6 +879,14 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setBombPlayers(next);
     requestAnimationFrame(() => viewport.current?.focus());
   }
+  function choosePropRole(next: PropRole) {
+    menu.setView(null);
+    setStatus("loading");
+    setPropSnapshot(null);
+    setPropRole(next);
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
+  const propOut = propSnapshot?.phase === "search" && propSnapshot.role === "hider" && !propSnapshot.alive[0];
   const layerOut = layerSnapshot?.phase === "playing" && !layerSnapshot.alive[0];
   const colorOut = colorSnapshot?.phase === "playing" && !colorSnapshot.alive[0];
   const bombOut = bombSnapshot?.phase === "playing" && !bombSnapshot.alive[0];
@@ -973,6 +999,25 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
                 costumeId={costumeId}
                 tools={bombTools}
               />
+            ) : mapId === "prophunt" ? (
+              <PropHuntPlayground
+                key={`prophunt-${propRole}`}
+                role={propRole}
+                onStatus={setStatus}
+                onSnapshot={setPropSnapshot}
+                hud={propHud}
+                bindings={bindings}
+                paused={paused}
+                menuOpen={menuOpen}
+                audio={audio}
+                shakeEnabled={settings.cameraShake && !reducedMotion}
+                look={look}
+                costumeId={costumeId}
+                tools={propTools}
+                view={propView}
+                onView={setPropView}
+                proximityEnabled={propProximity}
+              />
             ) : (
               <Playground
                 key={mapId}
@@ -1058,6 +1103,29 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
             playing={bombSnapshot?.phase === "playing"}
             replay={menu.hintReplay}
             hidden={menuOpen || bombOut}
+          />
+        )}
+        {prophunt && status === "ready" && propSnapshot && (
+          <>
+            <PropHuntHud snapshot={propSnapshot} hud={propHud} debugOpen={propTools && debugPanel.open} />
+            {lookMode === "lock" && lookStatus !== "locked" && !inputOff && propSnapshot.phase !== "results" && (
+              <div className="pl-arena-message pl-look-prompt" role="status">
+                <strong>{lookStatus === "error" ? "İmleç kilitlenemedi" : "Kamerayı çevirmek için arenaya tıkla"}</strong>
+                <span>
+                  {lookStatus === "error"
+                    ? "Tekrar tıkla ya da Esc menüsündeki Bakış ayarından “Sürükleyerek bak”ı seç."
+                    : "Fare ya da trackpad ile çevir · Esc menü"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+        {prophunt && (
+          <ControlHint
+            text={controlHint(bindings, propRole === "seeker" ? "propSeeker" : "propHider", lookMode)}
+            playing={propSnapshot?.phase === "hiding" || propSnapshot?.phase === "search"}
+            replay={menu.hintReplay}
+            hidden={menuOpen || propOut}
           />
         )}
         {!modePlayground && status === "ready" && round && (
@@ -1261,7 +1329,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={bomb && !bombTools ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={(bomb && !bombTools) || (prophunt && !propTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1291,6 +1359,33 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               <select value={bombPlayers} onChange={(event) => chooseBombPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
                 <option value={3}>3 (sen + 2 bot)</option>
                 <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+          )}
+          {prophunt && (
+            <label className="pl-menu-row">
+              <span>Rol</span>
+              <select value={propRole} onChange={(event) => choosePropRole(event.target.value === "seeker" ? "seeker" : "hider")}>
+                <option value="hider">Saklanan</option>
+                <option value="seeker">Arayan</option>
+              </select>
+            </label>
+          )}
+          {prophunt && propRole === "seeker" && (
+            <label className="pl-menu-row">
+              <span>Kamera</span>
+              <select value={propView} onChange={(event) => setPropView(event.target.value === "first" ? "first" : "third")}>
+                <option value="third">Omuz üstü (3. şahıs)</option>
+                <option value="first">Birinci şahıs (FPS)</option>
+              </select>
+            </label>
+          )}
+          {prophunt && propRole === "seeker" && (
+            <label className="pl-menu-row">
+              <span>Yakınlık ipucu</span>
+              <select value={propProximity ? "on" : "off"} onChange={(event) => setPropProximity(event.target.value === "on")}>
+                <option value="on">Açık</option>
+                <option value="off">Kapalı</option>
               </select>
             </label>
           )}

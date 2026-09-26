@@ -157,7 +157,7 @@ curl 'http://127.0.0.1:2601/stall?ms=600'   # or /set?rtt=150&jitter=40, /drop, 
 - **Replicas: exactly 1.** Rooms and codes live in one process's memory.
 - **Serverless / App Sleeping: off.** A sleeping service drops sockets and cold-starts.
 - Restart policy `ON_FAILURE` (10 retries) and health check `GET /health` →
-  `{"ok":true,"service":"party-lab","protocol":8}` (this change shipped 4; Online Barn made it 5, online Katman Kaosu 6, online Renk Kaosu 7, online Bomba Sende 8).
+  `{"ok":true,"service":"party-lab","protocol":9}` (this change shipped 4; Online Barn made it 5, online Katman Kaosu 6, online Renk Kaosu 7, online Bomba Sende 8, online Saklambaç 9).
 - Deploys/restarts end every room: avoid deploying during play.
 - Metrics: CPU (a vCPU pinned near 100 % would show as `srv` step gaps), memory
   (steady ~30 MB heap), network egress, and the logs above (`drop code=1006` = network
@@ -172,3 +172,5 @@ stalls; prediction/playout thresholds that turned normal jitter and short stalls
 teleports; no stale/degraded state), amplified by **normal network variability**
 (Wi-Fi jitter/stalls on players' side). Railway region/CPU are not implicated by the
 measurements; its sleep/replica settings still need a manual check.
+
+Protocol 9 Prop Hunt wire, authoritative settings, reconstruction and reconnect details: [PROP_ONLINE.md](PROP_ONLINE.md).

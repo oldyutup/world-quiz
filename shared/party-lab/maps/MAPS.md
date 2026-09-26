@@ -176,6 +176,23 @@ id is `ModeArenaId` "bomb"; online it is `MODE_MAP.bomb_tag` (protocol 8), while
 local arena lists it after the tile modes. Rules, numbers, bots and camera:
 `simulation/bomb/BOMB.md`; online architecture: `../BOMB_ONLINE.md`.
 
+## Orman Kampı ("prophunt") — Saklambaç, local and online
+
+`propHunt.ts` (+ `propHuntProps.ts`, the 20 transformable families and the furniture sizes):
+a 22 × 22 m forest camp (x, z −11…11) with invisible 6 m boundary walls. A log lodge (13 × 8.5 m,
+floor +0.45) with a loft (+3.65; stair, drop gap, loft door), a roofed porch with vaultable 1.0 m
+rails, a lean-to with a walk-up woodpile route to the loft door, a shed, a work yard, a campfire
+plaza, a tent camp against the SW boundary and a picnic pavilion. Doors 2.2 × 2.6 m; windows are
+glass colliders. `PROP_HUNT_MAP` holds the architecture, furniture and landmarks only (101 static
+colliders); the decoys change every round: `propHuntScenes.ts` holds the camp's 30 authored
+scenes (slots with a semantic context, variants with variable counts) and `propHuntLayout.ts`
+deals 60–68 decoys a round from them (the disguises' exact shapes; 15–18 of the 20 families in
+play, each at least twice; about half of the camp kept from the round before), never into the
+route clearances (`ROUTE_CLEARANCES` in `propHunt.ts`), and the game swaps their colliders at
+each reset. A fixed chopping block (a stump with the axe in it) stands by the wagon. The lodge stair's steps are generated from its ramp collider. The id is `ModeArenaId`
+"prophunt"; online `MODE_MAP.prop_hunt` selects it (protocol 9). Layout, rules, bots and
+numbers: `simulation/prophunt/PROPHUNT.md`.
+
 ## Assets
 
 `public/party-lab/maps/rooftop/rooftop-kit.glb` (≈178 KB) is generated from the
@@ -192,3 +209,10 @@ Sende's props only: the bomb, the crates (stretched over their colliders), the s
 jaws (the Barn's bear trap model, recoloured), ledge planters and clouds. It is built from
 CC0 Quaternius and Kenney packs by `scripts/build-party-lab-bomb-kit.mjs`. The rest of the playground (floor, walls, AC units,
 catwalks, ramps, hop walls, glass) is generated from `bomb.ts`.
+
+`public/party-lab/maps/prop-hunt/prop-hunt-kit.glb` (≈ 1.62 MB, vertex-coloured, untextured)
+holds Saklambaç's props, furniture, tents, trees and window/door trims: 56 models from CC0
+Quaternius packs (and the Barn's barrel, bags and bench), built by
+`scripts/build-party-lab-prop-hunt-kit.mjs`. The 20 transformable families are fitted to their
+gameplay shapes. The camp's buildings, ground and the lodge stair are generated from
+`propHunt.ts` (the kit's `Stair` node is no longer drawn; the next kit rebuild can drop it).

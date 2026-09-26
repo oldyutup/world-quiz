@@ -1277,10 +1277,10 @@ test("controls: WASD camera-relative, Shift sprint, Space jump, F punches (passe
 
 // ─── Regression ─────────────────────────────────────────────────────────────
 
-test("online integration: protocol 8 exposes Bomba Sende after the existing modes; bomb sounds stay appended", () => {
-  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag"]);
+test("online integration: protocol 9 exposes Bomba Sende after the existing modes; bomb sounds stay appended", () => {
+  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt"]);
   assert.ok((MODE_SELECTIONS as readonly string[]).includes(BOMB_TAG.mode));
-  assert.equal(NET.version, 8);
+  assert.equal(NET.version, 9);
   assert.deepEqual([...ARENA_MAP_IDS].sort(), ["barn", "rooftop", "test"]);
   assert.deepEqual(SFX_NAMES.slice(-3), ["bombTick", "bombPass", "bombBlast"], "the traps reuse the Barn's snap: no new sound");
   // The Barn's bear traps keep their own rules (damage, hold, 10 s rearm) and spots.

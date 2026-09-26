@@ -121,9 +121,9 @@ function sameFloor(s: GameSnapshot, sim: ColorRoundSimulation) {
   return COLOR_TILES.length;
 }
 
-test("health reports protocol 8", async () => {
+test("health reports protocol 9", async () => {
   const response = await fetch(`${endpoint}/health`);
-  assert.deepEqual(await response.json(), { ok: true, service: "party-lab", protocol: 8 });
+  assert.deepEqual(await response.json(), { ok: true, service: "party-lab", protocol: 9 });
 });
 
 test("colour round over real sockets (2 players): explicit mode, shove packets acknowledged, other modes' packets refused, recipient-only prediction, the same complete floor for both clients", { timeout: 30000 }, async () => {
@@ -201,6 +201,7 @@ test("3 players: the 120° spawns; a drop through a wrong colour over the wire; 
   const [sa, sb, sc] = [a, b, c].map((p) => room.state.players.get(p.room.sessionId)!.slot);
   dropOut(room, sb);
   await until(() => [a, b, c].every((p) => last(p) && !(last(p).alive & (1 << sb))));
+  await until(() => [a, b, c].every((p) => p.events.some((e) => e.name === "fall" && e.actor === sb)));
   assert.ok(a.events.some((e) => e.name === "fall" && e.actor === sb), "everyone hears the fall");
   assert.equal(room.state.phase, "playing", "two left: the round goes on");
   const out = last(b);

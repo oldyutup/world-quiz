@@ -608,21 +608,23 @@ body:has(.pl-immersive) { overflow: hidden; }
 .party-lab .pl-control-hint[data-shown="true"] { opacity: 1; transition-duration: 200ms; }
 .party-lab .pl-viewport[data-mode="barn_shootout"] .pl-control-hint { bottom: 124px; }
 /* Esc menu: over the arena (outside the Pointer Lock element); the match goes on behind it. */
-.party-lab .pl-menu-overlay { position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; padding: 16px; border-radius: 16px; background: oklch(12% 0.015 60 / 60%); }
-.party-lab .pl-menu { display: grid; gap: 9px; width: min(360px, 100%); max-height: 100%; overflow: auto; padding: 22px 22px 16px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 96%); box-shadow: 0 24px 70px oklch(8% 0.01 65 / 45%); }
+/* A body portal avoids arena overflow and transformed ancestors. Only its content scrolls. */
+.party-lab.pl-menu-root { display: contents; }
+.party-lab .pl-menu-overlay { position: fixed; inset: 0; z-index: 5; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: 24px; background: oklch(12% 0.015 60 / 60%); }
+.party-lab .pl-menu { display: grid; grid-auto-rows: max-content; gap: 6px; width: min(400px, 100%); min-height: 0; max-height: calc(100dvh - 48px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 22px 22px 16px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 96%); box-shadow: 0 24px 70px oklch(8% 0.01 65 / 45%); }
 .party-lab .pl-menu h2 { font-size: 26px; }
 .party-lab .pl-menu-note { margin: -6px 0 6px; color: var(--pl-muted); font-size: 12px; }
 .party-lab .pl-menu .pl-button { width: 100%; min-height: 44px; padding: 9px 16px; border-radius: 11px; }
 .party-lab .pl-menu .pl-menu-primary { margin-top: 0; justify-content: center; }
 .party-lab .pl-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; min-height: 44px; padding-left: 16px; color: var(--pl-ink); font-size: 14px; font-weight: 700; }
-.party-lab .pl-menu-row select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--pl-border); border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; color: var(--pl-ink); background: var(--pl-surface-raised); cursor: pointer; }
+.party-lab .pl-menu-row select { min-width: 0; max-width: 70%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--pl-border); border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600; color: var(--pl-ink); background: var(--pl-surface-raised); cursor: pointer; }
 .party-lab .pl-menu-room { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--pl-border); color: var(--pl-muted); font-size: 13px; }
 .party-lab .pl-menu-room b { color: var(--pl-ink); letter-spacing: 0.12em; }
 .party-lab .pl-menu-room .pl-invite-link { margin: 0; min-height: 36px; font-size: 13px; }
 .party-lab .pl-menu-copy { color: var(--pl-accent); font-size: 12px; }
 .party-lab .pl-menu-copy:empty { display: none; }
 .party-lab .pl-menu .pl-menu-leave { color: oklch(85% 0.085 30); }
-.party-lab .pl-menu-panel { width: min(880px, 100%); max-height: 100%; overflow: auto; padding: 18px 28px 26px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 97%); }
+.party-lab .pl-menu-panel { width: min(880px, 100%); min-height: 0; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 18px 28px 26px; border: 1px solid var(--pl-border); border-radius: 20px; background: oklch(21% 0.018 65 / 97%); }
 .party-lab .pl-menu-panel-head { display: flex; justify-content: flex-start; }
 .party-lab .pl-menu-panel-head .pl-button { min-height: 40px; padding: 8px 14px; }
 .party-lab .pl-settings-embedded .pl-settings-main { max-width: none; margin: 0; }
@@ -759,3 +761,115 @@ body:has(.pl-immersive) { overflow: hidden; }
   .party-lab .pl-bomb-chip-name b { font-size: 18px; }
   .party-lab .pl-viewport[data-mode="bomb_tag"] .pl-round-message { top: 190px; }
 }
+/* Saklambaç (local, immersive): player cards with roles (orange = the seeker, teal = hiders;
+   a hider card never says where), the phase chip (Saklanma / Arama + time), the seeker's
+   crosshair and ammo pips, the hider's disguise chip and E prompt, the big calls, the seeker's
+   blindfold while the hiders hide, the debug readout. */
+.party-lab.pl-immersive .pl-viewport[data-mode="prop_hunt"] .pl-round-hud { left: 136px; right: auto; }
+.party-lab .pl-viewport[data-mode="prop_hunt"] .pl-arena-side { top: 84px; max-width: min(540px, calc(100% - 28px)); }
+.party-lab .pl-viewport[data-mode="prop_hunt"] .pl-arena-message { width: max-content; max-width: min(580px, calc(100% - 32px)); }
+.party-lab .pl-viewport[data-mode="prop_hunt"] .pl-round-message { top: 104px; }
+@media (max-height: 620px) { .party-lab .pl-viewport[data-mode="prop_hunt"] .pl-look-prompt { top: auto; bottom: 110px; transform: translateX(-50%); } }
+.party-lab .pl-prop-status { display: inline-flex; align-items: center; gap: 6px; }
+.party-lab .pl-prop-status i { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 6px; border-radius: 6px; }
+.party-lab .pl-prop-status i[data-role="seeker"] { background: oklch(70% 0.17 50); color: oklch(22% 0.04 50); }
+.party-lab .pl-prop-status i[data-role="hider"] { background: oklch(76% 0.12 180); color: oklch(22% 0.04 180); }
+.party-lab .pl-prop-chip {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 14px;
+  min-width: 250px; padding: 8px 16px 12px; border: 1px solid var(--pl-border); border-radius: 14px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); pointer-events: none;
+}
+.party-lab .pl-prop-chip[data-phase="hiding"] { border-color: oklch(76% 0.12 180 / 70%); }
+.party-lab .pl-prop-chip[data-phase="search"] { border-color: oklch(70% 0.17 50 / 70%); }
+.party-lab .pl-prop-chip-name { display: grid; line-height: 1.1; min-width: 0; }
+.party-lab .pl-prop-chip-name b { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; }
+.party-lab .pl-prop-chip-name small { margin-top: 3px; color: var(--pl-muted); font-size: 12px; white-space: nowrap; }
+.party-lab .pl-prop-time { min-width: 3ch; font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.party-lab .pl-prop-chip[data-panic="true"] .pl-prop-time { color: oklch(78% 0.17 60); animation: pl-bomb-panic 0.5s ease-in-out infinite alternate; }
+.party-lab .pl-prop-bar { position: absolute; left: 10px; right: 10px; bottom: 5px; height: 4px; border-radius: 3px; background: oklch(40% 0.02 180 / 60%); overflow: hidden; }
+.party-lab .pl-prop-bar > span { display: block; height: 100%; transform-origin: left center; transform: scaleX(0); background: oklch(76% 0.12 180); }
+.party-lab .pl-prop-chip[data-phase="search"] .pl-prop-bar > span { background: oklch(72% 0.16 55); }
+.party-lab .pl-prop-crosshair[data-shown="false"] { display: none; }
+.party-lab .pl-prop-ammo {
+  position: absolute; right: 16px; bottom: 16px; display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 12px; row-gap: 2px;
+  padding: 10px 14px; border: 1px solid oklch(70% 0.17 50 / 55%); border-radius: 14px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); pointer-events: none;
+}
+.party-lab .pl-prop-pips { display: grid; grid-template-columns: repeat(6, 10px); gap: 4px; }
+.party-lab .pl-prop-pips i { width: 10px; height: 16px; border-radius: 3px; background: oklch(40% 0.02 180 / 70%); }
+.party-lab .pl-prop-pips i[data-full] { background: oklch(78% 0.16 60); box-shadow: 0 0 0 1px oklch(90% 0.08 70 / 40%) inset; }
+.party-lab .pl-prop-ammo b { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.party-lab .pl-prop-ammo b small { font-size: 14px; color: var(--pl-muted); font-weight: 700; }
+.party-lab .pl-prop-ammo-note { grid-column: 1 / -1; color: var(--pl-muted); font-size: 11px; }
+.party-lab .pl-prop-ammo[data-empty] { border-color: oklch(62% 0.2 28 / 70%); }
+.party-lab .pl-prop-ammo[data-empty] b { color: oklch(72% 0.19 28); }
+.party-lab .pl-prop-disguise {
+  position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; align-items: center; gap: 14px;
+  padding: 8px 10px 8px 16px; border: 1px solid oklch(76% 0.12 180 / 45%); border-radius: 14px;
+  background: oklch(20% 0.03 180 / 88%); color: var(--pl-ink); pointer-events: none; white-space: nowrap;
+}
+.party-lab .pl-prop-disguise[data-worn="true"] { border-color: oklch(76% 0.12 180); box-shadow: 0 0 0 2px oklch(76% 0.12 180 / 30%); }
+.party-lab .pl-prop-disguise-name { display: grid; line-height: 1.1; }
+.party-lab .pl-prop-disguise-name small { color: var(--pl-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.party-lab .pl-prop-disguise-name b { font-size: 20px; font-weight: 800; }
+.party-lab .pl-prop-prompt { padding: 6px 12px; border-radius: 10px; background: oklch(30% 0.02 180 / 90%); color: var(--pl-muted); font-size: 14px; font-weight: 700; }
+.party-lab .pl-prop-prompt:empty { display: none; }
+.party-lab .pl-prop-prompt[data-ready="true"] { background: oklch(88% 0.12 95); color: oklch(24% 0.04 80); }
+.party-lab .pl-prop-callout {
+  position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%);
+  padding: 8px 32px 10px; border-radius: 22px; font-size: clamp(40px, 6.5vw, 78px); font-weight: 900; letter-spacing: 0.04em; line-height: 1;
+  box-shadow: 0 10px 40px oklch(10% 0.02 280 / 35%), inset 0 0 0 3px oklch(100% 0 0 / 35%);
+  background: oklch(24% 0.02 280 / 92%); color: oklch(98% 0 0);
+  opacity: 0; pointer-events: none; white-space: nowrap;
+}
+.party-lab .pl-prop-callout:empty { display: none; }
+.party-lab .pl-prop-callout[data-tone="found"] { background: oklch(72% 0.13 180); color: oklch(18% 0.04 180); }
+.party-lab .pl-prop-callout[data-tone="miss"] { background: oklch(40% 0.02 60 / 94%); }
+.party-lab .pl-prop-callout[data-tone="warn"] { background: oklch(80% 0.15 70); color: oklch(24% 0.05 60); }
+.party-lab .pl-prop-callout[data-tone="win"] { background: oklch(76% 0.16 60); color: oklch(22% 0.04 40); }
+.party-lab .pl-prop-callout[data-small="true"] { top: 44%; padding: 6px 18px 7px; border-radius: 14px; font-size: 22px; letter-spacing: 0.02em; }
+.party-lab .pl-prop-blind {
+  position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px;
+  background: radial-gradient(ellipse at center, oklch(17% 0.02 250) 30%, oklch(9% 0.01 250) 100%);
+  color: var(--pl-ink); text-align: center; pointer-events: none; transition: opacity 260ms ease-out;
+}
+.party-lab .pl-prop-blind[data-shown="false"] { opacity: 0; }
+/* The seeker's hunch: a quiet line under the crosshair and an even glow round every edge (never a side, an arrow or a number). */
+.party-lab .pl-prop-sense {
+  position: absolute; left: 50%; bottom: 24%; transform: translate(-50%, 0);
+  padding: 6px 16px 7px; border-radius: 999px; background: oklch(18% 0.02 30 / 58%);
+  color: oklch(90% 0.08 45); font-size: 17px; font-weight: 700; font-style: italic; letter-spacing: 0.02em;
+  opacity: 0; pointer-events: none; white-space: nowrap;
+}
+.party-lab .pl-prop-sense-glow { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 90px 22px oklch(56% 0.15 32 / 42%); }
+.party-lab .pl-prop-blind strong { font-size: clamp(64px, 12vw, 140px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.party-lab .pl-prop-blind span { color: var(--pl-muted); font-size: 18px; }
+.party-lab .pl-prop-debug { margin: 0; font-size: 10.5px; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-prop-chip[data-panic="true"] .pl-prop-time { animation: none; } .party-lab .pl-prop-blind { transition: none; } }
+@media (max-width: 1640px) { .party-lab .pl-prop-chip { left: auto; right: 14px; transform: none; } }
+@media (max-width: 720px) {
+  .party-lab .pl-prop-chip { top: 112px; right: 8px; min-width: 0; max-width: calc(100% - 16px); }
+  .party-lab .pl-viewport[data-mode="prop_hunt"] .pl-round-message { top: 190px; }
+}
+/* The result's reveal: a gold label over each hider still hidden (placed per frame), and the
+   same line in the result message. */
+.party-lab .pl-prop-ammo .pl-prop-pips { grid-template-columns: repeat(5, 10px); }
+.party-lab .pl-prop-reveal {
+  position: absolute; left: 0; top: 0; padding: 5px 11px 6px; border-radius: 10px; white-space: nowrap; pointer-events: none;
+  background: oklch(22% 0.03 85 / 92%); color: oklch(97% 0.02 90); font-size: 15px; font-weight: 700;
+  box-shadow: 0 0 0 2px oklch(86% 0.16 90), 0 6px 22px oklch(10% 0.02 280 / 40%);
+}
+.party-lab .pl-prop-reveal::after {
+  content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
+  border: 7px solid transparent; border-bottom: 0; border-top-color: oklch(86% 0.16 90);
+}
+.party-lab .pl-prop-reveal span { color: oklch(86% 0.16 90); font-weight: 800; }
+.party-lab .pl-prop-reveal[data-shown="false"], .party-lab .pl-prop-reveal:empty { display: none; }
+.party-lab .pl-prop-result-line { display: block; margin-top: 4px; font-style: normal; font-weight: 700; color: oklch(88% 0.14 90); }
+
+/* Compact room-owned Saklambaç controls, alongside the existing mode picker. */
+.party-lab .pl-prop-settings { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0 0 12px; }
+.party-lab .pl-prop-settings label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pl-muted); }
+.party-lab .pl-prop-settings select { min-height: 36px; border: 1px solid var(--pl-border); border-radius: 8px; background: var(--pl-surface-raised); color: var(--pl-ink); padding: 4px 8px; font: inherit; }
+.party-lab .pl-prop-settings-summary { margin: 0 0 12px; font-size: 12px; color: var(--pl-muted); }

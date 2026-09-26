@@ -1,3 +1,4 @@
+import type { PropSettings } from "../../shared/party-lab/propSettings";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CHAT_MAX_LENGTH, type LobbySnapshot } from "./network/types";
 import type { NetDiagnostics } from "./network/diagnostics";
@@ -12,8 +13,9 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   barn_shootout: "Silah bul, nişan al. 2:30 sonunda en çok öldüren kazanır.",
   layer_chaos: "Bastığın karo kırılır, katman katman düş. En alttan düşmeyen kazanır.",
   color_chaos: "Hedef renge koş; diğer renkler düşer. Son ayakta kalan kazanır.",
+  prop_hunt: "Bir arayan, iki saklanan. Eşyaya dönüş ve bulunmadan dayan.",
   bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
-  mixed: "Beş mod karışık sırayla; aynı mod art arda gelmez.",
+  mixed: "Altı mod karışık sırayla; aynı mod art arda gelmez.",
 };
 
 /** Opt-in (`?partyDebug=1`) link/chat timing lines; refresh on their own clock while shown. */
@@ -133,8 +135,9 @@ function ModePicker({ selection, next, isHost, hostName, enabled, onMode }: {
   </section>;
 }
 
-export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onControls, controlsRef, diagnostics, debug }: {
+export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onControls, controlsRef, diagnostics, debug }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onMode?: (selection: ModeSelection) => void; onControls: () => void;
+  onPropSettings?: (settings: Partial<PropSettings>) => void;
   controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
   const [text, setText] = useState("");
@@ -211,6 +214,12 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
             </div>}
           </div>
           <ModePicker selection={lobby.selection} next={lobby.mode} isHost={isHost} hostName={host?.nickname} enabled={connected} onMode={onMode} />
+          {(lobby.selection === "prop_hunt" || (lobby.selection === "mixed" && lobby.mode === "prop_hunt")) && (
+            isHost && lobby.selection === "prop_hunt" ? <div className="pl-prop-settings">
+              <label>Yakınlık ipucu <select aria-label="Yakınlık ipucu" disabled={!connected} value={lobby.propProximity ? "on" : "off"} onChange={e => onPropSettings?.({ proximity: e.target.value === "on" })}><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
+              <label>Arayan mermisi <select aria-label="Arayan mermisi" disabled={!connected} value={lobby.propAmmo} onChange={e => onPropSettings?.({ ammo: Number(e.target.value) as PropSettings["ammo"] })}>{([5, 10, 15] as const).map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+            </div> : <p className="pl-prop-settings-summary">Saklambaç · {lobby.propAmmo} mermi · Yakınlık {lobby.propProximity ? "açık" : "kapalı"}</p>
+          )}
           <div className="pl-room-roster-heading"><h2>Oyuncular</h2><span>{playersOnline.length} / 3</span></div>
           <ul className="pl-room-roster" aria-label="Lobideki oyuncular">
             {lobby.players.map(player => <li key={player.id}>
@@ -229,6 +238,7 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
         <footer className="pl-room-ready">
           <p className="pl-ready-summary" role="status">{!connected
             ? lobby.status === "reconnecting" ? "Yeniden bağlanılıyor…" : "Bağlantı kapandı. Lobiye tekrar katıl."
+            : lobby.mode === "prop_hunt" && playersOnline.length !== 3 ? "Saklambaç için 3 oyuncu gerekli."
             : playersOnline.length < 2 ? "Başlamak için bir arkadaşını davet et."
             : `${readyCount} / ${playersOnline.length} oyuncu hazır`}</p>
           <button className={`pl-button pl-create pl-ready-button${ready ? " is-ready" : ""}`} data-sfx="uiConfirm" disabled={!connected} aria-pressed={ready}

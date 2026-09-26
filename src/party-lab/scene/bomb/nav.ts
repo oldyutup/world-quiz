@@ -167,6 +167,24 @@ export class BombNav {
     }
     return top;
   }
+  /**
+   * Whether a wall stands between two cell centres for a jump or a drop: something (not what
+   * either end stands on) rising above both ends by more than a walkable step while starting
+   * below the higher one's headroom — a wall or a glass pane, not a lintel over a doorway.
+   */
+  private walled(a: NavNode, b: NavNode) {
+    const high = Math.max(a.y, b.y),
+      steps = 10;
+    for (const c of this.solids) {
+      if (bottomOf(c) >= high + NAV.headroom || footprintDistance(c, a.x, a.z) === 0 || footprintDistance(c, b.x, b.z) === 0) continue;
+      for (let k = 1; k < steps; k++) {
+        const x = a.x + ((b.x - a.x) * k) / steps,
+          z = a.z + ((b.z - a.z) * k) / steps;
+        if (footprintDistance(c, x, z) === 0 && colliderTopAt(c, x, z) > high + NAV.walk) return true;
+      }
+    }
+    return false;
+  }
   private link(node: NavNode): NavEdge[] {
     const out: NavEdge[] = [];
     const similar = (ix: number, iz: number, y: number) => this.at(ix, iz).find((id) => Math.abs(this.nodes[id].y - y) <= NAV.walk);
@@ -191,9 +209,11 @@ export class BombNav {
           for (const id of ids) {
             const other = this.nodes[id],
               rise = other.y - node.y;
-            if (rise > NAV.walk && rise <= NAV.jumpUp) out.push({ to: id, cost: length + NAV.cost.jump, kind: "jump" });
-            else if (rise < -NAV.walk) out.push({ to: id, cost: length + NAV.cost.drop, kind: "drop" });
-            else if (Math.abs(rise) <= NAV.walk && k >= 2 && node.y < 0.05) {
+            if (rise > NAV.walk && rise <= NAV.jumpUp) {
+              if (!this.walled(node, other)) out.push({ to: id, cost: length + NAV.cost.jump, kind: "jump" });
+            } else if (rise < -NAV.walk) {
+              if (!this.walled(node, other)) out.push({ to: id, cost: length + NAV.cost.drop, kind: "drop" });
+            } else if (Math.abs(rise) <= NAV.walk && k >= 2 && node.y < 0.05) {
               const barrier = this.barrier(node, other);
               if (barrier > NAV.step && barrier <= NAV.hopMax + 0.1) out.push({ to: id, cost: length + NAV.cost.hop, kind: "hop" });
             }
@@ -212,8 +232,8 @@ export class BombNav {
     return out;
   }
 
-  /** The node a body stands on or over: pelvis (x, y, z); its feet are ≈ 0.78 m lower. */
-  nodeAt(x: number, y: number, z: number): number {
+  /** The node a body stands on or over: pelvis (x, y, z); its feet are ≈ 0.78 m lower. `skip`: nodes not to answer. */
+  nodeAt(x: number, y: number, z: number, skip?: (id: number) => boolean): number {
     const feet = y - 0.78,
       ix = Math.floor((x - this.origin) / NAV.cell),
       iz = Math.floor((z - this.origin) / NAV.cell);
@@ -224,6 +244,7 @@ export class BombNav {
         for (let dx = -ring; dx <= ring; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
           for (const id of this.at(ix + dx, iz + dz)) {
+            if (skip?.(id)) continue;
             const n = this.nodes[id];
             // Prefer the surface under the feet (not above them), then the nearest.
             const above = n.y - feet;
@@ -291,9 +312,10 @@ export class BombNav {
   }
   /**
    * Whether a body can walk straight from (x0, z0) to (x1, z1) on surface height `y`: every
-   * sample (centre line and ±0.25 m) is over a cell with a walkable node at about that height.
+   * sample (centre line and ±0.25 m) is over a cell with a walkable node at about that height
+   * (not one of `skip`).
    */
-  clear(x0: number, z0: number, x1: number, z1: number, y: number) {
+  clear(x0: number, z0: number, x1: number, z1: number, y: number, skip?: (id: number) => boolean) {
     const length = Math.hypot(x1 - x0, z1 - z0),
       steps = Math.ceil(length / 0.25);
     if (!steps) return true;
@@ -307,7 +329,7 @@ export class BombNav {
       for (const side of [0, -1, 1]) {
         const px = x + side * sx,
           pz = z + side * sz,
-          id = this.at(Math.floor((px - this.origin) / NAV.cell), Math.floor((pz - this.origin) / NAV.cell)).find((i) => Math.abs(this.nodes[i].y - level) <= NAV.walk);
+          id = this.at(Math.floor((px - this.origin) / NAV.cell), Math.floor((pz - this.origin) / NAV.cell)).find((i) => !skip?.(i) && Math.abs(this.nodes[i].y - level) <= NAV.walk);
         if (id === undefined) return false;
         if (side === 0) next = this.nodes[id].y;
       }

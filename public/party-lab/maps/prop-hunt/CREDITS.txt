@@ -1,0 +1,27 @@
+prop-hunt-kit.glb — Party Lab "Saklambaç" (Prop Hunt) kit for the "Orman Kampı" map
+
+Sources (all by Quaternius, CC0 1.0 Universal, Public Domain Dedication,
+https://creativecommons.org/publicdomain/zero/1.0/, per each pack's License file;
+the Barn's Medieval Village Pack via poly.pizza, CC0 as stated on its page):
+  Medieval Village MegaKit (Standard)      https://quaternius.com
+  Stylized Nature MegaKit (Standard)       https://quaternius.com
+  Ultimate House Interior Pack (Jun 2020)  https://quaternius.com
+  Survival Pack (Sept 2020)                https://quaternius.com
+  Medieval Village Pack                    https://poly.pizza/l/NsHhjhlrfY
+Attribution is not required; credit is given here voluntarily.
+
+Only this curated subset is included:
+  Medieval Village MegaKit: Prop_Crate, Prop_Wagon, DoorFrame_Flat_WoodDark, Window_Wide_Flat1, Window_Thin_Flat1, WindowShutters_Wide_Flat_Open, Balcony_Cross_Straight, Prop_WoodenFence_Single, Prop_WoodenFence_Extension1, Roof_Support2
+  Survival: WoodLog, Backpack, PropaneTank, Trashcan, Bonfire_Fire, WoodenTorch_Fire, Axe, Shovel, Tent
+  House Interior: Trashcan_Large, Chair_1, NightStand_2, Drawer_5, Couch_Small2, Table_RoundSmall, Houseplant_6, Fireplace, Couch_Medium2, Table_RoundLarge, Bed_Bunk, Bookshelf, Shelf_Large, Kitchen_Sink, Kitchen_2Drawers, Kitchen_Oven, Kitchen_Fridge, Light_Stand2, Light_Cube, Carpet_1, Carpet_Round
+  Stylized Nature MegaKit: Bush_Common_Flowers, Bush_Common, Rock_Medium_2, Rock_Medium_1, Pine_5, CommonTree_5, Rock_Medium_3, Fern_1, Plant_1_Big, Flower_3_Group, Grass_Common_Tall
+  Medieval Village Pack: Barrel, Bags, Bench
+
+Changes: merged into one GLB; each model baked to one primitive with positions,
+normals and vertex colours (UVs, tangents, textures and materials dropped; flat
+materials mapped to one palette; Medieval and Nature textures sampled once per
+triangle, transparent leaf-card triangles dropped, Bush_Common re-tinted green);
+all materials opaque with metalness 0; re-pivoted to bottom-centre; transformable
+props fitted to their gameplay sizes (HouseInterior furniture at 1.25× real size).
+Visual only: no gameplay collider comes from this file. Rebuild with:
+  node scripts/build-party-lab-prop-hunt-kit.mjs [path/to/PartyLabPropHuntAssets] [path/to/PartyLabBarnAssets]

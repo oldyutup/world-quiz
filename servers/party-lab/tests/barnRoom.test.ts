@@ -1,3 +1,5 @@
+import { PropRoundSimulation } from "../../../shared/party-lab/simulation/propRound.js";
+import { PROP_TICKS } from "../../../shared/party-lab/simulation/prophunt/config.js";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
@@ -82,7 +84,11 @@ async function close(...list: Peer[]) {
 /** Jump a phase to its last 30 ms (the fixed-step loop then finishes it for real). */
 function skip(room: PartyRoom) {
   const game = room.game as unknown as { elapsed: number; phase: string; round: { elapsed: number; phase: string } };
-  if (room.game instanceof LayerRoundSimulation || room.game instanceof ColorRoundSimulation || room.game instanceof BombRoundSimulation) {
+  if (room.game instanceof PropRoundSimulation) {
+    const r = room.game.round;
+    if (r.phase === "hiding") { r.phase = "search"; r.tick = PROP_TICKS.search - 2; }
+    else r.tick = (r.phase === "countdown" ? PROP_TICKS.countdown : PROP_TICKS.results) - 2;
+  } else if (room.game instanceof LayerRoundSimulation || room.game instanceof ColorRoundSimulation || room.game instanceof BombRoundSimulation) {
     // Countdown/results: to their last ticks. Play: everyone but the lowest slot falls out (last alive wins).
     const round = room.game.round,
       ticks = room.game instanceof LayerRoundSimulation ? LAYER_TICKS : room.game instanceof ColorRoundSimulation ? COLOR_TICKS : BOMB_TICKS;
@@ -156,7 +162,7 @@ test("mode selector: the creator is host; only the host changes it; everyone see
   assert.equal(room.state.players.get(a.room.sessionId)?.ready, false, "changing the mode clears Ready");
   a.room.send("mode", "mixed");
   await until(() => [a, b].every((p) => p.room.state.selection === "mixed"));
-  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag"].includes(b.room.state.mode), "Mixed shows a real mode");
+  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt"].includes(b.room.state.mode), "Mixed shows a real mode");
   assert.equal(b.room.state.mode, room.upcoming, "Mixed shows the actual next mode");
   await close(a, b);
 });
@@ -220,31 +226,39 @@ test("barn round over real sockets: explicit mode, barn packets acknowledged, ro
   await close(a, b);
 });
 
-test("Mixed: all five modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
+test("Mixed: all six modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
   const a = await create("Alice"),
-    b = await join(a.room.roomId, "Bobby");
+    b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol");
   const room = local(a);
   a.room.send("mode", "mixed");
   await until(() => room.selection === "mixed");
   const played: string[] = [];
   const memory: number[] = [];
   for (let i = 0; i < 22; i++) {
+    if (i === 6) {
+      a.room.send("propSettings", { ammo: 5, proximity: false });
+      await until(() => room.state.propAmmo === 5 && !room.state.propProximity);
+    }
     // What the lobby shows (after its next state patch) before anyone is Ready.
     await until(() => a.room.state.mode === room.upcoming && b.room.state.mode === room.upcoming);
     const next = a.room.state.mode;
-    const mode = await playRound(room, [a, b]);
+    const mode = await playRound(room, [a, b, c]);
     assert.equal(mode, next, "the lobby showed the round's actual mode");
     played.push(mode);
+    if (room.game instanceof PropRoundSimulation) {
+      assert.deepEqual(room.game.settings, i < 6 ? { ammo: 15, proximity: true } : { ammo: 5, proximity: false }, "Mixed uses default then stored Prop Hunt settings");
+      assert.equal(room.game.game.ammo, i < 6 ? 15 : 5);
+    }
     if (i >= 2) {
       // The test's own received-message arrays are not server memory.
-      for (const p of [a, b]) p.snapshots.length = p.events.length = 0;
+      for (const p of [a, b, c]) p.snapshots.length = p.events.length = 0;
       gc();
       memory.push(process.memoryUsage().heapUsed / 1048576);
     }
   }
   for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `no repeat (${played.join(",")})`);
-  for (let c = 0; c + 5 <= played.length; c += 5)
-    assert.deepEqual([...played.slice(c, c + 5)].sort(), ["barn_shootout", "bomb_tag", "color_chaos", "layer_chaos", "rooftop_brawl"], `cycle ${c / 5} has every mode once (${played.join(",")})`);
+  for (let c = 0; c + 6 <= played.length; c += 6)
+    assert.deepEqual([...played.slice(c, c + 6)].sort(), ["barn_shootout", "bomb_tag", "color_chaos", "layer_chaos", "prop_hunt", "rooftop_brawl"], `cycle ${c / 6} has every mode once (${played.join(",")})`);
   assert.equal(room.simulations.created, 1 + played.length - (played[0] === "rooftop_brawl" ? 1 : 0));
   assert.equal(room.simulations.disposed, room.simulations.created - 1);
   const growth = memory[memory.length - 1] - memory[0];
@@ -254,9 +268,9 @@ test("Mixed: all five modes once per shuffled cycle, never twice in a row; each 
   const old = room.game;
   a.room.send("mode", old.mode === "barn_shootout" ? "rooftop_brawl" : "barn_shootout");
   await until(() => room.upcoming !== old.mode);
-  await playRound(room, [a, b]);
+  await playRound(room, [a, b, c]);
   assert.throws(() => (old as BarnRoundSimulation | OnlineRoundSimulation | LayerRoundSimulation | ColorRoundSimulation | BombRoundSimulation).physics.world.step(), "a disposed world cannot be stepped");
-  await close(a, b);
+  await close(a, b, c);
 });
 
 test("barn reconnect: same seat and identity; HP, weapon/ammo, score and alive/dead restored; one body; no duplicate handlers", { timeout: 30000 }, async () => {

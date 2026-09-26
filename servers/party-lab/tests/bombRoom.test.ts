@@ -55,7 +55,7 @@ test("bomb room: authoritative packet, compact snapshot, reconnect preserves car
   await until(() => (b.snapshots[b.snapshots.length - 1]?.ack[slot] ?? -1) >= 1);
   const first = b.snapshots[b.snapshots.length - 1], section = decodeBombSnapshot(first.bomb)!;
   assert.equal(first.mode, "bomb_tag");
-  assert.equal(first.v, 8);
+  assert.equal(first.v, 9);
   assert.equal(first.prediction?.slot, slot);
   assert.equal(first.prediction?.bomb?.byteLength, BOMB_PREDICTION_BYTES);
   assert.ok(section.carrier !== null && section.fuseEnd !== null);

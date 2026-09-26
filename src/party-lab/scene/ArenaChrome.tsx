@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import ControlsSettings from "../ControlsSettings";
 import AudioSettings from "../audio/AudioSettings";
 import type { Bindings } from "../input/bindings";
@@ -261,10 +262,12 @@ export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odad
         </button>
       </div>
     );
-  return (
-    <div className="pl-menu-overlay" role="dialog" aria-modal="true" aria-labelledby={view === "main" ? "pl-menu-title" : undefined} aria-label={view === "main" ? undefined : "Oyun menüsü"}>
-      {body}
-    </div>
+  return createPortal(
+    <div className="party-lab pl-menu-root">
+      <div className="pl-menu-overlay" role="dialog" aria-modal="true" aria-labelledby={view === "main" ? "pl-menu-title" : undefined} aria-label={view === "main" ? undefined : "Oyun menüsü"}>
+        {body}
+      </div>
+    </div>, document.body
   );
 }
 

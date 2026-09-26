@@ -94,7 +94,7 @@ function PartyLab() {
     return <>
       <div hidden={controlsOpen}>
         {network.snapshot.phase === 'waiting'
-          ? <PartyLobby controlsRef={controlsEntry} lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onMode={network.setMode} onControls={() => setControlsOpen(true)} diagnostics={network.diagnostics} debug={network.debug} />
+          ? <PartyLobby controlsRef={controlsEntry} lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onMode={network.setMode} onPropSettings={network.setPropSettings} onControls={() => setControlsOpen(true)} diagnostics={network.diagnostics} debug={network.debug} />
           : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
               <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} diagnostics={network.diagnostics} debug={network.debug}/>
             </Suspense>}

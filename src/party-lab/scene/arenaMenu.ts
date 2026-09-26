@@ -1,9 +1,11 @@
 import type { Action } from "../input/actions";
 import { bindingLabel, type Binding, type Bindings } from "../input/bindings";
 import type { LookMode } from "../input/look";
+import { PROP_HUNT } from "../../../shared/party-lab/simulation/prophunt/config";
+import { whistleKey } from "./prophunt/controls";
 
 /**
- * The Esc menu over an immersive arena (online Rooftop and Barn, local Katman Kaosu, Renk Kaosu and Bomba Sende). It
+ * The Esc menu over an immersive arena (online Rooftop and Barn, local Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç). It
  * is NOT a pause: the server (or the local simulation) keeps simulating, the round clock
  * keeps running and the other players or bots keep playing. Opening it only stops this
  * player's local input (held keys released, a neutral input sent, local prediction
@@ -59,9 +61,27 @@ function movement(bindings: Bindings) {
 }
 
 /** The short controls line shown for a few seconds when a round opens (current bindings). */
-export function controlHint(bindings: Bindings, mode: "rooftop" | "barn" | "layers" | "colors" | "bomb", lookMode: LookMode = "lock") {
+export function controlHint(bindings: Bindings, mode: "rooftop" | "barn" | "layers" | "colors" | "bomb" | "propSeeker" | "propHider", lookMode: LookMode = "lock") {
   const parts =
-    mode === "bomb"
+    mode === "propSeeker"
+      ? [
+          `${movement(bindings)} hareket`,
+          `${primary(bindings, "lift")} koş`,
+          `${primary(bindings, "jump")} zıpla`,
+          `${primary(bindings, "punch")} ateş (${PROP_HUNT.seeker.ammo} mermi)`,
+          ...(Object.values(bindings).some((keys) => keys.includes("KeyV")) ? [] : ["V kamera"]),
+          ...(lookMode === "drag" ? ["sürükleyerek bak"] : []),
+        ]
+      : mode === "propHider"
+      ? [
+          `${movement(bindings)} hareket`,
+          `${primary(bindings, "lift")} koş`,
+          `${primary(bindings, "jump")} zıpla`,
+          `${primary(bindings, "grab")} eşyaya dönüş / çık`,
+          `${bindingLabel(whistleKey(bindings))} · Islık`,
+          ...(lookMode === "drag" ? ["sürükleyerek bak"] : []),
+        ]
+      : mode === "bomb"
       ? [
           `${movement(bindings)} hareket`,
           `${primary(bindings, "lift")} koş`,

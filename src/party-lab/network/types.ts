@@ -1,3 +1,4 @@
+import type { PropSettings } from "../../../shared/party-lab/propSettings";
 import type {
   GameSnapshot,
   OnlinePhase,
@@ -32,6 +33,8 @@ export interface LobbyState {
   selection: string;
   mode: string;
   hostId: string;
+  propAmmo: PropSettings["ammo"];
+  propProximity: boolean;
   players: { forEach(callback: (player: LobbyPlayer) => void): void };
   messages: { forEach(callback: (message: ChatMessage) => void): void };
 }
@@ -55,6 +58,8 @@ export interface LobbySnapshot {
   mode: GameMode;
   /** Who may change the mode. */
   hostId: string;
+  propAmmo: PropSettings["ammo"];
+  propProximity: boolean;
   selfId: string;
   players: LobbyPlayer[];
   messages: ChatMessage[];
@@ -77,6 +82,8 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   selection: "rooftop_brawl",
   mode: "rooftop_brawl",
   hostId: "",
+  propAmmo: 15,
+  propProximity: true,
   game: null,
   link: "good",
 };

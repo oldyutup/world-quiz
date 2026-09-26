@@ -6,7 +6,8 @@ link reliability, thresholds and chat realtime behavior in [NETWORK.md](NETWORK.
 game modes and online Barn Shootout (protocol 5) in [BARN_ONLINE.md](BARN_ONLINE.md); online
 Katman Kaosu (protocol 6) in [LAYER_ONLINE.md](LAYER_ONLINE.md); online Renk Kaosu
 (protocol 7) in [COLOR_ONLINE.md](COLOR_ONLINE.md); online Bomba Sende and the five-mode
-Mixed rotation (protocol 8) in [BOMB_ONLINE.md](BOMB_ONLINE.md).**
+Mixed rotation (protocol 8) in [BOMB_ONLINE.md](BOMB_ONLINE.md). Current production target is
+protocol 9, adding online Saklambaç and six-mode Mixed: [PROP_ONLINE.md](PROP_ONLINE.md).**
 Server authority and the round/membership policies below remain in effect.
 
 ## Scope and checkpoint

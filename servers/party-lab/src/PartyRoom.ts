@@ -1,3 +1,5 @@
+import { PropRoundSimulation, PropRotation } from "../../../shared/party-lab/simulation/propRound.js";
+import { DEFAULT_PROP_SETTINGS, validPropSettingsPatch } from "../../../shared/party-lab/propSettings.js";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
@@ -30,7 +32,7 @@ import {
 } from "../../../shared/party-lab/network/protocol.js";
 import { allowedOrigin } from "./origin.js";
 import { LoopMetrics, processMetrics } from "./diagnostics.js";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import {
   getMessageBytes,
   Protocol,
@@ -77,11 +79,14 @@ function options(value: unknown): {
   }
 }
 
+const cryptoSeed = () => randomBytes(4).readUInt32LE();
+
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
-export function createSimulation(mode: GameMode, counters: RoomCounters): OnlineSimulation {
+export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
   if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
   if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
   if (mode === "color_chaos") return new ColorRoundSimulation(counters);
+  if (mode === "prop_hunt") return new PropRoundSimulation(counters, propRotation);
   if (mode === "bomb_tag") return new BombRoundSimulation(counters);
   return new OnlineRoundSimulation(counters);
 }
@@ -101,8 +106,9 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  /** Mixed: all five modes once per cycle, shuffled, never the same mode twice in a row. */
+  /** Mixed: all six modes once per cycle, shuffled, never the same mode twice in a row. */
   readonly rotation = new MixedRotation();
+  readonly propRotation = new PropRotation(cryptoSeed());
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
   /** Join order (the host is the earliest-joined connected player). */
   private joined = new Map<string, number>();
@@ -170,7 +176,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (this.game?.mode === mode) return;
     this.game?.dispose();
     if (this.game) this.simulations.disposed++;
-    this.game = createSimulation(mode, this.counters);
+    this.game = createSimulation(mode, this.counters, this.propRotation);
     this.simulations.created++;
   }
   private setSelection(selection: ModeSelection) {
@@ -192,9 +198,11 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     const eligible = [...this.state.players.values()].filter(
       (p) => p.connected
     );
+    if (this.upcoming === "prop_hunt" && eligible.length !== 3) return;
     if (eligible.length < 2 || !eligible.every((p) => p.ready)) return;
     this.participants = new Set(eligible.map((p) => p.id));
     this.ensureSimulation(this.upcoming);
+    if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
     this.game.start(eligible.map((p) => p.slot as PlayerId));
     for (const input of this.mailboxes.values()) input.clear();
     this.syncGameState();
@@ -223,6 +231,12 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       };
     });
     this.events.push(...events);
+    if (this.game instanceof PropRoundSimulation) for (const { recipient, event } of this.game.events) {
+      for (const client of this.clients) {
+        const p = this.state.players.get(client.sessionId);
+        if (p?.connected && (recipient === null || p.slot === recipient)) client.send("propEvent", event);
+      }
+    }
     this.metrics.eventCount += events.length;
     const ms = performance.now() - now;
     this.metrics.steps++;
@@ -324,6 +338,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     await initializePhysics();
     this.ensureSimulation(this.upcoming);
     this.state.phase = "waiting";
+    this.state.propAmmo = DEFAULT_PROP_SETTINGS.ammo;
+    this.state.propProximity = DEFAULT_PROP_SETTINGS.proximity;
     this.state.winner = -1;
     this.state.selection = this.selection;
     this.state.mode = this.upcoming;
@@ -352,6 +368,17 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       }
       this.setSelection(data);
     });
+    this.onMessage("propSettings", (client, data: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p?.connected || this.game.phase !== "waiting" || !validPropSettingsPatch(data)) return;
+      if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
+      const ammo = data.ammo ?? this.state.propAmmo, proximity = data.proximity ?? this.state.propProximity;
+      if (this.state.propAmmo === ammo && this.state.propProximity === proximity) return;
+      this.state.propAmmo = ammo;
+      this.state.propProximity = proximity;
+      this.resetReady();
+      this.syncGameState();
+    });
     this.onMessage("ready", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
       if (
@@ -361,6 +388,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       )
         return;
       p.ready = data;
+      if (data && this.upcoming === "prop_hunt" && [...this.state.players.values()].filter((p) => p.connected).length !== 3)
+        client.send("notice", "PROP_THREE_REQUIRED");
       this.tryStart();
     });
     this.onMessage("chat", (client, data: unknown) => {

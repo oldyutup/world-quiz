@@ -1,3 +1,6 @@
+import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
+import type { PropSettings } from "../../../shared/party-lab/propSettings";
+import type { PropOnlineEvent } from "../../../shared/party-lab/simulation/prophunt/wire";
 import { GameStream } from "./gameStream";
 import { LINK, NetDiagnostics } from "./diagnostics";
 import {
@@ -40,6 +43,7 @@ import {
 
 type LobbyRoom = Room<unknown, LobbyState>;
 const notices: Record<string, string> = {
+  PROP_THREE_REQUIRED: "Saklambaç için 3 oyuncu gerekli.",
   CHAT_RATE_LIMIT:
     "Biraz yavaşla. 5 saniyede en fazla 4 mesaj gönderebilirsin.",
   INVALID_CHAT: "Mesajın 1–280 karakterlik düz metin olmalı.",
@@ -82,6 +86,7 @@ export class LobbySession {
   private heldJump = false;
   private heldPunch = false;
   private heldPickup = false;
+  private heldWhistle = false;
   /** Barn: the last aim sent, reused by neutral packets so pausing never turns the body. */
   private lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
   private chatIds = new Set<string>();
@@ -192,6 +197,8 @@ export class LobbySession {
           round: state.round,
           seconds: state.seconds,
           winner: state.winner,
+          propAmmo: state.propAmmo,
+          propProximity: state.propProximity,
           selection: isModeSelection(state.selection) ? state.selection : "rooftop_brawl",
           mode: isGameMode(state.mode) ? state.mode : "rooftop_brawl",
           hostId: state.hostId ?? "",
@@ -210,6 +217,7 @@ export class LobbySession {
         this.diagnostics.snapshot(Number(game?.seq), accepted, now);
         if (accepted) this.update({ game });
       });
+      room.onMessage("propEvent", (event: PropOnlineEvent) => { if (current()) this.stream.acceptPropEvent(event, !document.hidden); });
       room.onMessage("feedback", (events: GameEvent[]) => {
         if (!current()) return;
         heard();
@@ -346,6 +354,9 @@ export class LobbySession {
     )
       this.room.send("mode", selection);
   }
+  setPropSettings(settings: Partial<PropSettings>) {
+    if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("propSettings", settings);
+  }
   /** Inputs the server has not consumed yet (by the latest snapshot's ack). */
   private inputBacklog() {
     const game = this.snapshot.game;
@@ -362,12 +373,14 @@ export class LobbySession {
     )
       return null;
     const now = performance.now();
-    const barn = this.snapshot.mode === "barn_shootout",
+    const prop = this.snapshot.mode === "prop_hunt",
+      barn = this.snapshot.mode === "barn_shootout" || prop,
       bomb = this.snapshot.mode === "bomb_tag",
       layers = this.snapshot.mode === "layer_chaos" || this.snapshot.mode === "color_chaos";
     this.heldJump ||= intent.jump;
     this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
     this.heldPickup ||= barn && !!intent.pickup;
+    this.heldWhistle ||= prop && !!intent.whistle;
     // While input is not being acknowledged, 60/s would only queue up and arrive as one
     // burst. Send the newest state at 10/s and carry pressed edges into it.
     if (
@@ -377,7 +390,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = barn
+    const packet: AnyInputPacket = prop
+      ? { ...this.barnPacket(intent), attackHeld: false, whistlePressed: this.heldWhistle }
+      : barn
       ? this.barnPacket(intent)
       : bomb
       ? this.bombPacket(intent)
@@ -393,13 +408,13 @@ export class LobbySession {
           grabHeld: !!intent.grab,
           liftHeld: !!intent.lift,
         } satisfies InputPacket;
-    this.heldJump = this.heldPunch = this.heldPickup = false;
+    this.heldJump = this.heldPunch = this.heldPickup = this.heldWhistle = false;
     if (this.roundStart.round !== packet.round)
       this.roundStart = { round: packet.round, seq: packet.seq };
-    this.room.send("input", packet);
+    this.room.send("input", prop ? encodePropInput(packet as PropInputPacket) : packet);
     this.lastInputAt = now;
     this.diagnostics.input(now);
-    return packet;
+    return prop ? validatePropInput(encodePropInput(packet as PropInputPacket)) : packet;
   }
   /** Bomba Sende intent plus the authoritative remote timeline being viewed for capped rewind. */
   private bombPacket(intent: MovementInput): BombInputPacket {
@@ -492,7 +507,7 @@ export class LobbySession {
     this.stream.reset();
     this.inputSeq = 0;
     this.roundStart = { round: -1, seq: 0 };
-    this.heldJump = this.heldPunch = this.heldPickup = false;
+    this.heldJump = this.heldPunch = this.heldPickup = this.heldWhistle = false;
     this.lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
     this.chatIds = new Set();
     const room = this.room;
@@ -538,6 +553,7 @@ export function useLobbySession() {
     diagnostics,
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
+    setPropSettings: (settings: Partial<PropSettings>) => session.current?.setPropSettings(settings),
     setMode: (selection: ModeSelection) => session.current?.setMode(selection),
     connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>
       session.current?.connect(action, nickname, code, costumeId),

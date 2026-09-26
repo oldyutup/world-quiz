@@ -17,7 +17,8 @@ export const NET = {
   // colour round and a v6 server refuses the mode. Mixed rotates all four modes.
   // 8: Bomba Sende (bomb_tag) online. Adds its compact intent, self-contained bomb/trap
   // snapshot and prediction state; Mixed rotates all five modes.
-  version: 8,
+  // 9: Saklambaç, authoritative room settings and six-mode Mixed.
+  version: 9,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -28,6 +29,7 @@ export const NET = {
   maxRewindMs: 250,
   /** Bomba Sende proximity rewind. Nine 60 Hz poses cover interpolation + normal RTT. */
   maxBombRewindMs: 150,
+  maxPropRewindMs: 150,
 } as const;
 export interface PingPacket {
   id: number;
@@ -160,7 +162,9 @@ export interface LayerInputPacket {
 export interface BombInputPacket extends LayerInputPacket {
   viewTick: number;
 }
-export type AnyInputPacket = InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+/** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
+export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
+export type AnyInputPacket = PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
@@ -351,6 +355,7 @@ export interface GameSnapshot {
   layers?: LayerSnapshot;
   colors?: ColorFieldSnapshot;
   bomb?: BombSnapshot;
+  prop?: import("../simulation/prophunt/wire.js").PropSnapshotWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -484,6 +489,29 @@ export function validateBarnInput(value: unknown): BarnInputPacket | null {
     eyeZ: eye(p.eyeZ),
   };
 }
+/** 41 bytes: uint32 seq/round, eight float32 intent values, five edge/held bits. */
+export const PROP_INPUT_BYTES = 41;
+export function encodePropInput(p: PropInputPacket): Uint8Array {
+  const bytes = new Uint8Array(PROP_INPUT_BYTES), v = new DataView(bytes.buffer);
+  v.setUint32(0, p.seq, true); v.setUint32(4, p.round, true);
+  [p.moveX, p.moveZ, p.aimYaw, p.aimPitch, p.eyeX, p.eyeY, p.eyeZ, p.viewTick].forEach((n, i) => v.setFloat32(8 + i * 4, n, true));
+  bytes[40] = +p.jumpPressed | (+p.sprintHeld << 1) | (+p.attackPressed << 2) | (+p.pickupPressed << 3) | (+p.whistlePressed << 4);
+  return bytes;
+}
+export function validatePropInput(value: unknown): PropInputPacket | null {
+  if (value instanceof Uint8Array) {
+    if (value.byteLength !== PROP_INPUT_BYTES || (value[40] & ~31)) return null;
+    const v = new DataView(value.buffer, value.byteOffset, value.byteLength), f = value[40];
+    value = { seq: v.getUint32(0, true), round: v.getUint32(4, true), moveX: v.getFloat32(8, true), moveZ: v.getFloat32(12, true),
+      aimYaw: v.getFloat32(16, true), aimPitch: v.getFloat32(20, true), eyeX: v.getFloat32(24, true), eyeY: v.getFloat32(28, true), eyeZ: v.getFloat32(32, true), viewTick: v.getFloat32(36, true),
+      jumpPressed: !!(f & 1), sprintHeld: !!(f & 2), attackPressed: !!(f & 4), pickupPressed: !!(f & 8), whistlePressed: !!(f & 16), attackHeld: false };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { whistlePressed, ...rest } = value as PropInputPacket;
+  if (typeof whistlePressed !== "boolean") return null;
+  const p = validateBarnInput(rest);
+  return p && !p.attackHeld ? { ...p, whistlePressed } : null;
+}
 const layerKeys = ["seq", "round", "moveX", "moveZ", "jumpPressed", "sprintHeld", "punchPressed"];
 /** Strict keys, finite numbers, booleans; movement normalised (`normalizeMove`). */
 export function validateLayerInput(value: unknown): LayerInputPacket | null {
@@ -528,11 +556,23 @@ export class InputMailbox {
   // Barn: the latest barn packet and its edges (a round is one mode; `accept` picks the validator).
   private barnPacket: BarnInputPacket | null = null;
   private pickup = false;
+  private whistle = false;
+  private propPacket: PropInputPacket | null = null;
   private attackViewTick = -1;
   // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
   private bombPacket: BombInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
+    if (mode === "prop_hunt") {
+      const p = validatePropInput(value);
+      if (!p || p.round !== round || p.seq <= this.seq) return false;
+      const edge = p.whistlePressed && !this.propPacket?.whistlePressed;
+      const { whistlePressed: _, ...barn } = p;
+      if (!this.acceptBarn(barn, round, now)) return false;
+      this.whistle ||= edge;
+      this.propPacket = p;
+      return true;
+    }
     if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
     if (mode === "bomb_tag") return this.acceptBomb(value, round, now);
     if (mode === "layer_chaos" || mode === "color_chaos") return this.acceptLayer(value, round, now);
@@ -611,7 +651,12 @@ export class InputMailbox {
   read(now: number): MovementInput {
     if (now - this.received > NET.staleMs) this.clear();
     const b = this.barnPacket;
-    if (b) return this.readBarn(b);
+    if (b) {
+      const intent = this.readBarn(b);
+      if (this.propPacket) intent.whistle = this.whistle;
+      this.whistle = false;
+      return intent;
+    }
     const bomb = this.bombPacket;
     if (bomb) return this.readBomb(bomb);
     const l = this.layerPacket;
@@ -680,6 +725,8 @@ export class InputMailbox {
     return result;
   }
   clear() {
+    this.propPacket = null;
+    this.whistle = false;
     this.packet = null;
     this.barnPacket = null;
     this.layerPacket = null;
