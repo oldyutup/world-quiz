@@ -1,3 +1,4 @@
+import {encodeBowlingInput,validateBowlingInput,type BowlingInputPacket} from "../../../shared/party-lab/network/bowlingInput";
 import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
 import type { PropSettings } from "../../../shared/party-lab/propSettings";
 import type { PropOnlineEvent } from "../../../shared/party-lab/simulation/prophunt/wire";
@@ -373,6 +374,7 @@ export class LobbySession {
     )
       return null;
     const now = performance.now();
+    const bowling = this.snapshot.mode === "human_bowling";
     const prop = this.snapshot.mode === "prop_hunt",
       barn = this.snapshot.mode === "barn_shootout" || prop,
       bomb = this.snapshot.mode === "bomb_tag",
@@ -390,7 +392,10 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = prop
+    const packet: AnyInputPacket = bowling
+      ? { seq: ++this.inputSeq, round: this.snapshot.round, turn: this.snapshot.game?.bowling?.turn ?? 0,
+          throttle:intent.bowling?.throttle??0,brake:intent.bowling?.brake??0,steer:intent.bowling?.steer??0,pitch:intent.bowling?.pitch??0,space:intent.bowling?.space??false }
+      : prop
       ? { ...this.barnPacket(intent), attackHeld: false, whistlePressed: this.heldWhistle }
       : barn
       ? this.barnPacket(intent)
@@ -411,10 +416,10 @@ export class LobbySession {
     this.heldJump = this.heldPunch = this.heldPickup = this.heldWhistle = false;
     if (this.roundStart.round !== packet.round)
       this.roundStart = { round: packet.round, seq: packet.seq };
-    this.room.send("input", prop ? encodePropInput(packet as PropInputPacket) : packet);
+    this.room.send("input", bowling ? encodeBowlingInput(packet as BowlingInputPacket) : prop ? encodePropInput(packet as PropInputPacket) : packet);
     this.lastInputAt = now;
     this.diagnostics.input(now);
-    return prop ? validatePropInput(encodePropInput(packet as PropInputPacket)) : packet;
+    return bowling ? validateBowlingInput(encodeBowlingInput(packet as BowlingInputPacket)) : prop ? validatePropInput(encodePropInput(packet as PropInputPacket)) : packet;
   }
   /** Bomba Sende intent plus the authoritative remote timeline being viewed for capped rewind. */
   private bombPacket(intent: MovementInput): BombInputPacket {

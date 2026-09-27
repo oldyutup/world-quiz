@@ -244,7 +244,7 @@ test("input sent while unacknowledged is coalesced to 10/s and keeps pressed edg
   assert.equal(session.diagnostics.inputsCoalesced, 2);
   await pause(LINK.stalledInputIntervalMs + 10);
   const next = session.sendInput(intent())!;
-  assert.equal(next.jumpPressed, true, "a jump pressed while coalescing is not lost");
+  assert.equal("jumpPressed" in next && next.jumpPressed, true, "a jump pressed while coalescing is not lost");
   assert.equal(sent.length, LINK.unackedInputs + 2);
   // Acknowledgement catches up: back to 60/s.
   (session as unknown as { snapshot: { game: { ack: number[] } } }).snapshot.game.ack = [next.seq, -1, -1];

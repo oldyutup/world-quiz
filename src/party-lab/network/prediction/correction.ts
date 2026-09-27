@@ -45,6 +45,7 @@ export function correctionTier(error: number, angle = 0, limbError = 0) {
  * by at most 8%.
  */
 export class RigCorrection {
+  constructor(private readonly bodies = 9) {}
   private offset = new Vector3();
   /** Offset velocity (m/s) when this blend began, carried over from the one it replaced. */
   private velocity = new Vector3();
@@ -61,20 +62,20 @@ export class RigCorrection {
   get active() {
     return this.remaining > 0;
   }
-  begin(before: Float32Array, after: Float32Array) {
+  begin(before: Float32Array, after: Float32Array, distanceScale = 1) {
     const delta = (i: number) =>
       Math.hypot(
         before[i] - after[i],
         before[i + 1] - after[i + 1],
         before[i + 2] - after[i + 2]
       );
-    const error = Math.max(delta(0), delta(7));
+    const error = Math.max(delta(0), this.bodies > 1 ? delta(7) : 0);
     let limbError = 0;
-    for (let i = 0; i < 63; i += 7) limbError = Math.max(limbError, delta(i));
+    for (let i = 0; i < this.bodies * 7; i += 7) limbError = Math.max(limbError, delta(i));
     this.rotation.set(before[3], before[4], before[5], before[6]);
     this.q.set(after[3], after[4], after[5], after[6]);
     const angle = this.rotation.angleTo(this.q);
-    const tier = correctionTier(error, angle, limbError);
+    const tier = correctionTier(error / distanceScale, angle, limbError / distanceScale);
     const carry = this.smooth && this.active;
     this.offsetVelocity(this.carried);
     this.clear();
@@ -110,14 +111,14 @@ export class RigCorrection {
       .multiplyScalar((6 * s * s - 6 * s) / this.duration)
       .addScaledVector(this.velocity, 3 * s * s - 4 * s + 1);
   }
-  apply(pose: Float32Array, dt: number, out = new Float32Array(63)) {
+  apply(pose: Float32Array, dt: number, out = new Float32Array(this.bodies * 7)) {
     this.remaining = Math.max(0, this.remaining - dt);
     const s = this.progress;
     // Tiny/small: cubic Hermite from (offset, velocity) to rest. Medium: quadratic ease.
     const weight = !this.duration ? 0 : this.smooth ? 2 * s ** 3 - 3 * s ** 2 + 1 : (1 - s) ** 2,
       carry = this.duration && this.smooth ? (s ** 3 - 2 * s ** 2 + s) * this.duration : 0;
     this.q.copy(this.identity).slerp(this.rotation, weight);
-    for (let i = 0; i < 63; i += 7) {
+    for (let i = 0; i < this.bodies * 7; i += 7) {
       this.point
         .set(pose[i] - pose[0], pose[i + 1] - pose[1], pose[i + 2] - pose[2])
         .applyQuaternion(this.q);

@@ -8,16 +8,17 @@ export interface BowlingSnapshot {
   cameraPreset?: number; cameraNotice?: number; winners: number[]; retry: boolean; debug?: Record<string, unknown>;
 }
 export const bowlingPlayerName = (id: number) => id === 0 ? 'Sen' : id === 1 ? 'Misket' : 'Fırtına';
-export default function BowlingHud({ snapshot: s, restart, debugOpen }: { snapshot: BowlingSnapshot; restart: () => void; debugOpen: boolean }) {
-  const mine = s.player === 0, driving = s.phase === 'drive', result = s.phase === 'results';
+export default function BowlingHud({ snapshot: s, restart, debugOpen, names, self = 0 }: { snapshot: BowlingSnapshot; restart?: () => void; debugOpen: boolean; names?: string[]; self?:number }) {
+  const name = (id:number) => names?.[id] ?? bowlingPlayerName(id);
+  const mine = s.player === self, driving = s.phase === 'drive', result = s.phase === 'results';
   return <div className="pl-bowling-hud">
-    <div className="pl-bowling-title"><span>PARTY LAB / YEREL</span><b>İnsan Bowlingi</b></div>
+    <div className="pl-bowling-title"><span>PARTY LAB / {names ? "ONLINE" : "YEREL"}</span><b>İnsan Bowlingi</b></div>
     {driving && !!s.cameraNotice && <div key={s.cameraNotice} className="pl-bowling-camera-notice" role="status">KAMERA · {BOWLING_DRIVE_PRESETS[s.cameraPreset ?? 1].label}</div>}
     <ol className="pl-bowling-scores" aria-label="Toplam puanlar">{s.totals.map((total, i) => <li key={i} data-active={!result && s.player === i}>
       <span className="pl-bowling-slot" style={{ background: ['#f6c773', '#e985a2', '#79bbed'][i] }}>{i + 1}</span>
-      <span><b>{bowlingPlayerName(i)}{i > 0 && <small> BOT</small>}</b><span className="pl-bowling-throws">{[0, 1, 2].map(n => <span key={n}>{s.throws[i][n] ?? '·'}</span>)}</span></span><strong>{total}<small>/30</small></strong>
+      <span><b>{name(i)}{!names && i > 0 && <small> BOT</small>}</b><span className="pl-bowling-throws">{[0, 1, 2].map(n => <span key={n}>{s.throws[i][n] ?? '·'}</span>)}</span></span><strong>{total}<small>/30</small></strong>
     </li>)}</ol>
-    {!result && <div className="pl-bowling-turn" role="status"><b>{bowlingPlayerName(s.player)} · Atış {s.round}/3</b><span>{s.phase === 'countdown' ? 'Direksiyona geç!' : driving ? mine ? 'Hızlan · Hizalan · Fırlat' : 'Piste çıkıyor…' : s.phase === 'score' ? 'Sıradaki oyuncu hazırlanıyor' : s.airHint ? 'Havada yön ver!' : 'Bırak yuvarlansın!'}</span></div>}
+    {!result && <div className="pl-bowling-turn" role="status"><b>{name(s.player)} · Atış {s.round}/3</b><span>{s.phase === 'countdown' ? 'Direksiyona geç!' : driving ? mine ? 'Hızlan · Hizalan · Fırlat' : 'Piste çıkıyor…' : s.phase === 'score' ? 'Sıradaki oyuncu hazırlanıyor' : s.airHint ? 'Havada yön ver!' : 'Bırak yuvarlansın!'}</span></div>}
     {s.phase === 'countdown' && <div className="pl-bowling-countdown" role="status">{s.countdown}</div>}
     <aside className="pl-bowling-charge" data-charging={s.charging} data-direction={s.angleDirection} aria-label="Atış göstergeleri">
       <div className="pl-bowling-meter-label"><b>FIRLATMA AÇISI</b><span aria-label={s.charging ? s.angleDirection==='rising' ? 'Açı yükseliyor' : 'Açı azalıyor' : undefined}>{s.charging ? s.angleDirection==='rising' ? '↗' : '↘' : driving || s.phase==='countdown' ? 'SPACE TUT' : 'KİLİTLİ'}</span></div>
@@ -33,15 +34,15 @@ export default function BowlingHud({ snapshot: s, restart, debugOpen }: { snapsh
     </aside>
     {!result && <aside className="pl-bowling-speedometer" aria-label="Gerçek hız"><span>{s.phase==='flight' ? 'BEDEN HIZI' : 'ARAÇ HIZI'}</span><strong>{Math.round(s.speed*3.6)}</strong><b>km/sa</b></aside>}
     {!result && (driving || s.phase==='countdown') && <div className="pl-bowling-drive">
-      <b>{s.charging ? 'ANI SEÇ.' : mine ? 'HIZLAN. HİZALAN.' : 'BOT SÜRÜYOR'}</b>
+      <b>{s.charging ? 'ANI SEÇ.' : mine ? 'HIZLAN. HİZALAN.' : names ? 'SIRASINI İZLİYORSUN' : 'BOT SÜRÜYOR'}</b>
       <p>W / S · Gaz / Fren &nbsp; A / D · Direksiyon &nbsp; <span className="pl-bowling-camera-key">V · Kamera</span></p>
       <span data-zone={s.inZone}>{s.inZone ? s.charging ? 'Açı gidip geliyor · Araç hâlâ ilerliyor' : 'FIRLATMA BÖLGESİ · SPACE’i basılı tut' : 'Bayırda hız topla, topların arasından geç'}</span>
     </div>}
     {s.airHint && <div className="pl-bowling-air">A / D · Yön &nbsp; W / S veya ↑ / ↓ · Beden açısı<br />W · İleri eğil &nbsp; SPACE · Tek ileri + yukarı Nudge</div>}
     {s.phase === 'flight' && <div className="pl-bowling-hit"><strong>{s.knocked}</strong><span>/ 10 devrildi</span></div>}
-    {s.phase === 'score' && <div className="pl-bowling-callout" role="status"><strong>{s.missedEject ? 'Fırlatamadın!' : s.lastPoints === 10 ? 'TAM İSABET!' : `${s.lastPoints} lobut!`}</strong><span>{bowlingPlayerName(s.lastPlayer)} · +{s.lastPoints} puan</span></div>}
+    {s.phase === 'score' && <div className="pl-bowling-callout" role="status"><strong>{s.missedEject ? 'Fırlatamadın!' : s.lastPoints === 10 ? 'TAM İSABET!' : `${s.lastPoints} lobut!`}</strong><span>{name(s.lastPlayer)} · +{s.lastPoints} puan</span></div>}
     {s.retry && <div className="pl-bowling-retry" role="status">Atış yenilendi. Bir daha deneyelim!</div>}
-    {result && <div className="pl-bowling-result" role="status"><span>3 ATIŞ · SONUÇ</span><h2>{s.winners.length > 1 ? 'Berabere!' : `${bowlingPlayerName(s.winners[0])} kazandı!`}</h2><p>{s.winners.map(bowlingPlayerName).join(' & ')} · {Math.max(...s.totals)} puan</p><button type="button" className="pl-button pl-create" onClick={restart}>Bir daha oyna</button></div>}
+    {result && <div className="pl-bowling-result" role="status"><span>3 ATIŞ · SONUÇ</span><h2>{s.winners.length > 1 ? 'Berabere!' : `${name(s.winners[0])} kazandı!`}</h2><p>{s.winners.map(name).join(' & ')} · {Math.max(...s.totals)} puan</p>{restart ? <button type="button" className="pl-button pl-create" onClick={restart}>Bir daha oyna</button> : <p>Yeni oyun için birazdan lobide Hazır ol.</p>}</div>}
     {s.debug && <pre className="pl-bowling-debug" hidden={!debugOpen} data-bowling={JSON.stringify(s.debug)}>{JSON.stringify(s.debug, null, 2)}</pre>}
   </div>;
 }

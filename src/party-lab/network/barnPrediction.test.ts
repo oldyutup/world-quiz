@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { before, test } from "node:test";
+import { before, mock, test } from "node:test";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics";
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound";
 import { newRoomCounters } from "../../../shared/party-lab/simulation/online";
@@ -81,7 +81,11 @@ function session(link: Link, seed = 1) {
     while (down[0] && down[0].due <= now + 1e-6) {
       const item = down.shift()!;
       remote.push(item.s, now);
-      stream.acceptEvents(item.events);
+      // Shot markers use the simulated link clock below. Expiry must use that
+      // same clock, independent of wall time spent running the full test suite.
+      const presentationClock = mock.method(performance, "now", () => now);
+      try { stream.acceptEvents(item.events); }
+      finally { presentationClock.mock.restore(); }
       local.reconcile(remote.latest!, now);
     }
   };

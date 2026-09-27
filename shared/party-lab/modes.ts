@@ -5,10 +5,10 @@ import type { ArenaMapId, ModeArenaId, TileArenaId } from "./maps/types.js";
  * server before the round starts and sent explicitly (lobby state and every
  * snapshot). Clients never infer the mode from geometry or a map name.
  */
-export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt"] as const;
+export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling"] as const;
 export type GameMode = (typeof GAME_MODES)[number];
 /** What the room host picks in the lobby: one mode, or all of them in a shuffled rotation. */
-export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "mixed"] as const;
+export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "mixed"] as const;
 export type ModeSelection = (typeof MODE_SELECTIONS)[number];
 
 export const DEFAULT_MODE_SELECTION: ModeSelection = "rooftop_brawl";
@@ -20,6 +20,7 @@ export const MODE_MAP: Readonly<Record<GameMode, ArenaMapId | TileArenaId | Mode
   color_chaos: "colors",
   bomb_tag: "bomb",
   prop_hunt: "prophunt",
+  human_bowling: "human_bowling",
 };
 export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   rooftop_brawl: "Çatı Kavgası",
@@ -28,6 +29,7 @@ export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   color_chaos: "Renk Kaosu",
   bomb_tag: "Bomba Sende",
   prop_hunt: "Saklambaç",
+  human_bowling: "İnsan Bowlingi",
   mixed: "Karışık",
 };
 
@@ -40,8 +42,8 @@ export const isModeSelection = (value: unknown): value is ModeSelection =>
  * One Mixed cycle: every mode exactly once, in random order, never starting with
  * `previous` (the last mode played), so no mode is played twice in a row.
  */
-export function mixedCycle(previous: GameMode | null, random: () => number = Math.random): GameMode[] {
-  const cycle = [...GAME_MODES] as GameMode[];
+export function mixedCycle(previous: GameMode | null, random: () => number = Math.random, players = 3): GameMode[] {
+  const cycle = GAME_MODES.filter(mode => mode !== "prop_hunt" || players === 3) as GameMode[];
   for (let i = cycle.length - 1; i > 0; i--) {
     const j = Math.min(i, Math.floor(random() * (i + 1)));
     [cycle[i], cycle[j]] = [cycle[j], cycle[i]];
@@ -55,7 +57,7 @@ export function mixedCycle(previous: GameMode | null, random: () => number = Mat
 }
 
 /**
- * The server's Mixed sequence. Each cycle holds all six modes once in a shuffled
+ * The server's Mixed sequence. Each cycle holds all seven eligible modes once in a shuffled
  * order and the next cycle is reshuffled, never repeating the mode just played. `next`
  * is what the lobby shows before Ready; it is consumed only once a round of it reaches
  * play (a cancelled countdown keeps it). No voting.
@@ -63,10 +65,18 @@ export function mixedCycle(previous: GameMode | null, random: () => number = Mat
 export class MixedRotation {
   private queue: GameMode[] = [];
   private last: GameMode | null = null;
+  private players = 3;
+  setPlayers(count: number) {
+    const next=count===3?3:2;
+    if(next===this.players)return;
+    this.players=next;
+    // Eligibility changes start a fresh bag, retaining the last-played boundary.
+    this.queue=[];
+  }
   constructor(private readonly random: () => number = Math.random) {}
   /** The next round's mode. */
   get next(): GameMode {
-    if (!this.queue.length) this.queue = mixedCycle(this.last, this.random);
+    if (!this.queue.length) this.queue = mixedCycle(this.last, this.random, this.players);
     return this.queue[0];
   }
   /** Modes left in the current cycle, the next one first. */

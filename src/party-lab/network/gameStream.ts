@@ -46,7 +46,7 @@ export class SnapshotBuffer {
       snapshot.tick < 0 ||
       !Number.isSafeInteger(snapshot.round) ||
       !(snapshot.transforms instanceof Uint8Array) ||
-      snapshot.transforms.byteLength !== TRANSFORM_BYTES
+      (snapshot.mode === "human_bowling" ? ![28,560].includes(snapshot.transforms.byteLength) : snapshot.transforms.byteLength !== TRANSFORM_BYTES)
     )
       return false;
     const last = this.frames[this.frames.length - 1];
@@ -61,7 +61,7 @@ export class SnapshotBuffer {
       snapshot.transforms.byteOffset,
       snapshot.transforms.byteLength
     );
-    const values = new Float32Array(TRANSFORM_BYTES / 4);
+    const values = new Float32Array(snapshot.transforms.byteLength / 4);
     for (let i = 0; i < values.length; i++) {
       values[i] = view.getFloat32(i * 4, true);
       if (!Number.isFinite(values[i])) return false;

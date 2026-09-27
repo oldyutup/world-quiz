@@ -1281,10 +1281,10 @@ test("whistle audio: positional and rough — equal-power panning toward its sid
 
 // ─── Regression ─────────────────────────────────────────────────────────────
 
-test("regression: online integration — the six modes, Mixed, the protocol (9) and the static map registry are unchanged", () => {
-  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt"]);
+test("regression: online integration — the existing modes, seven-mode Mixed, protocol (10) and static map registry remain available", () => {
+  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling"]);
   assert.ok((MODE_SELECTIONS as readonly string[]).includes(PROP_HUNT.mode));
-  assert.equal(NET.version, 9);
+  assert.equal(NET.version, 10);
   assert.deepEqual([...ARENA_MAP_IDS].sort(), ["barn", "rooftop", "test"]);
   assert.equal(shapeHeight(PROP_FAMILIES.crate.shape), 0.92);
 });

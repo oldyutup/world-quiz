@@ -1,3 +1,4 @@
+import {BowlingRoundSimulation} from "../../../shared/party-lab/simulation/bowlingRound.js";
 import { PropRoundSimulation } from "../../../shared/party-lab/simulation/propRound.js";
 import { PROP_TICKS } from "../../../shared/party-lab/simulation/prophunt/config.js";
 import assert from "node:assert/strict";
@@ -84,7 +85,12 @@ async function close(...list: Peer[]) {
 /** Jump a phase to its last 30 ms (the fixed-step loop then finishes it for real). */
 function skip(room: PartyRoom) {
   const game = room.game as unknown as { elapsed: number; phase: string; round: { elapsed: number; phase: string } };
-  if (room.game instanceof PropRoundSimulation) {
+  if (room.game instanceof BowlingRoundSimulation) {
+    if(room.game.phase==='countdown')room.game.game.phaseTime=2.09;
+    else if(room.game.phase==='playing'){
+      for(let i=0;i<30000&&room.game.phase==='playing';i++)room.game.step([]);
+    } else (room.game as unknown as {resultTime:number}).resultTime=9.98;
+  } else if (room.game instanceof PropRoundSimulation) {
     const r = room.game.round;
     if (r.phase === "hiding") { r.phase = "search"; r.tick = PROP_TICKS.search - 2; }
     else r.tick = (r.phase === "countdown" ? PROP_TICKS.countdown : PROP_TICKS.results) - 2;
@@ -162,7 +168,7 @@ test("mode selector: the creator is host; only the host changes it; everyone see
   assert.equal(room.state.players.get(a.room.sessionId)?.ready, false, "changing the mode clears Ready");
   a.room.send("mode", "mixed");
   await until(() => [a, b].every((p) => p.room.state.selection === "mixed"));
-  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt"].includes(b.room.state.mode), "Mixed shows a real mode");
+  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling"].includes(b.room.state.mode), "Mixed shows a real mode");
   assert.equal(b.room.state.mode, room.upcoming, "Mixed shows the actual next mode");
   await close(a, b);
 });
@@ -226,7 +232,7 @@ test("barn round over real sockets: explicit mode, barn packets acknowledged, ro
   await close(a, b);
 });
 
-test("Mixed: all six modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
+test("Mixed: all seven modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
   const a = await create("Alice"),
     b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol");
   const room = local(a);
@@ -235,7 +241,7 @@ test("Mixed: all six modes once per shuffled cycle, never twice in a row; each s
   const played: string[] = [];
   const memory: number[] = [];
   for (let i = 0; i < 22; i++) {
-    if (i === 6) {
+    if (i === 7) {
       a.room.send("propSettings", { ammo: 5, proximity: false });
       await until(() => room.state.propAmmo === 5 && !room.state.propProximity);
     }
@@ -246,8 +252,8 @@ test("Mixed: all six modes once per shuffled cycle, never twice in a row; each s
     assert.equal(mode, next, "the lobby showed the round's actual mode");
     played.push(mode);
     if (room.game instanceof PropRoundSimulation) {
-      assert.deepEqual(room.game.settings, i < 6 ? { ammo: 15, proximity: true } : { ammo: 5, proximity: false }, "Mixed uses default then stored Prop Hunt settings");
-      assert.equal(room.game.game.ammo, i < 6 ? 15 : 5);
+      assert.deepEqual(room.game.settings, i < 7 ? { ammo: 15, proximity: true } : { ammo: 5, proximity: false }, "Mixed uses default then stored Prop Hunt settings");
+      assert.equal(room.game.game.ammo, i < 7 ? 15 : 5);
     }
     if (i >= 2) {
       // The test's own received-message arrays are not server memory.
@@ -257,8 +263,8 @@ test("Mixed: all six modes once per shuffled cycle, never twice in a row; each s
     }
   }
   for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `no repeat (${played.join(",")})`);
-  for (let c = 0; c + 6 <= played.length; c += 6)
-    assert.deepEqual([...played.slice(c, c + 6)].sort(), ["barn_shootout", "bomb_tag", "color_chaos", "layer_chaos", "prop_hunt", "rooftop_brawl"], `cycle ${c / 6} has every mode once (${played.join(",")})`);
+  for (let c = 0; c + 7 <= played.length; c += 7)
+    assert.deepEqual([...played.slice(c, c + 7)].sort(), ["barn_shootout", "bomb_tag", "color_chaos", "human_bowling", "layer_chaos", "prop_hunt", "rooftop_brawl"], `cycle ${c / 7} has every mode once (${played.join(",")})`);
   assert.equal(room.simulations.created, 1 + played.length - (played[0] === "rooftop_brawl" ? 1 : 0));
   assert.equal(room.simulations.disposed, room.simulations.created - 1);
   const growth = memory[memory.length - 1] - memory[0];

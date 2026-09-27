@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+const OnlineBowlingArena = lazy(() => import("./OnlineBowlingArena"));
 const OnlinePropArena = lazy(() => import("./OnlinePropArena"));
 import {
   Component,
@@ -418,6 +419,7 @@ export default function OnlineArena(props: Props) {
   if (props.lobby.mode === "barn_shootout") return <OnlineBarnArena {...props} />;
   if (props.lobby.mode === "layer_chaos") return <OnlineLayerArena {...props} />;
   if (props.lobby.mode === "color_chaos") return <OnlineColorArena {...props} />;
+  if (props.lobby.mode === "human_bowling") return <Suspense fallback={<p>İnsan Bowlingi yükleniyor…</p>}><OnlineBowlingArena {...props} /></Suspense>;
   if (props.lobby.mode === "prop_hunt") return <Suspense fallback={<p>Orman Kampı yükleniyor…</p>}><OnlinePropArena {...props} /></Suspense>;
   if (props.lobby.mode === "bomb_tag") return <OnlineBombArena {...props} />;
   return <OnlineRooftopArena {...props} />;

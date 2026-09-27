@@ -87,7 +87,7 @@ export class PropPrediction {
     return fresh;
   }
   step(input: MovementInput, packet: AnyInputPacket | null | undefined) {
-    if (!this.game || !packet || this.pending.length >= 30) return;
+    if (!this.game || !packet || !("moveX" in packet) || this.pending.length >= 30) return;
     const started = performance.now();
     this.pending.push({ seq: packet.seq, input: { ...input, x: packet.moveX, z: packet.moveZ } });
     this.game.predictMovement(this.slot, this.pending[this.pending.length - 1].input);
