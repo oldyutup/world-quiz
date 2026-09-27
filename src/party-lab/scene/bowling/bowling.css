@@ -1,0 +1,75 @@
+.pl-bowling-hud { position:absolute; inset:0; pointer-events:none; color:oklch(96% .03 85); font-family:inherit; font-variant-numeric:tabular-nums; }
+[data-mode="human_bowling"] .pl-menu-button { left:auto; right:24px; }
+.pl-bowling-title { position:absolute; left:28px; top:24px; display:flex; flex-direction:column; gap:3px; text-shadow:0 2px 5px #293c44; }
+.pl-bowling-title span { font-size:10px; font-weight:800; letter-spacing:.16em; }
+.pl-bowling-title b { font-size:24px; }
+.pl-bowling-scores { position:absolute; top:96px; left:28px; margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; }
+.pl-bowling-scores li { display:flex; align-items:center; gap:10px; width:195px; padding:10px 12px; border:1px solid oklch(70% .025 220 / .4); border-radius:12px; background:oklch(26% .035 220 / .92); }
+.pl-bowling-scores li[data-active=true] { border-color:oklch(83% .14 85); background:oklch(32% .04 220 / .98); }
+.pl-bowling-slot { width:24px; height:24px; border-radius:50%; color:oklch(24% .03 220); display:grid; place-items:center; font-weight:800; }
+.pl-bowling-scores b { font-size:13px; }.pl-bowling-scores small { font-size:9px; opacity:.7; }.pl-bowling-scores strong { margin-left:auto; font-size:24px; }.pl-bowling-scores strong small { font-size:11px; display:block; text-align:right; }
+.pl-bowling-throws { display:flex; gap:13px; font-size:12px; opacity:.8; margin-top:2px; }
+.pl-bowling-turn { position:absolute; left:50%; top:26px; transform:translateX(-50%); text-align:center; display:flex; flex-direction:column; gap:5px; padding:12px 25px; border-radius:14px; background:oklch(26% .035 220 / .92); }
+.pl-bowling-turn b { font-size:15px; }.pl-bowling-turn span { font-size:12px; color:oklch(85% .06 85); }
+.pl-bowling-drive { position:absolute; left:50%; bottom:28px; transform:translateX(-50%); display:flex; align-items:center; gap:24px; padding:16px 24px; border-radius:14px; background:oklch(26% .035 220 / .96); white-space:nowrap; }
+.pl-bowling-speed { display:flex; flex-direction:column; min-width:64px; }.pl-bowling-speed strong { font-size:40px; line-height:1; }.pl-bowling-speed span { font-size:11px; opacity:.7; }
+.pl-bowling-drive b { font-size:18px; }.pl-bowling-drive p { font-size:12px; margin:7px 0; }.pl-bowling-drive div>span { font-size:11px; color:oklch(84% .05 85); }.pl-bowling-drive span[data-zone=true] { color:oklch(88% .16 85); }
+.pl-bowling-countdown { position:absolute; top:35%; left:50%; transform:translateX(-50%); font-size:100px; font-weight:900; text-shadow:0 4px 0 oklch(28% .03 220); }
+.pl-bowling-hit { position:absolute; bottom:36px; left:50%; transform:translateX(-50%); padding:10px 24px; background:oklch(26% .035 220 / .92); border-radius:14px; display:flex; align-items:baseline; gap:8px; }.pl-bowling-hit strong { font-size:36px; }.pl-bowling-hit span { font-size:14px; }
+.pl-bowling-callout { position:absolute; left:50%; bottom:50px; transform:translateX(-50%); text-align:center; padding:18px 30px; border-radius:16px; background:oklch(26% .035 220 / .95); display:flex; flex-direction:column; gap:6px; }.pl-bowling-callout strong { font-size:32px; color:oklch(85% .14 85); }
+.pl-bowling-result { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); min-width:300px; padding:32px 42px; text-align:center; border-radius:20px; background:oklch(26% .035 220 / .98); pointer-events:auto; border:1px solid oklch(75% .07 85); }.pl-bowling-result > span { font-size:11px; letter-spacing:.16em; }.pl-bowling-result h2 { font-size:32px; margin:12px 0; }.pl-bowling-result p { margin-bottom:24px; }
+.pl-bowling-retry { position:absolute; left:50%; top:110px; transform:translateX(-50%); padding:12px; border-radius:12px; background:oklch(26% .035 220); }
+.pl-bowling-debug { position:absolute; right:16px; top:85px; max-height:70vh; overflow:auto; font-size:10px; max-width:330px; padding:12px; background:oklch(20% .03 220 / .96); pointer-events:auto; }
+@media(max-width:700px) { .pl-bowling-title { left:12px; top:12px; }.pl-bowling-title b { font-size:18px; }.pl-bowling-scores { left:12px; top:74px; }.pl-bowling-scores li { width:140px; padding:6px; gap:6px; }.pl-bowling-turn { top:12px; left:62%; padding:8px; }.pl-bowling-drive { bottom:15px; padding:12px; gap:12px; }.pl-bowling-result { min-width:260px; padding:24px; } }
+
+.pl-bowling-drive { transition:opacity 180ms ease-out, transform 180ms ease-out; }.pl-bowling-drive[data-active=false] { opacity:0; transform:translate(-50%,8px); }
+@media(prefers-reduced-motion:reduce) { .pl-bowling-drive { transition:none; } }
+/* The shared menu describes running rounds; Bowling instead explains its pause in its own controls copy. */
+body:has(.pl-playground[data-mode="human_bowling"]) .pl-menu-root .pl-menu-note { display:none; }
+.pl-bowling-charge { position:absolute; left:24px; bottom:24px; box-sizing:border-box; width:292px; padding:18px 20px 14px; border:1px solid oklch(65% .04 220 / .7); border-radius:6px; background:oklch(25% .035 220 / .97); display:flex; flex-direction:column; gap:8px; transition:border-color 180ms ease-out, background-color 180ms ease-out; }
+.pl-bowling-charge[data-charging=true] { border-color:oklch(85% .14 85); background:oklch(30% .04 220 / .98); }
+.pl-bowling-instruments { display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:10px; border-bottom:1px solid oklch(50% .03 220); }
+.pl-bowling-instruments>div { display:flex; flex-direction:column; gap:3px; }.pl-bowling-instruments span { font-size:9px; letter-spacing:.12em; }.pl-bowling-instruments strong { font-size:28px; line-height:1.1; }.pl-bowling-instruments small { font-size:10px; font-weight:500; }
+.pl-bowling-clock { max-width:100px; font-size:10px; line-height:1.5; text-align:right; color:oklch(85% .14 85); }
+.pl-bowling-meter-label { display:flex; align-items:baseline; gap:10px; }.pl-bowling-meter-label>b { font-size:10px; letter-spacing:.1em; width:34px; }.pl-bowling-meter-label strong { font-size:24px; line-height:1; }.pl-bowling-meter-label small { font-size:13px; }.pl-bowling-meter-label>span { margin-left:auto; font-size:12px; }
+.pl-bowling-meter { height:15px; background:oklch(40% .025 220); overflow:hidden; }.pl-bowling-meter i { display:block; height:100%; background:oklch(85% .14 85); transform-origin:left; }
+.pl-bowling-angle { height:7px; }.pl-bowling-angle i { background:oklch(80% .07 205); }
+.pl-bowling-range { display:flex; justify-content:space-between; font-size:10px; color:oklch(80% .025 220); }
+.pl-bowling-charge p { margin:4px 0 0; font-size:11px; line-height:1.4; }
+.pl-bowling-drive { left:auto; right:24px; bottom:24px; transform:none; display:block; padding:14px 18px; border-radius:6px; white-space:normal; max-width:330px; }.pl-bowling-drive b { font-size:17px; }.pl-bowling-drive>span { display:block; margin-top:6px; font-size:11px; line-height:1.45; }
+.pl-bowling-air { position:absolute; right:24px; bottom:32px; max-width:280px; padding:12px 16px; border-radius:6px; background:oklch(26% .035 220 / .96); font-size:13px; line-height:1.6; }
+.pl-bowling-charge~.pl-bowling-debug { top:80px; max-height:30vh; }
+@media(max-width:900px) { .pl-bowling-charge { width:244px; left:12px; bottom:12px; padding:12px; gap:6px; }.pl-bowling-drive { right:12px; bottom:12px; max-width:230px; padding:12px; }.pl-bowling-drive b { font-size:14px; }.pl-bowling-air { right:12px; bottom:12px; max-width:200px; } }
+@media(max-width:600px) { .pl-bowling-title { top:12px; }.pl-bowling-title b { font-size:16px; }.pl-bowling-scores { top:65px; gap:4px; }.pl-bowling-scores li { width:128px; }.pl-bowling-turn { top:68px; left:auto; right:12px; transform:none; max-width:150px; }.pl-bowling-charge { width:216px; }.pl-bowling-drive { bottom:255px; left:12px; right:auto; max-width:190px; }.pl-bowling-drive p { display:none; }.pl-bowling-air { bottom:255px; left:12px; right:auto; }.pl-bowling-hit { left:auto; right:12px; bottom:24px; transform:none; padding:10px; flex-direction:column; gap:0; }.pl-bowling-hit span { font-size:10px; }.pl-bowling-callout { bottom:280px; width:220px; padding:12px; }.pl-bowling-callout strong { font-size:24px; } }
+@media(max-height:600px) and (min-width:601px) { .pl-bowling-charge { width:244px; padding:10px 14px; gap:4px; }.pl-bowling-instruments { padding-bottom:5px; }.pl-bowling-scores { top:74px; flex-direction:row; }.pl-bowling-scores li { width:130px; padding:6px; }.pl-bowling-title b { font-size:17px; } }
+@media(prefers-reduced-motion:reduce) { .pl-bowling-charge { transition:none; } }
+
+/* Original Party Lab instruments: angle left, honest SI-derived speed right. */
+.pl-bowling-charge { width:272px; padding:14px 16px; gap:5px; }
+.pl-bowling-meter-label>b { width:auto; font-size:10px; }
+.pl-bowling-meter-label>span { font-size:10px; }
+.pl-bowling-dial { width:100%; overflow:visible; }
+.pl-bowling-dial-track { fill:none; stroke:oklch(62% .045 220); stroke-width:5; }
+.pl-bowling-dial line { stroke:oklch(88% .03 85); stroke-width:2; }
+.pl-bowling-dial text { fill:oklch(88% .03 85); text-anchor:middle; font-size:10px; font-weight:700; }
+.pl-bowling-dial .pl-bowling-degrees { font-size:32px; fill:oklch(96% .03 85); }
+.pl-bowling-needle { fill:oklch(86% .15 85); }
+.pl-bowling-dial circle { fill:oklch(86% .15 85); }
+.pl-bowling-speedometer { position:absolute; right:24px; bottom:24px; width:130px; padding:18px; text-align:right; background:oklch(25% .035 220 / .97); border:1px solid oklch(65% .04 220 / .7); border-radius:6px; }
+.pl-bowling-speedometer span { display:block; font-size:10px; letter-spacing:.1em; }
+.pl-bowling-speedometer strong { display:block; font-size:54px; line-height:1.15; }
+.pl-bowling-speedometer b { font-size:14px; color:oklch(85% .14 85); }
+.pl-bowling-drive,.pl-bowling-air { right:220px; bottom:24px; max-width:280px; }
+@media(max-width:900px) { .pl-bowling-charge { width:230px; }.pl-bowling-speedometer { right:12px; bottom:12px; width:90px; padding:12px; }.pl-bowling-speedometer strong { font-size:40px; }.pl-bowling-drive,.pl-bowling-air { right:155px; max-width:200px; font-size:11px; } }
+@media(max-width:600px) { .pl-bowling-charge { width:210px; }.pl-bowling-drive,.pl-bowling-air { left:12px; bottom:265px; right:auto; }.pl-bowling-hit { bottom:150px; } }
+@media(prefers-reduced-motion:reduce) { .pl-bowling-needle { transition:none; } }
+
+.pl-bowling-charge p.pl-bowling-nudge { font-size:14px; font-weight:800; color:oklch(86% .15 85); }
+.pl-bowling-charge p.pl-bowling-nudge[data-used=true] { color:oklch(78% .025 220); }
+
+.pl-bowling-charge[data-charging=true] .pl-bowling-meter-label>span { font-size:20px; line-height:10px; color:oklch(86% .15 85); }
+
+.pl-bowling-camera-notice { position:absolute; top:112px; left:50%; transform:translateX(-50%); padding:7px 12px; border-radius:6px; background:oklch(26% .035 220 / .92); font-size:11px; font-weight:700; letter-spacing:.08em; animation:bowling-camera-notice 1.25s ease-out both; }
+@keyframes bowling-camera-notice { 0%,65% { opacity:1; } 100% { opacity:0; } }
+
+.pl-bowling-camera-key { white-space:nowrap; }

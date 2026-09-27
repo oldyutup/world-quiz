@@ -3,6 +3,8 @@ import type { AudioManager } from "../audio/AudioManager";
 import { CameraFeel } from "../audio/feel";
 import {
   Component,
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -79,6 +81,8 @@ import type { PropRole } from "../../../shared/party-lab/maps/propHunt";
 import type { SeekerView } from "./prophunt/propCamera";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
+import BowlingHud, { type BowlingSnapshot } from "./bowling/BowlingHud";
+const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
 
 /**
  * What the local arena can open: every shared static map, plus Katman Kaosu's tile
@@ -86,21 +90,21 @@ import { controlHint } from "./arenaMenu";
  * Renk Kaosu's colour field (see scene/colors/), Bomba Sende's local playground (see
  * scene/bomb/) and Saklambaç's forest camp (local only, see scene/prophunt/).
  */
-type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt"];
+type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt" | "human_bowling";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt", "human_bowling"];
 const localArenaName = (id: LocalArenaId) =>
-  id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
+  id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
  * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt"]);
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling"]);
 /** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
-  return query.has("layerDebug") || query.has("colorDebug") || query.has("bombDebug") || query.has("propDebug") || query.has("partyDebug");
+  return query.get("bowlingDebug") === "1" || query.has("layerDebug") || query.has("colorDebug") || query.has("bombDebug") || query.has("propDebug") || query.has("partyDebug");
 };
 /** `?bombDebug=1`: Bomba Sende's debug readout and keys exist at all (without it the mode has none). */
 const bombDebugTools = () => new URLSearchParams(window.location.search).has("bombDebug");
@@ -791,16 +795,21 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [propView, setPropView] = useState<SeekerView>("third");
   const [propProximity, setPropProximity] = useState(true);
   const [propTools] = useState(propDebugTools);
+  const bowling = mapId === "human_bowling";
+  const [bowlingPlayers, setBowlingPlayers] = useState<2 | 3>(3);
+  const [bowlingSnapshot, setBowlingSnapshot] = useState<BowlingSnapshot | null>(null);
+  const [bowlingRestart, setBowlingRestart] = useState(0);
+  const [bowlingTools] = useState(() => new URLSearchParams(window.location.search).get("bowlingDebug") === "1");
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
   /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
-  const modePlayground = tileMode || bomb || prophunt;
-  const modeId = layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
+  const modePlayground = tileMode || bomb || prophunt || bowling;
+  const modeId = bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
-  const chaseCamera = barn || modePlayground;
+  const chaseCamera = barn || (modePlayground && !bowling);
   const immersive = IMMERSIVE_MAPS.has(mapId);
-  // Immersive only: the Esc menu (never a pause — the local round and bots go on) and the
-  // debug readout, which is collapsed unless asked for.
+  // Immersive Esc menu and optional debug. Bowling alone pauses its turn while
+  // the menu is open; the existing modes keep simulating as before.
   const menu = useArenaMenu(immersive && !paused);
   const menuOpen = menu.view !== null;
   const inputOff = paused || menuOpen;
@@ -853,6 +862,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setColorSnapshot(null);
     setBombSnapshot(null);
     setPropSnapshot(null);
+    setBowlingSnapshot(null);
     setPropProximity(true);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
@@ -953,7 +963,11 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </div>
             }
           >
-            {mapId === "layers" ? (
+            {mapId === "human_bowling" ? (
+              <Suspense fallback={null}>
+                <BowlingPlayground audio={audio} key={`bowling-${bowlingPlayers}-${bowlingRestart}`} players={bowlingPlayers} onStatus={setStatus} onSnapshot={setBowlingSnapshot} paused={inputOff} costumeId={costumeId} debug={bowlingTools} />
+              </Suspense>
+            ) : mapId === "layers" ? (
               <LayerPlayground
                 key={`layers-${layerPlayers}`}
                 players={layerPlayers}
@@ -1036,6 +1050,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           </Canvas>
         </SceneBoundary>
         {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
+        {bowling && status === "ready" && bowlingSnapshot && <BowlingHud snapshot={bowlingSnapshot} debugOpen={bowlingTools && debugPanel.open} restart={() => { setStatus("loading"); setBowlingSnapshot(null); setBowlingRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {layers && status === "ready" && layerSnapshot && (
           <>
             <LayerHud snapshot={layerSnapshot} hud={layerHud} debugOpen={debugPanel.open} />
@@ -1329,7 +1344,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={(bomb && !bombTools) || (prophunt && !propTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={(bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1344,6 +1359,22 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </select>
             </label>
           )}
+          {bowling && <>
+            <label className="pl-menu-row">
+              <span>Oyuncu</span>
+              <select value={bowlingPlayers} onChange={event => {
+                menu.setView(null);
+                setStatus("loading");
+                setBowlingSnapshot(null);
+                setBowlingPlayers(Number(event.target.value) === 2 ? 2 : 3);
+                requestAnimationFrame(() => viewport.current?.focus());
+              }}>
+                <option value={3}>3 (sen + 2 bot)</option>
+                <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+            <p>Bowling: W gaz, S fren, A / D direksiyon, V kamera. Sarı bölgede SPACE tut: açı gidip gelir, bırak: fırla. Havada A / D ve W / S: yön ve beden kontrolü. SPACE: tek ileri + yukarı Nudge. Menü açıkken atış duraklar.</p>
+          </>}
           {colors && (
             <label className="pl-menu-row">
               <span>Oyuncu</span>

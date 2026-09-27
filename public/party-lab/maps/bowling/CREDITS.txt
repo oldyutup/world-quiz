@@ -1,0 +1,44 @@
+Human Bowling / İnsan Bowlingi visual kit. License audit: 2026-09-26.
+
+Selected pin: SkywolfGameStudios, CC0Tree. CC0 1.0 Universal.
+https://skywolfgamestudios.itch.io/cc0tree
+https://github.com/SkywolfGameStudios/CC0Tree
+https://creativecommons.org/publicdomain/zero/1.0/
+Exact source: ~/Downloads/PartyLabBowlingAssets/Bowling/SM_Bowling_Pin.fbx
+SHA256: 1ccaedda09b94125df071d44c00f85ac6295dbcffe11daa396aed036daadf663
+Provenance: macOS WhereFroms metadata identifies the author's CC0Tree itch.io download (game 4568881, file 17538031). Identical SHA256 to ~/Downloads/SM_Bowling_Pin.fbx. Author page explicitly licenses assets CC0 and lists Bowling Pin (26 kB). Author's linked repository independently states CC0 including redistribution.
+Modification: bake rotation/scale, bottom-center pivot, uniform height 1.5 m; discard missing PG_84211bc6.png reference; original vertex-color cream/red bands, one material/primitive; source 288 triangles, split only at four painted stripe boundaries. No bowling ball included.
+
+Alternate audited, NOT included: Deplorable Mountaineer, Bowling Ball and Pins.
+https://deplorablemountaineer.itch.io/bowling-ball-and-pins
+Exact source: ~/Downloads/PartyLabBowlingAssets/Bowling/Bowling/FBX v7400/Pin Low Poly.fbx
+SHA256: 3be7144bc7ddf0b98a58fc699c818ca56e86468b2f35aebcea281742e940cb44
+README lacks a license but the author's page explicitly declares Asset license: Creative Commons Zero v1.0 Universal. Downloads/Bowling.zip WhereFroms identifies that page; its Pin Low Poly.fbx member is byte-identical. Preferred CC0Tree pin chosen per user preference.
+
+Selected vehicle: Kenney Car Kit 3.1 race.glb (open cockpit, full-sized stunt silhouette). Compared with Toy Car Kit 1.2 vehicle-speedster, not included. Car is 4.3 m long with baked palette texture colors.
+Service vehicles: Kenney Toy Car Kit vehicle-racer, original palette baked to vertex colours.
+Sky: Kenney Skyboxes 1.0 skybox-day.png (light blue daytime / soft white clouds and sun), CC0, resized to 1024x512 WebP.
+Source: ~/Downloads/PartyLabHumanBowlingAssets/Skyboxes/Skyboxes/skybox-day.png
+License/source: supplied Skyboxes/License.txt, created/distributed by Kenney (www.kenney.nl).
+Source SHA256: b7d98fe95157e74b3899a1dd468a1e478005bcd1f668b29b5b42a48cb5358fa2
+Effect: Kenney Particle Pack 1.1 PNG (Transparent)/smoke_04.png resized to 128px.
+All five new pack License.txt files inspected, explicitly CC0.
+
+Scenery: Kenney Racing Kit 2.0 and Prototype Kit 1.0, CC0 1.0, per supplied License.txt files. https://kenney.nl
+Exact sources relative to ~/Downloads/PartyLabHumanBowlingAssets/ (Prototype and original approved pin from ~/Downloads/PartyLabBowlingAssets/):
+Car/Models/GLB format/race.glb
+ToyCar/Models/GLB format/vehicle-racer.glb
+Racing/Models/GLTF format/treeLarge.glb
+Racing/Models/GLTF format/tent.glb
+Racing/Models/GLTF format/barrierRed.glb
+Racing/Models/GLTF format/barrierWhite.glb
+Racing/Models/GLTF format/grandStand.glb
+Racing/Models/GLTF format/flagCheckers.glb
+Racing/Models/GLTF format/overhead.glb
+Racing/Models/GLTF format/billboardLower.glb
+Racing/Models/GLTF format/pylon.glb
+Prototype/Models/GLB format/indicator-special-arrow.glb
+Prototype/Models/GLB format/shape-cube-rounded.glb
+Changes: baked authoring transforms, normalized bottom-center pivots/scales; one vertex-color primitive per model, texture references removed/replaced with colors; flag cloth rebuilt as a readable 3×8 vertex-color checker grid while retaining the source pole. All collision geometry is generated separately in code. No raw packs included.
+
+Rebuild: node scripts/build-party-lab-bowling-kit.mjs [path/to/PartyLabHumanBowlingAssets]
