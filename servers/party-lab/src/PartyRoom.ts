@@ -3,6 +3,7 @@ import { validateSnowballInput } from "../../../shared/party-lab/network/snowbal
 import { BowlingRoundSimulation } from "../../../shared/party-lab/simulation/bowlingRound.js";
 import { validateBowlingInput } from "../../../shared/party-lab/network/bowlingInput.js";
 import { PropRoundSimulation, PropRotation } from "../../../shared/party-lab/simulation/propRound.js";
+import {DEFAULT_BOWLING_SETTINGS,validBowlingSettings} from "../../../shared/party-lab/bowlingSettings.js";
 import { DEFAULT_PROP_SETTINGS, validPropSettingsPatch } from "../../../shared/party-lab/propSettings.js";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
@@ -215,6 +216,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.participants = new Set(eligible.map((p) => p.id));
     this.ensureSimulation(this.upcoming);
     if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
+    if (this.game instanceof BowlingRoundSimulation) this.game.settings = { obstacles: this.state.bowlingObstacles };
     this.game.start(eligible.map((p) => p.slot as PlayerId));
     for (const input of this.mailboxes.values()) input.clear();
     this.syncGameState();
@@ -358,6 +360,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.state.phase = "waiting";
     this.state.propAmmo = DEFAULT_PROP_SETTINGS.ammo;
     this.state.propProximity = DEFAULT_PROP_SETTINGS.proximity;
+    this.state.bowlingObstacles = DEFAULT_BOWLING_SETTINGS.obstacles;
     this.state.winner = -1;
     this.state.selection = this.selection;
     this.state.mode = this.upcoming;
@@ -402,6 +405,15 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       if (this.state.propAmmo === ammo && this.state.propProximity === proximity) return;
       this.state.propAmmo = ammo;
       this.state.propProximity = proximity;
+      this.resetReady();
+      this.syncGameState();
+    });
+    this.onMessage("bowlingSettings", (client, data: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p?.connected || this.game.phase !== "waiting" || !validBowlingSettings(data)) return;
+      if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
+      if (this.state.bowlingObstacles === data.obstacles) return;
+      this.state.bowlingObstacles = data.obstacles;
       this.resetReady();
       this.syncGameState();
     });

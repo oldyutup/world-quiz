@@ -803,6 +803,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [snowSnapshot, setSnowSnapshot] = useState<SnowSnapshot | null>(null);
   const [snowRestart, setSnowRestart] = useState(0);
   const bowling = mapId === "human_bowling";
+  const [bowlingObstacles, setBowlingObstacles] = useState(false);
   const [bowlingPlayers, setBowlingPlayers] = useState<2 | 3>(3);
   const [bowlingSnapshot, setBowlingSnapshot] = useState<BowlingSnapshot | null>(null);
   const [bowlingRestart, setBowlingRestart] = useState(0);
@@ -977,7 +978,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </Suspense>
             ) : mapId === "human_bowling" ? (
               <Suspense fallback={null}>
-                <BowlingPlayground audio={audio} key={`bowling-${bowlingPlayers}-${bowlingRestart}`} players={bowlingPlayers} onStatus={setStatus} onSnapshot={setBowlingSnapshot} paused={inputOff} costumeId={costumeId} debug={bowlingTools} />
+                <BowlingPlayground audio={audio} key={`bowling-${bowlingPlayers}-${bowlingRestart}-${bowlingObstacles}`} obstaclesEnabled={bowlingObstacles} players={bowlingPlayers} onStatus={setStatus} onSnapshot={setBowlingSnapshot} paused={inputOff} costumeId={costumeId} debug={bowlingTools} />
               </Suspense>
             ) : mapId === "layers" ? (
               <LayerPlayground
@@ -1399,6 +1400,12 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               }}>
                 <option value={3}>3 (sen + 2 bot)</option>
                 <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+            <label className="pl-menu-row">
+              <span>Engeller</span>
+              <select aria-label="Engeller" value={bowlingObstacles ? "on" : "off"} onChange={event => { setBowlingSnapshot(null); setBowlingObstacles(event.target.value === "on"); }}>
+                <option value="off">Kapalı</option><option value="on">Açık</option>
               </select>
             </label>
             <p>Bowling: W gaz, S fren, A / D direksiyon, V kamera. Sarı bölgede SPACE tut: açı gidip gelir, bırak: fırla. Havada A / D ve W / S: yön ve beden kontrolü. SPACE: tek ileri + yukarı Nudge. Menü açıkken atış duraklar.</p>

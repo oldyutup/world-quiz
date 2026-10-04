@@ -1,3 +1,4 @@
+import type { BowlingSettings } from "../../shared/party-lab/bowlingSettings";
 import type { PropSettings } from "../../shared/party-lab/propSettings";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CHAT_MAX_LENGTH, type LobbySnapshot } from "./network/types";
@@ -137,8 +138,9 @@ function ModePicker({ selection, next, isHost, hostName, enabled, onMode }: {
   </section>;
 }
 
-export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onControls, controlsRef, diagnostics, debug }: {
+export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onBowlingSettings, onControls, controlsRef, diagnostics, debug }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onMode?: (selection: ModeSelection) => void; onControls: () => void;
+  onBowlingSettings?: (settings: BowlingSettings) => void;
   onPropSettings?: (settings: Partial<PropSettings>) => void;
   controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
@@ -221,6 +223,11 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
               <label>Yakınlık ipucu <select aria-label="Yakınlık ipucu" disabled={!connected} value={lobby.propProximity ? "on" : "off"} onChange={e => onPropSettings?.({ proximity: e.target.value === "on" })}><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
               <label>Arayan mermisi <select aria-label="Arayan mermisi" disabled={!connected} value={lobby.propAmmo} onChange={e => onPropSettings?.({ ammo: Number(e.target.value) as PropSettings["ammo"] })}>{([5, 10, 15] as const).map(n => <option key={n} value={n}>{n}</option>)}</select></label>
             </div> : <p className="pl-prop-settings-summary">Saklambaç · {lobby.propAmmo} mermi · Yakınlık {lobby.propProximity ? "açık" : "kapalı"}</p>
+          )}
+          {(lobby.selection === "human_bowling" || lobby.selection === "mixed") && (
+            isHost ? <div className="pl-prop-settings">
+              <label>{lobby.selection === "mixed" ? "Bowling · Engeller" : "Engeller"} <select aria-label="Engeller" disabled={!connected} value={lobby.bowlingObstacles ? "on" : "off"} onChange={e => onBowlingSettings?.({ obstacles: e.target.value === "on" })}><option value="off">Kapalı</option><option value="on">Açık</option></select></label>
+            </div> : <p className="pl-prop-settings-summary">Bowling · Engeller · {lobby.bowlingObstacles ? "Açık" : "Kapalı"}</p>
           )}
           <div className="pl-room-roster-heading"><h2>Oyuncular</h2><span>{playersOnline.length} / 3</span></div>
           <ul className="pl-room-roster" aria-label="Lobideki oyuncular">

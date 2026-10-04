@@ -539,9 +539,9 @@ test("first person and third person agree on what can be hit: over 100+ aimed sh
 
 // ─── Regression ─────────────────────────────────────────────────────────────
 
-test("regression: online integration — the online modes, the protocol (11) and the seeker's 15 shots, 3 / 15 / 75 s round and whistle-free 10 s are as approved", () => {
+test("regression: online integration — the online modes, the protocol (12) and the seeker's 15 shots, 3 / 15 / 75 s round and whistle-free 10 s are as approved", () => {
   assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl"]);
-  assert.equal(NET.version, 11);
+  assert.equal(NET.version, 12);
   assert.equal(PROP_HUNT.seeker.ammo, 15);
   assert.deepEqual({ ...PROP_HUNT.timing }, { countdown: 3, hiding: 15, search: 75, results: 5 });
   assert.ok(!("at" in PROP_HUNT.whistle), "no endgame whistle at 10 s");

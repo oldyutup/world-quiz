@@ -20,7 +20,7 @@ export class BowlingOnlineController {
  readonly slot:number;
  constructor(readonly options:BowlingOnline,seed:number,players:2|3){
   this.slot=options.lobby.players.find(p=>p.id===options.lobby.selfId)?.slot??-1;
-  this.prediction=new BowlingPrediction(this.slot,seed,players);
+  this.prediction=new BowlingPrediction(this.slot,seed,players,options.lobby.game?.bowling?.obstacles??false);
  }
  advance(g:BowlingGame,delta:number,input:BowlingInput,off:boolean){
   const {stream,lobby,sendInput}=this.options,latest=stream.snapshots.latest;if(!latest?.snapshot.bowling)return;
@@ -40,7 +40,9 @@ export class BowlingOnlineController {
     if(packet){if(this.edges.length)this.edges.shift();if('space' in packet&&!off)this.prediction.step(packet,now);}
    }
   }
-  const sample=stream.snapshots.sample(this.frameClock.time);if(!sample)return;
+  // A measured 50ms reserve halves held spectator frames in the Bowling TCP
+  // jitter trace. Driving prediction still uses the latest authoritative pose.
+  const sample=stream.snapshots.sample(this.frameClock.time,150);if(!sample)return;
   let {a,b,alpha}=sample;
   // Never interpolate a teleport/reset or cross a body-layout transition.
   if(a.snapshot.bowling?.turn!==b.snapshot.bowling?.turn||a.values.length!==b.values.length){a=b;alpha=1;}

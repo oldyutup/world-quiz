@@ -7,8 +7,8 @@ import { stuntVisual } from './stuntVisual';
 import { BOWLING_PALETTE as palette, bowlingKitGeometry } from './palette';
 
 /** One merged static mesh, shared kit geometry; no imported collision geometry. */
-export function bowlingVisual(kit: Group, seed = 7281) {
-  const obstacles=courseObstacles(seed);
+export function bowlingVisual(kit: Group, seed = 7281, obstaclesEnabled = false) {
+  const obstacles=courseObstacles(seed,1,obstaclesEnabled);
   const root = new Group(), parts: BufferGeometry[] = [], owned: BufferGeometry[] = [];
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
   const box = (size: [number, number, number], at: [number, number, number], color: string, pitch=0) => {

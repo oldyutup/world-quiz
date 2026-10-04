@@ -1,5 +1,35 @@
 # Human Bowling online
 
+## Protocol 12 release
+
+The October 5, 2026 polish uses protocol **12** for the appended
+`bowlingObstacles` lobby-schema field and the `obstacles` / `heldTicks` Bowling
+snapshot fields. Client admission, snapshot validation and server health share
+`NET.version`; protocol 11 clients are rejected. Frontend and server must deploy
+from the same revision. Measurements are in
+[the polish report](../../src/party-lab/scene/bowling/ONLINE_POLISH_REPORT.md).
+
+`Engeller` defaults to `Kapalı`. Only the host can change it while waiting, and a
+change clears Ready. Mixed retains this same room preference deterministically;
+it never rolls a separate obstacle choice. The local arena exposes the same option
+in its existing menu. Disabled obstacles have inactive meshes, disabled sensors,
+no collision penalties and no bot avoidance. `Açık` uses the original six layouts.
+
+Pin mass is now 5 kg and adjacent rack spacing is 3.456 m. Visual/collider scale,
+shape-derived center of mass, friction, restitution and damping stay unchanged.
+The head pin stays 170.5 m from the ramp lip. Flight, controls, scoring and course
+parameters are unchanged. The pin change uses physical contacts only.
+
+Bowling snapshots now include `obstacles` and `heldTicks`. The latter counts server
+ticks already simulated with the last held input, so prediction does not replay
+those elapsed durations a second time during TCP stalls. Car reconciliation resets
+the rack only at a turn boundary, and warms its physics pipeline during loading.
+Bowling uses a 150 ms interpolation reserve;
+other modes retain their existing 100 ms default. Ragdolls and pins remain fully
+server authoritative. Snapshot/input rates and pose packing are unchanged.
+
+The sections below record the original protocol 10 launch, before this local polish.
+
 Protocol **10** adds `human_bowling` / **İnsan Bowlingi**, for two or three occupied
 seats. Prop Hunt still requires exactly three. Each Bowling match gives each player
 three throws, alternating in ascending occupied-seat order, and totals the physical

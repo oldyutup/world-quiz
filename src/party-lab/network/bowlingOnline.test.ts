@@ -21,8 +21,8 @@ export function drive(g:BowlingGame,seq:number):BowlingInputPacket{
  return {...packet(seq,g.score.turn),throttle:g.car.speed<150/3.6?1:0,brake:g.car.speed>150/3.6+.1?.55:0,steer:g.phase==='drive'?courseSteering(p,g.car.heading,g.car.speed,g.obstacles,g.car.stuntStates):0,pitch:0,space:g.phase==='drive'?p.z>=start&&(!g.charging||g.chargeTime<24/FLIGHT.angleRate):g.phase==='flight'&&g.score.round>1&&g.elapsed>.3&&g.elapsed<.5};
 }
 const inputs=(slot:number,p:BowlingInputPacket):MovementInput[]=>[0,1,2].map(i=>({...neutralIntent(),...(i===slot?{bowling:p}:{})}));
-test('protocol 11 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
- assert.equal(NET.version,11);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
+test('protocol 12 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
+ assert.equal(NET.version,12);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
  for(const extra of [{score:10},{position:[0,0,0]},{angle:30},{pins:1023},{camera:2}])assert.equal(validateBowlingInput({...p,...extra}),null);
  assert.equal(validateBowlingInput({...p,throttle:NaN}),null);assert.equal(validateBowlingInput({...p,turn:9}),null);
  const b=encodeBowlingInput(p);b[28]=2;assert.equal(validateBowlingInput(b),null);
@@ -95,4 +95,76 @@ test('a spectator reconnecting after the next countdown reconstructs the reset r
  controller.advance(view,1/60,{throttle:0,brake:0,steer:0,eject:false},false);
  assert.equal(view.phase,'drive');assert.equal(view.ejected,false);assert.deepEqual(view.pins[0].body.translation(),server.game.pins[0].body.translation());
  controller.dispose();view.dispose();server.dispose();
+});
+
+
+test('Bowling settings default off, reject state claims, and persist through every throw', async()=>{
+ const {DEFAULT_BOWLING_SETTINGS,validBowlingSettings}=await import('../../../shared/party-lab/bowlingSettings');
+ assert.deepEqual(DEFAULT_BOWLING_SETTINGS,{obstacles:false});
+ for(const value of [null,[],{},true,{obstacles:1},{obstacles:true,score:10},Object.assign(Object.create({obstacles:true}),{score:10})])assert.equal(validBowlingSettings(value),false);
+ for(const enabled of [false,true]){
+  assert.ok(validBowlingSettings({obstacles:enabled}));
+  const sim=new BowlingRoundSimulation(undefined,7281);sim.settings={obstacles:enabled};sim.start([0,1]);
+  for(let turn=0;turn<6;turn++){
+   sim.game.score.turn=turn;sim.game.resetThrow();
+   assert.equal(sim.game.obstacles.filter(o=>o.active).length,enabled?3:0);
+   assert.ok(sim.game.car.props.every((p,i)=>p.collider.isEnabled()===sim.game.obstacles[i].active));
+   assert.equal(sim.snapshot([-1,-1,-1]).bowling!.obstacles,enabled);
+  }
+  sim.dispose();
+ }
+});
+
+test('server-held input time is not replayed twice during TCP retransmission stalls',()=>{
+ const run=(accountHeld:boolean)=>{
+  const sim=new BowlingRoundSimulation(undefined,7281);sim.start([0,1]);
+  const pred=new BowlingPrediction(0,7281,2),buffer=new SnapshotBuffer();
+  const up:{at:number;packet:BowlingInputPacket}[]=[],down:{at:number;s:GameSnapshot}[]=[];
+  let ack=-1,held=packet(),lastUp=0,lastDown=0,rng=12;
+  const random=()=>((rng=(Math.imul(rng,1664525)+1013904223)>>>0)/2**32);
+  for(let tick=0;tick<770;tick++){
+   const now=tick*1000/60,p=packet(tick);
+   lastUp=Math.max(lastUp,now+50+random()*40+(tick%139===90?180:0));up.push({at:lastUp,packet:p});
+   while(up[0]?.at<=now){held=up.shift()!.packet;ack=held.seq;}
+   sim.step(ack<0?[]:inputs(0,held));
+   if(tick%3===0){const s=sim.snapshot([ack,-1,-1]);if(!accountHeld)s.bowling!.heldTicks=0;
+    lastDown=Math.max(lastDown,now+50+random()*40+(tick%171===90?180:0));down.push({at:lastDown,s});}
+   while(down[0]?.at<=now){const f=down.shift()!;buffer.push(f.s,now);}
+   if(buffer.latest)pred.reconcile(buffer.latest,now);
+   pred.step(p,now);pred.visual(1/60);
+  }
+  const metrics={...pred.metrics};pred.dispose();sim.dispose();return metrics;
+ };
+ const old=run(false),current=run(true);
+ assert.ok(old.hard>0,'fixture reproduces the former hard snap');
+ assert.equal(current.hard,0);assert.equal(current.overflows,0);
+ assert.ok(current.maxError<old.maxError*.5);assert.ok(current.heldSteps>0);
+});
+
+test('Bowling prediction resets the rack only at a turn boundary',()=>{
+ const sim=new BowlingRoundSimulation();sim.start([0,1]);const pred=new BowlingPrediction(0,sim.game.seed,2),buffer=new SnapshotBuffer();
+ let resets=0;const reset=pred.game.resetThrow.bind(pred.game);pred.game.resetThrow=()=>{resets++;reset();};
+ for(let tick=0;tick<240;tick++){
+  const p=packet(tick);sim.step(inputs(0,p));
+  if(tick%3===0){buffer.push(sim.snapshot([tick,-1,-1]),tick*1000/60);pred.reconcile(buffer.latest!,tick*1000/60);}
+  pred.step(p,tick*1000/60);pred.visual(1/60);
+ }
+ assert.equal(resets,1);pred.dispose();sim.dispose();
+});
+
+
+test('protocol 12 snapshots accept the frozen Bowling setting and reject protocol 11',()=>{
+ for(const enabled of [false,true]){
+  const sim=new BowlingRoundSimulation(undefined,7281);sim.settings={obstacles:enabled};sim.start([0,1]);
+  // Later preferences cannot mutate the current match, including subsequent throws.
+  sim.settings.obstacles=!enabled;
+  for(const turn of [0,1,5]){
+   sim.game.score.turn=turn;sim.game.resetThrow();
+   const snapshot=sim.snapshot([-1,-1,-1]);
+   assert.equal(snapshot.v,12);assert.equal(snapshot.bowling!.obstacles,enabled);
+   assert.equal(new SnapshotBuffer().push({...snapshot,v:11},0),false);
+   assert.equal(new SnapshotBuffer().push(snapshot,0),true);
+  }
+  sim.dispose();
+ }
 });

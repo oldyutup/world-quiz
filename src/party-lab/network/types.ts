@@ -35,6 +35,7 @@ export interface LobbyState {
   hostId: string;
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
+  bowlingObstacles: boolean;
   players: { forEach(callback: (player: LobbyPlayer) => void): void };
   messages: { forEach(callback: (message: ChatMessage) => void): void };
 }
@@ -60,6 +61,7 @@ export interface LobbySnapshot {
   hostId: string;
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
+  bowlingObstacles: boolean;
   selfId: string;
   players: LobbyPlayer[];
   messages: ChatMessage[];
@@ -84,6 +86,7 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   hostId: "",
   propAmmo: 15,
   propProximity: true,
+  bowlingObstacles: false,
   game: null,
   link: "good",
 };

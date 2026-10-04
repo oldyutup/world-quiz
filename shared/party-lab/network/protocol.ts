@@ -22,7 +22,8 @@ export const NET = {
   // 9: Saklambaç, authoritative room settings and six-mode Mixed.
   // 10: authoritative Human Bowling and seven-mode Mixed.
   // 11: authoritative Snowball Brawl, compact WASD and eight-mode Mixed.
-  version: 11,
+  // 12: authoritative Bowling obstacle preference and held-input prediction time.
+  version: 12,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,

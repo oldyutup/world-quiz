@@ -13,7 +13,7 @@ import { courseSteering } from './bowling/courseDriving';
 import { BULLET, flightTimeScale } from './bowling/config';
 import { bowlingCamera, BOWLING_DRIVE_PRESETS } from './bowling/camera';
 await initializePhysics();
-const withGame=(fn:(g:BowlingGame)=>void,players:2|3=2)=>{const g=new BowlingGame(players);try{fn(g);}finally{g.dispose();}};
+const withGame=(fn:(g:BowlingGame)=>void,players:2|3=2)=>{const g=new BowlingGame(players,7281,false,true);try{fn(g);}finally{g.dispose();}};
 const drive={...IDLE_INPUT,throttle:1};
 function ready(g:BowlingGame){while(g.phase==='countdown')g.step();}
 function line(g:BowlingGame,side=1){return courseSteering(g.car.body.translation(),g.car.heading,g.car.speed,g.obstacles,g.car.stuntStates,0,side);}
@@ -29,7 +29,7 @@ function finish(g:BowlingGame,steer=0){while(g.phase==='flight')g.step({...IDLE_
 
 /** Full approach: throttle/brake and the held/released gauge, no state injection. */
 function courseShot(kmh:number,angle:number,nudge=Infinity){
- const g=new BowlingGame(2,7281),clock=new BowlingClock();let armed=false;
+ const g=new BowlingGame(2,7281,false,true),clock=new BowlingClock();let armed=false;
  try{
   for(let i=0;i<16000&&g.score.turn===0;i++){
    const speed=g.car.speed,p=g.car.body.translation();
@@ -55,7 +55,8 @@ test('170.5m course has neighboring no-Nudge recipes at human approach speeds',(
 
 test('unchanged one-use Nudge rescues marginal range and risks physical overflight',()=>{
  const marginal=courseShot(135,26),rescued=courseShot(135,26,1.2);
- assert.equal(marginal.entry.firstPin?.airborne,false);assert.equal(marginal.pins,0);
+ assert.equal(marginal.entry.firstPin?.airborne,false);
+ assert.ok(marginal.pins<=3,'a marginal ground recovery remains a weak hit with the lighter pins');
  assert.equal(rescued.entry.firstPin?.airborne,true);assert.ok(rescued.pins>0);
  assert.ok(rescued.entry.firstPin!.body.velocity.z>28);
  const strong=courseShot(145,26),excess=courseShot(145,26,.3);
@@ -304,7 +305,7 @@ test('scaled pins have coherent dimensions, separated colliders and stable mass'
  assert.ok(Math.abs(g.pins[0].body.mass()-BOWLING.pinMass)<1e-5);
  assert.equal(BOWLING.roadWidth,12);assert.equal(BOWLING.laneWidth,10);
  assert.ok(COURSE.deck.maxX>BOWLING.width/2);
- assert.ok(Math.abs(BOWLING.pinHeight-7.2)<1e-8);assert.ok(Math.abs(BOWLING.spacing-4.032)<1e-8);
+ assert.ok(Math.abs(BOWLING.pinHeight-7.2)<1e-8);assert.ok(Math.abs(BOWLING.spacing-3.456)<1e-8);
  for(let i=0;i<600;i++)g.world.step();
  for(const [i,pin] of g.pins.entries()){
   const p=pin.body.translation();
@@ -381,14 +382,14 @@ test('landing retains momentum but early ground contact spends useful energy',()
  assert.ok(shots[0].horizontalTravel<shots[1].horizontalTravel-20);assert.ok(shots[0].slideDistance>5);assert.ok(shots[0].horizontalTravel<110);
 });
 test('identical launch states produce identical physics under bullet presentation',()=>{
- const a=new BowlingGame(2),b=new BowlingGame(2);try{launch(a);launch(b);const clock=new BowlingClock();let steps=0;
+ const a=new BowlingGame(2,7281,false,true),b=new BowlingGame(2,7281,false,true);try{launch(a);launch(b);const clock=new BowlingClock();let steps=0;
  while(steps<180)clock.advance(b,1/240,IDLE_INPUT,()=>{a.step(IDLE_INPUT,0);steps++;});
  for(const n of PARTS)assert.deepEqual(a.character.parts[n].body.translation(),b.character.parts[n].body.translation());assert.equal(a.mask,b.mask);
  }finally{a.dispose();b.dispose();}
  assert.equal(flightTimeScale(BULLET.tailHold),.4);assert.equal(flightTimeScale(.45),1);
 });
 for(const players of [2,3] as const)test(`${players} players complete deterministic matches with varied bot inputs`,()=>{
- const run=()=>{const g=new BowlingGame(players),clock=new BowlingClock();try{
+ const run=()=>{const g=new BowlingGame(players,7281,false,true),clock=new BowlingClock();try{
  for(let i=0;i<30000&&g.phase!=='results';i++){
   const z=g.car.body.translation().z;clock.advance(g,1/60,{...drive,steer:line(g),eject:g.phase==='drive'?z>=23&&g.angle<26:g.elapsed>2});
  }
@@ -515,4 +516,21 @@ test('every driving preset clears the road across the crest, descent and ramp at
   assert.ok(pose.target.z>p.z);
   assert.ok(Number.isFinite(pose.target.y));
  }
+});
+
+
+test('default clean course has no active ball sensors, penalties, or bot avoidance across resets',()=>{
+ const g=new BowlingGame(2,7281);
+ try{
+  for(let turn=0;turn<6;turn++){
+   g.score.turn=turn;g.resetThrow();assert.ok(g.obstacles.every(o=>!o.active));
+   assert.ok(g.car.props.every(p=>!p.collider.isEnabled()));
+   ready(g);const o=g.obstacles[0];g.car.body.setTranslation({x:o.at[0],y:CAR.rideHeight,z:o.at[2]-8},true);
+   g.car.body.setLinvel({x:0,y:0,z:46},true);
+   for(let i=0;i<30;i++){g.car.step({throttle:1,brake:0,steer:0});g.world.step();}
+   assert.equal(g.car.hitCount,0);assert.equal(g.car.heading,0);assert.ok(g.car.speed>45);
+   const point={x:0,z:o.at[2]-20};
+   assert.equal(courseSteering(point,0,40,g.obstacles,g.car.stuntStates),courseSteering(point,0,40,[],[]));
+  }
+ }finally{g.dispose();}
 });

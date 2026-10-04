@@ -80,11 +80,11 @@ export class SnapshotBuffer {
     if (this.frames.length > PLAYOUT.frames) this.frames.shift();
     return true;
   }
-  sample(now: number) {
+  sample(now: number, delayMs = this.delayMs) {
     const latest = this.frames[this.frames.length - 1];
     if (!latest) return null;
     const end = (latest.snapshot.tick * 1000) / NET.physicsHz;
-    const target = Math.min(end, end + now - latest.received - this.delayMs);
+    const target = Math.min(end, end + now - latest.received - delayMs);
     if (this.sampledAt < 0) this.renderMs = target;
     else {
       const dt = Math.max(0, Math.min(100, now - this.sampledAt));

@@ -45,6 +45,7 @@ export const LobbyState = schema(
     propProximity: t.boolean(),
     players: t.map(LobbyPlayer),
     messages: t.array(ChatMessage),
+    bowlingObstacles: t.boolean(),
   },
   "LobbyState"
 );

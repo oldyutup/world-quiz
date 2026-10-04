@@ -36,6 +36,7 @@ export class StuntCar {
     const dt=BOWLING.step,p=this.body.translation(),v=this.body.linvel();
     let impactLoss=0;
     this.props.forEach((prop,i)=>{
+      if(!this.obstacles[i].active)return;
       if(prop.state.hit){prop.state.age+=dt;return;}
       if(!this.world.intersectionPair(this.collider,prop.collider))return;
       const c=this.obstacles[i];

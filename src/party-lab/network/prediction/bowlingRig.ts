@@ -8,20 +8,29 @@ import {RigCorrection} from './correction';
 /** Car-only prediction. No predicted ragdoll, pins, score, eject or turn advancement. */
 export class BowlingPrediction {
  readonly game:BowlingGame; readonly history=new InputHistory();readonly correction=new RigCorrection(1);
- readonly metrics={corrections:0,hard:0,maxError:0,overflows:0,replaySteps:0};
+ readonly metrics={corrections:0,hard:0,maxError:0,overflows:0,replaySteps:0,heldSteps:0};
  active=false; private seq=-1;private turn=-1;private accumulator=0;private scale=1;
  private previous=new Float32Array(7);private blended=new Float32Array(7);private qa=new Quaternion();private qb=new Quaternion();
  private pose=new Float32Array(7);private shown=new Float32Array(7);private initialized=false;
- constructor(readonly slot:number,seed:number,players:2|3){this.game=new BowlingGame(players,seed,true);}
+ constructor(readonly slot:number,seed:number,players:2|3,obstacles=false){
+  this.game=new BowlingGame(players,seed,true,obstacles);
+  // The first Rapier step measured ~84ms at 4× CPU slowdown. Initialize its
+  // pipeline while the arena loads, including for spectators, before any drive.
+  // The first authoritative driving snapshot resets/restores this private world.
+  this.game.world.step();
+ }
  private capture(){const b=this.game.car.body,p=b.translation(),q=b.rotation();this.pose.set([p.x,p.y,p.z,q.x,q.y,q.z,q.w]);return this.pose;}
  reconcile(frame:BufferedSnapshot,now:number){
   if(frame.snapshot.seq<=this.seq)return;this.seq=frame.snapshot.seq;
   const s=frame.snapshot,w=s.bowling!;
   const active=w.phase==='drive'&&w.seats[w.turn%w.seats.length]===this.slot;
-  if(w.turn!==this.turn||!active||!this.active){this.history.clear();this.correction.clear();this.initialized=false;this.turn=w.turn;}
+  const reset=w.turn!==this.turn||!active||!this.active;
+  if(reset){this.history.clear();this.correction.clear();this.initialized=false;this.turn=w.turn;}
   this.active=active;if(!active)return;
   const before=this.shown.slice(),g=this.game;
-  g.score.turn=w.turn;g.resetThrow();g.phase='drive';
+  // Only the turn changes the course/rack. Rebuilding its joints and waking all
+  // ten pins at every snapshot wasted driving CPU; restore the car below.
+  g.score.turn=w.turn;if(reset)g.resetThrow();g.phase='drive';
   const v=frame.values;g.car.body.setTranslation({x:v[0],y:v[1],z:v[2]},true);g.car.body.setRotation({x:v[3],y:v[4],z:v[5],w:v[6]},true);
   g.car.body.setLinvel({x:w.velocity[0],y:w.velocity[1],z:w.velocity[2]},true);g.car.body.setAngvel({x:w.velocity[3],y:w.velocity[4],z:w.velocity[5]},true);
   g.car.heading=w.heading;g.car.pitch=w.pitch;g.car.grounded=w.grounded;
@@ -33,7 +42,14 @@ export class BowlingPrediction {
   this.accumulator=w.accumulator;this.scale=w.charging?BULLET.scale:1;
   this.history.acknowledge(s.ack[this.slot]);
   if(this.history.records.some(p=>now-p.sentAt>PREDICTION_LIMITS.staleMs)){this.history.clear();this.initialized=false;}
-  for(const p of this.history.records)if('space' in p.packet)for(let i=0;i<p.ticks;i++){this.run(p.packet);this.metrics.replaySteps++;}
+  // The server has already simulated these durations with its last held input.
+  // Replaying them again made a 180ms TCP stall jump the car forward ~8m,
+  // then snap it back when the acknowledgement caught up.
+  let held=w.heldTicks??0;
+  for(const p of this.history.records)if('space' in p.packet)for(let i=0;i<p.ticks;i++){
+   if(held-->0){this.metrics.heldSteps++;continue;}
+   this.run(p.packet);this.metrics.replaySteps++;
+  }
   this.interpolate();
   // The walking rig's 1 m snap threshold is less than two car ticks at top
   // speed. Keep its correction tiers/easing, scaled to at most 120 ms of car

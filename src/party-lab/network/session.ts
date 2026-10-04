@@ -1,6 +1,7 @@
 import {encodeSnowballInput, type SnowballInputPacket} from "../../../shared/party-lab/network/snowballInput";
 import {encodeBowlingInput,validateBowlingInput,type BowlingInputPacket} from "../../../shared/party-lab/network/bowlingInput";
 import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
+import type { BowlingSettings } from "../../../shared/party-lab/bowlingSettings";
 import type { PropSettings } from "../../../shared/party-lab/propSettings";
 import type { PropOnlineEvent } from "../../../shared/party-lab/simulation/prophunt/wire";
 import { GameStream } from "./gameStream";
@@ -201,6 +202,7 @@ export class LobbySession {
           winner: state.winner,
           propAmmo: state.propAmmo,
           propProximity: state.propProximity,
+          bowlingObstacles: state.bowlingObstacles,
           selection: isModeSelection(state.selection) ? state.selection : "rooftop_brawl",
           mode: isGameMode(state.mode) ? state.mode : "rooftop_brawl",
           hostId: state.hostId ?? "",
@@ -355,6 +357,9 @@ export class LobbySession {
       isModeSelection(selection)
     )
       this.room.send("mode", selection);
+  }
+  setBowlingSettings(settings: BowlingSettings) {
+    if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("bowlingSettings", settings);
   }
   setPropSettings(settings: Partial<PropSettings>) {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("propSettings", settings);
@@ -562,6 +567,7 @@ export function useLobbySession() {
     diagnostics,
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
+    setBowlingSettings: (settings: BowlingSettings) => session.current?.setBowlingSettings(settings),
     setPropSettings: (settings: Partial<PropSettings>) => session.current?.setPropSettings(settings),
     setMode: (selection: ModeSelection) => session.current?.setMode(selection),
     connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>

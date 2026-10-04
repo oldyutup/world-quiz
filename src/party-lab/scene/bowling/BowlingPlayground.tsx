@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { Group, Matrix4, Quaternion, Vector3, TextureLoader, EquirectangularReflectionMapping, SRGBColorSpace, type PerspectiveCamera } from 'three';
+import { Group, Matrix4, Quaternion, Vector3, TextureLoader, EquirectangularReflectionMapping, SRGBColorSpace, type WebGLRenderer, type PerspectiveCamera } from 'three';
 import { initializePhysics } from '../physics';
 import { PARTS } from '../ragdoll/config';
 import { length, rotate } from '../ragdoll/math';
@@ -20,18 +20,19 @@ import { bowlingVisual } from './visual';
 import { BOWLING_PALETTE as palette } from './palette';
 import type { BowlingSnapshot } from './BowlingHud';
 
-export interface BowlingDebugAPI { game: BowlingGame; }
+export interface BowlingDebugAPI { game: BowlingGame; online: BowlingOnlineController | null; renderer: WebGLRenderer; frame?: (sample: { dt: number; js: number; physics: number }) => void; }
 declare global { interface Window { __bowling?: BowlingDebugAPI; } }
 let nextCourseSeed = Math.floor(Math.random()*0xffffffff);
-export default function BowlingPlayground({ players, onStatus, onSnapshot, paused, costumeId, debug, audio, online }: {
-  online?: BowlingOnline; audio: AudioManager; players: 2 | 3; onStatus: (s: 'loading' | 'ready' | 'error') => void;
+export default function BowlingPlayground({ players, onStatus, onSnapshot, paused, costumeId, debug, audio, online, obstaclesEnabled = false }: {
+  obstaclesEnabled?: boolean; online?: BowlingOnline; audio: AudioManager; players: 2 | 3; onStatus: (s: 'loading' | 'ready' | 'error') => void;
   onSnapshot: (s: BowlingSnapshot) => void; paused: boolean; costumeId: SelectableCostumeId; debug: boolean;
 }) {
   const [courseSeed] = useState(() => online?.lobby.game?.bowling?.seed ?? (debug && new URLSearchParams(window.location.search).has("bowlingSeed") ? (Number(new URLSearchParams(window.location.search).get("bowlingSeed")) >>> 0) : nextCourseSeed++));
+  const obstacles = online?.lobby.game?.bowling?.obstacles ?? obstaclesEnabled;
   const kit = useLoader(GLTFLoader, '/party-lab/maps/bowling/bowling-kit.glb');
   const sky = useLoader(TextureLoader, '/party-lab/maps/bowling/sky-day.webp');
   sky.mapping=EquirectangularReflectionMapping;sky.colorSpace=SRGBColorSpace;
-  const visual = useMemo(() => bowlingVisual(kit.scene, courseSeed), [kit, courseSeed]);
+  const visual = useMemo(() => bowlingVisual(kit.scene, courseSeed, obstacles), [kit, courseSeed, obstacles]);
   const dustTexture=useLoader(TextureLoader,'/party-lab/maps/bowling/dust.webp');
   const dust=useMemo(()=>bowlingDust(dustTexture),[dustTexture]);
   const engine=useMemo(()=>new BowlingEngine(),[]);
@@ -56,13 +57,13 @@ export default function BowlingPlayground({ players, onStatus, onSnapshot, pause
     let alive = true; onStatus('loading');
     initializePhysics().then(() => {
       if (!alive) return;
-      const g = new BowlingGame(players, courseSeed, !!online); game.current = g;
+      const g = new BowlingGame(players, courseSeed, !!online, obstacles); game.current = g;
       if(online)net.current=new BowlingOnlineController({...online},courseSeed,players);
-      if (debug) { g.world.profilerEnabled=true; window.__bowling = { game: g }; }
+      if (debug) { g.world.profilerEnabled=true; window.__bowling = { game: g, online: net.current, renderer: gl }; }
       onStatus('ready');
     }).catch(() => { if (alive) onStatus('error'); });
     return () => { alive = false; if (window.__bowling?.game === game.current) delete window.__bowling; net.current?.dispose();net.current=null;game.current?.dispose(); game.current = null; };
-  }, [players, debug, onStatus, courseSeed]);
+  }, [players, debug, onStatus, courseSeed, obstacles]);
   useEffect(() => () => visual.dispose(), [visual]);
   useEffect(()=>{const unlock=(event:Event)=>{if(event.isTrusted&&!document.hidden)engine.unlock();},silence=()=>engine.silence();window.addEventListener('keydown',unlock);window.addEventListener('pointerdown',unlock);window.addEventListener('blur',silence);document.addEventListener('visibilitychange',silence);return()=>{window.removeEventListener('keydown',unlock);window.removeEventListener('pointerdown',unlock);window.removeEventListener('blur',silence);document.removeEventListener('visibilitychange',silence);engine.dispose();audio.stopAll();};},[engine,audio]);
   useEffect(()=>()=>dust.dispose(),[dust]);
@@ -184,6 +185,7 @@ export default function BowlingPlayground({ players, onStatus, onSnapshot, pause
     if (debug) { c.cameraCost += performance.now() - cameraStarted; c.cameraSamples++; }
     c.frames.push(delta * 1000); if (c.frames.length > 240) c.frames.shift();
     c.js.push(performance.now() - started); if (c.js.length > 240) c.js.shift();
+    if(debug)window.__bowling?.frame?.({dt:delta*1000,js:performance.now()-started,physics:physicsCost});
     c.publish += dt;
     if (g.charging || beforePhase!==g.phase || c.publish > 0.1) {
       c.publish = 0;

@@ -34,6 +34,55 @@ for(const count of [2,3])test(`Bowling ${count} seats: host/ready authority, ina
  await reconnect(0);assert.equal(sim.game.angle,angle);send(0,true);await until(()=>sim.game.nudgeUsed);send(0,false);await pause(30);send(0,true);await pause(30);assert.equal(sim.game.nudgeUsed,true);
  sim.game.finishThrow();const scored=JSON.stringify(sim.game.score.throws);await reconnect(0);assert.equal(JSON.stringify(sim.game.score.throws),scored);
  await until(()=>sim.game.phase==='countdown');const next=sim.activeSeat;assert.equal(next,1);send(0,true,1,0);await pause(60);assert.equal(sim.game.ejected,false);assert.equal(sim.game.score.turn,1);
- assert.ok(peers.every(p=>p.snapshots.some(s=>s.mode==='human_bowling'&&s.v===11)));
+ assert.ok(peers.every(p=>p.snapshots.some(s=>s.mode==='human_bowling'&&s.v===12)));
+ for(const p of peers){p.r.reconnection.enabled=false;await p.r.leave();}
+});
+
+
+for (const enabled of [false, true]) test(`Bowling obstacle preference ${enabled}: serialized authority, Ready, Mixed, frozen match and reconnect`, {timeout:30000}, async()=>{
+ const host=await peer(),guest=await peer(host.r.roomId),room=matchMaker.getLocalRoomById(host.r.roomId) as PartyRoom;
+ const peers=[host,guest];
+ const synchronized=async(value:boolean)=>until(()=>peers.every(p=>p.r.state?.bowlingObstacles===value));
+ await synchronized(false);assert.equal(room.state.bowlingObstacles,false);
+ host.r.send('mode','human_bowling');await until(()=>room.selection==='human_bowling');
+ guest.r.send('bowlingSettings',{obstacles:true});await pause(80);assert.equal(room.state.bowlingObstacles,false);
+ for(const invalid of [{obstacles:1},{obstacles:true,score:10},{},null])host.r.send('bowlingSettings',invalid);
+ await pause(80);assert.equal(room.state.bowlingObstacles,false);
+ // Exercise both directions, and a no-op that must not clear Ready.
+ for(const value of [true,false,enabled]){
+  guest.r.send('ready',true);await until(()=>room.state.players.get(guest.r.sessionId)!.ready);
+  const changed:boolean=room.state.bowlingObstacles!==value;
+  host.r.send('bowlingSettings',{obstacles:value});await synchronized(value);await pause(80);
+  assert.equal(room.state.players.get(guest.r.sessionId)!.ready,!changed);
+  if(changed)assert.ok([...room.state.players.values()].every(p=>!p.ready));
+ }
+ const reconnect=async()=>{
+  const r=guest.r,id=r.sessionId,slot=room.state.players.get(id)!.slot;
+  r.connection.close(4010);await until(()=>!room.state.players.get(id)!.connected);
+  await until(()=>room.state.players.get(id)!.connected);await synchronized(enabled);
+  assert.equal(r.sessionId,id);assert.equal(r.state.players.get(id)!.slot,slot);
+ };
+ await reconnect();
+ host.r.send('mode','rooftop_brawl');await until(()=>room.selection==='rooftop_brawl');
+ host.r.send('mode','mixed');await until(()=>room.selection==='mixed');
+ assert.equal(room.state.bowlingObstacles,enabled);await synchronized(enabled);
+ // Deterministically advance the Mixed bag to Bowling without simulating unrelated modes.
+ while(room.rotation.next!=='human_bowling')room.rotation.played();room.upcoming=room.rotation.next;
+ host.r.send('ready',true);guest.r.send('ready',true);await until(()=>room.game.phase==='countdown');
+ assert.ok(room.game instanceof BowlingRoundSimulation);
+ const sim=room.game as BowlingRoundSimulation;
+ const frozen=()=>{
+  assert.equal(sim.game.obstaclesEnabled,enabled);
+  assert.equal(sim.game.obstacles.filter(o=>o.active).length,enabled?3:0);
+  assert.ok(sim.game.car.props.every((p,i)=>p.collider.isEnabled()===sim.game.obstacles[i].active));
+ };
+ frozen();
+ host.r.send('bowlingSettings',{obstacles:!enabled});await pause(100);
+ assert.equal(room.state.bowlingObstacles,enabled);frozen();
+ await until(()=>room.game.phase==='playing');
+ await reconnect();frozen();
+ host.r.send('bowlingSettings',{obstacles:!enabled});await pause(100);
+ assert.equal(room.state.bowlingObstacles,enabled);frozen();
+ await until(()=>peers.every(p=>p.snapshots.some(s=>s.v===12&&s.bowling?.obstacles===enabled)));
  for(const p of peers){p.r.reconnection.enabled=false;await p.r.leave();}
 });

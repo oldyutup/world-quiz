@@ -1,3 +1,4 @@
+import {DEFAULT_BOWLING_SETTINGS} from '../../bowlingSettings.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { createCharacter, restore, connect, type Character } from '../ragdoll/character.js';
 import { control, normalDrive } from '../ragdoll/controller.js';
@@ -42,13 +43,13 @@ function ringHull(rings: [number, number][]) {
 }
 export function createPins(world: RAPIER.World): Pin[] {
   return rackPositions().map(p => {
-    const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setCcdEnabled(true).setCanSleep(true).setLinearDamping(0.12).setAngularDamping(0.22));
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setCcdEnabled(true).setCanSleep(true).setLinearDamping(BOWLING.pinLinearDamping).setAngularDamping(BOWLING.pinAngularDamping));
     const shapes = [
       RAPIER.ColliderDesc.cylinder(0.1*COURSE.pinScale, 0.135*COURSE.pinScale).setTranslation(0, 0.1*COURSE.pinScale, 0),
       ringHull([[0.2, 0.135], [0.38, 0.235], [0.6, 0.24], [0.93, 0.085]]),
       ringHull([[0.93, 0.085], [1.12, 0.085], [1.30, 0.125], [1.43, 0.095], [1.5, 0.025]]),
     ];
-    shapes.forEach((shape, i) => world.createCollider(shape.setCollisionGroups(groups(GROUP.pin, GROUP.ground | GROUP.human | GROUP.pin)).setMass(BOWLING.pinMass * [0.3, 0.5, 0.2][i]).setFriction(BOWLING.pinFriction).setRestitution(0.12), body));
+    shapes.forEach((shape, i) => world.createCollider(shape.setCollisionGroups(groups(GROUP.pin, GROUP.ground | GROUP.human | GROUP.pin)).setMass(BOWLING.pinMass * [0.3, 0.5, 0.2][i]).setFriction(BOWLING.pinFriction).setRestitution(BOWLING.pinRestitution), body));
     return { body, tiltTime: 0, down: false };
   });
 }
@@ -175,12 +176,12 @@ export class BowlingGame {
   private bot = botThrow(0, 0, 0);
   private loose = { ...normalDrive(), posture: 0, mobility: 0, jump: false };
   private disposed = false;
-  constructor(readonly players: 2 | 3 = 3, readonly seed = 7281, readonly online = false) {
+  constructor(readonly players: 2 | 3 = 3, readonly seed = 7281, readonly online = false, readonly obstaclesEnabled = DEFAULT_BOWLING_SETTINGS.obstacles) {
     this.score = new BowlingScore(players);
     this.world.timestep = BOWLING.step;
     // One conservative CCD pass avoids impact re-advancement stretching light limbs.
     this.world.maxCcdSubsteps = 1;
-    this.obstacles = courseObstacles(seed);
+    this.obstacles = courseObstacles(seed,1,this.obstaclesEnabled);
     for (const c of courseBoxes()) {
       const shape=RAPIER.ColliderDesc.cuboid(...c.half).setTranslation(...c.at);
       this.world.createCollider(shape.setFriction(c.carOnly?.6:BOWLING.laneFriction).setRestitution(0).setCollisionGroups(groups(GROUP.ground,c.carOnly?GROUP.car:GROUP.car|GROUP.human|GROUP.pin)));
@@ -199,7 +200,7 @@ export class BowlingGame {
   get knocked() { return this.pins.filter(p => p.down).length; }
   get mask() { return this.pins.reduce((n, p, i) => n | (p.down ? 1 << i : 0), 0); }
   resetThrow() {
-    courseObstacles(this.seed,this.score.round).forEach((o,i)=>Object.assign(this.obstacles[i],o));
+    courseObstacles(this.seed,this.score.round,this.obstaclesEnabled).forEach((o,i)=>Object.assign(this.obstacles[i],o));
     this.car.reset();
     restore(this.character, { x: 0, y: 1.1, z: BOWLING.startZ }, 0);
     connect(this.world, this.character);

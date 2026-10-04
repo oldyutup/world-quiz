@@ -8,7 +8,7 @@ export const COURSE = {
   // the fixed catcher/backdrop; only the non-driving rack apron grows wider.
   prepStart:-8, rampStart:22, rampLip:29, rampHeight:1, headZ:199.5,
   backdropZ:220,
-  width:24, roadWidth:12, laneWidth:10, pinScale:4.80, basePinSpacing:.84,
+  width:24, roadWidth:12, laneWidth:10, pinScale:4.80, basePinSpacing:.72,
   get finalApproachStart(){return this.obstacleEnd+2;},
   get finalApproachEnd(){return this.rampStart;},
   get rackDistance(){return this.headZ-this.rampLip;},
@@ -26,10 +26,10 @@ export const BOWLING = {
   get rampStart(){return COURSE.rampStart;}, get rampLip(){return COURSE.rampLip;}, get rampLength(){return COURSE.rampLip-COURSE.rampStart;}, get rampHeight(){return COURSE.rampHeight;},
   get headZ(){return COURSE.headZ;}, get spacing(){return COURSE.spacing;},
   get pinHeight(){return 1.5*COURSE.pinScale;}, get pinRadius(){return .24*COURSE.pinScale;},
-  // Lightweight giant props: linear mass scaling keeps a human hit effective
-  // (cubic scaling made each pin 121.5kg). Preserve the mass distribution;
-  // Rapier derives COM/inertia from the enlarged shapes and their actual mass.
-  get pinMass(){return 4.5*(COURSE.pinScale/1.6);},
+  // Gameplay mass is independent of the approved giant visual/collider scale.
+  // Controlled ragdoll impacts need both lighter pins and a closer rack to
+  // transfer energy. Keep the shape-derived COM and 30/50/20 mass distribution.
+  pinMass:5, pinLinearDamping:.12, pinAngularDamping:.22, pinRestitution:.12,
   linearDamping:.035, impactDamping:.10, angularDamping:.10,
   laneFriction:.36, bodyFriction:.20, pinFriction:.38,
   countdown:2.1, driveTimeout:18, settleSeconds:.75, maxThrowSeconds:13, reactionGraceSeconds:12, resultSeconds:1.3,
@@ -87,7 +87,7 @@ export const courseVariant = (seed: number, round = 1) => ((seed+round-1)%6+6)%6
  * the same arrangement; replaying a match/round seed reproduces it exactly.
  * Three major decisions leave breathing room before the unchanged final approach.
  * Inactive slots retain reset/shell indices without adding visible hazards. */
-export function courseObstacles(seed = 7281, round = 1): StuntObstacle[] {
+export function courseObstacles(seed = 7281, round = 1, enabled = true): StuntObstacle[] {
   const layouts = [
     [[-2.3,-84,1.7],[2.2,-56,1.7],[-1.8,-28,1.65],[0,-10,0],[4.5,-84,0],[-4.6,-56,0]],
     [[2.1,-84,1.8],[-2.2,-56,1.6],[2.1,-28,1.7],[-1.3,-10,0],[-4.4,-84,0],[4.5,-56,0]],
@@ -102,7 +102,7 @@ export function courseObstacles(seed = 7281, round = 1): StuntObstacle[] {
     const limit=BOWLING.roadWidth/2-radius-.15;
     const lateral=Math.max(-limit,Math.min(limit,x*BOWLING.roadWidth/12));
     const depth=obstacleZ(z);
-    return {name:`ball-${i}`,kind:'ball',active:r>0,group:i<4?i:i-4,
+    return {name:`ball-${i}`,kind:'ball',active:enabled&&r>0,group:i<4?i:i-4,
       at:[lateral,radius+roadHeight(depth),depth],half:[radius,radius,radius],carOnly:true};
   });
 }
