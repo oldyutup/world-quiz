@@ -82,6 +82,9 @@ import type { SeekerView } from "./prophunt/propCamera";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
 import BowlingHud, { type BowlingSnapshot } from "./bowling/BowlingHud";
+import SnowballHud from "./snowball/SnowballHud";
+import type { SnowSnapshot } from "./snowball/game";
+const SnowballPlayground = lazy(() => import("./snowball/SnowballPlayground"));
 const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
 
 /**
@@ -90,17 +93,17 @@ const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
  * Renk Kaosu's colour field (see scene/colors/), Bomba Sende's local playground (see
  * scene/bomb/) and Saklambaç's forest camp (local only, see scene/prophunt/).
  */
-type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt" | "human_bowling";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt", "human_bowling"];
+type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt" | "human_bowling" | "snowball_brawl";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl"];
 const localArenaName = (id: LocalArenaId) =>
-  id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
+  id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
  * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling"]);
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl"]);
 /** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
@@ -795,6 +798,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [propView, setPropView] = useState<SeekerView>("third");
   const [propProximity, setPropProximity] = useState(true);
   const [propTools] = useState(propDebugTools);
+  const snowball = mapId === "snowball_brawl";
+  const [snowPlayers, setSnowPlayers] = useState<2 | 3>(3);
+  const [snowSnapshot, setSnowSnapshot] = useState<SnowSnapshot | null>(null);
+  const [snowRestart, setSnowRestart] = useState(0);
   const bowling = mapId === "human_bowling";
   const [bowlingPlayers, setBowlingPlayers] = useState<2 | 3>(3);
   const [bowlingSnapshot, setBowlingSnapshot] = useState<BowlingSnapshot | null>(null);
@@ -803,13 +810,13 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
   /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
-  const modePlayground = tileMode || bomb || prophunt || bowling;
-  const modeId = bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
+  const modePlayground = tileMode || bomb || prophunt || bowling || snowball;
+  const modeId = snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
-  const chaseCamera = barn || (modePlayground && !bowling);
+  const chaseCamera = barn || (modePlayground && !bowling && !snowball);
   const immersive = IMMERSIVE_MAPS.has(mapId);
-  // Immersive Esc menu and optional debug. Bowling alone pauses its turn while
-  // the menu is open; the existing modes keep simulating as before.
+  // Bowling and the local snowball prototype pause while the menu is open;
+  // the other existing modes keep simulating as before.
   const menu = useArenaMenu(immersive && !paused);
   const menuOpen = menu.view !== null;
   const inputOff = paused || menuOpen;
@@ -863,6 +870,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setBombSnapshot(null);
     setPropSnapshot(null);
     setBowlingSnapshot(null);
+    setSnowSnapshot(null);
     setPropProximity(true);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
@@ -963,7 +971,11 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </div>
             }
           >
-            {mapId === "human_bowling" ? (
+            {mapId === "snowball_brawl" ? (
+              <Suspense fallback={null}>
+                <SnowballPlayground key={`snow-${snowPlayers}-${snowRestart}`} players={snowPlayers} onStatus={setStatus} onSnapshot={setSnowSnapshot} paused={inputOff} audio={audio} />
+              </Suspense>
+            ) : mapId === "human_bowling" ? (
               <Suspense fallback={null}>
                 <BowlingPlayground audio={audio} key={`bowling-${bowlingPlayers}-${bowlingRestart}`} players={bowlingPlayers} onStatus={setStatus} onSnapshot={setBowlingSnapshot} paused={inputOff} costumeId={costumeId} debug={bowlingTools} />
               </Suspense>
@@ -1050,6 +1062,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           </Canvas>
         </SceneBoundary>
         {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
+        {snowball && status === "ready" && snowSnapshot && <SnowballHud snapshot={snowSnapshot} restart={() => { setStatus("loading"); setSnowSnapshot(null); setSnowRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {bowling && status === "ready" && bowlingSnapshot && <BowlingHud snapshot={bowlingSnapshot} debugOpen={bowlingTools && debugPanel.open} restart={() => { setStatus("loading"); setBowlingSnapshot(null); setBowlingRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {layers && status === "ready" && layerSnapshot && (
           <>
@@ -1340,11 +1353,18 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           leaveLabel="Lobiye Dön"
           lobby={null}
           modeName={localArenaName(mapId)}
+          menuNote={snowball ? 'Maç duraklatıldı.' : undefined}
+          controlsContent={snowball ? <div className="pl-snow-controls" data-party-controls>
+            <button className="pl-button pl-join" onClick={() => menu.setView("main")}>← Menüye Dön</button>
+            <h2 id="pl-menu-title">Kartopu kontrolleri</h2>
+            <p><b>W / S</b> · Ekranda yukarı / aşağı<br/><b>A / D</b> · Ekranda sol / sağ<br/><b>Esc</b> · Menü ve duraklatma</p>
+            <p>Kamera sabit kalır. Ters yöne basarak frenle; kartopunun ivmesi hemen değişmez. Kenara yaklaşmadan yavaşla.</p>
+          </div> : undefined}
           bindings={bindings}
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={(bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1359,6 +1379,14 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </select>
             </label>
           )}
+          {snowball && <>
+            <label className="pl-menu-row"><span>Oyuncu</span>
+              <select value={snowPlayers} onChange={event => { menu.setView(null); setStatus("loading"); setSnowSnapshot(null); setSnowPlayers(Number(event.target.value) === 2 ? 2 : 3); requestAnimationFrame(() => viewport.current?.focus()); }}>
+                <option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+            <p>W/S: ekranda yukarı / aşağı. A/D: ekranda sol / sağ. Ters yön: fren. Kamera sabit. Son kalan turu kazanır. 3 tur, eşit kartopları. 28 saniye sonra buz daralmaya başlar; 36 saniyeden sonra hızlanır. Menü açıkken maç duraklar.</p>
+          </>}
           {bowling && <>
             <label className="pl-menu-row">
               <span>Oyuncu</span>

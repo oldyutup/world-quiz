@@ -144,6 +144,9 @@ interface MenuProps {
   bindings: Bindings;
   onBindings: (bindings: Bindings) => void;
   bindingsSaved: boolean;
+  /** Local prototypes can explain their fixed controls without exposing unrelated bindings. */
+  controlsContent?: ReactNode;
+  menuNote?: string;
   look?: { mode: LookMode; onChange: (mode: LookMode) => void };
   debug?: { open: boolean; onToggle: () => void } | null;
   /** Extra setting rows under the look mode (the local arena's map and player count). */
@@ -151,7 +154,7 @@ interface MenuProps {
 }
 
 /** Esc menu over the arena. The match (online or local) keeps running behind it. */
-export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odadan Ayrıl", lobby, modeName, bindings, onBindings, bindingsSaved, look, debug, children }: MenuProps) {
+export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odadan Ayrıl", lobby, modeName, bindings, onBindings, bindingsSaved, controlsContent, menuNote, look, debug, children }: MenuProps) {
   const resume = useRef<HTMLButtonElement>(null);
   const openers = { controls: useRef<HTMLButtonElement>(null), audio: useRef<HTMLButtonElement>(null) };
   const cameFrom = useRef<MenuView>("main");
@@ -191,7 +194,7 @@ export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odad
   if (view === "controls")
     body = (
       <div className="pl-menu-panel">
-        <ControlsSettings embedded bindings={bindings} onChange={onBindings} saved={bindingsSaved} inArena online={!!lobby} onClose={() => setView("main")} />
+        {controlsContent ?? <ControlsSettings embedded bindings={bindings} onChange={onBindings} saved={bindingsSaved} inArena online={!!lobby} onClose={() => setView("main")} />}
       </div>
     );
   else if (view === "audio")
@@ -212,7 +215,7 @@ export function ArenaMenu({ view, setView, onResume, onLeave, leaveLabel = "Odad
           {modeName} · {lobby ? `Oda ${lobby.code}` : "Yerel"}
         </span>
         <h2 id="pl-menu-title">Menü</h2>
-        <p className="pl-menu-note">Maç arkada sürüyor; bu bir duraklatma değil.</p>
+        <p className="pl-menu-note">{menuNote ?? 'Maç arkada sürüyor; bu bir duraklatma değil.'}</p>
         <button ref={resume} className="pl-button pl-create pl-menu-primary" data-sfx="uiConfirm" onClick={onResume}>
           Oyuna Dön
         </button>

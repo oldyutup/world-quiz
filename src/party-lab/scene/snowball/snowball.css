@@ -1,0 +1,20 @@
+[data-mode="snowball_brawl"] .pl-menu-button { left:auto;right:24px; }
+.pl-snow-hud { position:absolute;inset:0;pointer-events:none;color:oklch(30% .04 240);font-family:inherit; }
+.pl-snow-heading { position:absolute;top:26px;left:28px;display:flex;flex-direction:column;gap:4px; }
+.pl-snow-heading>span:first-child { font-size:12px;font-weight:800;letter-spacing:.13em; }
+.pl-snow-heading strong { font-size:30px;line-height:1.2; }.pl-snow-heading strong small { font-size:18px;opacity:.65; }
+.pl-snow-heading>span:last-child { font-size:13px; }
+.pl-snow-scores { position:absolute;right:26px;top:86px;display:flex;gap:10px;margin:0;padding:0;list-style:none; }
+.pl-snow-scores li { display:flex;align-items:center;gap:9px;background:oklch(97% .01 225 / .95);padding:10px 13px;border-radius:12px;box-shadow:0 3px 10px oklch(30% .04 240 / .08); }
+.pl-snow-scores i { display:grid;place-items:center;background:var(--snow-color);color:oklch(22% .03 240);width:25px;height:25px;border-radius:50%;font-style:normal;font-size:12px;font-weight:800; }
+.pl-snow-scores span { font-weight:700;font-size:13px; }.pl-snow-scores small { display:block;font-size:10px;font-weight:500;opacity:.7; }.pl-snow-scores b { font-size:22px; }
+.pl-snow-scores [data-out="true"] { opacity:.58; }
+.pl-snow-message { position:absolute;left:50%;top:43%;transform:translate(-50%,-50%);text-align:center;padding:24px 32px;border-radius:20px;background:oklch(97% .012 220 / .96);min-width:300px;box-shadow:0 12px 45px oklch(28% .045 240 / .12); }
+.pl-snow-message>span { font-size:14px;font-weight:650; }.pl-snow-message>strong { display:block;font-size:76px;line-height:1.25; }.pl-snow-message>strong.pl-snow-result { font-size:30px;margin:14px 0; }
+.pl-snow-message p { font-size:14px;line-height:1.8;margin:8px 0; }.pl-snow-message>small { font-size:12px;opacity:.75; }.pl-snow-message button { pointer-events:auto;margin-top:12px; }
+.pl-snow-warning,.pl-snow-spectate { position:absolute;left:50%;transform:translateX(-50%);bottom:30px;background:oklch(31% .035 240);color:oklch(97% .01 230);padding:10px 18px;border-radius:30px;font-size:13px; }
+.pl-snow-spectate { bottom:80px; }
+.pl-snow-controls { padding:24px;max-width:480px; }.pl-snow-controls p { line-height:1.9; }
+.pl-snow-edge { position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:var(--snow-color);color:oklch(22% .03 240);text-align:center;line-height:30px;box-shadow:0 0 0 3px oklch(97% .01 230);font-size:13px; }
+.pl-snow-edge span { position:absolute;inset:-14px;line-height:14px;transform:rotate(var(--bearing));font-size:20px; }
+@media(max-width:700px){.pl-snow-heading{top:18px;left:18px}.pl-snow-scores{top:auto;bottom:90px;left:16px;right:auto;gap:6px}.pl-snow-scores li{padding:7px 9px}.pl-snow-message{min-width:260px;padding:20px}.pl-snow-warning{white-space:nowrap}}
