@@ -1,3 +1,4 @@
+import { SnowballOnlineController, type SnowballOnline } from "./online";
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Color, Fog, Quaternion, Vector3, type PerspectiveCamera } from 'three';
@@ -10,17 +11,19 @@ import { snowballArenaCamera } from './camera';
 import { snowballScreenInput } from './screenInput';
 
 export interface SnowMetrics { frames:number[]; js:number[]; physics:number[]; drawCalls:number; triangles:number; dynamicBodies:number; invalidBodies:number; droppedSeconds:number }
-declare global { interface Window { __snowball?: { game:SnowballGame; metrics:SnowMetrics; camera:PerspectiveCamera } } }
-export default function SnowballPlayground({players,onStatus,onSnapshot,paused,audio}:{
-  players:2|3;onStatus:(s:'loading'|'ready'|'error')=>void;onSnapshot:(s:SnowSnapshot)=>void;paused:boolean;audio:AudioManager;
+declare global { interface Window { __snowball?: { game:SnowballGame; metrics:SnowMetrics; camera:PerspectiveCamera; online?:SnowballOnlineController } } }
+export default function SnowballPlayground({players,onStatus,onSnapshot,paused,audio,online,names,self=0}:{
+  online?:SnowballOnline;names?:string[];self?:number;players:2|3;onStatus:(s:'loading'|'ready'|'error')=>void;onSnapshot:(s:SnowSnapshot)=>void;paused:boolean;audio:AudioManager;
 }) {
-  const {camera,gl,scene,size}=useThree(), visual=useMemo(()=>snowVisual(players),[players]);
+  const {camera,gl,scene,size}=useThree(), visual=useMemo(()=>snowVisual(players,names,self),[players,names?.join("|"),self]);
+  const network=useRef(online),controller=useRef<SnowballOnlineController|null>(null);network.current=online;
+  if(controller.current&&online)Object.assign(controller.current.options,online);
   const game=useRef<SnowballGame|null>(null), keys=useRef(new Set<string>()), stopped=useRef(paused);
   const edgeLabels=useRef<(HTMLElement|null)[]>([]);
   const clock=useRef({acc:0,publish:0,ready:false,lastPhase:'',count:0,alive:Number(players)});
   const metrics=useRef<SnowMetrics>({frames:[],js:[],physics:[],drawCalls:0,triangles:0,dynamicBodies:players,invalidBodies:0,droppedSeconds:0});
   const tmp=useMemo(()=>({at:new Vector3(),screen:new Vector3(),previous:Array.from({length:players},()=>({p:new Vector3(),q:new Quaternion()}))}),[players]);
-  const debug=new URLSearchParams(window.location.search).get('snowballDebug')==='1';
+  const debug=new URLSearchParams(window.location.search).get('snowballDebug')==='1'||new URLSearchParams(window.location.search).get('partyDebug')==='1';
   useLayoutEffect(()=>{
     const cam=camera as PerspectiveCamera, pose=snowballArenaCamera(size.width,size.height);
     const previous={position:cam.position.clone(),rotation:cam.quaternion.clone(),fov:cam.fov};
@@ -34,10 +37,11 @@ export default function SnowballPlayground({players,onStatus,onSnapshot,paused,a
   useEffect(()=>{
     let live=true;onStatus('loading');
     initializePhysics().then(()=>{if(!live)return;const g=new SnowballGame(players);game.current=g;
-      if(debug)window.__snowball={game:g,metrics:metrics.current,camera:camera as PerspectiveCamera};
+      if(network.current)controller.current=new SnowballOnlineController({...network.current},players);
+      if(debug)window.__snowball={game:g,metrics:metrics.current,camera:camera as PerspectiveCamera,online:controller.current??undefined};
       onStatus('ready');onSnapshot(g.snapshot());
     }).catch(()=>{if(live)onStatus('error');});
-    return()=>{live=false;if(window.__snowball?.game===game.current)delete window.__snowball;game.current?.dispose();game.current=null;};
+    return()=>{live=false;if(window.__snowball?.game===game.current)delete window.__snowball;controller.current?.dispose();controller.current=null;game.current?.dispose();game.current=null;};
   },[players,debug,onStatus,onSnapshot,camera]);
   useEffect(()=>()=>visual.dispose(),[visual]);
   useLayoutEffect(()=>{
@@ -62,7 +66,14 @@ export default function SnowballPlayground({players,onStatus,onSnapshot,paused,a
     if(!frozen){c.acc+=dt;m.droppedSeconds+=Math.max(0,delta-dt);}else c.acc=0;
     const x=Number(keys.current.has('KeyD'))-Number(keys.current.has('KeyA'));
     const z=Number(keys.current.has('KeyS'))-Number(keys.current.has('KeyW'));
-    while(c.acc>=C.step){
+    if(controller.current){
+      const bits=Number(keys.current.has("KeyW"))|Number(keys.current.has("KeyA"))<<1|Number(keys.current.has("KeyS"))<<2|Number(keys.current.has("KeyD"))<<3;
+      controller.current.advance(g,delta,bits,frozen);c.acc=0;
+      for(const event of network.current!.stream.drain(network.current!.lobby.round,network.current!.stream.snapshots.renderMs))if(!frozen){
+        audio.playSfx(event);if(event.snow)visual.burst({x:event.snow[0]/100,y:event.snow[1]/100,z:event.snow[2]/100});
+      }
+    }
+    while(!controller.current&&c.acc>=C.step){
       g.balls.forEach((b,i)=>{const p=b.body.translation(),q=b.body.rotation();tmp.previous[i].p.set(p.x,p.y,p.z);tmp.previous[i].q.set(q.x,q.y,q.z,q.w);});
       const me=g.balls[0],velocity=me.body.linvel();
       const input=snowballScreenInput(x,z,me.heading,Math.hypot(velocity.x,velocity.z));
@@ -75,14 +86,15 @@ export default function SnowballPlayground({players,onStatus,onSnapshot,paused,a
     g.balls.forEach((b,i)=>{
       const p=b.body.translation(),q=b.body.rotation(),ball=visual.balls[i],marker=visual.markers[i],label=visual.labels[i];
       ball.position.set(p.x,p.y,p.z);ball.quaternion.set(q.x,q.y,q.z,q.w);
-      if(c.ready&&!frozen&&g.phase==='playing'){ball.position.lerp(tmp.previous[i].p,1-alpha);ball.quaternion.slerp(tmp.previous[i].q,1-alpha);}
+      if(!controller.current&&c.ready&&!frozen&&g.phase==='playing'){ball.position.lerp(tmp.previous[i].p,1-alpha);ball.quaternion.slerp(tmp.previous[i].q,1-alpha);}
       ball.visible=b.alive;marker.visible=b.alive&&p.y>0&&Math.hypot(p.x,p.z)<g.radius;label.visible=b.alive;
       marker.position.set(p.x,0.025,p.z);marker.rotation.y=-b.heading;label.position.copy(ball.position).add(tmp.at.set(0,1.8,0));
     });
     c.ready=true;
     visual.platform.scale.set(g.radius,1,g.radius);visual.platform.visible=g.radius>0;visual.center.visible=g.radius>2.1;visual.update(frozen?0:dt);
     // Only off-screen rivals get edge markers. Number + colour matches the HUD.
-    for(let i=1;i<players;i++){
+    for(let i=0;i<players;i++){
+      if(i===self)continue;
       if(!edgeLabels.current[i]?.isConnected)edgeLabels.current[i]=document.querySelector(`[data-snow-edge="${i}"]`);
       const label=edgeLabels.current[i];if(!label)continue;
       tmp.screen.copy(visual.balls[i].position).project(camera);

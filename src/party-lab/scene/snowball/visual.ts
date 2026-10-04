@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, ConeGeo
 import { SNOWBALL as C, SNOW_COLORS, SNOW_NAMES } from './config';
 
 /** Original generated geometry only. No downloaded models, textures or audio. */
-export function snowVisual(count: number) {
+export function snowVisual(count: number, names: readonly string[] = SNOW_NAMES, self = 0) {
   const root = new Group(), platform = new Group(); root.add(platform);
   const ice = new MeshStandardMaterial({ color:'#7dbfd8', roughness:0.38, metalness:0.04, flatShading:true });
   const snow = new MeshStandardMaterial({ color:'#edf4ee', roughness:0.95, flatShading:true });
@@ -32,14 +32,14 @@ export function snowVisual(count: number) {
     const patch=mesh(new IcosahedronGeometry(0.25,0),bandMaterial,ball);patch.position.set(0.52,0.5,0.6);patch.scale.z=0.35;
     const marker=new Group();root.add(marker);markers.push(marker);
     const shadow=mesh(new CircleGeometry(1.03,32),new MeshBasicMaterial({color:'#315d72',transparent:true,opacity:0.18,depthWrite:false}),marker);shadow.rotation.x=-Math.PI/2;
-    if(i===0) {
+    if(i===self) {
       const ring=mesh(new RingGeometry(1.1,1.18,48),new MeshBasicMaterial({color:SNOW_COLORS[i]}),marker);ring.rotation.x=-Math.PI/2;
       const arrow=mesh(new ConeGeometry(0.24,0.58,3),bandMaterial,marker);arrow.rotation.x=-Math.PI/2;arrow.position.set(0,0.03,-1.55);
     }
     const canvas=document.createElement('canvas');canvas.width=256;canvas.height=64;
     const ctx=canvas.getContext('2d')!;
     ctx.fillStyle='#243c50';ctx.beginPath();ctx.roundRect(12,4,232,54,20);ctx.fill();
-    ctx.fillStyle='#edf4ee';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.fillText(`${i+1} · ${SNOW_NAMES[i]}`,128,40);
+    ctx.fillStyle='#edf4ee';ctx.font='bold 27px system-ui';ctx.textAlign='center';ctx.fillText(`${i+1} · ${names[i]}`,128,40);
     const texture=new CanvasTexture(canvas);texture.colorSpace=SRGBColorSpace;
     const label=new Sprite(new SpriteMaterial({map:texture,depthTest:false,depthWrite:false,fog:false,toneMapped:false}));label.scale.set(2.6,0.65,1);root.add(label);labels.push(label);
   }

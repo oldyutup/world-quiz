@@ -1,5 +1,6 @@
 /** Input intent only. Taps are consumed once per fixed step. */
 export interface MovementInput {
+  snowball?: import("./network/snowballInput.js").SnowballInputPacket;
   bowling?: import("./network/bowlingInput.js").BowlingInputPacket;
   x: number;
   z: number;

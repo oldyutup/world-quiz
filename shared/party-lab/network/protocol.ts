@@ -1,3 +1,4 @@
+import {validateSnowballInput, type SnowballInputPacket} from "./snowballInput.js";
 import {validateBowlingInput, type BowlingInputPacket} from "./bowlingInput.js";
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
@@ -20,7 +21,8 @@ export const NET = {
   // snapshot and prediction state; Mixed rotates all five modes.
   // 9: Saklambaç, authoritative room settings and six-mode Mixed.
   // 10: authoritative Human Bowling and seven-mode Mixed.
-  version: 10,
+  // 11: authoritative Snowball Brawl, compact WASD and eight-mode Mixed.
+  version: 11,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -60,6 +62,7 @@ export interface ServerDiagnostics {
   mode?: GameMode;
   snapshotBytes?: number;
   simulations?: number;
+  snowball?: { invalidBodies: number; collisions: number; physicsHz: number };
   /** Katman Kaosu, this round: encoded `layers` section size, tiles armed (not gone) and gone, section build cost. */
   layers?: {
     sectionBytes: number;
@@ -166,7 +169,7 @@ export interface BombInputPacket extends LayerInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
@@ -357,6 +360,7 @@ export interface GameSnapshot {
   layers?: LayerSnapshot;
   colors?: ColorFieldSnapshot;
   bomb?: BombSnapshot;
+  snowball?: import("../simulation/snowball/wire.js").SnowballWire;
   bowling?: import("../simulation/bowling/wire.js").BowlingWire;
   prop?: import("../simulation/prophunt/wire.js").PropSnapshotWire;
 }
@@ -565,9 +569,15 @@ export class InputMailbox {
   // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
   private bombPacket: BombInputPacket | null = null;
+  private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
+    if (mode === "snowball_brawl") {
+      const p=validateSnowballInput(value);
+      if(!p||p.round!==round||p.seq<=this.seq)return false;
+      this.seq=p.seq;this.received=now;this.snowballPacket=p;return true;
+    }
     if (mode === "human_bowling") {
       const p=validateBowlingInput(value);
       if(!p||p.round!==round||p.seq<=this.seq)return false;
@@ -665,6 +675,7 @@ export class InputMailbox {
   }
   read(now: number): MovementInput {
     if (now - this.received > NET.staleMs) this.clear();
+    if(this.snowballPacket){const p=this.snowballPacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),snowball:p};}
     const next=this.bowlingQueue.shift();
     if(next)this.bowlingHeld=next;
     if(this.bowlingHeld){const p=this.bowlingHeld;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),bowling:p};}
@@ -743,6 +754,7 @@ export class InputMailbox {
     return result;
   }
   clear() {
+    this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;
     this.propPacket = null;
     this.whistle = false;

@@ -21,8 +21,8 @@ export function drive(g:BowlingGame,seq:number):BowlingInputPacket{
  return {...packet(seq,g.score.turn),throttle:g.car.speed<150/3.6?1:0,brake:g.car.speed>150/3.6+.1?.55:0,steer:g.phase==='drive'?courseSteering(p,g.car.heading,g.car.speed,g.obstacles,g.car.stuntStates):0,pitch:0,space:g.phase==='drive'?p.z>=start&&(!g.charging||g.chargeTime<24/FLIGHT.angleRate):g.phase==='flight'&&g.score.round>1&&g.elapsed>.3&&g.elapsed<.5};
 }
 const inputs=(slot:number,p:BowlingInputPacket):MovementInput[]=>[0,1,2].map(i=>({...neutralIntent(),...(i===slot?{bowling:p}:{})}));
-test('protocol 10 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
- assert.equal(NET.version,10);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
+test('protocol 11 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
+ assert.equal(NET.version,11);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
  for(const extra of [{score:10},{position:[0,0,0]},{angle:30},{pins:1023},{camera:2}])assert.equal(validateBowlingInput({...p,...extra}),null);
  assert.equal(validateBowlingInput({...p,throttle:NaN}),null);assert.equal(validateBowlingInput({...p,turn:9}),null);
  const b=encodeBowlingInput(p);b[28]=2;assert.equal(validateBowlingInput(b),null);
@@ -32,7 +32,7 @@ test('SPACE press/release between physics ticks survives mailbox coalescing; sta
  const m=new InputMailbox();for(const [i,space] of [true,false,true,false].entries())assert.ok(m.accept({...packet(i+1),space},1,0,'human_bowling'));
  assert.deepEqual([0,1,2,3].map(()=>m.read(0).bowling?.space),[true,false,true,false]);assert.equal(m.read(301).bowling,undefined);
 });
-test('seven-mode Mixed with three seats, six eligible modes with two: complete bags and no boundary repeat',()=>{
+test('eight-mode Mixed with three seats, seven eligible modes with two: complete bags and no boundary repeat',()=>{
  for(const count of [2,3]){let seed=3;const r=new MixedRotation(()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/2**32));r.setPlayers(count);const expected=GAME_MODES.filter(m=>count===3||m!=='prop_hunt');let last='';
  for(let bag=0;bag<100;bag++){const seen=[];for(let i=0;i<expected.length;i++){const next=r.next;assert.notEqual(next,last);seen.push(next);last=next;r.played();}assert.deepEqual(seen.sort(),[...expected].sort());assert.equal(seen.filter(m=>m==='human_bowling').length,1);}}
 });

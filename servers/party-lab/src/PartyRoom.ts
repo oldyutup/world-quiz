@@ -1,3 +1,5 @@
+import { SnowballRoundSimulation } from "../../../shared/party-lab/simulation/snowballRound.js";
+import { validateSnowballInput } from "../../../shared/party-lab/network/snowballInput.js";
 import { BowlingRoundSimulation } from "../../../shared/party-lab/simulation/bowlingRound.js";
 import { validateBowlingInput } from "../../../shared/party-lab/network/bowlingInput.js";
 import { PropRoundSimulation, PropRotation } from "../../../shared/party-lab/simulation/propRound.js";
@@ -85,6 +87,7 @@ const cryptoSeed = () => randomBytes(4).readUInt32LE();
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
+  if (mode === "snowball_brawl") return new SnowballRoundSimulation(counters, cryptoSeed());
   if (mode === "human_bowling") return new BowlingRoundSimulation(counters, cryptoSeed());
   if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
   if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
@@ -109,7 +112,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  /** Mixed: all seven eligible modes once per cycle, shuffled, never the same mode twice in a row. */
+  /** Mixed: all eight eligible modes once per cycle, shuffled, never the same mode twice in a row. */
   readonly rotation = new MixedRotation();
   readonly propRotation = new PropRotation(cryptoSeed());
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
@@ -229,6 +232,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
         input.clear();
       else intent[p.slot] = input.read(now);
     }
+    const snowballEpoch=this.game instanceof SnowballRoundSimulation?`${this.game.game.round}:${this.game.game.phase}`:"";
     const bowlingTurn=this.game instanceof BowlingRoundSimulation?this.game.game.score.turn:-1;
     const events = this.game.step(intent).map((event) => {
       if (!LOCAL_ECHO.has(event.name)) return event;
@@ -241,6 +245,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       };
     });
     if(this.game instanceof BowlingRoundSimulation && bowlingTurn!==this.game.game.score.turn)
+      for(const input of this.mailboxes.values())input.clear();
+    if(this.game instanceof SnowballRoundSimulation && snowballEpoch!==`${this.game.game.round}:${this.game.game.phase}`)
       for(const input of this.mailboxes.values())input.clear();
     this.events.push(...events);
     if (this.game instanceof PropRoundSimulation) for (const { recipient, event } of this.game.events) {
@@ -366,6 +372,10 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       const p = this.state.players.get(client.sessionId);
       if (!p?.connected || !p.participating || this.game.phase !== "playing")
         return;
+      if(this.game instanceof SnowballRoundSimulation) {
+        const packet=validateSnowballInput(data);
+        if(!packet||!this.game.accepts(p.slot,packet.stage))return;
+      }
       if(this.game instanceof BowlingRoundSimulation) {
         const packet=validateBowlingInput(data);
         if(!["drive","flight"].includes(this.game.game.phase)||p.slot!==this.game.activeSeat||!packet||packet.turn!==this.game.game.score.turn)return;
@@ -491,6 +501,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       snapshotBytes: this.metrics.snapshotWireBytes,
       simulations: this.simulations.created,
     };
+    if (this.game instanceof SnowballRoundSimulation)
+      report.snowball = { invalidBodies: this.game.game.invalidBodies, collisions: this.game.game.collisionCount, physicsHz: 120 };
     if (this.game instanceof LayerRoundSimulation) {
       const field = this.game.field;
       let armed = 0;

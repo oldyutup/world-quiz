@@ -13,10 +13,10 @@ const playing=(count:2|3=2,radius:number=C.arenaRadius)=>{const g=new SnowballGa
 const place=(g:SnowballGame,id:number,x:number,z:number,vx=0,vz=0,y=C.radius+0.016)=>{
   const b=g.balls[id].body;b.setTranslation({x,y,z},true);b.setLinvel({x:vx,y:0,z:vz},true);b.setAngvel({x:vz/C.radius,y:0,z:-vx/C.radius},true);
 };
-test('local config leaves seven online modes, Mixed, and protocol 10 intact',()=>{
+test('approved local config is also available online in protocol 11',()=>{
   assert.equal(C.id,'snowball_brawl');assert.deepEqual(C.players,[2,3]);assert.equal(C.rounds,3);
-  assert.equal(NET.version,10);assert.equal(GAME_MODES.length,7);assert.equal(MODE_SELECTIONS.length,8);
-  assert.ok(![...MODE_SELECTIONS].some(m=>String(m)===C.id));
+  assert.equal(NET.version,11);assert.equal(GAME_MODES.length,8);assert.equal(MODE_SELECTIONS.length,9);
+  assert.ok([...MODE_SELECTIONS].some(m=>String(m)===C.id));
 });
 test('equal spaced spawns are inside arena and cannot overlap, including future capacity',()=>{
   for(const count of [2,3,8])for(const radius of [9,10,11,13])for(let round=1;round<=3;round++){

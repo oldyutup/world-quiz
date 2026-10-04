@@ -1,3 +1,4 @@
+import {encodeSnowballInput, type SnowballInputPacket} from "../../../shared/party-lab/network/snowballInput";
 import {encodeBowlingInput,validateBowlingInput,type BowlingInputPacket} from "../../../shared/party-lab/network/bowlingInput";
 import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
 import type { PropSettings } from "../../../shared/party-lab/propSettings";
@@ -374,6 +375,7 @@ export class LobbySession {
     )
       return null;
     const now = performance.now();
+    const snowball = this.snapshot.mode === "snowball_brawl";
     const bowling = this.snapshot.mode === "human_bowling";
     const prop = this.snapshot.mode === "prop_hunt",
       barn = this.snapshot.mode === "barn_shootout" || prop,
@@ -392,7 +394,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = bowling
+    const packet: AnyInputPacket = snowball
+      ? {seq:++this.inputSeq,round:this.snapshot.round,stage:this.snapshot.game?.snowball?.stage??1,keys:intent.snowball?.keys??0}
+      : bowling
       ? { seq: ++this.inputSeq, round: this.snapshot.round, turn: this.snapshot.game?.bowling?.turn ?? 0,
           throttle:intent.bowling?.throttle??0,brake:intent.bowling?.brake??0,steer:intent.bowling?.steer??0,pitch:intent.bowling?.pitch??0,space:intent.bowling?.space??false }
       : prop
@@ -416,7 +420,7 @@ export class LobbySession {
     this.heldJump = this.heldPunch = this.heldPickup = this.heldWhistle = false;
     if (this.roundStart.round !== packet.round)
       this.roundStart = { round: packet.round, seq: packet.seq };
-    this.room.send("input", bowling ? encodeBowlingInput(packet as BowlingInputPacket) : prop ? encodePropInput(packet as PropInputPacket) : packet);
+    this.room.send("input", snowball ? encodeSnowballInput(packet as SnowballInputPacket) : bowling ? encodeBowlingInput(packet as BowlingInputPacket) : prop ? encodePropInput(packet as PropInputPacket) : packet);
     this.lastInputAt = now;
     this.diagnostics.input(now);
     return bowling ? validateBowlingInput(encodeBowlingInput(packet as BowlingInputPacket)) : prop ? validatePropInput(encodePropInput(packet as PropInputPacket)) : packet;

@@ -49,6 +49,8 @@ export interface FeedbackEvent {
   step?: number; // countdown number
   /** Barn Shootout presentation detail (server-confirmed online); rooftop never sets it. */
   barn?: BarnEventDetail;
+  /** Snowball contact puff, centimetres; presentation only, never an impulse. */
+  snow?: [number, number, number];
 }
 /**
  * What a client needs to draw a confirmed Barn shot or hit without re-deriving it:
