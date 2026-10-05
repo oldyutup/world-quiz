@@ -1,0 +1,30 @@
+Kartopu Savaşı / Snowball Fight — local prototype asset audit
+
+New visual assets
+- All arena, winter characters, held snowballs and pooled particles are original
+  procedural Three.js geometry in visual.ts. Labels are locally rendered text.
+- No external models, textures, audio samples, image generation, downloaded packs,
+  or new third-party asset licenses were introduced.
+
+Audio source
+- Existing original procedural recipes in shared/party-lab/feedback/sfx.ts,
+  played through the unchanged AudioManager and its 16-voice pool.
+- Packing: release + grab. Throw: throw. Surface impact: floorFlop at low intensity.
+  Player hit: bodyHit. KO: knockout. Respawn: recovery. All are synthesized.
+- No copyrighted recordings or new audio binaries are used.
+
+Reuse audit
+- Barn: shoulder aim, camera-ray/world-target conventions, pooled effects.
+- Prop Hunt: shoulder offset, body fade near walls, camera collision conventions.
+- Bomb Tag: camera-relative sprint/movement and local bot navigation conventions.
+- Existing ragdoll controller: inspected; left unchanged because real crouch needs
+  a different collision envelope. This mode uses its own dynamic Rapier capsule.
+- Shared safe imports: initializePhysics, bindLook (via ArenaScene), AudioManager.
+- Local Test Arena: lazy playground, own HUD, 2/3 seats and existing Esc menu.
+- Existing Kenney Nature/Prototype/Particle references and shipped kit credits
+  were inspected. Their original raw pack directories are no longer at the paths
+  recorded by the build scripts. No kit assets were copied into this prototype;
+  compact procedural snow scenery avoids loading unrelated mode assets.
+
+All gameplay and presentation additions remain under scene/snowfight/. There is
+no server registration, networking implementation, mode-list or protocol change.
