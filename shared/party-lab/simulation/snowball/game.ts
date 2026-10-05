@@ -1,9 +1,10 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { SNOWBALL as C, IDLE, clamp, arenaRadiusAt, snowSpawns, isSnowOut, snowWinner, type SnowInput } from './config.js';
 import { snowBot, botReaction, type SnowSense } from './bots.js';
+import { SNOWBALL_CONTACT, contactSeparation, impactAuthority } from './contact.js';
 
 export type SnowPhase = 'countdown' | 'playing' | 'roundOver' | 'results';
-export interface SnowBall { id: number; body: RAPIER.RigidBody; alive: boolean; heading: number; input: SnowInput }
+export interface SnowBall { id: number; body: RAPIER.RigidBody; alive: boolean; heading: number; input: SnowInput; impactRemaining: number }
 export interface SnowSnapshot { phase: SnowPhase; round: number; seconds: number; alive: boolean[]; wins: number[]; winner: number; radius: number; elapsed: number }
 export class SnowballGame {
   readonly world = new RAPIER.World({ x: 0, y: -C.gravity, z: 0 });
@@ -15,7 +16,7 @@ export class SnowballGame {
   physicsMs = 0; invalidBodies = 0; collisionCount = 0;
   /** Bounded visual events; they never apply gameplay impulses. */
   hits: { x: number; y: number; z: number; energy: number }[] = [];
-  private contacts = new Set<string>();
+  private contacts = 0;
   private finishTime = 0;
   constructor(readonly count: 2 | 3 = 3, readonly initialRadius: number = C.arenaRadius, readonly seed = 17) {
     this.radius = initialRadius; this.wins = Array(count).fill(0);
@@ -30,21 +31,21 @@ export class SnowballGame {
         .setLinearDamping(C.linearDamping).setAngularDamping(C.angularDamping).setCanSleep(false));
       this.world.createCollider(RAPIER.ColliderDesc.ball(C.radius).setMass(C.mass).setContactSkin(0.015)
         .setFriction(C.friction).setRestitution(C.restitution), body);
-      this.balls.push({ id, body, alive: true, heading: 0, input: { ...IDLE } });
+      this.balls.push({ id, body, alive: true, heading: 0, input: { ...IDLE }, impactRemaining: 0 });
     }
     this.resetRound();
   }
   resetRound() {
     this.phase = 'countdown'; this.phaseTime = 0; this.elapsed = 0; this.tick = 0; this.winner = -1;
     this.radius = this.initialRadius; this.floor.setShape(new RAPIER.Cylinder(0.65, this.radius)); this.floor.setEnabled(true);
-    this.contacts.clear(); this.hits.length = 0; this.finishTime = 0;
+    this.contacts = 0; this.hits.length = 0; this.finishTime = 0;
     const spawns = snowSpawns(this.count, this.initialRadius, this.round);
     this.balls.forEach((b, i) => {
       b.body.setEnabled(true); b.body.setTranslation(spawns[i], true);
       b.body.setLinvel({ x: 0, y: 0, z: 0 }, true); b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       b.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
       b.body.resetForces(true); b.body.resetTorques(true);
-      b.alive = true; b.heading = spawns[i].heading; b.input = { ...IDLE };
+      b.alive = true; b.heading = spawns[i].heading; b.input = { ...IDLE }; b.impactRemaining = 0;
     });
   }
   sense(): SnowSense[] {
@@ -79,13 +80,72 @@ export class SnowballGame {
       const side = clamp(-(v.x * rx + v.z * rz) * C.steeringResponse, -grip, grip);
       ax += rx * side; az += rz * side;
     }
+    // Input and heading stay live. Briefly give the contact momentum priority;
+    // the approved motor is fully restored after 180 ms, with no hard boundary.
+    const authority = impactAuthority(b.impactRemaining);
+    ax *= authority; az *= authority;
     b.body.applyImpulse({ x: ax * C.mass * C.step, y: 0, z: az * C.mass * C.step }, true);
     // A bounded rolling motor couples surface motion to angular inertia. It never
     // overwrites spin, position or velocity, so impacts remain Rapier's solution.
     const w = b.body.angvel(), inertia = 0.4 * C.mass * C.radius ** 2;
     const tx = clamp((v.z / C.radius - w.x) * 5 + az / C.radius, -12, 12);
     const tz = clamp((-v.x / C.radius - w.z) * 5 - ax / C.radius, -12, 12);
-    if (throttle || steer) b.body.applyTorqueImpulse({ x: tx * inertia * C.step, y: 0, z: tz * inertia * C.step }, true);
+    if (throttle || steer) b.body.applyTorqueImpulse({ x: tx * inertia * C.step * authority, y: 0, z: tz * inertia * C.step * authority }, true);
+  }
+  /** Existing protocol-12 prediction.controller payload: timers in ball order,
+   * then the contact latch mask. Restoring both makes rewind/replay idempotent. */
+  contactState() { return [...this.balls.map(b => b.impactRemaining), this.contacts]; }
+  restoreContactState(state: readonly number[] = []) {
+    const mask = state[this.count];
+    const allowed = this.count === 2 ? 2 : 38; // pairs 0:1, 0:2, 1:2
+    const valid = state.length === this.count + 1 && state.slice(0, this.count).every(t => Number.isFinite(t) && t >= 0 && t <= SNOWBALL_CONTACT.recoverySeconds)
+      && Number.isInteger(mask) && mask >= 0 && mask <= allowed && (mask & ~allowed) === 0;
+    this.balls.forEach((b, i) => { b.impactRemaining = valid ? state[i] : 0; });
+    this.contacts = valid ? mask : 0;
+    return valid;
+  }
+  /** Shared solver step for local/server play and prediction. It never scores or
+   * eliminates; clients restore authoritative state before replaying this step. */
+  stepPhysics(assist = true) {
+    const before = this.balls.map(b => b.body.linvel());
+    this.balls.forEach(b => { b.impactRemaining = Math.max(0, b.impactRemaining - C.step); });
+    const start = performance.now(); this.world.step();
+    let nextContacts = 0;
+    for (const b of this.balls) for (const other of this.balls) if (b.id < other.id && b.alive && other.alive) {
+      const bit = 1 << (b.id * 3 + other.id);
+      this.world.contactPair(b.body.collider(0), other.body.collider(0), (manifold, flipped) => {
+        if (!manifold.numSolverContacts()) return;
+        // Speculative contacts can precede the first impulse. They must not
+        // consume the contact latch or manufacture a bump before an actual hit.
+        let physicalImpulse = 0;
+        for (let i = 0; i < manifold.numContacts(); i++) physicalImpulse += manifold.contactImpulse(i);
+        if (physicalImpulse <= .001) { nextContacts |= this.contacts & bit; return; }
+        const continuing = (this.contacts | nextContacts) & bit;
+        nextContacts |= bit;
+        if (continuing) return;
+        const raw = manifold.normal(), sign = flipped ? -1 : 1;
+        const n = { x: raw.x * sign, y: raw.y * sign, z: raw.z * sign };
+        const a = before[b.id], c = before[other.id];
+        const approach = (a.x-c.x)*n.x + (a.y-c.y)*n.y + (a.z-c.z)*n.z;
+        if (approach <= 0) return;
+        this.collisionCount++;
+        if (assist) {
+          const av = b.body.linvel(), bv = other.body.linvel();
+          const separation = (bv.x-av.x)*n.x + (bv.y-av.y)*n.y + (bv.z-av.z)*n.z;
+          // Top up Rapier's solved separation, never add a second full bounce.
+          // Equal/opposite impulses conserve pair momentum at any mass ratio.
+          const impulse = Math.max(0, contactSeparation(approach) - separation)
+            / (1 / b.body.mass() + 1 / other.body.mass());
+          b.body.applyImpulse({ x: -n.x*impulse, y: -n.y*impulse, z: -n.z*impulse }, true);
+          other.body.applyImpulse({ x: n.x*impulse, y: n.y*impulse, z: n.z*impulse }, true);
+          if (impulse > 1) b.impactRemaining = other.impactRemaining = SNOWBALL_CONTACT.recoverySeconds;
+        }
+        // Keep the approved particles/audio threshold; recoil itself is physical.
+        if (approach > 2) { const p = b.body.translation(); this.hits.push({ x:p.x, y:p.y, z:p.z, energy:approach }); }
+      });
+    }
+    this.contacts = nextContacts;
+    this.physicsMs = performance.now() - start;
   }
   step(human: SnowInput = IDLE, overrides?: readonly SnowInput[]) {
     if (this.phase === 'results') return;
@@ -99,7 +159,6 @@ export class SnowballGame {
       return;
     }
     if (this.phase === 'countdown' && this.phaseTime >= C.countdown) { this.phase = 'playing'; this.phaseTime = 0; }
-    const before = this.balls.map(b => b.body.linvel());
     if (this.phase === 'playing') {
       this.elapsed += C.step;
       const radius = arenaRadiusAt(this.elapsed, this.initialRadius);
@@ -117,25 +176,12 @@ export class SnowballGame {
         this.drive(b, b.input);
       }
     }
-    const start = performance.now(); this.world.step(); this.physicsMs = performance.now() - start;
-    const nextContacts = new Set<string>();
+    this.stepPhysics();
     for (const b of this.balls) {
       const p = b.body.translation(), v = b.body.linvel(), w = b.body.angvel(), q = b.body.rotation();
       if (![p.x,p.y,p.z,v.x,v.y,v.z,w.x,w.y,w.z,q.x,q.y,q.z,q.w].every(Number.isFinite)) this.invalidBodies++;
       if (b.alive && isSnowOut(p, this.initialRadius)) { b.alive = false; b.body.setEnabled(false); }
-      for (const other of this.balls) if (b.id < other.id && b.alive && other.alive) {
-        this.world.contactPair(b.body.collider(0), other.body.collider(0), manifold => {
-          if (!manifold.numSolverContacts()) return;
-          const key = `${b.id}:${other.id}`; nextContacts.add(key);
-          if (!this.contacts.has(key)) {
-            this.collisionCount++;
-            const a = before[b.id], c = before[other.id], energy = Math.hypot(a.x-c.x, a.z-c.z);
-            if (energy > 2) this.hits.push({ x:p.x, y:p.y, z:p.z, energy });
-          }
-        });
-      }
     }
-    this.contacts = nextContacts;
     if (this.phase === 'playing') {
       const winner = snowWinner(this.balls.map(b => b.alive));
       // Resolve after a short physical fall grace, never award a ball already

@@ -13,6 +13,13 @@ const {snowballScreenInput}=await import(pathToFileURL(root+'/screenInput.ts').h
 await RAPIER.init();
 type Pose=[number,number,number,number];
 const scenarios:{name:string;a:Pose;b:Pose;elapsed?:number}[]=[
+  ...[.5,1,2,4,6,8,9.15].flatMap(speed=>[
+    {name:`contact-${speed}`,a:[-.968,0,speed,0] as Pose,b:[.968,0,0,0] as Pose},
+    {name:`matched-${speed}`,a:[-.968,0,speed/2,0] as Pose,b:[.968,0,-speed/2,0] as Pose},
+  ]),
+  ...[.5,1,1.5,2,3].flatMap(margin=>[1,4,9.15].map(speed=>({
+    name:`edge-${margin}m-${speed}`,a:[10-margin-1.936,0,speed,0] as Pose,b:[10-margin,0,0,0] as Pose,
+  }))),
   {name:'low-frontal',a:[-3,0,1.5,0],b:[0,0,0,0]},
   {name:'medium-frontal',a:[-3,0,5.5,0],b:[0,0,0,0]},
   {name:'full-frontal',a:[-3,0,9.15,0],b:[0,0,0,0]},
@@ -33,7 +40,7 @@ for(const s of scenarios)for(const mode of ['released','counter-input','defender
   const g:Game=new SnowballGame(2);g.bots=false;g.phase='playing';g.elapsed=s.elapsed??0;
   [s.a,s.b].forEach(([x,z,vx,vz],i)=>{const b=g.balls[i];b.heading=Math.PI/2;b.body.setTranslation({x,y:C.radius+.016,z},true);b.body.setLinvel({x:vx,y:0,z:vz},true);b.body.setAngvel({x:vz/C.radius,y:0,z:-vx/C.radius},true);});
   const p=()=>g.balls.map(b=>b.body.translation()),v=()=>g.balls.map(b=>b.body.linvel());
-  let contactTick=-1,impact:unknown=null,normal={x:1,y:0,z:0},contactPositions=p(),last=p(),distance=[0,0],atHalf:unknown=null,atOne:unknown=null,min=100;
+  let contactTick=-1,impact:unknown=null,normal={x:1,y:0,z:0},contactPositions=p(),last=p(),distance=[0,0],atQuarter:unknown=null,atHalf:unknown=null,atOne:unknown=null,min=100;
   const trace:unknown[]=[];
   for(let i=0;i<720;i++){
     const beforeP=p(),beforeV=v();
@@ -56,18 +63,19 @@ for(const s of scenarios)for(const mode of ['released','counter-input','defender
       contactTick=i;contactPositions=nowP;last=nowP;
       const closing=(beforeV[0].x-beforeV[1].x)*normal.x+(beforeV[0].y-beforeV[1].y)*normal.y+(beforeV[0].z-beforeV[1].z)*normal.z;
       const separation=(nowV[1].x-nowV[0].x)*normal.x+(nowV[1].y-nowV[0].y)*normal.y+(nowV[1].z-nowV[0].z)*normal.z;
-      impact={at:round(g.elapsed),pre:beforeV.map(vector),post:nowV.map(vector),closing:round(closing),separation:round(separation),normalImpulse:round(normalImpulse)};
+      impact={at:round(g.elapsed),pre:beforeV.map(vector),post:nowV.map(vector),closing:round(closing),separation:round(separation),normalImpulse:round(normalImpulse),normal,
+        deltaV:nowV.map((v,i)=>vector({x:v.x-beforeV[i].x,y:v.y-beforeV[i].y,z:v.z-beforeV[i].z})),input:inputs};
     }
     if(contactTick>=0){
       nowP.forEach((a,id)=>{distance[id]+=Math.hypot(a.x-last[id].x,a.z-last[id].z);});last=nowP;
       const after=(i-contactTick)*C.step;
       const sample=()=>({after:round(after),displacement:nowP.map((p,id)=>round(Math.hypot(p.x-contactPositions[id].x,p.z-contactPositions[id].z))),path:distance.map(round),velocity:nowV.map(vector),alive:g.balls.map(b=>b.alive)});
-      if(i-contactTick===60)atHalf=sample();if(i-contactTick===120)atOne=sample();
+      if(i-contactTick===30)atQuarter=sample();if(i-contactTick===60)atHalf=sample();if(i-contactTick===120)atOne=sample();
       if((i-contactTick)%12===0||i-contactTick===1)trace.push(sample());
       if(after>=2.5)break;
     }
   }
-  measure.push({name:s.name,mode,impact,atHalf,atOne,eliminated:g.balls.map(b=>!b.alive),invalid:g.invalidBodies,maxOverlap:round(Math.max(0,2*C.radius-min)),contacts:g.collisionCount,trace});g.dispose();
+  measure.push({name:s.name,mode,impact,atQuarter,atHalf,atOne,eliminated:g.balls.map(b=>!b.alive),invalid:g.invalidBodies,maxOverlap:round(Math.max(0,2*C.radius-min)),contacts:g.collisionCount,trace});g.dispose();
 }
 const result={config:C,measure};
 if(process.argv[2]){writeFileSync(process.argv[2],JSON.stringify(result,null,2));console.log(JSON.stringify({output:process.argv[2],cases:measure.length,invalid:measure.reduce((n,m)=>n+m.invalid,0)}));}

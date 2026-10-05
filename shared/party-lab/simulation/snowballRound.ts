@@ -54,6 +54,6 @@ export class SnowballRoundSimulation implements OnlineSimulation {
   }
   snapshot(ack:number[]):GameSnapshot { return {v:NET.version,mode:this.mode,seq:++this.counters.snapshot,tick:this.tick,round:this.roundId,phase:this.phase,seconds:this.seconds,winner:this.winner,mask:this.mask,
     alive:this.game.balls.reduce((m,b,i)=>m|(b.alive?1<<this.seats[i]:0),0),states:[],meters:[],grips:[],ack,transforms:snowballTransforms(this.game),snowball:snowballSection(this.game,this.seats,this.out)}; }
-  prediction(slot:PlayerId){return {slot,velocities:new Uint8Array(),controller:[]};}
+  prediction(slot:PlayerId){return {slot,velocities:new Uint8Array(),controller:this.game.contactState()};}
   dispose(){this.game.dispose();}
 }

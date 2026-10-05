@@ -76,11 +76,34 @@ for(const [rtt,jitter,loss] of [[0,0,0],[150,40,.02],[250,60,.05]])test(`authori
     for(let slot=0;slot<2;slot++){const p=packet(tick+1,tick<45?(slot?4:1):0);if(random()>=loss)up.push({at:now+delay(),p,slot});pred[slot].step(p,now);}
     up.sort((a,b)=>a.at-b.at);while(up[0]?.at<=now){const p=up.shift()!;mail[p.slot].accept(p.p,1,now,'snowball_brawl');}
     s.step(mail.map(m=>m.read(now)));hit ||= s.game.collisionCount>0;
-    if(tick%3===0){const snapshot=s.snapshot(mail.map(m=>m.processedSeq));for(let slot=0;slot<2;slot++)if(random()>=loss)down.push({at:now+delay(),s:snapshot,slot});}
+    if(tick%3===0){const snapshot=s.snapshot(mail.map(m=>m.processedSeq));for(const slot of [0,1] as const)if(random()>=loss)down.push({at:now+delay(),s:{...snapshot,prediction:s.prediction(slot)},slot});}
     down.sort((a,b)=>a.at-b.at);while(down[0]?.at<=now){const d=down.shift()!;if(buffers[d.slot].push(d.s,now))pred[d.slot].reconcile(buffers[d.slot].latest!,now);}
     pred.forEach(p=>{if(p.active)p.visual(1/60);});
   }
   assert.ok(hit);assert.equal(s.game.invalidBodies,0);for(const p of pred){assert.equal(p.metrics.overflows,0);assert.ok(p.metrics.maxError<3.5);assert.equal(p.metrics.hard,0);}
-  const final=s.snapshot([10000,10000]);for(let i=0;i<2;i++){buffers[i].push(final,10000);pred[i].reconcile(buffers[i].latest!,10000);assert.deepEqual(buffers[i].latest!.snapshot.snowball!.wins,s.game.wins);assert.deepEqual(pred[i].game.balls[i].body.linvel(),s.game.balls[i].body.linvel());}
+  const final=s.snapshot([10000,10000]);for(const i of [0,1] as const){buffers[i].push({...final,prediction:s.prediction(i)},10000);pred[i].reconcile(buffers[i].latest!,10000);assert.deepEqual(buffers[i].latest!.snapshot.snowball!.wins,s.game.wins);assert.deepEqual(pred[i].game.balls[i].body.linvel(),s.game.balls[i].body.linvel());assert.deepEqual(pred[i].game.contactState(),s.game.contactState());}
   console.log(JSON.stringify({headOn:{rtt,jitter,loss,pre,post:s.game.balls.map(b=>({p:b.body.translation(),v:b.body.linvel(),alive:b.alive})),corrections:pred.map(p=>p.metrics),wins:s.game.wins}}));pred.forEach(p=>p.dispose());s.dispose();
+});
+
+test('reconciliation restores contact timers/latches and never adds the server bounce twice',()=>{
+  const s=playing(),p=new SnowballPrediction(0,2),buffer=new SnapshotBuffer();
+  place(s,0,-.968,0,2);place(s,1,.968,0);s.game.balls[0].heading=Math.PI/2;
+  const sync=(now:number)=>{const snapshot={...s.snapshot([10000,10000]),prediction:s.prediction(0)};assert.ok(buffer.push(snapshot,now));p.reconcile(buffer.latest!,now);};
+  s.step([]);assert.equal(s.game.collisionCount,1);assert.ok(s.game.balls[0].impactRemaining>0);sync(0);
+  const speed=s.game.balls.map(b=>b.body.linvel());
+  for(let i=1;i<=8;i++){sync(i);assert.deepEqual(p.game.contactState(),s.game.contactState());for(let id=0;id<2;id++)assert.deepEqual(p.game.balls[id].body.linvel(),speed[id]);}
+  // Restarting from the same authoritative post-impact state and replaying the
+  // same pending packet must give the same result, regardless of prior replay.
+  p.history.add(packet(10001,8),1,9);sync(10);const first=p.game.balls.map(b=>b.body.linvel()),state=p.game.contactState();sync(11);
+  for(let id=0;id<2;id++)assert.ok(Math.hypot(p.game.balls[id].body.linvel().x-first[id].x,p.game.balls[id].body.linvel().z-first[id].z)<.002);
+  assert.deepEqual(p.game.contactState(),state);p.dispose();s.dispose();
+});
+
+test('protocol-12 legacy empty controller metadata keeps unassisted prediction compatible',()=>{
+  const s=playing(),p=new SnowballPrediction(0,2),buffer=new SnapshotBuffer();
+  place(s,0,-.968,0,2);place(s,1,.968,0);
+  const snapshot={...s.snapshot([-1,-1]),prediction:{slot:0,velocities:new Uint8Array(),controller:[]}};
+  assert.ok(buffer.push(snapshot,0));p.reconcile(buffer.latest!,0);p.step(packet(1,0),0);
+  assert.equal(p.game.balls[0].impactRemaining,0);
+  assert.ok(p.game.balls[1].body.linvel().x<2,'no new predicted assist against an old server');p.dispose();s.dispose();
 });
