@@ -46,7 +46,7 @@ export class SnapshotBuffer {
       snapshot.tick < 0 ||
       !Number.isSafeInteger(snapshot.round) ||
       !(snapshot.transforms instanceof Uint8Array) ||
-      (snapshot.mode === "snowball_brawl" ? !snapshot.snowball || snapshot.transforms.byteLength !== snapshot.snowball.seats.length * 28 || snapshot.snowball.motion?.byteLength !== snapshot.transforms.byteLength : snapshot.mode === "human_bowling" ? ![28,560].includes(snapshot.transforms.byteLength) : snapshot.transforms.byteLength !== TRANSFORM_BYTES)
+      (snapshot.mode === "crate_rain" ? !snapshot.crate || snapshot.transforms.byteLength !== snapshot.crate.seats.length * 28 || !(snapshot.crate.journal instanceof Uint8Array) || snapshot.crate.journal.length % 6 !== 0 || snapshot.crate.journal.length > 720 : snapshot.mode === "snowball_brawl" ? !snapshot.snowball || snapshot.transforms.byteLength !== snapshot.snowball.seats.length * 28 || snapshot.snowball.motion?.byteLength !== snapshot.transforms.byteLength : snapshot.mode === "human_bowling" ? ![28,560].includes(snapshot.transforms.byteLength) : snapshot.transforms.byteLength !== TRANSFORM_BYTES)
     )
       return false;
     const last = this.frames[this.frames.length - 1];

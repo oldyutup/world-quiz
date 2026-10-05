@@ -399,7 +399,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = snowball
+    const packet: AnyInputPacket = this.snapshot.mode === "crate_rain"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,stage:intent.crate?.stage??this.snapshot.game?.crate?.stage??1,moveX:intent.crate?.moveX??0,moveZ:intent.crate?.moveZ??0,jumpHeld:intent.crate?.jumpHeld??false,sprintHeld:intent.crate?.sprintHeld??false}
+      : snowball
       ? {seq:++this.inputSeq,round:this.snapshot.round,stage:this.snapshot.game?.snowball?.stage??1,keys:intent.snowball?.keys??0}
       : bowling
       ? { seq: ++this.inputSeq, round: this.snapshot.round, turn: this.snapshot.game?.bowling?.turn ?? 0,

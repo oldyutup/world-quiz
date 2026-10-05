@@ -22,7 +22,7 @@ function label(text: string, color: string, width = 256) {
   return new Sprite(new SpriteMaterial({ map: texture, depthTest: false, depthWrite: false, fog: false, toneMapped: false }));
 }
 /** All original primitive geometry. Three instanced crate draws regardless of count. */
-export function crateVisual(count: number, costume: SelectableCostumeId) {
+export function crateVisual(count: number, costume: SelectableCostumeId, names = PLAYER_NAMES) {
   const root = new Group(), material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, flatShading: true });
   const environment: BufferGeometry[] = [];
   const add = (size: number[], pos: number[], color: string) => environment.push(block(size, pos, color));
@@ -91,7 +91,7 @@ export function crateVisual(count: number, costume: SelectableCostumeId) {
     person.root.scale.setScalar(0.81);
     PARTS.forEach((name, index) => { const part = person.root.children[index], shape = SHAPES[name]; part.position.set(shape.x, shape.y, 0); });
     root.add(person.root);
-    const tag = label(`${i + 1} · ${PLAYER_NAMES[i]}`, i === 0 ? '#ffd3b9' : '#eef0db'); tag.scale.set(1.1, 0.28, 1); tag.renderOrder = 5; root.add(tag);
+    const tag = label(`${i + 1} · ${names[i]}`, i === 0 ? '#ffd3b9' : '#eef0db'); tag.scale.set(1.1, 0.28, 1); tag.renderOrder = 5; root.add(tag);
     const shadow = new Mesh(new CircleGeometry(0.46, 20), new MeshBasicMaterial({ color: '#546556', transparent: true, opacity: 0.2, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; root.add(shadow);
     return { person, tag, shadow, round: -1, yaw: 0 };
   });

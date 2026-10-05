@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+const OnlineCrateArena = lazy(() => import("./OnlineCrateArena"));
 const OnlineSnowballArena = lazy(() => import("./OnlineSnowballArena"));
 const OnlineBowlingArena = lazy(() => import("./OnlineBowlingArena"));
 const OnlinePropArena = lazy(() => import("./OnlinePropArena"));
@@ -417,6 +418,7 @@ function OnlineView({
  * never guesses it from poses or map data. Rooftop Brawl keeps its original view.
  */
 export default function OnlineArena(props: Props) {
+  if (props.lobby.mode === "crate_rain") return <Suspense fallback={<p>Kutu Yağmuru yükleniyor…</p>}><OnlineCrateArena {...props} /></Suspense>;
   if (props.lobby.mode === "barn_shootout") return <OnlineBarnArena {...props} />;
   if (props.lobby.mode === "layer_chaos") return <OnlineLayerArena {...props} />;
   if (props.lobby.mode === "color_chaos") return <OnlineColorArena {...props} />;

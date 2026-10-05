@@ -13,8 +13,8 @@ export class CrateCamera {
   yaw = 0; pitch = 0; distance: number = CRATE_CAMERA.distance; hiddenPlayer = false;
   private round = -1; private subject = -1;
   private eyeY = 0; private ball = new RAPIER.Ball(CRATE_CAMERA.radius);
-  reset(g: CrateRainGame) {
-    const p = g.players.find(p => p.alive) ?? g.players[0], at = p.body.translation();
+  reset(g: CrateRainGame, self = 0) {
+    const p = (g.players[self]?.alive ? g.players[self] : g.players.find(p => p.alive)) ?? g.players[0], at = p.body.translation();
     this.yaw = Math.atan2(at.x, at.z); this.pitch = 0;
     this.eyeY = at.y - FEET + CRATE_CAMERA.eye; this.distance = CRATE_CAMERA.distance; this.round = g.round; this.subject = p.id;
   }
@@ -26,9 +26,9 @@ export class CrateCamera {
     return viewMovement(input, this.yaw);
   }
 
-  update(camera: PerspectiveCamera, g: CrateRainGame, view: CrateView, dt: number, alpha = 1) {
-    const player = g.players[0].alive ? g.players[0] : g.players.find(p => p.alive) ?? g.players[0];
-    if (g.round !== this.round || player.id !== this.subject) this.reset(g);
+  update(camera: PerspectiveCamera, g: CrateRainGame, view: CrateView, dt: number, alpha = 1, self = 0) {
+    const player = (g.players[self]?.alive ? g.players[self] : g.players.find(p => p.alive)) ?? g.players[0];
+    if (g.round !== this.round || player.id !== this.subject) this.reset(g, self);
     const at = player.body.translation(), eye = at.y - FEET + CRATE_CAMERA.eye;
     this.eyeY += (eye - this.eyeY) * (1 - Math.exp(-22 * dt));
     // Smoothing never drags the eye below the capsule's usable upper half.
