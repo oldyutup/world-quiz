@@ -5,7 +5,7 @@ import { ACTION_LABELS, type Action } from '../../input/actions';
 import { defaultBindings } from '../../input/defaults';
 import { RACE_ACTIONS, RACE_LABELS, changeRaceBinding, defaultRaceExtras, raceConflicts, type RaceAction, type RaceBindings, type RaceExtras } from './controls';
 
-export default function RaceControls({ bindings, shared, onShared, onExtras, onClose, saved }: { bindings: RaceBindings; shared: Bindings; onShared: (b: Bindings) => void; onExtras: (b: RaceExtras) => void; onClose: () => void; saved: boolean }) {
+export default function RaceControls({ bindings, shared, onShared, onExtras, onClose, saved, online=false }: { bindings: RaceBindings; shared: Bindings; onShared: (b: Bindings) => void; onExtras: (b: RaceExtras) => void; onClose: () => void; saved: boolean;online?:boolean }) {
   const [capture, setCapture] = useState<{ action: RaceAction; slot: 0 | 1 } | null>(null), [notice, setNotice] = useState('');
   const button = useRef<HTMLButtonElement | null>(null), title = useRef<HTMLHeadingElement>(null);
   useEffect(() => { title.current?.focus(); }, []);
@@ -36,7 +36,7 @@ export default function RaceControls({ bindings, shared, onShared, onExtras, onC
   return <div className="pl-race-menu-controls" data-party-controls>
     <button className="pl-button pl-join" disabled={!!capture} onClick={onClose}>← Menüye Dön</button>
     <h2 id="pl-menu-title" ref={title} tabIndex={-1}>Araba Yarışı kontrolleri</h2>
-    <p>Bir atamayı seç, yeni tuşa veya fare düğmesine basıp bırak. Esc ile iptal et. Yarış duraklatıldı.</p>
+    <p>Bir atamayı seç, yeni tuşa veya fare düğmesine basıp bırak. Esc ile iptal et. {online?'Maç menü açıkken sürer.':'Yarış duraklatıldı.'}</p>
     <div role="status" className="pl-settings-feedback">{capture ? `${RACE_LABELS[capture.action]}: Yeni tuşa bas.` : notice || 'Atamalar bu tarayıcıda otomatik kaydedilir.'}</div>
     <div className="pl-binding-head"><span>Hareket</span><span>Birincil</span><span>İkincil</span></div>
     <div className="pl-binding-list">{RACE_ACTIONS.map(action => <div className="pl-binding-row" key={action}>

@@ -399,7 +399,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = this.snapshot.mode === "snowball_fight"
+    const packet: AnyInputPacket = this.snapshot.mode === "kart_race"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,resetEpoch:intent.race?.resetEpoch??0,throttle:intent.race?.throttle??0,brake:intent.race?.brake??0,steer:intent.race?.steer??0,handbrake:intent.race?.handbrake??false,reset:intent.race?.reset??false}
+      : this.snapshot.mode === "snowball_fight"
       ? {seq:++this.inputSeq,round:this.snapshot.round,life:intent.fight?.life??0,moveX:intent.fight?.moveX??0,moveZ:intent.fight?.moveZ??0,yaw:intent.fight?.yaw??0,pitch:intent.fight?.pitch??0,jumpHeld:intent.fight?.jumpHeld??false,sprintHeld:intent.fight?.sprintHeld??false,crouchHeld:intent.fight?.crouchHeld??false,gatherHeld:intent.fight?.gatherHeld??false,throwPressed:intent.fight?.throwPressed??false}
       : this.snapshot.mode === "crate_rain"
       ? {seq:++this.inputSeq,round:this.snapshot.round,stage:intent.crate?.stage??this.snapshot.game?.crate?.stage??1,moveX:intent.crate?.moveX??0,moveZ:intent.crate?.moveZ??0,jumpHeld:intent.crate?.jumpHeld??false,sprintHeld:intent.crate?.sprintHeld??false}

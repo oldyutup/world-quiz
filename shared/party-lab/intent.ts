@@ -1,5 +1,6 @@
 /** Input intent only. Taps are consumed once per fixed step. */
 export interface MovementInput {
+  race?: import("./network/raceInput.js").RaceInputPacket;
   fight?: import("./network/fightInput.js").FightInputPacket;
   crate?: import("./network/crateInput.js").CrateInputPacket;
   snowball?: import("./network/snowballInput.js").SnowballInputPacket;

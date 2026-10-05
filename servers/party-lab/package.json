@@ -18,11 +18,13 @@
     "@colyseus/schema": "5.0.33",
     "@colyseus/ws-transport": "0.18.2",
     "@dimforge/rapier3d-compat": "0.20.0",
-    "express": "5.2.1"
+    "express": "5.2.1",
+    "three": "0.179.1"
   },
   "devDependencies": {
     "@colyseus/sdk": "0.18.3",
     "@types/node": "25.6.0",
+    "@types/three": "0.179.0",
     "tsx": "4.22.3",
     "typescript": "5.9.3"
   }
