@@ -5,6 +5,7 @@ import {
   Component,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -84,6 +85,24 @@ import { controlHint } from "./arenaMenu";
 import BowlingHud, { type BowlingSnapshot } from "./bowling/BowlingHud";
 import SnowballHud from "./snowball/SnowballHud";
 import type { SnowSnapshot } from "./snowball/game";
+import CrateControls from "./craterain/CrateControls";
+import { crateBindings, loadCrateOverrides, saveCrateOverrides, type CrateOverrides } from "./craterain/controls";
+import type { CrateView } from "./craterain/camera";
+import CrateRainHud from "./craterain/CrateRainHud";
+import type { CrateSnapshot } from "./craterain/game";
+import SnowFightHud from "./snowfight/SnowFightHud";
+import type { FightSnapshot } from "./snowfight/game";
+import ClassicHud from "./classicbowling/ClassicHud";
+import ClassicControls from "./classicbowling/ClassicControls";
+import type { ClassicSnapshot } from "./classicbowling/game";
+const ClassicPlayground = lazy(() => import("./classicbowling/ClassicPlayground"));
+import RaceHud from "./kartrace/RaceHud";
+import RaceControls from "./kartrace/RaceControls";
+import { loadRaceExtras, saveRaceExtras, raceBindings, type RaceExtras } from "./kartrace/controls";
+import type { RaceSnapshot } from "./kartrace/game";
+const RacePlayground = lazy(() => import("./kartrace/RacePlayground"));
+const SnowFightPlayground = lazy(() => import("./snowfight/SnowFightPlayground"));
+const CrateRainPlayground = lazy(() => import("./craterain/CrateRainPlayground"));
 const SnowballPlayground = lazy(() => import("./snowball/SnowballPlayground"));
 const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
 
@@ -93,17 +112,17 @@ const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
  * Renk Kaosu's colour field (see scene/colors/), Bomba Sende's local playground (see
  * scene/bomb/) and Saklambaç's forest camp (local only, see scene/prophunt/).
  */
-type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt" | "human_bowling" | "snowball_brawl";
-const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl"];
+type LocalArenaId = ArenaMapId | "layers" | "colors" | "bomb" | "prophunt" | "human_bowling" | "snowball_brawl" | "crate_rain" | "snowball_fight" | "kart_race" | "classic_bowling";
+const LOCAL_ARENA_IDS: readonly LocalArenaId[] = [...ARENA_MAP_IDS, "layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"];
 const localArenaName = (id: LocalArenaId) =>
-  id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
+  id === "classic_bowling" ? "Klasik Bowling" : id === "kart_race" ? "Araba Yarışı" : id === "snowball_fight" ? "Kartopu Savaşı" : id === "crate_rain" ? "Kutu Yağmuru" : id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
  * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl"]);
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"]);
 /** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
@@ -798,6 +817,31 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [propView, setPropView] = useState<SeekerView>("third");
   const [propProximity, setPropProximity] = useState(true);
   const [propTools] = useState(propDebugTools);
+  const classic = mapId === "classic_bowling";
+  const [classicPlayers, setClassicPlayers] = useState<2 | 3>(2);
+  const [classicSnapshot, setClassicSnapshot] = useState<ClassicSnapshot | null>(null);
+  const [classicRestart, setClassicRestart] = useState(0);
+  const race = mapId === "kart_race";
+  const [raceExtras, setRaceExtras] = useState(loadRaceExtras);
+  const [raceBindingsSaved, setRaceBindingsSaved] = useState(true);
+  const raceControls = useMemo(() => raceBindings(bindings, raceExtras), [bindings, raceExtras]);
+  const updateRaceExtras = useCallback((next: RaceExtras) => { setRaceExtras(next); setRaceBindingsSaved(saveRaceExtras(next)); }, []);
+  const [racePlayers, setRacePlayers] = useState<2 | 3>(3);
+  const [raceSnapshot, setRaceSnapshot] = useState<RaceSnapshot | null>(null);
+  const [raceRestart, setRaceRestart] = useState(0);
+  const snowfight = mapId === "snowball_fight";
+  const [fightPlayers, setFightPlayers] = useState<2 | 3>(3);
+  const [fightSnapshot, setFightSnapshot] = useState<FightSnapshot | null>(null);
+  const [fightRestart, setFightRestart] = useState(0);
+  const craterain = mapId === "crate_rain";
+  const [crateView, setCrateView] = useState<CrateView>("third");
+  const [crateOverrides, setCrateOverrides] = useState(loadCrateOverrides);
+  const [crateSaved, setCrateSaved] = useState(true);
+  const crateControls = useMemo(() => crateBindings(bindings, crateOverrides), [bindings, crateOverrides]);
+  const updateCrateControls = useCallback((next: CrateOverrides) => { setCrateOverrides(next); setCrateSaved(saveCrateOverrides(next)); }, []);
+  const [cratePlayers, setCratePlayers] = useState<2 | 3>(3);
+  const [crateSnapshot, setCrateSnapshot] = useState<CrateSnapshot | null>(null);
+  const [crateRestart, setCrateRestart] = useState(0);
   const snowball = mapId === "snowball_brawl";
   const [snowPlayers, setSnowPlayers] = useState<2 | 3>(3);
   const [snowSnapshot, setSnowSnapshot] = useState<SnowSnapshot | null>(null);
@@ -811,10 +855,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
   /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
-  const modePlayground = tileMode || bomb || prophunt || bowling || snowball;
-  const modeId = snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
+  const modePlayground = tileMode || bomb || prophunt || bowling || snowball || craterain || snowfight || race || classic;
+  const modeId = classic ? "classic_bowling" : race ? "kart_race" : snowfight ? "snowball_fight" : craterain ? "crate_rain" : snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
-  const chaseCamera = barn || (modePlayground && !bowling && !snowball);
+  const chaseCamera = barn || (modePlayground && !bowling && !snowball && !craterain && !race && !classic);
   const immersive = IMMERSIVE_MAPS.has(mapId);
   // Bowling and the local snowball prototype pause while the menu is open;
   // the other existing modes keep simulating as before.
@@ -847,18 +891,18 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   useEffect(() => {
     const surface = viewport.current;
     if (!chaseCamera || !surface) return;
-    const controller = bindLook(surface, lookModeNow.current, setLookStatus, lockEnded);
+    const controller = bindLook(surface, snowfight ? "lock" : lookModeNow.current, setLookStatus, lockEnded);
     look.current = controller;
     return () => {
       controller.dispose();
       look.current = null;
       setLookStatus("unlocked");
     };
-  }, [chaseCamera, lockEnded]);
+  }, [chaseCamera, lockEnded, snowfight]);
   useEffect(() => {
-    look.current?.setMode(lookMode);
+    look.current?.setMode(snowfight ? "lock" : lookMode);
     saveLookMode(lookMode);
-  }, [lookMode]);
+  }, [lookMode, snowfight]);
   useEffect(() => {
     look.current?.setEnabled(!inputOff);
   }, [inputOff, chaseCamera]);
@@ -872,6 +916,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setPropSnapshot(null);
     setBowlingSnapshot(null);
     setSnowSnapshot(null);
+    setCrateSnapshot(null);
+    setFightSnapshot(null);
+    setClassicSnapshot(null);
+    setRaceSnapshot(null);
     setPropProximity(true);
     setMapId(next);
     // Keep arrow keys for the game, not for switching maps mid-round.
@@ -955,7 +1003,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
         role="region"
         aria-label={modePlayground ? `${localArenaName(mapId)} · yerel arena` : "Yerel 3D test arenası"}
         aria-describedby={immersive ? undefined : "pl-controls"}
-        data-look={chaseCamera ? lookMode : undefined}
+        data-look={snowfight ? "lock" : chaseCamera ? lookMode : undefined}
         data-combat={barnCombat ? "barn" : undefined}
         data-mode={modeId}
         data-arena={mapId}
@@ -972,7 +1020,23 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </div>
             }
           >
-            {mapId === "snowball_brawl" ? (
+            {mapId === "classic_bowling" ? (
+              <Suspense fallback={null}>
+                <ClassicPlayground key={`classic-${classicPlayers}-${classicRestart}`} players={classicPlayers} bindings={bindings} onStatus={setStatus} onSnapshot={setClassicSnapshot} paused={inputOff} audio={audio} />
+              </Suspense>
+            ) : mapId === "kart_race" ? (
+              <Suspense fallback={null}>
+                <RacePlayground bindings={raceControls} key={`race-${racePlayers}-${raceRestart}`} players={racePlayers} onStatus={setStatus} onSnapshot={setRaceSnapshot} paused={inputOff} audio={audio} />
+              </Suspense>
+            ) : mapId === "snowball_fight" ? (
+              <Suspense fallback={null}>
+                <SnowFightPlayground key={`fight-${fightPlayers}-${fightRestart}`} players={fightPlayers} onStatus={setStatus} onSnapshot={setFightSnapshot} paused={inputOff} audio={audio} look={look} />
+              </Suspense>
+            ) : mapId === "crate_rain" ? (
+              <Suspense fallback={null}>
+                <CrateRainPlayground onLockLost={lockEnded} bindings={crateControls} view={crateView} onView={setCrateView} key={`crate-${cratePlayers}-${crateRestart}`} players={cratePlayers} onStatus={setStatus} onSnapshot={setCrateSnapshot} paused={inputOff} audio={audio} costumeId={costumeId} />
+              </Suspense>
+            ) : mapId === "snowball_brawl" ? (
               <Suspense fallback={null}>
                 <SnowballPlayground key={`snow-${snowPlayers}-${snowRestart}`} players={snowPlayers} onStatus={setStatus} onSnapshot={setSnowSnapshot} paused={inputOff} audio={audio} />
               </Suspense>
@@ -1063,6 +1127,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           </Canvas>
         </SceneBoundary>
         {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
+        {classic && status === "ready" && classicSnapshot && <ClassicHud bindings={bindings} snapshot={classicSnapshot} restart={() => { setStatus("loading"); setClassicSnapshot(null); setClassicRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
+        {race && status === "ready" && raceSnapshot && <RaceHud bindings={raceControls} snapshot={raceSnapshot} restart={() => { setStatus("loading"); setRaceSnapshot(null); setRaceRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
+        {snowfight && status === "ready" && fightSnapshot && <SnowFightHud snapshot={fightSnapshot} lookStatus={lookStatus} restart={() => { setStatus("loading"); setFightSnapshot(null); setFightRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
+        {craterain && status === "ready" && crateSnapshot && <CrateRainHud bindings={crateControls} view={crateView} snapshot={crateSnapshot} restart={() => { setStatus("loading"); setCrateSnapshot(null); setCrateRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {snowball && status === "ready" && snowSnapshot && <SnowballHud snapshot={snowSnapshot} restart={() => { setStatus("loading"); setSnowSnapshot(null); setSnowRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {bowling && status === "ready" && bowlingSnapshot && <BowlingHud snapshot={bowlingSnapshot} debugOpen={bowlingTools && debugPanel.open} restart={() => { setStatus("loading"); setBowlingSnapshot(null); setBowlingRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {layers && status === "ready" && layerSnapshot && (
@@ -1354,8 +1422,13 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           leaveLabel="Lobiye Dön"
           lobby={null}
           modeName={localArenaName(mapId)}
-          menuNote={snowball ? 'Maç duraklatıldı.' : undefined}
-          controlsContent={snowball ? <div className="pl-snow-controls" data-party-controls>
+          menuNote={classic || race || snowfight || snowball || craterain ? 'Maç duraklatıldı.' : undefined}
+          controlsContent={classic ? <ClassicControls bindings={bindings} onBindings={onBindings} onClose={() => menu.setView("main")} /> : race ? <RaceControls bindings={raceControls} shared={bindings} onShared={onBindings} onExtras={updateRaceExtras} saved={bindingsSaved && raceBindingsSaved} onClose={() => menu.setView("main")} /> : snowfight ? <div className="pl-fight-menu-controls" data-party-controls>
+            <button className="pl-button pl-join" onClick={() => menu.setView("main")}>← Menüye Dön</button>
+            <h2 id="pl-menu-title">Kartopu Savaşı kontrolleri</h2>
+            <p><b>WASD</b> · Hareket<br/><b>SHIFT</b> · Koş<br/><b>SPACE</b> · Zıpla<br/><b>C / CTRL</b> · Çömel<br/><b>E basılı tut</b> · Kar Topla<br/><b>Mouse1</b> · Fırlat<br/><b>Fare</b> · Bak / Nişan al<br/><b>Esc</b> · Menü ve duraklatma</p>
+            <p>Karlı zeminde kartopu hazırla, siperden çıkıp fırlat. Her KO +1 puan. 80 saniyede en yüksek skor kazanır; elenirsen 2 saniye sonra geri dönersin.</p>
+          </div> : craterain ? <CrateControls bindings={crateControls} onChange={updateCrateControls} saved={crateSaved} onClose={() => menu.setView("main")} /> : snowball ? <div className="pl-snow-controls" data-party-controls>
             <button className="pl-button pl-join" onClick={() => menu.setView("main")}>← Menüye Dön</button>
             <h2 id="pl-menu-title">Kartopu kontrolleri</h2>
             <p><b>W / S</b> · Ekranda yukarı / aşağı<br/><b>A / D</b> · Ekranda sol / sağ<br/><b>Esc</b> · Menü ve duraklatma</p>
@@ -1364,8 +1437,8 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           bindings={bindings}
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
-          look={chaseCamera ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          look={chaseCamera && !snowfight ? { mode: lookMode, onChange: setLookMode } : undefined}
+          debug={classic || race || snowfight || craterain || snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1380,6 +1453,38 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </select>
             </label>
           )}
+          {classic && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={classicPlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setClassicSnapshot(null);
+              setClassicPlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={2}>2 (sen + 1 bot)</option><option value={3}>3 (sen + 2 bot)</option></select>
+          </label>}
+          {race && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={racePlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setRaceSnapshot(null);
+              setRacePlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option></select>
+          </label>}
+          {snowfight && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={fightPlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setFightSnapshot(null);
+              setFightPlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option></select>
+          </label>}
+          {craterain && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={cratePlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setCrateSnapshot(null);
+              setCratePlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option></select>
+          </label>}
           {snowball && <>
             <label className="pl-menu-row"><span>Oyuncu</span>
               <select value={snowPlayers} onChange={event => { menu.setView(null); setStatus("loading"); setSnowSnapshot(null); setSnowPlayers(Number(event.target.value) === 2 ? 2 : 3); requestAnimationFrame(() => viewport.current?.focus()); }}>
