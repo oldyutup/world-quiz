@@ -13,7 +13,7 @@ const oval=(s:number[],p:number[],c:string)=>painted(new SphereGeometry(1,10,7).
 function tag(text:string,color:string){const canvas=document.createElement('canvas');canvas.width=256;canvas.height=64;const c=canvas.getContext('2d')!;c.fillStyle=P.ink;c.beginPath();c.roundRect(3,4,250,55,22);c.fill();c.fillStyle=color;c.font='700 26px system-ui';c.textAlign='center';c.fillText(text,128,41);const map=new CanvasTexture(canvas);map.colorSpace=SRGBColorSpace;return new Sprite(new SpriteMaterial({map,depthWrite:false,toneMapped:false}));}
 
 /** Original low-poly geometry, merged scenery + shared meshes + 96 pooled snow puffs. */
-export function fightVisual(count:number){
+export function fightVisual(count:number,names=NAMES){
   const root=new Group(),material=new MeshStandardMaterial({vertexColors:true,roughness:1,flatShading:true});
   const pieces:BufferGeometry[]=[];
   const add=(s:number[],p:number[],c:string,r=0)=>pieces.push(box(s,p,c,r));
@@ -78,7 +78,7 @@ export function fightVisual(count:number){
     const legs=[-1,1].map(side=>{const leg=new Mesh(merge([box([.22,.39,.23],[0,-.13,0],P.ink,.06),box([.25,.17,.37],[0,-.37,.05],'#78625b',.06)]),skinMat);leg.position.x=side*.16;group.add(leg);return leg;});
     const held=new Mesh(snowGeometry,snowMat);held.scale.setScalar(C.ballRadius);group.add(held);
     const splat=new Mesh(snowGeometry,snowMat);splat.scale.set(.23,.20,.04);group.add(splat);
-    const label=tag(`${i+1} · ${NAMES[i]}`,COLORS[i]);label.scale.set(1.35,.34,1);root.add(label);
+    const label=tag(`${i+1} · ${names[i]}`,COLORS[i]);label.scale.set(1.35,.34,1);root.add(label);
     const shadow=new Mesh(new CircleGeometry(.46,20),darkMat);shadow.rotation.x=-Math.PI/2;root.add(shadow);
     const ring=new Mesh(new RingGeometry(.43,.48,32),new MeshBasicMaterial({color:P.cream,transparent:true,opacity:.85,side:2,depthWrite:false}));ring.rotation.x=-Math.PI/2;root.add(ring);
     return {group,torso,head,arms,legs,held,splat,label,shadow,ring,skinMat,stance:0};
@@ -89,7 +89,7 @@ export function fightVisual(count:number){
   const matrix=new Matrix4(),v3=new Vector3(),q=new Quaternion(),scale=new Vector3();
   return {root,
     burst(at:Vec,big=false){for(let j=0;j<(big?16:8);j++){const n=cursor++%pool.length,a=n*2.399,p=pool[n];p.life=.34+(n%4)*.055;p.p={...at};p.v={x:Math.sin(a)*(big?2.5:1.5),y:.6+(j%4)*.42,z:Math.cos(a)*(big?2.5:1.5)};}},
-    update(g:SnowFightGame,dt:number,alpha:number,boom:number){
+    update(g:SnowFightGame,dt:number,alpha:number,boom:number,self=0){
       people.forEach((visual,i)=>{
         const p=g.players[i],at=p.body.translation(),vel=p.body.linvel(),v=visual;
         v.group.visible=v.label.visible=v.shadow.visible=v.ring.visible=p.hp>0;if(p.hp<=0)return;
@@ -104,10 +104,10 @@ export function fightVisual(count:number){
         v.arms.forEach((arm,j)=>{arm.position.y=1.17-c*.48;arm.rotation.x=gather?-.95: j===0?-.9-Math.max(0,p.throwAt-g.time)/C.throwInterval*1.0:gait*.6;arm.rotation.z=gather?(j===0?.6:-.6):0;});
         v.held.position.set(-.34,1.32-c*.59,.40);v.held.visible=p.ammo>0&&!gather;
         v.splat.position.set(0,.98-c*.48,.25);v.splat.visible=g.time-p.lastHit<.8;
-        v.label.position.set(at.x,at.y+(p.crouch?1.4:2.18),at.z);v.label.visible=i!==0&&p.hp>0;
+        v.label.position.set(at.x,at.y+(p.crouch?1.4:2.18),at.z);v.label.visible=i!==self&&p.hp>0;
         v.shadow.position.set(at.x,g.floor(at)+.018,at.z);v.shadow.visible=p.grounded;
         v.ring.position.set(at.x,at.y+.025,at.z);v.ring.visible=p.protection>g.time;
-        v.skinMat.opacity=i===0?clamp((boom-.35)/.9,.12,1):1;v.skinMat.depthWrite=v.skinMat.opacity>.95;
+        v.skinMat.opacity=i===self?clamp((boom-.35)/.9,.12,1):1;v.skinMat.depthWrite=v.skinMat.opacity>.95;
       });
       g.balls.forEach((b,i)=>{v3.set(b.previous.x+(b.p.x-b.previous.x)*alpha,b.previous.y+(b.p.y-b.previous.y)*alpha,b.previous.z+(b.p.z-b.previous.z)*alpha);scale.setScalar(C.ballRadius);matrix.compose(v3,q,scale);projectiles.setMatrixAt(i,matrix);});projectiles.count=g.balls.length;projectiles.instanceMatrix.needsUpdate=true;
       let n=0;for(const p of pool){p.life-=dt;if(p.life<=0)continue;p.v.y-=dt*3;for(const k of ['x','y','z']as const)p.p[k]+=p.v[k]*dt;v3.set(p.p.x,p.p.y,p.p.z);scale.setScalar(Math.min(.10,p.life*.3));matrix.compose(v3,q,scale);puffs.setMatrixAt(n++,matrix);}puffs.count=n;puffs.instanceMatrix.needsUpdate=true;

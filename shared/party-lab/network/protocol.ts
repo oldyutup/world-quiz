@@ -1,3 +1,4 @@
+import {validateFightInput, type FightInputPacket} from "./fightInput.js";
 import {validateCrateInput, type CrateInputPacket} from "./crateInput.js";
 import {validateSnowballInput, type SnowballInputPacket} from "./snowballInput.js";
 import {validateBowlingInput, type BowlingInputPacket} from "./bowlingInput.js";
@@ -171,7 +172,7 @@ export interface BombInputPacket extends LayerInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
@@ -362,6 +363,7 @@ export interface GameSnapshot {
   layers?: LayerSnapshot;
   colors?: ColorFieldSnapshot;
   bomb?: BombSnapshot;
+  fight?: import("../simulation/snowfight/wire.js").FightWire;
   crate?: import("../simulation/craterain/wire.js").CrateWire;
   snowball?: import("../simulation/snowball/wire.js").SnowballWire;
   bowling?: import("../simulation/bowling/wire.js").BowlingWire;
@@ -572,11 +574,19 @@ export class InputMailbox {
   // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
   private bombPacket: BombInputPacket | null = null;
+  private fightPacket: FightInputPacket | null = null;
+  private fightThrow = false;
   private cratePacket: CrateInputPacket | null = null;
   private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
   accept(value: unknown, round: number, now: number, mode: GameMode = "rooftop_brawl") {
+    if (mode === "snowball_fight") {
+      const p=validateFightInput(value);
+      if(!p||p.round!==round||p.seq<=this.seq)return false;
+      this.fightThrow ||= p.throwPressed && !this.fightPacket?.throwPressed;
+      this.seq=p.seq;this.received=now;this.fightPacket=p;return true;
+    }
     if (mode === "crate_rain") {
       const p=validateCrateInput(value);
       if(!p||p.round!==round||p.seq<=this.seq)return false;
@@ -684,6 +694,7 @@ export class InputMailbox {
   }
   read(now: number): MovementInput {
     if (now - this.received > NET.staleMs) this.clear();
+    if(this.fightPacket){const p={...this.fightPacket,throwPressed:this.fightThrow};this.fightThrow=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),fight:p};}
     if(this.cratePacket){const p=this.cratePacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),crate:p};}
     if(this.snowballPacket){const p=this.snowballPacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),snowball:p};}
     const next=this.bowlingQueue.shift();
@@ -764,6 +775,7 @@ export class InputMailbox {
     return result;
   }
   clear() {
+    this.fightPacket=null;this.fightThrow=false;
     this.cratePacket=null;
     this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;

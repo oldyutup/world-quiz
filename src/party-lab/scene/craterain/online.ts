@@ -25,7 +25,7 @@ export class CratePrediction {
     this.history.acknowledge(s.ack[this.slot]);
     if(this.history.records.some(p=>now-p.sentAt>PREDICTION_LIMITS.staleMs)){this.history.clear();this.ready=false;}
     let held=w.held[this.index]??0;
-    if(this.active)for(const p of this.history.records)if('jumpHeld' in p.packet){if(held-->0)continue;this.run(p.packet);this.metrics.replaySteps++;}
+    if(this.active)for(const p of this.history.records)if('stage' in p.packet && 'jumpHeld' in p.packet){if(held-->0)continue;this.run(p.packet);this.metrics.replaySteps++;}
     if(this.ready){const r=this.correction.begin(before,this.capture());this.metrics.maxError=Math.max(this.metrics.maxError,r.error);if(r.tier!=='none')this.metrics.corrections++;if(r.tier==='hard')this.metrics.hard++;}
   }
   private run(p: CrateInputPacket) { for(let sub=0;sub<2;sub++)this.game.predictPlayer(this.index,{x:p.moveX,z:p.moveZ,jump:p.jumpHeld,sprint:p.sprintHeld}); }
@@ -40,7 +40,7 @@ export class CrateOnlineController {
     const {stream,sendInput}=this.options,latest=stream.snapshots.latest,w=latest?.snapshot.crate;if(!latest||!w)return;
     const now=performance.now();this.self=Math.max(0,w.seats.indexOf(this.slot));this.prediction.reconcile(latest,now);
     this.acc=delta>.25?0:Math.min(.05,this.acc+delta);
-    while(this.acc>=1/60){this.acc-=1/60;const packet=sendInput({x:0,z:0,jump:false,crate:{seq:0,round:latest.snapshot.round,stage:w.stage,moveX:off?0:input.x,moveZ:off?0:input.z,jumpHeld:!off&&input.jump,sprintHeld:!off&&input.sprint}});if(packet&&'jumpHeld'in packet)this.prediction.step(packet,now);}
+    while(this.acc>=1/60){this.acc-=1/60;const packet=sendInput({x:0,z:0,jump:false,crate:{seq:0,round:latest.snapshot.round,stage:w.stage,moveX:off?0:input.x,moveZ:off?0:input.z,jumpHeld:!off&&input.jump,sprintHeld:!off&&input.sprint}});if(packet&&'stage'in packet&&'jumpHeld'in packet)this.prediction.step(packet,now);}
     const sample=stream.snapshots.sample(now);let poses=latest.values;
     if(sample&&sample.a.snapshot.crate?.stage===w.stage&&sample.b.snapshot.crate?.stage===w.stage){poses=sample.a.values.map((n,i)=>n+(sample.b.values[i]-n)*sample.alpha);}
     const elapsed=w.phase==='playing'?Math.min(C.maxRoundTime,w.elapsed+Math.min(.1,(now-latest.received)/1000)):w.elapsed;
