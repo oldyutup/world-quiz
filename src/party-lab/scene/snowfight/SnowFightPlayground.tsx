@@ -81,7 +81,7 @@ export default function SnowFightPlayground({players,onStatus,onSnapshot,paused,
     }
     visual.update(g,frozen?0:dt,network.current?1:frozen?1:clock.acc/C.step,pose.boom,network.current?.self??0);
     clock.publish+=dt;if(clock.publish>.07){clock.publish=0;onSnapshot({...g.snapshot(network.current?.self??0),hitMarker:g.time<clock.hitUntil});}
-    if(debug&&!frozen&&g.phase!=='results'){
+    if(debug&&(!frozen||!!network.current)&&g.phase!=='results'){
       m.frames.push(delta*1000);m.js.push(performance.now()-start);m.drawCalls=Math.max(m.drawCalls,gl.info.render.calls);m.triangles=Math.max(m.triangles,gl.info.render.triangles);m.geometries=gl.info.memory.geometries;m.textures=gl.info.memory.textures;
       for(const a of[m.frames,m.js,m.physics])if(a.length>16000)a.splice(0,a.length-16000);
     }

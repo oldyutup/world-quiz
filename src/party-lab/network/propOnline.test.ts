@@ -37,8 +37,8 @@ function shotAt(sim: PropRoundSimulation, at: { x: number; y: number; z: number 
   return { ...IDLE_INPUT, attack: true, facing: Math.atan2(dx, dz), aimPitch: -Math.atan2(dy, Math.hypot(dx, dz)), aimEye: { x: p.x - b.x, y: p.y - b.y, z: p.z - b.z }, viewTick: sim.tick };
 }
 
-test("protocol 12: compact 41-byte intent rejects claims, duplicates and malformed flags", () => {
-  assert.equal(NET.version, 12); assert.equal(PROP_INPUT_BYTES, 41);
+test("protocol 13: compact 41-byte intent rejects claims, duplicates and malformed flags", () => {
+  assert.equal(NET.version, 13); assert.equal(PROP_INPUT_BYTES, 41);
   const p = packet({ pickupPressed: true, attackPressed: true, whistlePressed: true });
   assert.deepEqual(validatePropInput(encodePropInput(p)), p);
   for (const claim of ["family", "target", "winner", "ammo", "proximity", "position", "disguise"]) assert.equal(validatePropInput({ ...p, [claim]: 1 }), null);

@@ -22,7 +22,7 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   human_bowling: "Sırayla hızlan, fırla, lobutları devir. Kişi başı 3 atış.",
   prop_hunt: "Bir arayan, iki saklanan. Eşyaya dönüş ve bulunmadan dayan.",
   bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
-  mixed: "Sekiz mod, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",
+  mixed: "On iki mod, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",
 };
 
 /** Opt-in (`?partyDebug=1`) link/chat timing lines; refresh on their own clock while shown. */

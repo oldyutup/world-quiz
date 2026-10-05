@@ -28,7 +28,7 @@ export class RacePrediction{
  visual(dt:number){this.ready=true;return this.correction.apply(this.capture(),dt,this.shown);}dispose(){this.game.dispose();}
 }
 export class RaceOnlineController{
- readonly prediction:RacePrediction;readonly slot:number;self=0;private acc=0;private reset=false;private contacts=-1;private previousLap=-1;private qa=new Quaternion();private qb=new Quaternion();
+ readonly prediction:RacePrediction;readonly slot:number;self=0;private acc=0;private reset=false;private contacts=-1;private previousLap=-1;private previousPhase:RaceGame['phase']|null=null;private previousReset=-1;private qa=new Quaternion();private qb=new Quaternion();
  constructor(readonly options:RaceOnline,count:2|3){this.slot=options.lobby.players.find(p=>p.id===options.lobby.selfId)?.slot??-1;this.prediction=new RacePrediction(this.slot,count);}
  advance(g:RaceGame,dt:number,input:DriveInput,off:boolean){const {stream,sendInput}=this.options,latest=stream.snapshots.latest,w=latest?.snapshot.race;if(!latest||!w)return;
   const now=performance.now();this.self=Math.max(0,w.seats.indexOf(this.slot));this.prediction.reconcile(latest,now);this.reset ||= !off&&!!input.reset;if(off)this.reset=false;
@@ -38,6 +38,8 @@ export class RaceOnlineController{
   if(sample&&sample.a.snapshot.race&&sample.b.snapshot.race){poses=latest.values.slice();for(let i=0;i<g.count;i++){if(sample.a.snapshot.race.progress[i].resets!==w.progress[i].resets)continue;const o=i*7;for(let k=0;k<3;k++)poses[o+k]=sample.a.values[o+k]+(sample.b.values[o+k]-sample.a.values[o+k])*sample.alpha;this.qa.fromArray(sample.a.values,o+3);this.qb.fromArray(sample.b.values,o+3);this.qa.slerp(this.qb,sample.alpha).toArray(poses,o+3);}}
   restoreRace(g,w,poses);
   if(this.prediction.active){const v=this.prediction.visual(Math.min(.1,dt)),c=g.cars[this.self],pred=this.prediction.game.cars[this.self];c.body.setTranslation({x:v[0],y:v[1],z:v[2]},false);c.body.setRotation({x:v[3],y:v[4],z:v[5],w:v[6]},false);c.body.setLinvel(pred.body.linvel(),false);c.previous=c.body.translation();c.heading=pred.heading;c.previousHeading=c.heading;c.steer=pred.steer;}
+  if(this.previousPhase==='countdown'&&w.phase==='racing')g.events.push({kind:'start',id:this.self,intensity:.55});this.previousPhase=w.phase;
+  if(this.previousReset>=0&&w.progress[this.self].resets>this.previousReset)g.events.push({kind:'reset',id:this.self,intensity:.55});this.previousReset=w.progress[this.self].resets;
   if(this.contacts>=0&&w.contacts>this.contacts)g.events.push({kind:'impact',id:this.self,intensity:.5});this.contacts=w.contacts;
   if(this.previousLap>=0&&w.progress[this.self].laps>this.previousLap)g.events.push({kind:w.progress[this.self].finish!==null?'finish':'lap',id:this.self,intensity:1});this.previousLap=w.progress[this.self].laps;
  }

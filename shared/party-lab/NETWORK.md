@@ -1,7 +1,6 @@
 # Network reliability and realtime chat (Rooftop online)
 
-Audit and fixes made before Online Barn (the wire version is now **5**: Barn Shootout
-went online without changing anything below — see [BARN_ONLINE.md](BARN_ONLINE.md)).
+Historical audit before Online Barn. The current wire version is **13**; the reliability mechanisms below remain in use. See [BARN_ONLINE.md](BARN_ONLINE.md) for the original Barn integration.
 Rooftop gameplay (movement, Punch, Grab,
 Lift, KO, elimination, camera, bots, local mode) and all combat constants are
 unchanged. Current prediction details stay in [PREDICTION.md](PREDICTION.md);
@@ -174,3 +173,14 @@ teleports; no stale/degraded state), amplified by **normal network variability**
 measurements; its sleep/replica settings still need a manual check.
 
 Protocol 9 Prop Hunt wire, authoritative settings, reconstruction and reconnect details: [PROP_ONLINE.md](PROP_ONLINE.md).
+
+## Protocol 13: four additional authoritative modes
+
+All four modes use 60 Hz semantic input, 20 Hz authoritative snapshots, existing same-seat reconnect and 15-second disconnect grace. No online bots run. Local camera choices stay off the wire. Shared simulations preserve the approved local tuning.
+
+- Crate Rain: server-authored six-byte crate descriptors encode cell, style, landing layer, spawn/landing ticks and immutable landed state. The complete journal is at most 720 bytes, reconstructs after loss/reconnect, and never transmits static crate transforms. Only player transforms are streamed. Client movement replay uses the authoritative static occupancy.
+- Snowball Fight: server computes shoulder-camera aim and hand-origin obstruction, creates swept physical projectiles, validates gather duration/surface/inventory, and owns damage, recoil, KO/respawn and score. Life epochs reject stale post-KO actions. Projectile identities and event ids prevent duplicate presentation; only server collision consumes a projectile.
+- Kart Race: server simulates all chassis, contacts, surfaces, ordered checkpoints, laps, resets and finish order. Local input replay includes all cars and their authoritative velocities so reconciliation preserves physical contact. Shared prediction bounds remain 30 ticks / 500 ms; reset epochs discard stale driving actions.
+- Classic Bowling: phase epochs and synchronized server timestamps drive the unchanged 0.675 s position / 0.825 s direction sweeps. A select packet contains only an edge and the last painted event time. The server bounds the mapped time to 250 ms of history / 25 ms ahead, derives the value itself, and owns ball, pins, second roll, strike/spare and raw scores. Duplicate/held input cannot skip phases. A departed or 30-second idle selection scores zero so it cannot hold the room indefinitely.
+
+Critical tests: frontend `crateOnline`, `fightOnline`, `raceOnline`, `classicOnline`, `twelveModes`; server `fourModesRoom`. `scripts/validate-party-lab-four-online.ts` reproduces three-seat full-match simulation, physics, serialization and payload measurements. The external release evidence includes headed 2P/3P matches and 150 ms base RTT + 0–20 ms jitter each way + 2% application input/snapshot loss.

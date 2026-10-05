@@ -55,12 +55,12 @@ export default function RacePlayground({players,paused,onStatus,onSnapshot,audio
     if(read.camera){cameraSession.preset=(cameraSession.preset+1)%VIEWS.length;t.viewUntil=performance.now()+1400;}
     resetQueued.current ||= !!read.drive.reset;
     const input={...read.drive,reset:resetQueued.current};
-    const self=network.current?.self??0;
-    if(network.current){network.current.advance(g,delta,input,frozen);resetQueued.current=false;t.acc=0;for(const e of g.events)audio.playSfx({name:e.kind==='impact'?'bodyHit':e.kind==='finish'?'winner':'roundStart',intensity:e.intensity});}
+    if(network.current){network.current.advance(g,delta,input,frozen);resetQueued.current=false;t.acc=0;const count=g.phase==='countdown'?Math.ceil(g.countdown):0;if(count>0&&count!==t.count)audio.playSfx({name:'countdown',step:count});t.count=count;for(const e of g.events)audio.playSfx({name:e.kind==='impact'?'bodyHit':e.kind==='finish'?'winner':e.kind==='reset'?'recovery':'roundStart',intensity:e.intensity});}
     while(t.acc>=RACE.step){g.step(input);resetQueued.current=false;input.reset=false;t.acc-=RACE.step;if(debug&&g.phase==='racing')m.physics.push(g.physicsMs);
       const count=g.phase==='countdown'?Math.ceil(g.countdown):0;if(count>0&&count!==t.count)audio.playSfx({name:'countdown',step:count});t.count=count;
       for(const e of g.events){if(e.kind==='impact'){if(g.time-t.impactAt>.12){audio.playSfx({name:'bodyHit',intensity:e.intensity});t.impactAt=g.time;}}else if(e.id===0||e.kind==='start')audio.playSfx({name:e.kind==='start'?'roundStart':e.kind==='finish'?'winner':e.kind==='lap'?'roundStart':'recovery',intensity:.55});}
     }
+    const self=network.current?.self??0;
     visual.update(g,network.current||frozen?1:t.acc/RACE.step);
     if(g.progress[self].resets!==t.reset){view.current.ready=false;t.reset=g.progress[self].resets;}
     const p=visual.cars[self].position,pose=updateCamera(view.current,g.world,p,visual.cars[self].rotation.y,g.cars[self].speed,dt),cam=camera as PerspectiveCamera;

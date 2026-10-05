@@ -1,3 +1,8 @@
+import {GAME_MODES} from "../../../shared/party-lab/modes.js";
+import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
+import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
+import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
+import {ClassicRoundSimulation} from "../../../shared/party-lab/simulation/classicRound.js";
 import {SnowballRoundSimulation} from "../../../shared/party-lab/simulation/snowballRound.js";
 import {BowlingRoundSimulation} from "../../../shared/party-lab/simulation/bowlingRound.js";
 import { PropRoundSimulation } from "../../../shared/party-lab/simulation/propRound.js";
@@ -86,7 +91,19 @@ async function close(...list: Peer[]) {
 /** Jump a phase to its last 30 ms (the fixed-step loop then finishes it for real). */
 function skip(room: PartyRoom) {
   const game = room.game as unknown as { elapsed: number; phase: string; round: { elapsed: number; phase: string } };
-  if (room.game instanceof SnowballRoundSimulation) {
+  if (room.game instanceof CrateRoundSimulation || room.game instanceof FightRoundSimulation || room.game instanceof RaceRoundSimulation || room.game instanceof ClassicRoundSimulation) {
+    const sim=room.game;
+    if(sim.phase==='countdown'){
+      if(sim instanceof CrateRoundSimulation)sim.game.phaseTime=2.99;
+      else if(sim instanceof FightRoundSimulation)sim.game.countdown=3.99;
+      else if(sim instanceof RaceRoundSimulation)sim.game.countdown=.001;
+      else (sim as unknown as {countdown:number}).countdown=.001;
+    }
+    else if(sim.phase==='playing'){
+      if(sim instanceof ClassicRoundSimulation)sim.seats.forEach(slot=>sim.remove(slot));
+      for(let i=0;i<20000&&sim.phase==='playing';i++)sim.step([]);
+    }else (sim as unknown as {resultTime:number}).resultTime=9.99;
+  } else if (room.game instanceof SnowballRoundSimulation) {
     if(room.game.phase==='countdown')room.game.game.phaseTime=2.99;
     else if(room.game.phase==='playing'){for(let i=0;i<12000&&room.game.phase==='playing';i++)room.game.step([]);}
     else (room.game as unknown as {resultTime:number}).resultTime=9.98;
@@ -237,7 +254,7 @@ test("barn round over real sockets: explicit mode, barn packets acknowledged, ro
   await close(a, b);
 });
 
-test("Mixed: all eight modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 20 switches do not leak", { timeout: 60000 }, async () => {
+test("Mixed: all twelve modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 26 switches do not leak", { timeout: 60000 }, async () => {
   const a = await create("Alice"),
     b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol");
   const room = local(a);
@@ -245,7 +262,7 @@ test("Mixed: all eight modes once per shuffled cycle, never twice in a row; each
   await until(() => room.selection === "mixed");
   const played: string[] = [];
   const memory: number[] = [];
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 26; i++) {
     if (i === 7) {
       a.room.send("propSettings", { ammo: 5, proximity: false });
       await until(() => room.state.propAmmo === 5 && !room.state.propProximity);
@@ -268,8 +285,8 @@ test("Mixed: all eight modes once per shuffled cycle, never twice in a row; each
     }
   }
   for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `no repeat (${played.join(",")})`);
-  for (let c = 0; c + 8 <= played.length; c += 8)
-    assert.deepEqual([...played.slice(c, c + 8)].sort(), ["barn_shootout", "bomb_tag", "color_chaos", "human_bowling", "layer_chaos", "prop_hunt", "rooftop_brawl", "snowball_brawl"], `cycle ${c / 8} has every mode once (${played.join(",")})`);
+  for (let c = 0; c + GAME_MODES.length <= played.length; c += GAME_MODES.length)
+    assert.deepEqual([...played.slice(c, c + GAME_MODES.length)].sort(), [...GAME_MODES].sort(), `cycle ${c / GAME_MODES.length} has every mode once (${played.join(",")})`);
   assert.equal(room.simulations.created, 1 + played.length - (played[0] === "rooftop_brawl" ? 1 : 0));
   assert.equal(room.simulations.disposed, room.simulations.created - 1);
   const growth = memory[memory.length - 1] - memory[0];

@@ -121,7 +121,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   game!: OnlineSimulation;
   /** The host's lobby choice, and the mode the next round will be played in. */
   selection: ModeSelection = DEFAULT_MODE_SELECTION;
-  /** Mixed: all eight eligible modes once per cycle, shuffled, never the same mode twice in a row. */
+  /** Mixed: all eligible modes once per cycle, shuffled, never the same mode twice in a row. */
   readonly rotation = new MixedRotation();
   readonly propRotation = new PropRotation(cryptoSeed());
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);

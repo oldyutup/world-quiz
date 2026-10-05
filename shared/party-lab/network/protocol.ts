@@ -27,7 +27,8 @@ export const NET = {
   // 10: authoritative Human Bowling and seven-mode Mixed.
   // 11: authoritative Snowball Brawl, compact WASD and eight-mode Mixed.
   // 12: authoritative Bowling obstacle preference and held-input prediction time.
-  version: 12,
+  // 13: four authoritative modes, twelve-mode Mixed and phase-clock selection.
+  version: 13,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -177,7 +178,7 @@ export interface PropInputPacket extends BarnInputPacket { whistlePressed: boole
 export type AnyInputPacket = ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
-export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && !("attackPressed" in p);
+export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && "jumpPressed" in p && !("attackPressed" in p);
 export interface GameEvent extends FeedbackEvent {
   id: number;
   round: number;

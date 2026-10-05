@@ -67,7 +67,7 @@ export function mixedCycle(previous: GameMode | null, random: () => number = Mat
 }
 
 /**
- * The server's Mixed sequence. Each cycle holds all eight eligible modes once in a shuffled
+ * The server's Mixed sequence. Each cycle holds all eligible modes once in a shuffled
  * order and the next cycle is reshuffled, never repeating the mode just played. `next`
  * is what the lobby shows before Ready; it is consumed only once a round of it reaches
  * play (a cancelled countdown keeps it). No voting.
