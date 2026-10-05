@@ -10,6 +10,7 @@ import { modeListStep, modeListWidth, placeModeList } from "./modePicker";
 import { MODE_NAMES, MODE_SELECTIONS, type ModeSelection } from "../../shared/party-lab/modes";
 
 const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
+  classic_bowling: "Konum, yön ve gücü seç. 2–3 oyuncu, kişi başı 3 tur.",
   kart_race: "3 tur boyunca virajları al, rakiplerini geç. 2–3 oyuncu.",
   snowball_fight: "Kar topla, siper al ve kartopu fırlat. 2–3 oyuncu, 80 saniye.",
   crate_rain: "Kutulardan kaç, avlu dolarken hayatta kal. 2–3 oyuncu, 3 tur.",

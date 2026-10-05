@@ -1,3 +1,4 @@
+import {ClassicRoundSimulation} from "../../../shared/party-lab/simulation/classicRound.js";
 import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
 import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
 import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
@@ -91,6 +92,7 @@ const cryptoSeed = () => randomBytes(4).readUInt32LE();
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
+  if (mode === "classic_bowling") return new ClassicRoundSimulation(counters, cryptoSeed());
   if (mode === "kart_race") return new RaceRoundSimulation(counters);
   if (mode === "snowball_fight") return new FightRoundSimulation(counters, cryptoSeed());
   if (mode === "crate_rain") return new CrateRoundSimulation(counters, cryptoSeed());
