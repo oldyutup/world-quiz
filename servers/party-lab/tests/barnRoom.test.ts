@@ -190,7 +190,8 @@ test("mode selector: the creator is host; only the host changes it; everyone see
   assert.equal(room.state.players.get(a.room.sessionId)?.ready, false, "changing the mode clears Ready");
   a.room.send("mode", "mixed");
   await until(() => [a, b].every((p) => p.room.state.selection === "mixed"));
-  assert.ok(["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl"].includes(b.room.state.mode), "Mixed shows a real mode");
+  // Two players: every mode except Prop Hunt (exactly three) is eligible.
+  assert.ok((GAME_MODES as readonly string[]).filter((m) => m !== "prop_hunt").includes(b.room.state.mode), "Mixed shows a real two-player mode");
   assert.equal(b.room.state.mode, room.upcoming, "Mixed shows the actual next mode");
   await close(a, b);
 });
