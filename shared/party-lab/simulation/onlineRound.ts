@@ -17,6 +17,7 @@ import {
 } from "../network/protocol.js";
 import { capturePredictionState } from "./predictionState.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "./online.js";
+import { eliminationRanks } from "../board/rules.js";
 
 /** Rooftop Brawl. Same physical rules as LocalRoundSimulation; no bots or browser dependencies. */
 export class OnlineRoundSimulation implements OnlineSimulation {
@@ -32,6 +33,8 @@ export class OnlineRoundSimulation implements OnlineSimulation {
   phase: OnlinePhase = "waiting";
   mask = 0;
   private countdown = 0;
+  /** Room tick each slot went out on (fall or forfeit), −1 while standing. */
+  private outAt = PLAYERS.map(() => -1);
   /** Room-lifetime tick/round/event/snapshot counters (shared across mode swaps). */
   constructor(readonly counters: RoomCounters = newRoomCounters()) {
     this.resetBodies([]);
@@ -48,11 +51,16 @@ export class OnlineRoundSimulation implements OnlineSimulation {
   get winner() {
     return this.round.winner ?? -1;
   }
+  /** Board placements: still standing first, then the later eliminations. */
+  placements() {
+    return eliminationRanks(this.outAt, this.mask);
+  }
   private resetBodies(slots: readonly PlayerId[]) {
     this.combat.reset();
     this.physics.reset();
     this.contacts.reset();
     this.pending.length = 0;
+    this.outAt.fill(-1);
     this.mask = slots.reduce<number>((mask, id) => mask | (1 << id), 0);
     for (const p of this.physics.players) {
       const active = slots.includes(p.id);
@@ -90,6 +98,7 @@ export class OnlineRoundSimulation implements OnlineSimulation {
     const p = this.physics.players[slot];
     p.eliminated = true;
     this.round.alive[slot] = false;
+    if (this.mask & (1 << slot) && this.outAt[slot] < 0) this.outAt[slot] = this.tick;
     for (const part of Object.values(p.parts)) part.body.setEnabled(false);
     // Departure is a forfeit, not a physical fall: no cat cue.
   }
@@ -122,6 +131,8 @@ export class OnlineRoundSimulation implements OnlineSimulation {
         this.contacts.afterStep(PHYSICS.step, this.pending);
       }
       const event = this.round.tick(PHYSICS.step, eliminated);
+      for (const { id } of PLAYERS)
+        if (this.mask & (1 << id) && !this.round.alive[id] && this.outAt[id] < 0) this.outAt[id] = this.tick;
       this.phase = this.round.phase;
       if (event === "started") this.collect({ name: "roundStart" });
       if (event === "finished") {

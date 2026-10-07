@@ -11,10 +11,31 @@ export type GameMode = (typeof GAME_MODES)[number];
  * What the room host picks in the lobby: one mode, all of them in a shuffled rotation, or
  * the board game (Tahta Oyunu), whose rounds are mini games picked like Mixed.
  */
-export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "mixed", "board_game"] as const;
+export const MODE_SELECTIONS = [...GAME_MODES, "mixed", "board_game"] as const;
 export type ModeSelection = (typeof MODE_SELECTIONS)[number];
 
 export const DEFAULT_MODE_SELECTION: ModeSelection = "rooftop_brawl";
+
+/**
+ * Player counts each mode can be played with. Mixed and the board's mini games skip a mode
+ * the room's count does not fit, and a single-mode lobby does not start outside it.
+ */
+export const MODE_PLAYERS: Readonly<Record<GameMode, { readonly min: number; readonly max: number }>> = {
+  rooftop_brawl: { min: 2, max: 3 },
+  barn_shootout: { min: 2, max: 3 },
+  layer_chaos: { min: 2, max: 3 },
+  color_chaos: { min: 2, max: 3 },
+  bomb_tag: { min: 2, max: 3 },
+  prop_hunt: { min: 3, max: 3 },
+  human_bowling: { min: 2, max: 3 },
+  snowball_brawl: { min: 2, max: 3 },
+  crate_rain: { min: 2, max: 3 },
+  snowball_fight: { min: 2, max: 3 },
+  kart_race: { min: 2, max: 3 },
+  classic_bowling: { min: 2, max: 3 },
+};
+export const modeFits = (mode: GameMode, players: number) =>
+  players >= MODE_PLAYERS[mode].min && players <= MODE_PLAYERS[mode].max;
 
 export const MODE_MAP: Readonly<Record<GameMode, ArenaMapId | TileArenaId | ModeArenaId>> = {
   rooftop_brawl: "rooftop",
@@ -57,7 +78,7 @@ export const isModeSelection = (value: unknown): value is ModeSelection =>
  * `previous` (the last mode played), so no mode is played twice in a row.
  */
 export function mixedCycle(previous: GameMode | null, random: () => number = Math.random, players = 3): GameMode[] {
-  const cycle = GAME_MODES.filter(mode => mode !== "prop_hunt" || players === 3) as GameMode[];
+  const cycle = GAME_MODES.filter((mode) => modeFits(mode, players));
   for (let i = cycle.length - 1; i > 0; i--) {
     const j = Math.min(i, Math.floor(random() * (i + 1)));
     [cycle[i], cycle[j]] = [cycle[j], cycle[i]];

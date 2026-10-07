@@ -25,6 +25,7 @@ import {
   DEFAULT_MODE_SELECTION,
   isModeSelection,
   MixedRotation,
+  modeFits,
   upcomingMode,
   type GameMode,
   type ModeSelection,
@@ -242,7 +243,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     const eligible = [...this.state.players.values()].filter(
       (p) => p.connected
     );
-    if (this.selection !== "board_game" && this.upcoming === "prop_hunt" && eligible.length !== 3) return;
+    if (this.selection !== "board_game" && !modeFits(this.upcoming, eligible.length)) return;
     if (eligible.length < 2 || !eligible.every((p) => p.ready)) return;
     if (this.selection === "board_game") {
       this.startBoard(eligible.map((p) => p.slot));

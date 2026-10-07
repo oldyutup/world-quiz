@@ -14,6 +14,7 @@ import { PropHuntGame, type CastHit } from "./prophunt/game.js";
 import { propShape, yawRotation } from "./prophunt/disguise.js";
 import { propSection, type PropOnlineEvent } from "./prophunt/wire.js";
 import type { Vec } from "./ragdoll/math.js";
+import { ranksByScore } from "../board/rules.js";
 
 /** Room lifetime, including mode switches and reconnects. Seats rotate 0 → 1 → 2. */
 export class PropRotation {
@@ -48,6 +49,15 @@ export class PropRoundSimulation implements OnlineSimulation {
   get roundId() { return this.counters.round; }
   get seconds() { return this.phase === "waiting" ? 0 : this.round.seconds; }
   get winner() { return this.round.outcome === "seeker" ? this.round.seeker : -1; }
+  /** Board placements: the winning side first; among hiders, whoever stayed hidden longer. */
+  placements() {
+    const r = this.round;
+    if (!r.outcome) return null;
+    return ranksByScore(PLAYERS.map(({ id }) =>
+      !(this.mask & (1 << id)) ? null
+      : id === r.seeker ? (r.outcome === "seeker" ? Infinity : -1)
+      : r.foundAt[id] < 0 ? Infinity : r.foundAt[id]));
+  }
   start(slots: readonly PlayerId[]) {
     if (this.phase !== "waiting" || new Set(slots).size !== 3 || !PLAYERS.every(({ id }) => slots.includes(id))) return false;
     const index = this.rotation.index + 1;
