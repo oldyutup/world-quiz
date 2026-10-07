@@ -543,7 +543,7 @@ test("regression: online integration — the online modes, the protocol (13) and
   // The existing modes stay, in order; new ones are appended.
   const existing = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"];
   assert.deepEqual(GAME_MODES.slice(0, existing.length), existing);
-  assert.equal(NET.version, 16);
+  assert.equal(NET.version, 17);
   assert.equal(PROP_HUNT.seeker.ammo, 15);
   assert.deepEqual({ ...PROP_HUNT.timing }, { countdown: 3, hiding: 15, search: 75, results: 5 });
   assert.ok(!("at" in PROP_HUNT.whistle), "no endgame whistle at 10 s");

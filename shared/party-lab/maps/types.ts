@@ -18,7 +18,7 @@ export type TileArenaId = "layers" | "colors";
  * (propHunt.ts, local only). Their geometry is static, but the rooftop test pins ARENA_MAPS's
  * keys and the local test header lists only those.
  */
-export type ModeArenaId = "click_race" | "classic_bowling" | "kart_race" | "snowball_fight" | "crate_rain" | "snowball_brawl" | "human_bowling" | "bomb" | "prophunt";
+export type ModeArenaId = "gold_miner" | "click_race" | "classic_bowling" | "kart_race" | "snowball_fight" | "crate_rain" | "snowball_brawl" | "human_bowling" | "bomb" | "prophunt";
 
 export interface Vec3 {
   readonly x: number;

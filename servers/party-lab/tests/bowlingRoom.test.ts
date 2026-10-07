@@ -34,7 +34,7 @@ for(const count of [2,3])test(`Bowling ${count} seats: host/ready authority, ina
  await reconnect(0);assert.equal(sim.game.angle,angle);send(0,true);await until(()=>sim.game.nudgeUsed);send(0,false);await pause(30);send(0,true);await pause(30);assert.equal(sim.game.nudgeUsed,true);
  sim.game.finishThrow();const scored=JSON.stringify(sim.game.score.throws);await reconnect(0);assert.equal(JSON.stringify(sim.game.score.throws),scored);
  await until(()=>sim.game.phase==='countdown');const next=sim.activeSeat;assert.equal(next,1);send(0,true,1,0);await pause(60);assert.equal(sim.game.ejected,false);assert.equal(sim.game.score.turn,1);
- assert.ok(peers.every(p=>p.snapshots.some(s=>s.mode==='human_bowling'&&s.v===16)));
+ assert.ok(peers.every(p=>p.snapshots.some(s=>s.mode==='human_bowling'&&s.v===17)));
  for(const p of peers){p.r.reconnection.enabled=false;await p.r.leave();}
 });
 
@@ -83,6 +83,6 @@ for (const enabled of [false, true]) test(`Bowling obstacle preference ${enabled
  await reconnect();frozen();
  host.r.send('bowlingSettings',{obstacles:!enabled});await pause(100);
  assert.equal(room.state.bowlingObstacles,enabled);frozen();
- await until(()=>peers.every(p=>p.snapshots.some(s=>s.v===16&&s.bowling?.obstacles===enabled)));
+ await until(()=>peers.every(p=>p.snapshots.some(s=>s.v===17&&s.bowling?.obstacles===enabled)));
  for(const p of peers){p.r.reconnection.enabled=false;await p.r.leave();}
 });

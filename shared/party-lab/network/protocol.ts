@@ -5,6 +5,7 @@ import {validateCrateInput, type CrateInputPacket} from "./crateInput.js";
 import {validateSnowballInput, type SnowballInputPacket} from "./snowballInput.js";
 import {validateBowlingInput, type BowlingInputPacket} from "./bowlingInput.js";
 import {validateClickInput, type ClickInputPacket} from "./clickInput.js";
+import { validateGoldInput, type GoldInputPacket } from "./goldInput.js";
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import type { GameMode } from "../modes.js";
@@ -37,7 +38,9 @@ export const NET = {
   // effect phase and the latest effect; a v14 page would refuse every board ("effect").
   // 16: Tıklama Yarışı (click_race). A new mode, its stamped click packet and snapshot
   // section; a v15 page cannot draw a click round and a v15 server refuses the packet.
-  version: 16,
+  // 17: Altın Madenci (gold_miner). A new mode, its shot packet (shot number + press
+  // time) and snapshot section; a v16 page cannot draw a mine and a v16 server refuses it.
+  version: 17,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -184,7 +187,7 @@ export interface BombInputPacket extends LayerInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && "jumpPressed" in p && !("attackPressed" in p);
@@ -383,6 +386,7 @@ export interface GameSnapshot {
   bowling?: import("../simulation/bowling/wire.js").BowlingWire;
   prop?: import("../simulation/prophunt/wire.js").PropSnapshotWire;
   click?: import("../simulation/clickrace/wire.js").ClickWire;
+  gold?: import("../simulation/goldminer/wire.js").GoldWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -597,6 +601,7 @@ export class InputMailbox {
   private fightThrow = false;
   private cratePacket: CrateInputPacket | null = null;
   private clickPacket: ClickInputPacket | null = null;
+  private goldPacket: GoldInputPacket | null = null;
   private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
@@ -627,6 +632,15 @@ export class InputMailbox {
       this.seq = p.seq;
       this.received = now;
       this.clickPacket = { ...p, stamps: [...queued, ...p.stamps].slice(-CLICK_RACE.maxQueued) };
+      return true;
+    }
+    if (mode === "gold_miner") {
+      const p = validateGoldInput(value);
+      if (!p || p.round !== round || p.seq <= this.seq) return false;
+      // A shot is an event: the newest one waits for the next step, however late it reads it.
+      this.seq = p.seq;
+      this.received = now;
+      this.goldPacket = p;
       return true;
     }
     if (mode === "crate_rain") {
@@ -743,6 +757,13 @@ export class InputMailbox {
       this.processedRound = p.round;
       return { ...neutralIntent(), click: p };
     }
+    if (this.goldPacket) {
+      const p = this.goldPacket;
+      this.goldPacket = null;
+      this.processedSeq = p.seq;
+      this.processedRound = p.round;
+      return { ...neutralIntent(), gold: p };
+    }
     if (now - this.received > NET.staleMs) this.clear();
     if(this.classicPacket){const p=this.classicEdge??{...this.classicPacket,pressed:false};this.classicEdge=null;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),classic:p};}
     if(this.racePacket){const p={...this.racePacket,reset:this.raceReset};this.raceReset=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),race:p};}
@@ -832,6 +853,7 @@ export class InputMailbox {
     this.fightPacket=null;this.fightThrow=false;
     this.cratePacket=null;
     this.clickPacket=null;
+    this.goldPacket=null;
     this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;
     this.propPacket = null;

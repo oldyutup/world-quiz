@@ -1,0 +1,46 @@
+.pl-viewport[data-mode="gold_miner"] { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.party-lab .pl-viewport[data-mode="gold_miner"] .pl-arena-side { top: auto; bottom: 52px; }
+.pl-gold-hud { position: absolute; inset: 0; pointer-events: none; color: oklch(96% .025 85); font-family: Barlow, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 2px 3px oklch(22% .03 55 / .55); }
+.pl-gold-lanes { position: absolute; top: 14px; left: 140px; right: 96px; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pl-gold-lanes li { flex: 1 1 140px; max-width: 220px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; padding: 8px 12px; border-radius: 10px; background: oklch(27% .035 55 / .88); border-left: 4px solid var(--lane); }
+.pl-gold-lanes li.is-self { background: oklch(32% .05 70 / .94); box-shadow: 0 0 0 1px oklch(85% .12 85 / .6); }
+.pl-gold-name { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-gold-name i { width: 9px; height: 9px; border-radius: 50%; background: var(--lane); flex: none; }
+.pl-gold-name small { font-size: 11px; letter-spacing: 1px; color: oklch(88% .12 88); }
+.pl-gold-score { font-size: 26px; line-height: 1; font-weight: 900; color: var(--lane); text-shadow: 0 2px 2px oklch(18% .03 55 / .7); }
+.pl-gold-status { grid-column: 1 / -1; font-size: 12px; opacity: .8; }
+.pl-gold-clock { position: absolute; top: 14px; right: 16px; min-width: 64px; padding: 6px 12px; border-radius: 10px; background: oklch(27% .035 55 / .88); text-align: center; font-size: 30px; font-weight: 900; line-height: 1.1; }
+.pl-gold-clock.is-low { color: oklch(78% .17 35); }
+.pl-gold-callout { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 32px)); text-align: center; }
+.pl-gold-callout span { display: block; font-weight: 800; letter-spacing: 3px; font-size: 24px; }
+.pl-gold-callout strong { display: block; font-size: 110px; line-height: 1.1; }
+.pl-gold-callout small { font-size: 17px; }
+.pl-gold-callout.is-go strong { font-size: 84px; color: oklch(90% .15 88); }
+.pl-gold-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); margin: 0; padding: 7px 14px; border-radius: 8px; background: oklch(27% .035 55 / .86); font-size: 14px; white-space: nowrap; }
+.pl-gold-hint kbd { font: inherit; font-weight: 800; }
+.pl-gold-results { pointer-events: auto; position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); width: min(640px, calc(100% - 24px)); box-sizing: border-box; padding: 22px 26px; border-radius: 16px; border: 1px solid oklch(62% .06 75); background: oklch(25% .035 55 / .97); box-shadow: 0 20px 65px oklch(16% .03 55 / .4); text-align: center; }
+.pl-gold-results p { margin: 0; font-size: 12px; letter-spacing: 2px; opacity: .7; text-transform: uppercase; }
+.pl-gold-results h2 { margin: 6px 0 14px; font-size: 30px; color: oklch(87% .13 85); }
+.pl-gold-results table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl-gold-results th { font-size: 11px; letter-spacing: 1px; font-weight: 700; opacity: .65; text-align: left; padding: 0 6px 6px; }
+.pl-gold-results td { padding: 9px 6px; border-top: 1px solid oklch(55% .04 70 / .3); text-align: left; white-space: nowrap; }
+.pl-gold-results td.pl-gold-finds { white-space: normal; font-size: 13px; opacity: .9; }
+.pl-gold-results tr.is-self td { color: oklch(90% .11 88); }
+.pl-gold-results td:first-child { font-weight: 800; width: 28px; }
+.pl-gold-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; }
+.pl-gold-results small { display: block; margin-top: 12px; font-size: 12px; opacity: .7; }
+.pl-gold-results button { width: 100%; min-height: 44px; margin-top: 16px; }
+@media (max-width: 700px), (max-height: 520px) {
+  .pl-gold-lanes { top: 58px; left: 8px; right: 8px; gap: 6px; flex-wrap: nowrap; }
+  .pl-gold-lanes li { flex: 1 1 0; min-width: 0; grid-template-columns: 1fr; padding: 5px 8px 6px; gap: 1px; }
+  .pl-gold-name { font-size: 12px; }
+  .pl-gold-name small { display: none; }
+  .pl-gold-score { font-size: 20px; }
+  .pl-gold-clock { font-size: 24px; min-width: 50px; top: 12px; right: 10px; }
+  .pl-gold-callout strong { font-size: 80px; }
+  .pl-gold-callout small { font-size: 14px; }
+  .pl-gold-hint { bottom: 8px; font-size: 12px; }
+  .pl-gold-results { padding: 16px 10px; }
+  .pl-gold-results table { font-size: 12px; }
+  .pl-gold-results td, .pl-gold-results th { padding-left: 3px; padding-right: 3px; }
+}

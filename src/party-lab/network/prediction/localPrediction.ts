@@ -119,7 +119,7 @@ export class LocalPrediction {
         if (!isLayerPacket(p)) return { valid: false, swing: false, jumped: false, shots };
         result = this.rig.stepPacket(p, i === 0);
       } else {
-        if (isBarnPacket(p) || isLayerPacket(p) || "space" in p || "keys" in p || "jumpHeld" in p || "handbrake" in p || "eventTime" in p || "stamps" in p) return { valid: false, swing: false, jumped: false, shots };
+        if (isBarnPacket(p) || isLayerPacket(p) || "space" in p || "keys" in p || "jumpHeld" in p || "handbrake" in p || "eventTime" in p || "stamps" in p || "shot" in p) return { valid: false, swing: false, jumped: false, shots };
         result = this.rig.step({
           x: p.moveX,
           z: p.moveZ,

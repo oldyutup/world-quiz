@@ -491,7 +491,7 @@ for (const count of [2, 3])
     if (count === 3) assert.equal(places[slot(2)], 2);
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 16);
+    assert.equal(shown.v, 17);
     assert.ok(validClickWire(shown.click));
     assert.equal(shown.winner, slot(1));
     await close(peers);

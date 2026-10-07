@@ -22,7 +22,7 @@ export function drive(g:BowlingGame,seq:number):BowlingInputPacket{
 }
 const inputs=(slot:number,p:BowlingInputPacket):MovementInput[]=>[0,1,2].map(i=>({...neutralIntent(),...(i===slot?{bowling:p}:{})}));
 test('protocol 13 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
- assert.equal(NET.version,16);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
+ assert.equal(NET.version,17);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
  for(const extra of [{score:10},{position:[0,0,0]},{angle:30},{pins:1023},{camera:2}])assert.equal(validateBowlingInput({...p,...extra}),null);
  assert.equal(validateBowlingInput({...p,throttle:NaN}),null);assert.equal(validateBowlingInput({...p,turn:9}),null);
  const b=encodeBowlingInput(p);b[28]=2;assert.equal(validateBowlingInput(b),null);
@@ -161,7 +161,7 @@ test('protocol 13 snapshots accept the frozen Bowling setting and reject protoco
   for(const turn of [0,1,5]){
    sim.game.score.turn=turn;sim.game.resetThrow();
    const snapshot=sim.snapshot([-1,-1,-1]);
-   assert.equal(snapshot.v,16);assert.equal(snapshot.bowling!.obstacles,enabled);
+   assert.equal(snapshot.v,17);assert.equal(snapshot.bowling!.obstacles,enabled);
    assert.equal(new SnapshotBuffer().push({...snapshot,v:12},0),false);
    assert.equal(new SnapshotBuffer().push(snapshot,0),true);
   }
