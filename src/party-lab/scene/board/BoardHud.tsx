@@ -7,6 +7,31 @@ import type { LobbyPlayer } from "../../network/types";
 import { COSTUME_SYMBOLS } from "../visual/costumes";
 import { squaresLeft } from "./boardMotion";
 import { boardBanner, CHOICE_LABELS } from "./boardText";
+import { GLYPH_STROKE, LEGEND_ORDER, SQUARE_STYLE } from "./squareStyle";
+
+/** The special squares, in a corner of the board: colour, glyph, name, rule. */
+export function BoardLegend() {
+  return (
+    <aside className="pl-board-card pl-board-legend" aria-label="Özel kareler">
+      <ul>
+        {LEGEND_ORDER.map((type) => {
+          const style = SQUARE_STYLE[type];
+          return (
+            <li key={type} data-square={type} title={`${style.name}: ${style.rule}`}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" style={{ background: style.color }}>
+                <path d={style.glyph} fill="none" stroke="#fffaf0" strokeWidth={GLYPH_STROKE} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>
+                <b>{style.name}</b>
+                <small>{style.rule}</small>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
 
 export default function BoardHud({ board, players, selfSlot, diceShown, connected, onChoose, onRoll }: {
   board: BoardWire;
@@ -52,6 +77,11 @@ export default function BoardHud({ board, players, selfSlot, diceShown, connecte
               <span>
                 {name(slot)}
                 {slot === selfSlot && <em>Sen</em>}
+                {board.bonus.includes(slot) && (
+                  <em className="pl-board-bonus" title="Bonus zar: sonraki zara +1">
+                    🎲+1
+                  </em>
+                )}
                 <small>{!p?.connected ? "Bağlantı bekleniyor · sırası otomatik" : board.first === slot ? "Son mini oyunun birincisi" : board.current === slot ? "Sırada" : " "}</small>
               </span>
               <b>
@@ -62,8 +92,9 @@ export default function BoardHud({ board, players, selfSlot, diceShown, connecte
           );
         })}
       </ol>
+      {board.phase !== "finished" && <BoardLegend />}
       {board.phase !== "finished" && (
-        <div className="pl-board-banner" role="status" data-phase={board.phase}>
+        <div className="pl-board-banner" role="status" data-phase={board.phase} data-square={board.phase === "effect" ? board.effect?.type : undefined}>
           <strong>{banner.title}</strong>
           <span>
             {banner.detail}
@@ -90,7 +121,10 @@ export default function BoardHud({ board, players, selfSlot, diceShown, connecte
         <div className="pl-board-actions" role="group" aria-label="Zar at">
           <button type="button" className="pl-board-roll" data-sfx="uiConfirm" onClick={onRoll}>
             <strong>🎲 Zar At</strong>
-            <small>{board.choice ? CHOICE_LABELS[board.choice] : "Tek zar"}</small>
+            <small>
+              {board.choice ? CHOICE_LABELS[board.choice] : "Tek zar"}
+              {board.bonus.includes(selfSlot) && " · +1 bonus"}
+            </small>
             <kbd>Space</kbd>
           </button>
           <p>{board.left} sn içinde atmazsan zar otomatik atılır.</p>

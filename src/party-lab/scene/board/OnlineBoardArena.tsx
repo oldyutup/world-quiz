@@ -37,6 +37,9 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
   // A roll seen arriving is animated from now; one already over when the page opened is not replayed.
   const clock = useRef<RollClock>({ seq: board.roll?.seq ?? 0, at: board.phase === "move" ? performance.now() : -Infinity });
   if (board.roll && board.roll.seq !== clock.current.seq) clock.current = { seq: board.roll.seq, at: performance.now() };
+  // Special square effects: the same rule.
+  const effectClock = useRef<RollClock>({ seq: board.effect?.seq ?? 0, at: board.phase === "effect" ? performance.now() : -Infinity });
+  if (board.effect && board.effect.seq !== effectClock.current.seq) effectClock.current = { seq: board.effect.seq, at: performance.now() };
   const [, redraw] = useState(0);
   // Coming back from a mini game the canvas needs a moment: a cover, not an empty frame.
   const [drawn, setDrawn] = useState(false);
@@ -75,7 +78,7 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
       <div ref={viewport} className="pl-viewport" tabIndex={0} role="region" aria-label="Online Tahta Oyunu" onPointerDown={() => viewport.current?.focus()}>
         <Canvas dpr={[1, 1.5]} camera={{ position: [0, 24, 20], fov: BOARD_FOV, near: 0.1, far: 400 }} gl={{ antialias: true }}>
           <Suspense fallback={null}>
-            <BoardScene board={board} players={lobby.players} clock={clock} audio={paused ? undefined : audio} onReady={() => setDrawn(true)} />
+            <BoardScene board={board} players={lobby.players} clock={clock} effectClock={effectClock} audio={paused ? undefined : audio} onReady={() => setDrawn(true)} />
           </Suspense>
         </Canvas>
         {!drawn && <div className="pl-board-cover" aria-hidden="true"><span>Tahta hazırlanıyor…</span></div>}
@@ -108,6 +111,8 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
                 <kbd>Space</kbd> veya <kbd>Enter</kbd> zar at · <kbd>1</kbd> İki zar · <kbd>2</kbd> +1
                 <br />
                 Butonlara tıklayarak da oynayabilirsin. Mini oyunlarda her modun kendi kontrolleri geçerli.
+                <br />
+                Renkli kareler yalnız tam üstlerine düşünce çalışır; anlamları tahtanın köşesinde.
               </p>
             </div>
           }

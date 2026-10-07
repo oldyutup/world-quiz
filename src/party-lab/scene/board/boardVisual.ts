@@ -10,6 +10,7 @@ import {
   Float32BufferAttribute,
   Group,
   IcosahedronGeometry,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -26,6 +27,10 @@ import {
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { boardBounds, boardPath, numberedSquare, SQUARE_SIZE, type SquarePose } from "../../../../shared/party-lab/board/layout";
+import type { SpecialType } from "../../../../shared/party-lab/board/config";
+import type { BoardWire } from "../../../../shared/party-lab/board/wire";
+import { connectorPoint, connectorSpan } from "./boardMotion";
+import { GLYPH_STROKE, SQUARE_STYLE } from "./squareStyle";
 import { PARTS, SHAPES } from "../ragdoll/config";
 import { createCharacterVisual } from "../visual/characterVisual";
 import type { CostumeId } from "../visual/costumes";
@@ -81,6 +86,69 @@ function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderin
   texture.anisotropy = 4;
   return texture;
 }
+/** A special square's white glyph (24 × 24 SVG paths, stroked). */
+function glyphTexture(type: SpecialType) {
+  return canvasTexture(256, 256, (ctx) => {
+    ctx.scale(256 / 24, 256 / 24);
+    ctx.strokeStyle = "#fffaf0";
+    ctx.lineWidth = GLYPH_STROKE;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke(new Path2D(SQUARE_STYLE[type].glyph));
+  });
+}
+const UP = new Vector3(0, 1, 0);
+/** A box from `a` to `b` (its length), `width` across and `height` up, for ladders and chutes. */
+function beam(a: Vector3, b: Vector3, width: number, height: number) {
+  const z = b.clone().sub(a),
+    length = z.length();
+  z.normalize();
+  const x = new Vector3().crossVectors(UP, z);
+  if (x.lengthSq() < 1e-6) x.set(1, 0, 0);
+  x.normalize();
+  const y = new Vector3().crossVectors(z, x);
+  return new BoxGeometry(width, height, length).applyMatrix4(new Matrix4().makeBasis(x, y, z).setPosition(a.clone().add(b).multiplyScalar(0.5)));
+}
+/** Points along a ladder or slide between two squares (the pawns follow the same curve). */
+function connectorCurve(type: "ladder" | "slide", a: SquarePose, b: SquarePose, samples: number) {
+  const { start, end } = connectorSpan(type, a, b);
+  return Array.from({ length: samples + 1 }, (_, i) => {
+    const p = connectorPoint(type, a, b, start + 0.005 + ((end - start - 0.01) * i) / samples);
+    return new Vector3(p.x, TILE_TOP + p.y, p.z);
+  });
+}
+/** A ladder lying over the gap between two rows: two rails and rungs on a low arch. */
+function ladderPieces(a: SquarePose, b: SquarePose, add: (g: BufferGeometry, hex: string) => void) {
+  const points = connectorCurve("ladder", a, b, 12);
+  const across = new Vector3().crossVectors(UP, new Vector3(b.x - a.x, 0, b.z - a.z)).normalize().multiplyScalar(0.3);
+  for (let i = 0; i < points.length - 1; i++)
+    for (const side of [1, -1]) {
+      const off = across.clone().multiplyScalar(side);
+      add(beam(points[i].clone().add(off), points[i + 1].clone().add(off), 0.09, 0.09), "#2c63a6");
+    }
+  for (let i = 1; i < points.length - 1; i += 2) add(beam(points[i].clone().sub(across), points[i].clone().add(across), 0.08, 0.06), "#f3ead2");
+}
+/** A slide from its upper square down to the lower one: a chute with low walls on posts. */
+function slidePieces(a: SquarePose, b: SquarePose, add: (g: BufferGeometry, hex: string) => void) {
+  const points = connectorCurve("slide", a, b, 14);
+  for (let i = 0; i < points.length - 1; i++) {
+    const p = points[i],
+      q = points[i + 1];
+    const across = new Vector3().crossVectors(UP, q.clone().sub(p)).setY(0).normalize().multiplyScalar(0.36);
+    add(beam(p.clone().setY(p.y - 0.03), q.clone().setY(q.y - 0.03), 0.74, 0.06), "#8456c8");
+    for (const side of [1, -1]) {
+      const off = across.clone().multiplyScalar(side).add(new Vector3(0, 0.1, 0));
+      add(beam(p.clone().add(off), q.clone().add(off), 0.06, 0.22), "#6a3fb0");
+    }
+  }
+  // Posts under the high part.
+  for (const i of [0, 4]) {
+    const p = points[i];
+    if (p.y < TILE_TOP + 0.3) continue;
+    add(new CylinderGeometry(0.06, 0.07, p.y, 6).translate(p.x, p.y / 2, p.z), "#5b3896");
+  }
+}
+
 /** Flat text lying on a square, upright for the camera on the +Z side. */
 function floorText(text: string, size: number, color = PALETTE.ink, font = 900) {
   const texture = canvasTexture(256, 256, (ctx) => {
@@ -195,6 +263,10 @@ export interface BoardVisual {
   root: Group;
   path: SquarePose[];
   bounds: ReturnType<typeof boardBounds>;
+  /** "+1" badge material for players holding a bonus die (one sprite per pawn shares it). */
+  bonusBadge: SpriteMaterial;
+  /** The bonus "+1" shown by the dice when a roll uses it. */
+  bonusPlus: Sprite;
   /** Current-turn ring on a square (hidden with −1). */
   ring: Mesh;
   dice: Mesh[];
@@ -205,9 +277,10 @@ export interface BoardVisual {
   dispose(): void;
 }
 
-export function createBoardVisual(length: number): BoardVisual {
+export function createBoardVisual(length: number, squares: BoardWire["squares"] = []): BoardVisual {
   const path = boardPath(length),
     bounds = boardBounds(path);
+  const special = new Map(squares.map(([index, type, target]) => [index, { type, target }]));
   const root = new Group();
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, flatShading: true });
   const land: BufferGeometry[] = [];
@@ -227,13 +300,23 @@ export function createBoardVisual(length: number): BoardVisual {
       d = Math.hypot(dx, dz);
     add(new BoxGeometry(0.42, 0.05, d).rotateY(Math.atan2(dx, dz)).translate((a.x + b.x) / 2, 0.06, (a.z + b.z) / 2), PALETTE.trail);
   }
-  // Squares: start, every fifth (numbered), plain ones alternating, the treasure.
+  // Squares: start, special ones in their colour, every fifth (numbered), plain ones alternating, the treasure.
   path.forEach((pose, i) => {
-    const color = i === 0 ? PALETTE.start : i === length ? PALETTE.treasure : numberedSquare(i, length) ? PALETTE.tileFive : i % 2 ? PALETTE.tile : PALETTE.tileAlt;
+    const kind = special.get(i)?.type;
+    const color = i === 0 ? PALETTE.start : i === length ? PALETTE.treasure : kind ? SQUARE_STYLE[kind].color : numberedSquare(i, length) ? PALETTE.tileFive : i % 2 ? PALETTE.tile : PALETTE.tileAlt;
     const size = i === 0 || i === length ? SQUARE_SIZE + 0.15 : SQUARE_SIZE - 0.1;
     add(new RoundedBoxGeometry(size, TILE_TOP, size, 2, 0.09).rotateY(pose.yaw).translate(pose.x, TILE_TOP / 2, pose.z), color);
     if (i === 0 || i === length) add(new CylinderGeometry(size * 0.62, size * 0.66, 0.08, 6).translate(pose.x, 0.04, pose.z), i === 0 ? "#5f9585" : "#c99a35");
   });
+  // Ladders and slides between rows.
+  const connectorSpots: { x: number; z: number }[] = [];
+  for (const [from, { type, target }] of special) {
+    if (type !== "ladder" && type !== "slide") continue;
+    const a = path[from],
+      b = path[target];
+    (type === "ladder" ? ladderPieces : slidePieces)(a, b, add);
+    for (let k = 1; k < 8; k++) connectorSpots.push({ x: a.x + ((b.x - a.x) * k) / 8, z: a.z + ((b.z - a.z) * k) / 8 });
+  }
   // Start flag, at the far corner so it never hides a pawn or the word.
   {
     const s = path[0],
@@ -244,7 +327,7 @@ export function createBoardVisual(length: number): BoardVisual {
   }
   // Trees beyond the board's far side and flanks, low bushes and flowers anywhere clear.
   const random = seeded(length * 7919);
-  const clear = (x: number, z: number, gap: number) => path.every((p) => Math.hypot(p.x - x, p.z - z) > gap);
+  const clear = (x: number, z: number, gap: number) => path.every((p) => Math.hypot(p.x - x, p.z - z) > gap) && connectorSpots.every((p) => Math.hypot(p.x - x, p.z - z) > gap * 0.8);
   const inside = (x: number, z: number, pad: number) => x > bounds.minX - pad && x < bounds.maxX + pad && z > bounds.minZ - pad && z < bounds.maxZ + pad;
   let trees = 0;
   for (let tries = 0; tries < 400 && trees < 26; tries++) {
@@ -276,12 +359,25 @@ export function createBoardVisual(length: number): BoardVisual {
   // Numbers on every fifth square, words on the start.
   const labels: Mesh[] = [];
   path.forEach((pose, i) => {
-    if (!numberedSquare(i, length) && i !== 0) return;
+    if ((!numberedSquare(i, length) && i !== 0) || special.has(i)) return;
     const text = floorText(i === 0 ? "BAŞLA" : String(i), i === 0 ? 1.3 : 0.95, i === 0 ? "#f6ecd3" : PALETTE.ink);
     text.position.set(pose.x, TILE_TOP + 0.012, pose.z);
     labels.push(text);
     root.add(text);
   });
+
+  // Glyphs on the special squares; İleri and Geri point along the path.
+  const glyphs = new Map<SpecialType, MeshBasicMaterial>();
+  for (const [i, { type }] of special) {
+    let glyph = glyphs.get(type);
+    if (!glyph) glyphs.set(type, (glyph = new MeshBasicMaterial({ map: glyphTexture(type), transparent: true, depthWrite: false, toneMapped: false })));
+    const mesh = new Mesh(new PlaneGeometry(SQUARE_SIZE * 0.72, SQUARE_SIZE * 0.72), glyph);
+    mesh.rotation.order = "YXZ";
+    mesh.rotation.set(-Math.PI / 2, SQUARE_STYLE[type].directional ? path[i].yaw - Math.PI : 0, 0);
+    mesh.position.set(path[i].x, TILE_TOP + 0.012, path[i].z);
+    mesh.renderOrder = 2;
+    root.add(mesh);
+  }
 
   // The treasure chest on the last square: base, gold bands, a lid that opens at the end.
   const end = path[length];
@@ -354,11 +450,39 @@ export function createBoardVisual(length: number): BoardVisual {
   plusOne.visible = false;
   plusOne.renderOrder = 7;
   root.add(plusOne);
+  // Bonus die: a small die with "+1", over a player who holds one and by the dice that use it.
+  const bonusTexture = canvasTexture(160, 128, (ctx) => {
+    ctx.fillStyle = SQUARE_STYLE.bonus.color;
+    ctx.beginPath();
+    ctx.roundRect(4, 4, 152, 120, 30);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(14, 34);
+    ctx.scale(2.5, 2.5);
+    ctx.strokeStyle = "#fffaf0";
+    ctx.lineWidth = GLYPH_STROKE;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke(new Path2D(SQUARE_STYLE.bonus.glyph));
+    ctx.restore();
+    ctx.fillStyle = "#fffaf0";
+    ctx.font = "900 50px system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.fillText("+1", 82, 68);
+  });
+  const bonusBadge = new SpriteMaterial({ map: bonusTexture, depthTest: false, toneMapped: false, transparent: true });
+  const bonusPlus = new Sprite(bonusBadge);
+  bonusPlus.scale.set(0.7, 0.56, 1);
+  bonusPlus.visible = false;
+  bonusPlus.renderOrder = 7;
+  root.add(bonusPlus);
 
   return {
     root,
     path,
     bounds,
+    bonusBadge,
+    bonusPlus,
     ring,
     dice,
     plusOne,
@@ -383,6 +507,12 @@ export function createBoardVisual(length: number): BoardVisual {
       }
       plusTexture.dispose();
       plusOne.material.dispose();
+      bonusTexture.dispose();
+      bonusBadge.dispose();
+      for (const glyph of glyphs.values()) {
+        glyph.map?.dispose();
+        glyph.dispose();
+      }
       [material, wood, gold, sparkle, ring.material as Material].forEach((m) => m.dispose());
     },
   };

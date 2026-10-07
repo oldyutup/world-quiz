@@ -45,6 +45,17 @@
 .pl-board-finish ol small{font-weight:500;opacity:.7;margin-left:4px}
 .pl-board-finish>small{font-size:12px;opacity:.75}
 @keyframes pl-board-pop{from{transform:translateX(-50%) scale(.85);opacity:0}to{transform:translateX(-50%) scale(1);opacity:1}}
+/* Special squares: the legend in the bottom-right corner, the bonus die tag, the effect notice in the square's colour. */
+.pl-board-legend{position:absolute;right:26px;bottom:26px;padding:9px 12px}
+.pl-board-legend ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.pl-board-legend li{display:flex;align-items:center;gap:8px}
+.pl-board-legend svg{width:24px;height:24px;padding:3px;border-radius:7px;flex:none}
+.pl-board-legend b{display:block;font-size:12.5px;line-height:1.2}
+.pl-board-legend small{display:block;font-size:11px;line-height:1.2;opacity:.75}
+.pl-board-players em.pl-board-bonus{background:#ee8a1c;color:#fffaf0}
+.pl-board-banner[data-square]{border:3px solid var(--square)}
+.pl-board-banner[data-square="forward"]{--square:#3f9e57}.pl-board-banner[data-square="bonus"]{--square:#ee8a1c}.pl-board-banner[data-square="back"]{--square:#d6453d}
+.pl-board-banner[data-square="slide"]{--square:#8456c8}.pl-board-banner[data-square="ladder"]{--square:#3a7fd0}.pl-board-banner[data-square="swap"]{--square:#15a29b}
 .pl-board-menu-controls{padding:24px;max-width:520px}.pl-board-menu-controls p{line-height:1.9}
 .pl-board-menu-controls kbd{font-family:inherit;font-size:12px;font-weight:750;padding:1px 6px;border-radius:5px;background:oklch(92% .025 90);border:1px solid oklch(78% .03 90)}
 [data-mode="board_game"] .pl-arena-side{top:auto;bottom:24px;left:28px}
@@ -53,6 +64,7 @@
   .pl-board-players{top:auto;bottom:auto;top:16px;right:16px;min-width:0;padding:6px}
   .pl-board-players li{padding:5px 7px;gap:7px}.pl-board-players span small{display:none}
   .pl-board-heading{top:16px;left:16px;max-width:180px;padding:9px 12px}.pl-board-heading strong{font-size:22px}.pl-board-heading p{display:none}
+  .pl-board-legend{right:16px;bottom:16px;padding:7px}.pl-board-legend ul{display:grid;grid-template-columns:repeat(3,auto);gap:5px}.pl-board-legend span{display:none}
 }
 @media (max-width:600px){
   .pl-board-players{top:auto;bottom:220px;right:16px;left:16px;flex-direction:row;flex-wrap:wrap}
@@ -61,5 +73,6 @@
   .pl-board-roll{min-width:200px}
   .pl-board-banner{bottom:auto;top:76px;min-width:0;width:calc(100% - 32px)}
   .pl-board-finish{padding:20px 18px;min-width:0;width:calc(100% - 32px)}
+  .pl-board-legend{display:none}
 }
 @media (prefers-reduced-motion:reduce){.pl-board-roll,.pl-board-finish{animation:none}}
