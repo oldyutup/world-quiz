@@ -4,6 +4,8 @@ import { ClickPresses, bindClickInput, pressBindings } from "./input";
 import { ClickRaceClient } from "./online";
 import { TRACK, carX, clickInsets, fitClickView, projectClickView, trackBounds, FINISH_X, START_X } from "./layout";
 import { averageRate, resultOrder } from "./results";
+import { BOT_PACES, ClickBot } from "./bots";
+import { LocalClickRace, localClickRace } from "./local";
 import { changeBinding } from "../../input/bindings";
 import { defaultBindings } from "../../input/defaults";
 import { CLICK_RACE as C } from "../../../../shared/party-lab/simulation/clickrace/config";
@@ -177,4 +179,48 @@ test("results: finishing order, average and best presses per second", () => {
   assert.equal(averageRate(w, 1), 12);
   assert.ok(w.peak[1] >= 12 && w.peak[1] <= 13);
   assert.equal(averageRate(w, 2), 0);
+});
+
+function seededRandom(seed: number) {
+  return () => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) / 2 ** 32);
+}
+
+test("local bots press at about 6, 9 and 12 a second, unevenly, never past the cap", () => {
+  for (const rate of [6, 9, 12]) {
+    const bot = new ClickBot(rate, seededRandom(rate));
+    const stamps = bot.presses(30_000);
+    assert.ok(stamps[0] >= 180 && stamps[0] <= 440, `${rate}/s starts ${stamps[0]} ms after BAŞLA`);
+    assert.ok(Math.abs(stamps.length / 30 - rate) <= rate * 0.08, `${rate}/s pressed ${(stamps.length / 30).toFixed(2)}/s`);
+    const perSecond = Array.from({ length: 30 }, (_, s) => stamps.filter((t) => t >= s * 1000 && t < (s + 1) * 1000).length);
+    assert.ok(Math.max(...perSecond) - Math.min(...perSecond) >= 2, `${rate}/s should drift: ${perSecond.join(",")}`);
+    for (let i = 0; i < stamps.length; i++) assert.ok(stamps.filter((t) => t > stamps[i] - 1000 && t <= stamps[i]).length <= C.maxRate);
+  }
+  assert.deepEqual([...BOT_PACES], [9, 12, 6]);
+});
+
+test("Yerel Test Arenası race: the player and three bots on the server's rules", () => {
+  const local = localClickRace(4, "cat");
+  assert.deepEqual(local.looks.map((l) => l.name), ["Sen", "Orta Bot", "Hızlı Bot", "Yavaş Bot"]);
+  assert.equal(new Set(local.looks.map((l) => l.color)).size, 4);
+  assert.deepEqual(local.looks.map((l) => l.self), [true, false, false, false]);
+  const race = new LocalClickRace(4, seededRandom(5));
+  assert.equal(race.press(), false, "before BAŞLA");
+  for (let t = 0; t < 3 * 60 && race.game.phase === "countdown"; t++) race.frame(1 / 60, false);
+  race.frame(1 / 60, false);
+  assert.equal(race.game.phase, "racing");
+  for (let i = 0; i < 5; i++) assert.equal(race.press(), true);
+  race.frame(1 / 60, false);
+  assert.equal(race.game.lanes[0].clicks, 5, "the player's presses count");
+  // The menu pauses a local race.
+  const ticks = race.game.ticks;
+  race.frame(1, true);
+  assert.equal(race.game.ticks, ticks);
+  let frame = race.frame(0, false);
+  for (let t = 0; t < 60 * 60 && frame.wire.phase !== "results"; t++) frame = race.frame(1 / 60, false);
+  assert.equal(frame.wire.phase, "results");
+  const finish = frame.wire.finish.map((ms) => ms / 1000);
+  assert.ok(Math.abs(finish[2] - 12.5) < 1.5 && Math.abs(finish[1] - 16.7) < 1.8 && Math.abs(finish[3] - 25) < 2.5, `bot finishes ${finish}`);
+  assert.deepEqual(resultOrder(frame.wire), [2, 1, 3, 0], "fast, average, slow, then the idle player");
+  assert.equal(frame.winner, 2);
+  for (const players of [2, 3]) assert.equal(localClickRace(players, "gazelle").looks.length, players);
 });

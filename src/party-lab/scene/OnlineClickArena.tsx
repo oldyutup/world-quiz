@@ -1,13 +1,14 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { bindingLabel, type Bindings } from "../input/bindings";
+import type { Bindings } from "../input/bindings";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { ArenaMenu, ArenaStatus, MenuButton, useArenaMenu } from "./ArenaChrome";
 import { afterRoundText } from "./arenaMenu";
 import { playerCostumeAtSlot } from "./visual/costumes";
-import ClickRacePlayground, { type ClickRaceOnline } from "./clickrace/ClickRacePlayground";
+import ClickRacePlayground from "./clickrace/ClickRacePlayground";
+import { OnlineClickSource, type ClickRaceOnline } from "./clickrace/online";
 import ClickRaceHud from "./clickrace/ClickRaceHud";
-import { ClickPresses, pressBindings } from "./clickrace/input";
+import { ClickPresses, pressBindings, pressLabel } from "./clickrace/input";
 import type { ClickLaneLook } from "./clickrace/visual";
 import type { LobbySnapshot } from "../network/types";
 
@@ -34,7 +35,7 @@ export default function OnlineClickArena(props: Props) {
     self = lobby.players.find((p) => p.id === lobby.selfId),
     selfLane = wire ? wire.seats.indexOf(self?.slot ?? -1) : -1;
   // A round's cars are built once: a player who leaves keeps their car, name and colour.
-  const cast = useRef<{ key: string; looks: ClickLaneLook[] }>({ key: "", looks: [] });
+  const cast = useRef<{ key: string; looks: ClickLaneLook[]; source: OnlineClickSource }>({ key: "", looks: [], source: new OnlineClickSource({ stream: props.stream, sendInput: props.sendInput }, -1, -1) });
   const key = wire ? `${round}:${wire.seats.join(",")}:${selfLane}` : "";
   if (wire && cast.current.key !== key)
     cast.current = {
@@ -43,8 +44,10 @@ export default function OnlineClickArena(props: Props) {
         const player = lobby.players.find((p) => p.slot === slot);
         return { color: player?.color ?? "#c9c4b6", costume: playerCostumeAtSlot(lobby.players, slot), name: player?.nickname ?? "Ayrıldı", self: lane === selfLane };
       }),
+      source: new OnlineClickSource({ stream: props.stream, sendInput: props.sendInput }, round, selfLane),
     };
-  const looks = cast.current.looks;
+  const { looks, source } = cast.current;
+  source.online = { stream: props.stream, sendInput: props.sendInput };
   const hudLanes = useMemo(
     () => looks.map((look, lane) => ({ name: look.name, color: look.color, connected: lobby.players.find((p) => p.slot === wire?.seats[lane])?.connected ?? false })),
     [looks, lobby.players, wire?.seats]
@@ -54,7 +57,7 @@ export default function OnlineClickArena(props: Props) {
     presses.bindings = pressBindings(props.bindings);
     presses.clear();
   }, [presses, props.bindings]);
-  const keys = [...new Set([...pressBindings(props.bindings)].map(bindingLabel))].join(" / ");
+  const keys = pressLabel(props.bindings);
   const winnerLane = wire && game ? wire.seats.indexOf(game.winner) : -1;
   useEffect(() => {
     if (!off) viewport.current?.focus();
@@ -65,7 +68,7 @@ export default function OnlineClickArena(props: Props) {
         <Canvas orthographic dpr={[1, 1.5]} camera={{ position: [0, 60, 0], near: 1, far: 300, zoom: 1 }} gl={{ antialias: true, alpha: true }}>
           <Suspense fallback={null}>
             {wire && (
-              <ClickRacePlayground key={key} online={{ stream: props.stream, sendInput: props.sendInput }} round={round} lanes={looks} self={selfLane} presses={presses} paused={off} audio={audio} onStatus={setStatus} />
+              <ClickRacePlayground key={key} source={source} lanes={looks} self={selfLane} presses={presses} paused={off} audio={audio} onStatus={setStatus} />
             )}
           </Suspense>
         </Canvas>

@@ -10,7 +10,7 @@ export interface ClickHudLane {
 const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} sn`;
 const percent = (wire: ClickWire, lane: number) => Math.min(100, Math.floor((wire.clicks[lane] / wire.track) * 100));
 
-export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRound }: {
+export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRound, restart }: {
   wire: ClickWire;
   lanes: readonly ClickHudLane[];
   self: number;
@@ -19,6 +19,8 @@ export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRou
   /** "F / Sol Tık" — what presses the pedal on this device. */
   keys: string;
   afterRound: string;
+  /** Yerel Test Arenası: a new race at once. */
+  restart?: () => void;
 }) {
   const left = Math.max(0, wire.limit - wire.elapsed / 1000),
     touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
@@ -33,7 +35,7 @@ export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRou
               <span className="pl-click-name">
                 <i aria-hidden="true" />
                 {look?.name ?? "Ayrıldı"}
-                {lane === self && <small>SEN</small>}
+                {lane === self && look?.name !== "Sen" && <small>SEN</small>}
               </span>
               <span className="pl-click-stats">
                 <b>%{percent(wire, lane)}</b>
@@ -93,6 +95,11 @@ export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRou
               ))}
             </tbody>
           </table>
+          {restart && (
+            <button className="pl-button pl-primary" type="button" onClick={restart}>
+              Yeniden oyna
+            </button>
+          )}
           <small>{afterRound}</small>
         </section>
       )}

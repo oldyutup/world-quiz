@@ -1,4 +1,4 @@
-import type { Bindings } from "../../input/bindings";
+import { bindingLabel, type Bindings } from "../../input/bindings";
 import { isUIInput, keyboardBinding, mouseBinding } from "../../input/device";
 
 /** What presses the pedal: the player's Punch keys (default F) and buttons, plus the left button. */
@@ -7,6 +7,9 @@ export function pressBindings(bindings: Bindings): ReadonlySet<string> {
   set.add("MouseLeft");
   return set;
 }
+
+/** "F / Sol Tık": what presses the pedal, for the HUD. */
+export const pressLabel = (bindings: Bindings) => [...new Set([...pressBindings(bindings)].map(bindingLabel))].join(" / ");
 
 /**
  * One count per physical press. A held key's auto-repeat never counts, and a key counts

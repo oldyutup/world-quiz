@@ -29,6 +29,7 @@
 .pl-click-results td:first-child { font-weight: 800; width: 28px; }
 .pl-click-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; }
 .pl-click-results small { display: block; margin-top: 14px; font-size: 12px; opacity: .65; }
+.pl-click-results button { width: 100%; min-height: 44px; margin-top: 18px; }
 @media (max-width: 700px), (max-height: 520px) {
   .pl-click-lanes { top: 58px; left: 12px; right: 12px; gap: 6px; }
   .pl-click-lanes li { flex-basis: 96px; padding: 6px 8px 7px; }

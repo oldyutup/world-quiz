@@ -145,7 +145,7 @@ export function clickRaceVisual(kit: Group, lanes: readonly ClickLaneLook[]) {
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.font = "800 60px Barlow, sans-serif";
-    ctx.fillText(look.self ? `${look.name} · SEN` : look.name, 8, 64, 496);
+    ctx.fillText(look.self && look.name !== "Sen" ? `${look.name} · SEN` : look.name, 8, 64, 496);
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
     textures.push(texture);
