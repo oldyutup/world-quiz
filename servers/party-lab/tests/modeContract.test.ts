@@ -1,8 +1,8 @@
 /**
  * What every online mode owes the lobby, Mixed and Tahta Oyunu. It loops over GAME_MODES,
  * so a new mode is checked the moment it is added there: a name, an arena, a player count
- * its simulation honours, a place in both rotations, and a winner plus placements() at
- * results (the board orders its moves by them).
+ * its simulation honours, a place in both rotations, a place in the Yerel Test Arenası,
+ * and a winner plus placements() at results (the board orders its moves by them).
  */
 import assert from "node:assert/strict";
 import { before, mock, test } from "node:test";
@@ -10,6 +10,7 @@ import { createSimulation } from "../src/PartyRoom.js";
 import { MAX_PLAYERS } from "../src/validation.js";
 import { boardSquares } from "../../../shared/party-lab/board/config.js";
 import { BoardSession, type BoardHost } from "../../../shared/party-lab/board/session.js";
+import { LOCAL_ARENA_IDS } from "../../../shared/party-lab/localArenas.js";
 import { GAME_MODES, MODE_MAP, MODE_NAMES, MODE_PLAYERS, MODE_SELECTIONS, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
 import { NET } from "../../../shared/party-lab/network/protocol.js";
 import { newRoomCounters } from "../../../shared/party-lab/simulation/online.js";
@@ -52,6 +53,11 @@ test("every mode is a lobby choice with a name, an arena, a player count and its
       }
     }
   }
+});
+
+test("every mode is playable in the Yerel Test Arenası (with bots)", () => {
+  for (const mode of GAME_MODES)
+    assert.ok(LOCAL_ARENA_IDS.includes(MODE_MAP[mode] as never), `${mode}: "${MODE_MAP[mode]}" is not in the local arena list (shared/party-lab/localArenas.ts LOCAL_MODE_ARENAS) — add it there and give it a local playground with bots in ArenaScene.tsx`);
 });
 
 test("Mixed and the board's mini games include every mode that fits the player count", () => {
