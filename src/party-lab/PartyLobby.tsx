@@ -24,7 +24,7 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   human_bowling: "Sırayla hızlan, fırla, lobutları devir. Kişi başı 3 atış.",
   prop_hunt: "Bir arayan, iki saklanan. Eşyaya dönüş ve bulunmadan dayan.",
   bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
-  mixed: "On iki mod, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",
+  mixed: "Tüm modlar, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",
   board_game: "Her tur bir mini oyun; birinci daha iyi zar atar. Hazineye ilk ulaşan kazanır.",
 };
 
