@@ -18,7 +18,7 @@ const inputs=(keys:number[],stage=1)=>keys.map(k=>({...neutralIntent(),snowball:
 const playing=(count:2|3=2)=>{const s=new SnowballRoundSimulation(undefined,731);s.start(count===2?[0,1]:[0,1,2]);while(s.phase==='countdown')s.step([]);return s;};
 const place=(s:SnowballRoundSimulation,i:number,x:number,z:number,vx=0,vz=0,y=.966)=>{const b=s.game.balls[i];b.body.setTranslation({x,y,z},true);b.body.setLinvel({x:vx,y:0,z:vz},true);b.body.setAngvel({x:vz/C.radius,y:0,z:-vx/C.radius},true);};
 test('protocol 13: 10-byte WASD only, no state, V, seat or winner claims',()=>{
-  assert.equal(NET.version,14);for(let keys=0;keys<16;keys++)assert.deepEqual(validateSnowballInput(encodeSnowballInput(packet(4,keys))),packet(4,keys));
+  assert.equal(NET.version,15);for(let keys=0;keys<16;keys++)assert.deepEqual(validateSnowballInput(encodeSnowballInput(packet(4,keys))),packet(4,keys));
   for(const extra of [{slot:2},{position:[0,0,0]},{velocity:[1,2,3]},{camera:1},{winner:0},{score:3},{V:true}])assert.equal(validateSnowballInput({...packet(),...extra}),null);
   for(const patch of [{keys:16},{keys:-1},{stage:0},{stage:4},{seq:NaN},{round:0},{seq:2**32}])assert.equal(validateSnowballInput({...packet(),...patch}),null);
   assert.equal(validateSnowballInput(new Uint8Array(11)),null);

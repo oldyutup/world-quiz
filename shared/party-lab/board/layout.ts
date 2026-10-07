@@ -43,11 +43,14 @@ function centreLine(s: number, rows: number, straight: number) {
   return { x: 0, z: 0, wave: -1, dir: 1 };
 }
 
+/** Length of each straight row (metres of centre line). */
+const straightLength = (length: number, rows = boardRows(length)) => (length * SQUARE_SPACING - (rows - 1) * Math.PI * TURN_RADIUS) / rows;
+
 /** One pose per square, 0 … length, centred on the origin. */
 export function boardPath(length: number): SquarePose[] {
   const rows = boardRows(length);
   const total = length * SQUARE_SPACING;
-  const straight = (total - (rows - 1) * Math.PI * TURN_RADIUS) / rows;
+  const straight = straightLength(length, rows);
   const point = (s: number) => {
     const p = centreLine(Math.max(0, Math.min(total, s)), rows, straight);
     // Zero value and slope at both ends of a straight: sin(πu)·sin(2πu).
@@ -67,6 +70,51 @@ export function boardPath(length: number): SquarePose[] {
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2,
     cz = (Math.min(...zs) + Math.max(...zs)) / 2;
   return poses.map((p) => ({ x: p.x - cx, z: p.z - cz, yaw: p.yaw }));
+}
+
+/** The row each square stands on (0 at the start), or −1 for a square on a turn between rows. */
+export function squareRows(length: number): number[] {
+  const rows = boardRows(length),
+    straight = straightLength(length, rows),
+    turn = Math.PI * TURN_RADIUS;
+  return Array.from({ length: length + 1 }, (_, i) => {
+    // The same walk as the centre line.
+    let s = i * SQUARE_SPACING;
+    for (let row = 0; row < rows; row++) {
+      if (s <= straight || row === rows - 1) return row;
+      s -= straight;
+      if (s <= turn) return -1;
+      s -= turn;
+    }
+    return rows - 1;
+  });
+}
+
+/** Two squares straight across the gap between neighbouring rows (`row` is the lower one). */
+export interface RowPair {
+  lower: number;
+  upper: number;
+  row: number;
+  /** Across-the-board position of the pair (metres, centred). */
+  x: number;
+}
+/**
+ * Every square with a square straight above it in the next row (within half a spacing
+ * across the board): where a ladder or a slide can join two rows.
+ */
+export function rowPairs(length: number): RowPair[] {
+  const path = boardPath(length),
+    rows = squareRows(length),
+    pairs: RowPair[] = [];
+  for (let lower = 0; lower <= length; lower++) {
+    if (rows[lower] < 0) continue;
+    let best = -1;
+    for (let upper = 0; upper <= length; upper++)
+      if (rows[upper] === rows[lower] + 1 && (best < 0 || Math.abs(path[upper].x - path[lower].x) < Math.abs(path[best].x - path[lower].x))) best = upper;
+    if (best >= 0 && Math.abs(path[best].x - path[lower].x) <= SQUARE_SPACING / 2)
+      pairs.push({ lower, upper: best, row: rows[lower], x: (path[lower].x + path[best].x) / 2 });
+  }
+  return pairs;
 }
 
 /** Axis-aligned extent of the squares (with their size), for framing the whole board. */

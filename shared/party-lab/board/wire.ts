@@ -1,8 +1,8 @@
 import { isGameMode, type GameMode } from "../modes.js";
-import { BOARD, isBoardLength } from "./config.js";
+import { BOARD, isBoardLength, isSpecialType, type SpecialType } from "./config.js";
 import type { DiceKind, WinnerChoice } from "./rules.js";
 
-export const BOARD_PHASES = ["intro", "minigame", "choose", "roll", "move", "finished"] as const;
+export const BOARD_PHASES = ["intro", "minigame", "choose", "roll", "move", "effect", "finished"] as const;
 export type BoardPhase = (typeof BOARD_PHASES)[number];
 
 /** The latest roll. `seq` grows with every roll, so a client animates each one once. */
@@ -12,12 +12,29 @@ export interface BoardRoll {
   kind: DiceKind;
   /** One die, or two for "two" (the higher one counts). */
   dice: number[];
-  /** Squares moved before the treasure cap ("plus" adds one). */
+  /** Squares moved before the treasure cap ("plus" adds one, a bonus die one more). */
   value: number;
+  /** A bonus die was used on this roll (+1). */
+  bonus: boolean;
   from: number;
   to: number;
   /** Rolled by the server: timeout or the player was away. */
   auto: boolean;
+}
+
+/** The latest special square effect. `seq` grows with every effect, so a client animates each once. */
+export interface BoardEffect {
+  seq: number;
+  /** The player who landed on the square. */
+  slot: number;
+  type: SpecialType;
+  /** The player's square before and after (swap: the partner moves the other way). */
+  from: number;
+  to: number;
+  /** Swap partner, −1 when nobody stood on another square. */
+  other: number;
+  /** Bonus: false when the player already held one (it does not stack). */
+  gained: boolean;
 }
 
 /**
@@ -44,6 +61,11 @@ export interface BoardWire {
   /** Mini game stage while phase is "minigame". */
   mini: "playing" | "results" | null;
   roll: BoardRoll | null;
+  /** Special squares of this match: [square, type, target (−1: none)]. Every other square is normal. */
+  squares: [number, SpecialType, number][];
+  /** Slots holding a bonus die. */
+  bonus: number[];
+  effect: BoardEffect | null;
   /** Whole seconds left in a timed phase, 0 when untimed. */
   left: number;
   winner: number;
@@ -83,7 +105,16 @@ export function parseBoard(text: unknown): BoardWire | null {
     if (!r || typeof r !== "object" || !int(r.seq, 1, Number.MAX_SAFE_INTEGER) || !slot(r.slot)) return null;
     if (r.kind !== "two" && r.kind !== "plus" && r.kind !== "single") return null;
     if (!Array.isArray(r.dice) || r.dice.length !== (r.kind === "two" ? 2 : 1) || !r.dice.every((d) => int(d, 1, 6))) return null;
-    if (!int(r.value, 1, 7) || !int(r.from, 0, length) || !int(r.to, 0, length) || r.to < r.from || typeof r.auto !== "boolean") return null;
+    if (!int(r.value, 1, 8) || typeof r.bonus !== "boolean" || !int(r.from, 0, length) || !int(r.to, 0, length) || r.to < r.from || typeof r.auto !== "boolean") return null;
+  }
+  if (!Array.isArray(b.squares) || b.squares.length > length) return null;
+  if (!b.squares.every((s) => Array.isArray(s) && s.length === 3 && int(s[0], 1, length - 1) && isSpecialType(s[1]) && int(s[2], -1, length))) return null;
+  if (new Set(b.squares.map((s) => s[0])).size !== b.squares.length) return null;
+  if (!Array.isArray(b.bonus) || b.bonus.length > BOARD.maxPlayers || !b.bonus.every(slot)) return null;
+  if (b.effect !== null) {
+    const e = b.effect as Record<string, unknown>;
+    if (!e || typeof e !== "object" || !int(e.seq, 1, Number.MAX_SAFE_INTEGER) || !slot(e.slot) || !isSpecialType(e.type)) return null;
+    if (!int(e.from, 0, length) || !int(e.to, 0, length) || !slotOrNone(e.other) || typeof e.gained !== "boolean") return null;
   }
   return b as unknown as BoardWire;
 }

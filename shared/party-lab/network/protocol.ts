@@ -31,7 +31,9 @@ export const NET = {
   // 14: Tahta Oyunu (board_game). A lobby selection whose rounds are mini games, a JSON
   // board in the room state and boardSettings/boardChoice/boardRoll messages; a v13 page
   // would show the board's turns as the lobby and a v13 server rejects the messages.
-  version: 14,
+  // 15: Tahta Oyunu special squares. The board JSON gains the layout, bonus dice, the
+  // effect phase and the latest effect; a v14 page would refuse every board ("effect").
+  version: 15,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,

@@ -17,7 +17,7 @@ function launch(g: ClassicGame, x = 0, angle = 0, power = 65) { g.position = x; 
 function finish(g: ClassicGame) { for (let i = 0; i < 600 && g.phase === 'rolling'; i++) g.advance(1 / 60); assert.equal(g.phase, 'feedback'); }
 function next(g: ClassicGame) { while (g.phase === 'feedback' || g.phase === 'return') g.advance(1 / 60); }
 
-test('local identity, protocol 14 and supported seats', () => { assert.equal(C.id, 'classic_bowling'); assert.equal(NET.version, 14); assert.throws(() => new ClassicScore(4 as 2)); });
+test('local identity, protocol 15 and supported seats', () => { assert.equal(C.id, 'classic_bowling'); assert.equal(NET.version, 15); assert.throws(() => new ClassicScore(4 as 2)); });
 test('position, direction, power sweeps repeat for arbitrarily late selection', () => {
   for (const t of [0, .17, 1.3, 60, 1234]) {
     assert.ok(Math.abs(positionAt(t) - positionAt(t + 1.35)) < 1e-10);

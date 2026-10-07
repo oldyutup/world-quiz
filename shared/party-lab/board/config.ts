@@ -36,17 +36,78 @@ export const BOARD = {
   reconnectSeconds: 120,
 } as const;
 
-/** Special squares (forward, back, swap, bonus die) come later; the model already carries a type. */
-export const SQUARE_TYPES = ["normal"] as const;
+/**
+ * Square types. A special square acts only when a move ends exactly on it; the square an
+ * effect sends a player to never acts (no chains). A new type (say a duel) needs an entry
+ * here, a group, a place in the layout (squares.ts) and an effect (session.ts).
+ */
+export const SQUARE_TYPES = ["normal", "forward", "bonus", "back", "slide", "ladder", "swap"] as const;
 export type SquareType = (typeof SQUARE_TYPES)[number];
+export type SpecialType = Exclude<SquareType, "normal">;
+export const SPECIAL_TYPES = SQUARE_TYPES.filter((type): type is SpecialType => type !== "normal");
+export const isSpecialType = (value: unknown): value is SpecialType => (SPECIAL_TYPES as readonly unknown[]).includes(value);
+/** Rewards and penalties are kept level on every board; swaps are neither. */
+export const SQUARE_GROUPS: Readonly<Record<SpecialType, "reward" | "penalty" | "neutral">> = {
+  forward: "reward",
+  bonus: "reward",
+  ladder: "reward",
+  back: "penalty",
+  slide: "penalty",
+  swap: "neutral",
+};
 export interface BoardSquare {
   index: number;
   type: SquareType;
+  /** Where the effect sends the player (İleri, Geri, Merdiven, Kaydırak), −1 otherwise. */
+  target: number;
 }
-/** Square 0 is the start; square `length` holds the treasure. */
+/** Square 0 is the start; square `length` holds the treasure. All normal: the layout adds the specials. */
 export function boardSquares(length: number): BoardSquare[] {
-  return Array.from({ length: length + 1 }, (_, index) => ({ index, type: "normal" as const }));
+  return Array.from({ length: length + 1 }, (_, index) => ({ index, type: "normal" as const, target: -1 }));
 }
+
+/** Special square effects (seconds unless named). */
+export const EFFECT = {
+  /** İleri / Geri move this many squares (Geri never below the start). */
+  forward: 3,
+  back: 3,
+  /** The square lights up and the HUD names the effect before anything moves. */
+  leadSeconds: 0.6,
+  /** İleri / Geri: one hop per square. */
+  hopSeconds: 0.22,
+  climbSeconds: 1.3,
+  slideSeconds: 1.0,
+  swapSeconds: 1.1,
+  /** A bonus die, or a swap with nobody to swap with: the notice alone. */
+  stillSeconds: 0.8,
+  settleSeconds: 0.6,
+} as const;
+/** What an effect looks like on the wire and to the clock (see BoardEffect). */
+export interface EffectMotion {
+  type: SpecialType;
+  from: number;
+  to: number;
+  /** Swap partner, −1 for none. */
+  other: number;
+}
+/** Seconds the pieces travel during an effect (after the lead). */
+export function effectTravelSeconds(effect: EffectMotion) {
+  switch (effect.type) {
+    case "forward":
+    case "back":
+      return Math.abs(effect.to - effect.from) * EFFECT.hopSeconds;
+    case "ladder":
+      return EFFECT.climbSeconds;
+    case "slide":
+      return EFFECT.slideSeconds;
+    case "swap":
+      return effect.other >= 0 ? EFFECT.swapSeconds : EFFECT.stillSeconds;
+    case "bonus":
+      return EFFECT.stillSeconds;
+  }
+}
+/** How long the server holds an effect before the next turn: lead, travel, a pause. */
+export const effectSeconds = (effect: EffectMotion) => EFFECT.leadSeconds + effectTravelSeconds(effect) + EFFECT.settleSeconds;
 
 /** How long a roll of `steps` squares takes to show: dice, one hop per square, a pause. */
 export const moveSeconds = (steps: number) => BOARD.diceSeconds + steps * BOARD.hopSeconds + BOARD.settleSeconds;

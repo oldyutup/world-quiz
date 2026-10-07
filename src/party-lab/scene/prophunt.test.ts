@@ -1286,7 +1286,7 @@ test("regression: online integration — the existing modes, Mixed, protocol (13
   const existing = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"];
   assert.deepEqual(GAME_MODES.slice(0, existing.length), existing);
   assert.ok((MODE_SELECTIONS as readonly string[]).includes(PROP_HUNT.mode));
-  assert.equal(NET.version, 14);
+  assert.equal(NET.version, 15);
   assert.deepEqual([...ARENA_MAP_IDS].sort(), ["barn", "rooftop", "test"]);
   assert.equal(shapeHeight(PROP_FAMILIES.crate.shape), 0.92);
 });

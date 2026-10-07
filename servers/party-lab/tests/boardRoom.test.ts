@@ -9,7 +9,8 @@ import type { LobbyState } from "../src/state.js";
 import { RaceRoundSimulation } from "../../../shared/party-lab/simulation/raceRound.js";
 import { NET } from "../../../shared/party-lab/network/protocol.js";
 import { MixedRotation, type GameMode } from "../../../shared/party-lab/modes.js";
-import { BOARD, moveSeconds } from "../../../shared/party-lab/board/config.js";
+import { BOARD, boardSquares, moveSeconds, type BoardSquare } from "../../../shared/party-lab/board/config.js";
+import { squareProblems } from "../../../shared/party-lab/board/squares.js";
 import { parseBoard, type BoardWire } from "../../../shared/party-lab/board/wire.js";
 
 const { server, httpServer } = createPartyServer();
@@ -67,7 +68,8 @@ class Fixed extends MixedRotation {
 const view = (p: Peer) => parseBoard((p.r.state as unknown as { board: string }).board);
 const slotOf = (room: PartyRoom, p: Peer) => room.state.players.get(p.r.sessionId)!.slot;
 
-async function boardRoom(count: number, length = 20) {
+/** These flows pin a board without special squares (boardSquares.test.ts covers the effects); `random` keeps the room's own layout. */
+async function boardRoom(count: number, length = 20, random = false) {
   const peers = [await peer()];
   for (let i = 1; i < count; i++) peers.push(await peer(peers[0].r.roomId));
   const room = matchMaker.getLocalRoomById(peers[0].r.roomId) as PartyRoom;
@@ -80,6 +82,7 @@ async function boardRoom(count: number, length = 20) {
   peers[0].r.send("boardSettings", { length });
   await until(() => room.state.boardLength === length);
   room.boardRotation = new Fixed(["kart_race"]);
+  room.boardLayout = random ? null : boardSquares;
   for (const p of peers) p.r.send("ready", true);
   await until(() => !!room.board);
   return { peers, room };
@@ -283,6 +286,51 @@ test("board leave: Esc-menu leave takes the player off the board; the last one w
   assert.equal(room.board, null);
   assert.equal(room.game.mode, "crate_rain");
   await close([a, again]);
+});
+
+test("special squares: a fresh layout per match, the same for every page and after a reconnect, new on the rematch", { timeout: 90000 }, async () => {
+  const { peers, room } = await boardRoom(2, 35, true);
+  const [a, b] = peers;
+  const specials = (squares: readonly BoardSquare[]) => squares.filter((s) => s.type !== "normal").map((s) => [s.index, s.type, s.target]);
+  const first = specials(room.board!.squares);
+  assert.deepEqual(squareProblems(room.board!.squares, 35), []);
+  assert.ok(first.length >= 7 && first.length <= 8);
+  await until(() => peers.every((p) => view(p)?.squares.length === first.length));
+  for (const p of peers) assert.deepEqual(view(p)!.squares, first);
+  // B drops and comes back: the reconnected page has the same layout from its first state.
+  const token = b.r.reconnectionToken;
+  b.r.reconnection.enabled = false;
+  b.r.connection.close(4010);
+  await until(() => !room.state.players.get(b.r.sessionId)!.connected);
+  const back = await b.c.reconnect<LobbyState>(token);
+  rooms.push(back);
+  back.onMessage("notice", () => {});
+  back.onMessage("feedback", () => {});
+  back.onMessage("snapshot", () => {});
+  await until(() => !!parseBoard((back.state as unknown as { board: string }).board));
+  assert.deepEqual(parseBoard((back.state as unknown as { board: string }).board)!.squares, first);
+  assert.deepEqual(specials(room.board!.squares), first, "the server's layout is untouched");
+  // A takes the treasure; the rematch draws a new layout.
+  const slotA = slotOf(room, a), slotB = room.state.players.get(back.sessionId)!.slot;
+  room.board!.pieces.set(slotA, 34);
+  await finishRace(room, [slotA, slotB]);
+  await until(() => room.board!.phase === "choose");
+  a.r.send("boardChoice", "two");
+  await until(() => room.board!.phase === "roll");
+  a.r.send("boardRoll");
+  await until(() => room.board!.phase === "finished");
+  await until(() => !room.board, (BOARD.finishSeconds + 2) * 1000);
+  room.boardRotation = new Fixed(["kart_race"]);
+  a.r.send("ready", true);
+  back.send("ready", true);
+  await until(() => !!room.board);
+  const second = specials(room.board!.squares);
+  assert.deepEqual(squareProblems(room.board!.squares, 35), []);
+  assert.notDeepEqual(second, first, "a new layout for the rematch");
+  await until(() => [a.r, back].every((r) => JSON.stringify(parseBoard((r.state as unknown as { board: string }).board)?.squares) === JSON.stringify(second)));
+  back.reconnection.enabled = false;
+  await back.leave();
+  await close([a]);
 });
 
 test("board timing: a move waits for the dice and every hop before the next turn", () => {

@@ -40,9 +40,11 @@ function until(board: BoardSession, phase: string, limit = 600) {
   for (let t = 0; t < limit / DT && board.phase !== phase; t++) board.step(DT);
   assert.equal(board.phase, phase);
 }
+/** A board without special squares: these tests are about turns and dice (boardSquares.test.ts has the specials). */
 function make(slots: number[], options: { die?: () => number; random?: () => number; length?: number } = {}) {
-  const host = new Host();
-  const board = new BoardSession(host, { length: options.length ?? 20, slots, random: options.random ?? seeded(7), die: options.die ?? queued(3) });
+  const host = new Host(),
+    length = options.length ?? 20;
+  const board = new BoardSession(host, { length, slots, random: options.random ?? seeded(7), die: options.die ?? queued(3), squares: boardSquares(length) });
   return { host, board };
 }
 
@@ -141,7 +143,7 @@ test("a 2P round: intro → mini game → 5 s results → winner chooses → rol
   assert.equal(board.phase, "roll");
   assert.equal(board.rollPressed(0), false);
   assert.equal(board.rollPressed(2), true);
-  assert.deepEqual(board.roll, { seq: 1, slot: 2, kind: "two", dice: [4, 2], value: 4, from: 0, to: 4, auto: false });
+  assert.deepEqual(board.roll, { seq: 1, slot: 2, kind: "two", dice: [4, 2], value: 4, bonus: false, from: 0, to: 4, auto: false });
   assert.equal(board.square(2), 4);
   assert.equal(board.phase, "move");
   run(board, moveSeconds(4) - 0.05);
@@ -379,7 +381,7 @@ test("the board's rotation is the lobby preview: first mini game = the one annou
   rotation.setPlayers(2);
   const preview = rotation.next;
   const host = new Host();
-  const board = new BoardSession(host, { length: 35, slots: [1, 2], rotation, die: queued(1) });
+  const board = new BoardSession(host, { length: 35, slots: [1, 2], rotation, die: queued(1), squares: boardSquares(35) });
   assert.equal(board.mode, preview);
   run(board, BOARD.introSeconds);
   assert.equal(host.minis[0].mode, preview);

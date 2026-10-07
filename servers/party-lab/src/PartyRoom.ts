@@ -17,7 +17,7 @@ import { ColorRoundSimulation } from "../../../shared/party-lab/simulation/color
 import { BombRoundSimulation } from "../../../shared/party-lab/simulation/bombRound.js";
 import { NO_COLOR } from "../../../shared/party-lab/simulation/colors/layouts.js";
 import { BoardSession, type BoardHost } from "../../../shared/party-lab/board/session.js";
-import { BOARD } from "../../../shared/party-lab/board/config.js";
+import { BOARD, type BoardSquare } from "../../../shared/party-lab/board/config.js";
 import { encodeBoard } from "../../../shared/party-lab/board/wire.js";
 import { DEFAULT_BOARD_SETTINGS, validBoardSettings } from "../../../shared/party-lab/boardSettings.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
@@ -137,6 +137,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   boardRotation = new MixedRotation(cryptoRandom);
   /** The board match in progress: mini games start without the lobby until someone wins. */
   board: BoardSession | null = null;
+  /** Special squares for the next match; null draws a fresh random layout (tests pin one). */
+  boardLayout: ((length: number) => BoardSquare[]) | null = null;
   private readonly boardHost: BoardHost = {
     startMini: (mode, slots) => this.startBoardMini(mode, slots),
     endMini: () => this.retireSimulation(),
@@ -261,7 +263,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   private startBoard(slots: number[]) {
     const rotation = this.boardRotation;
     this.boardRotation = new MixedRotation(cryptoRandom);
-    this.board = new BoardSession(this.boardHost, { length: this.state.boardLength, slots, random: cryptoRandom, die: cryptoDie, rotation });
+    const length = this.state.boardLength;
+    this.board = new BoardSession(this.boardHost, { length, slots, random: cryptoRandom, die: cryptoDie, rotation, squares: this.boardLayout?.(length) });
     // Lobby Ready means nothing during the match; the rematch asks for it again.
     for (const p of this.state.players.values()) p.ready = false;
     this.syncGameState();

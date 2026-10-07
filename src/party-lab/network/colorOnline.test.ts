@@ -118,7 +118,7 @@ const sameCycle = (a: ColorCycleState, b: ColorCycleState, label: string) => {
 // ─── Protocol, mode ─────────────────────────────────────────────────────────
 
 test("protocol 13: Renk Kaosu remains before Bomba Sende and Karışık in the compact picker", () => {
-  assert.equal(NET.version, 14);
+  assert.equal(NET.version, 15);
   assert.deepEqual([...MODE_SELECTIONS], [...GAME_MODES, "mixed", "board_game"]);
   assert.ok(MODE_SELECTIONS.indexOf("color_chaos") < MODE_SELECTIONS.indexOf("bomb_tag"));
   assert.equal(MODE_NAMES.color_chaos, "Renk Kaosu");
