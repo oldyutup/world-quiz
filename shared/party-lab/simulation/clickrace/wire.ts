@@ -9,37 +9,44 @@ export interface ClickWire {
   countdown: number;
   /** Race clock, ms after BAŞLA. */
   elapsed: number;
-  /** Clicks to the finish. */
+  /** Metres to the finish. */
   track: number;
   /** Time limit, seconds. */
   limit: number;
+  /** Counted presses. */
   clicks: number[];
-  /** Clicks counted in the last second. */
+  /** Metres along the lane (cm precision; a finished car glides on past the line). */
+  distance: number[];
+  /** m/s (cm/s precision). */
+  speed: number[];
+  /** Presses counted in the last second. */
   rate: number[];
-  /** Finish time in ms after BAŞLA, −1 not finished. */
+  /** Finish time in ms after BAŞLA (when the car crossed the line), −1 not finished. */
   finish: number[];
   /** Time raced in ms (to the finish, the end of the race, or leaving). */
   time: number[];
-  /** Most clicks counted in one second. */
+  /** Most presses counted in one second. */
   peak: number[];
   out: boolean[];
   /** Places (0 best, ties share one), final at results. */
   places: number[];
 }
 
-const ms = (ticks: number) => Math.round((ticks * 1000) / C.hz);
+const cm = (metres: number) => Math.round(metres * 100) / 100;
 export function clickSection(game: ClickRaceGame, seats: readonly number[]): ClickWire {
   return {
     seats: [...seats],
     phase: game.phase,
     countdown: game.phase === "countdown" ? game.countdownTicks / C.hz : 0,
-    elapsed: ms(game.ticks),
+    elapsed: Math.round(game.elapsedMs),
     track: game.track,
     limit: C.limit,
     clicks: game.lanes.map((l) => l.clicks),
+    distance: game.lanes.map((l) => cm(l.distance)),
+    speed: game.lanes.map((l) => cm(l.speed)),
     rate: game.lanes.map((_, lane) => game.rate(lane)),
-    finish: game.lanes.map((l) => (l.finish === null ? -1 : ms(l.finish))),
-    time: game.lanes.map((l) => ms(l.end ?? game.ticks)),
+    finish: game.lanes.map((l) => (l.finish === null ? -1 : Math.round(l.finish))),
+    time: game.lanes.map((l) => Math.round(l.end ?? game.elapsedMs)),
     peak: game.lanes.map((l) => l.peak),
     out: game.lanes.map((l) => l.out),
     places: game.places(),
@@ -60,7 +67,7 @@ export function validClickWire(value: unknown): value is ClickWire {
     (w.phase === "countdown" || w.phase === "racing" || w.phase === "results") &&
     [w.countdown, w.elapsed, w.track, w.limit].every((n) => typeof n === "number" && Number.isFinite(n)) &&
     w.track >= 1 &&
-    [w.clicks, w.rate, w.finish, w.time, w.peak, w.places].every((a) => count(a, lanes)) &&
+    [w.clicks, w.distance, w.speed, w.rate, w.finish, w.time, w.peak, w.places].every((a) => count(a, lanes)) &&
     Array.isArray(w.out) &&
     w.out.length === lanes &&
     w.out.every((o) => typeof o === "boolean")

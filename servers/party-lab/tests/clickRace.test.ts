@@ -44,30 +44,74 @@ const every = (rate: number) => (ms: number) => {
   return out;
 };
 
-test("90 presses to the finish: 8–10 a second finish in 9–11.5 s, well inside the 30 s limit", () => {
-  assert.equal(C.trackClicks, 90);
+/** Steps one lane pressing at `rate` until it finishes (or the race ends); its finish in seconds. */
+function finishAt(rate: number) {
+  const g = racing();
+  run(g, C.limit + 1, (lane, ms) => (lane === 0 ? every(rate)(ms) : []));
+  return g.lanes[0].finish === null ? Infinity : g.lanes[0].finish / 1000;
+}
+/** Places a car just before the line, so its next press finishes. */
+const nearLine = (g: ClickRaceGame, lane: number) => g.setDistance(lane, g.track - 0.02);
+
+test("driving: about 9 presses a second finish in 7–8 s, about 12 in 5–6 s; the limit is 30 s", () => {
   assert.equal(C.limit, 30);
-  for (const rate of [8, 9, 10]) {
-    const seconds = C.trackClicks / rate;
-    assert.ok(seconds >= 9 && seconds <= 11.5, `${rate}/s → ${seconds} s`);
-    const g = racing();
-    run(g, 30, (lane, ms) => (lane === 0 ? every(rate)(ms) : []));
-    assert.equal(g.lanes[0].clicks, C.trackClicks);
-    assert.ok(Math.abs(g.lanes[0].finish! / C.hz - seconds) < 0.2, `finish ${g.lanes[0].finish! / C.hz} s at ${rate}/s`);
-  }
+  const slow = finishAt(6),
+    average = finishAt(9),
+    fast = finishAt(12);
+  assert.ok(average >= 7 && average <= 8, `9/s: ${average} s`);
+  assert.ok(fast >= 5 && fast <= 6, `12/s: ${fast} s`);
+  assert.ok(slow > average + 2 && slow < C.limit, `6/s: ${slow} s`);
+  // Faster pressing means a faster car.
+  const g = racing(3);
+  run(g, 3, (lane, ms) => every([6, 9, 12][lane])(ms));
+  assert.ok(g.lanes[0].distance < g.lanes[1].distance && g.lanes[1].distance < g.lanes[2].distance, `${g.lanes.map((l) => l.distance.toFixed(1))}`);
 });
 
-test("each press counts once, moves one step, and the finishing press stops the lane", () => {
+test("let go, the car glides about half a second and stops; never at once", () => {
+  const g = racing();
+  run(g, 3, (lane, ms) => (lane === 0 ? every(9)(ms) : []));
+  const from = g.lanes[0].distance,
+    speed = g.lanes[0].speed;
+  assert.ok(speed > 3, `cruising at ${speed} m/s`);
+  let stopped = -1,
+    slow = -1;
+  for (let t = 1; t <= 60; t++) {
+    g.step();
+    if (t === 1) assert.ok(g.lanes[0].speed > speed * 0.8 && g.lanes[0].distance > from, "still rolling right after the last press");
+    if (slow < 0 && g.lanes[0].speed < 0.3) slow = t / C.hz;
+    if (stopped < 0 && g.lanes[0].speed === 0) stopped = t / C.hz;
+  }
+  assert.ok(slow >= 0.35 && slow <= 0.6, `below 0.3 m/s after ${slow} s`);
+  assert.ok(stopped > 0 && stopped <= 0.7, `stopped after ${stopped} s`);
+  const glided = g.lanes[0].distance - from;
+  assert.ok(glided > 0.5 && glided < 2, `glided ${glided} m`);
+});
+
+test("there is a top speed: past about 15/s, faster pressing hardly helps", () => {
+  const g = racing();
+  let top = 0;
+  for (let t = 0; t < 3 * C.hz; t++) {
+    g.step([every(25)((g.ticks + 1) * STEP_MS), []]);
+    top = Math.max(top, g.lanes[0].speed);
+  }
+  assert.ok(top <= C.maxSpeed, `top ${top} m/s`);
+  assert.ok(finishAt(25) > finishAt(15) - 0.5, `25/s ${finishAt(25)} s vs 15/s ${finishAt(15)} s`);
+});
+
+test("each press counts once and pushes the car; a finished car takes no more presses", () => {
   const g = racing(2);
   g.step([[10], []]);
+  assert.equal(g.lanes[0].clicks, 1);
+  assert.ok(g.lanes[0].speed > 0 && g.lanes[0].distance > 0, "pushed");
+  assert.equal(g.lanes[1].distance, 0);
   g.step([[20, 30], [25]]);
   assert.deepEqual(g.lanes.map((l) => l.clicks), [3, 1]);
-  g.lanes[0].clicks = C.trackClicks - 1;
-  g.step([[100], []]);
-  assert.equal(g.lanes[0].clicks, C.trackClicks);
-  assert.equal(g.lanes[0].finish, g.ticks);
-  g.step([[110], []]);
-  assert.equal(g.lanes[0].clicks, C.trackClicks, "a finished car does not move on");
+  nearLine(g, 0);
+  g.step([[g.elapsedMs + STEP_MS], []]);
+  assert.ok(g.lanes[0].finish !== null && Math.abs(g.lanes[0].finish - g.elapsedMs) <= STEP_MS, `finish at ${g.lanes[0].finish} ms`);
+  const clicks = g.lanes[0].clicks;
+  g.step([[g.elapsedMs], []]);
+  assert.equal(g.lanes[0].clicks, clicks, "a finished car takes no presses");
   assert.equal(g.phase, "racing", "the race goes on until everyone finishes");
 });
 
@@ -77,10 +121,11 @@ test("presses before BAŞLA never count", () => {
     assert.equal(g.click(0, 0), false);
     g.step([[0, 1, 2], [0]]);
   }
-  assert.deepEqual(g.lanes.map((l) => l.clicks), [0, 0], "countdown presses");
+  assert.deepEqual(g.lanes.map((l) => [l.clicks, l.distance, l.speed]), [[0, 0, 0], [0, 0, 0]], "countdown presses");
   assert.equal(g.ticks, 0);
   g.step([[-1, -200], [5]]);
   assert.deepEqual(g.lanes.map((l) => l.clicks), [0, 1], "a stamp before BAŞLA (negative) is not a race press");
+  assert.equal(g.lanes[0].distance, 0);
   // The room drops input outside play as well (PartyRoom "input" handler); see the room test.
 });
 
@@ -99,31 +144,43 @@ test("at most 25 presses count in any second; the rest are ignored without a pen
   assert.equal(fast.clicks - before, 10);
 });
 
-test("presses a stalled link delivers together are all counted (window on press stamps, not arrival)", () => {
-  // 15 presses a second; 2 s of packets stall and arrive in one step: 30 presses at once,
-  // more than the cap if it were counted on arrival.
+test("presses a stalled link delivers late move the car as if they came on time", () => {
+  // Two players press the same; one link stalls for 1.5 s and then delivers 13 presses at once
+  // (exact up to CLICK_RACE.catchUpMs).
   const g = racing(2),
     held: number[] = [];
-  run(g, 4, (lane, ms) => {
-    if (lane !== 0) return [];
-    const now = every(15)(ms);
-    if (ms > 1000 && ms <= 3000) {
+  run(g, 3, (lane, ms) => {
+    const now = every(9)(ms);
+    if (lane === 0) return now;
+    if (ms > 1000 && ms <= 2500) {
       held.push(...now);
       return [];
     }
-    if (held.length) return [...held.splice(0), ...now];
-    return now;
+    return [...held.splice(0), ...now];
   });
-  assert.equal(g.lanes[0].dropped, 0);
-  assert.equal(g.lanes[0].clicks, 60, "4 s at 15/s");
+  assert.equal(g.lanes[1].dropped, 0);
+  assert.equal(g.lanes[1].clicks, g.lanes[0].clicks);
+  assert.ok(Math.abs(g.lanes[1].distance - g.lanes[0].distance) < 1e-9 && Math.abs(g.lanes[1].speed - g.lanes[0].speed) < 1e-9, `${g.lanes[0].distance} vs ${g.lanes[1].distance}`);
   // A burst within one real second still hits the cap: 40 presses stamped 1 ms apart.
   const h = racing(2);
   run(h, 1, () => []);
   h.step([Array.from({ length: 40 }, (_, i) => 500 + i), []]);
   assert.equal(h.lanes[0].clicks, C.maxRate);
+  // A ping does not slow a car: presses arriving 200 ms after they were made count from then.
+  const p = racing(2);
+  const late: number[][] = [];
+  run(p, 4, (lane, ms) => {
+    const now = every(10)(ms);
+    if (lane === 0) return now;
+    late.push(now);
+    return late.length > 12 ? late.shift()! : [];
+  });
+  p.step([[], late.flat()]);
+  assert.equal(p.lanes[1].clicks, p.lanes[0].clicks);
+  assert.ok(Math.abs(p.lanes[0].distance - p.lanes[1].distance) < 1e-9, `a 200 ms ping: ${p.lanes[0].distance} vs ${p.lanes[1].distance} m`);
 });
 
-test("forged stamps buy nothing: they are pulled back to the race clock and never run backwards", () => {
+test("forged or batched stamps buy nothing", () => {
   const g = racing(2);
   // Every step claims a whole second of presses ahead of now, 40 per step.
   run(g, 10, (lane, ms) => (lane === 0 ? Array.from({ length: 40 }, (_, i) => ms + i * 25) : []));
@@ -136,9 +193,20 @@ test("forged stamps buy nothing: they are pulled back to the race clock and neve
   run(h, 2, () => []);
   h.step([Array.from({ length: 60 }, () => 0), []]);
   assert.equal(h.lanes[0].clicks, C.maxRate);
+  // Pressing at the cap but sending a second's worth at a time: no further than sending each.
+  const b = racing(2),
+    batch: number[] = [];
+  run(b, 4, (lane, ms) => {
+    const now = every(25)(ms);
+    if (lane === 0) return now;
+    batch.push(...now);
+    return Math.round(ms) % 1000 < STEP_MS ? batch.splice(0) : [];
+  });
+  b.step([[], batch.splice(0)]);
+  assert.ok(b.lanes[1].distance <= b.lanes[0].distance + 1e-6, `batched ${b.lanes[1].distance} m vs ${b.lanes[0].distance} m`);
 });
 
-test("time limit: the furthest car wins; places by finish order, then distance", () => {
+test("time limit: the furthest car wins; places by finish time, then distance", () => {
   const g = racing(3);
   run(g, C.limit + 1, (lane, ms) => every([2, 1.5, 1][lane])(ms));
   assert.equal(g.phase, "results");
@@ -148,28 +216,28 @@ test("time limit: the furthest car wins; places by finish order, then distance",
   assert.equal(g.winner(), 0);
   // Finishers first in finish order, then the rest by distance.
   const h = racing(3);
-  h.lanes[2].clicks = C.trackClicks - 1;
-  h.step([[], [], [5]]);
-  h.lanes[1].clicks = C.trackClicks - 1;
-  h.step([[100], [20], []]);
+  nearLine(h, 2);
+  h.step([[], [], [h.elapsedMs + STEP_MS]]);
+  nearLine(h, 1);
+  h.step([[h.elapsedMs + STEP_MS], [h.elapsedMs + STEP_MS], []]);
   run(h, C.limit + 1, () => []);
   assert.deepEqual(h.places(), [2, 1, 0]);
   assert.equal(h.winner(), 2);
   const section = clickSection(h, [0, 1, 2]);
   assert.ok(validClickWire(section));
-  assert.deepEqual(section.finish, [-1, Math.round((2 * 1000) / C.hz), Math.round(1000 / C.hz)]);
+  assert.ok(section.finish[0] === -1 && section.finish[2] < section.finish[1], `${section.finish}`);
   assert.equal(section.time[0], C.limit * 1000);
 });
 
 test("a full tie is a draw, at the finish or at the time limit", () => {
   const g = racing(2);
-  for (const l of g.lanes) l.clicks = C.trackClicks - 1;
-  g.step([[10], [12]]);
+  for (const lane of [0, 1]) nearLine(g, lane);
+  g.step([[g.elapsedMs + STEP_MS], [g.elapsedMs + STEP_MS]]);
   assert.equal(g.phase, "results", "everyone finished");
   assert.deepEqual(g.places(), [0, 0]);
   assert.equal(g.winner(), -1);
   const h = racing(3);
-  run(h, C.limit + 1, (lane, ms) => (lane < 2 ? every(4)(ms) : every(1)(ms)));
+  run(h, C.limit + 1, (lane, ms) => (lane < 2 ? every(1)(ms) : every(0.5)(ms)));
   assert.deepEqual(h.places(), [0, 0, 2]);
   assert.equal(h.winner(), -1);
   const idle = racing(2);
@@ -187,19 +255,19 @@ test("2, 3 and 6 lanes race, rank and report every lane", () => {
     assert.equal(g.winner(), lanes - 1);
     const section = clickSection(g, g.lanes.map((_, i) => i));
     assert.ok(validClickWire(section));
-    assert.equal(section.clicks.length, lanes);
+    assert.equal(section.distance.length, lanes);
   }
   assert.throws(() => new ClickRaceGame(1));
   assert.throws(() => new ClickRaceGame(7));
 });
 
-test("a player who leaves ranks last; the last player racing wins at once", () => {
+test("a player who leaves stops and ranks last; the last player racing wins at once", () => {
   const g = racing(3);
   run(g, 2, (lane, ms) => every(lane === 0 ? 12 : 4)(ms));
-  const left = g.lanes[0].clicks;
+  const left = g.lanes[0].distance;
   g.remove(0);
   g.step([[2100], [], []]);
-  assert.equal(g.lanes[0].clicks, left, "a car that left stops");
+  assert.equal(g.lanes[0].distance, left, "a car that left stops");
   assert.equal(g.phase, "racing", "two still race");
   g.remove(2);
   g.step();
@@ -208,14 +276,16 @@ test("a player who leaves ranks last; the last player racing wins at once", () =
   assert.deepEqual(g.places(), [1, 0, 2], "leavers behind the stayer, by distance");
 });
 
-test("a dropped player's car waits and moves on when they are back", () => {
+test("a dropped player's car glides to a stop and moves on when they are back", () => {
   const g = racing(2);
   run(g, 1, (_, ms) => every(10)(ms));
-  const before = g.lanes[0].clicks;
-  run(g, 2, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
-  assert.equal(g.lanes[0].clicks, before, "no presses while away");
+  run(g, 1, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
+  const parked = g.lanes[0].distance;
+  assert.equal(g.lanes[0].speed, 0, "stopped while away");
+  run(g, 1, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
+  assert.equal(g.lanes[0].distance, parked, "stays put");
   run(g, 1, (_, ms) => every(10)(ms));
-  assert.equal(g.lanes[0].clicks, before + 10);
+  assert.ok(g.lanes[0].distance > parked + 2, "back: it moves on");
 });
 
 test("the round simulation: player counts, slots (not seats) as winner, placements per slot", () => {
@@ -229,10 +299,10 @@ test("the round simulation: player counts, slots (not seats) as winner, placemen
   while (sim.phase === "countdown") sim.step(press(2, [0]));
   assert.equal(sim.phase, "playing");
   assert.deepEqual(sim.game.lanes.map((l) => l.clicks), [0, 0], "countdown presses");
-  sim.game.lanes[1].clicks = C.trackClicks - 1;
-  sim.step(press(2, [10]));
-  sim.game.lanes[0].clicks = C.trackClicks - 1;
-  sim.step(press(1, [20]));
+  nearLine(sim.game, 1);
+  sim.step(press(2, [sim.game.elapsedMs + STEP_MS]));
+  nearLine(sim.game, 0);
+  sim.step(press(1, [sim.game.elapsedMs + STEP_MS]));
   assert.equal(sim.phase, "results");
   assert.equal(sim.winner, 2, "slot 2 finished first");
   assert.deepEqual(sim.placements(), [-1, 1, 0]);
@@ -373,10 +443,10 @@ for (const count of [2, 3])
     peers[0].press([after - 10], sim.roundId);
     await until(() => sim.game.lanes[lane(peers[0])].clicks === 11);
     // Finish order: peer 1 first, then peer 0 (and peer 2 runs out of time if present).
-    sim.game.lanes[lane(peers[1])].clicks = C.trackClicks - 1;
+    nearLine(sim.game, lane(peers[1]));
     peers[1].press([sim.game.elapsedMs], sim.roundId);
     await until(() => sim.game.lanes[lane(peers[1])].finish !== null);
-    sim.game.lanes[lane(peers[0])].clicks = C.trackClicks - 1;
+    nearLine(sim.game, lane(peers[0]));
     peers[0].press([sim.game.elapsedMs], sim.roundId);
     await until(() => sim.game.lanes[lane(peers[0])].finish !== null);
     if (count === 3) sim.game.ticks = sim.game.limitTicks - 1;

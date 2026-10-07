@@ -38,7 +38,7 @@ export class LocalClickRace implements ClickSource {
         this.step();
       }
     }
-    return { wire: clickSection(this.game, this.game.lanes.map((_, lane) => lane)), winner: this.game.winner(), round: 1 };
+    return { wire: clickSection(this.game, this.game.lanes.map((_, lane) => lane)), winner: this.game.winner(), round: 1, age: 0 };
   }
   press() {
     const lane = this.game.lanes[0];

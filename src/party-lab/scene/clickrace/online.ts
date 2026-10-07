@@ -57,6 +57,8 @@ export interface ClickFrame {
   wire: ClickWire;
   winner: number;
   round: number;
+  /** Seconds since `wire` was true (a snapshot's age online, 0 locally). */
+  age: number;
 }
 /** Where the arena's race comes from: the server (online) or a local game with bots. */
 export interface ClickSource {
@@ -83,7 +85,7 @@ export class OnlineClickSource implements ClickSource {
     this.wire = wire;
     this.client.observe(wire, this.round, latest.received);
     this.client.flush((stamps) => !!this.online.sendInput({ x: 0, z: 0, jump: false, click: { seq: 0, round: this.round, stamps } }));
-    return { wire, winner: wire.seats.indexOf(latest.snapshot.winner), round: this.round };
+    return { wire, winner: wire.seats.indexOf(latest.snapshot.winner), round: this.round, age: Math.max(0, performance.now() - latest.received) / 1000 };
   }
   press(now: number) {
     return this.client.press(now, racing(this.wire, this.self));

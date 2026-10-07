@@ -8,7 +8,7 @@ export interface ClickHudLane {
   connected: boolean;
 }
 const seconds = (ms: number) => `${(ms / 1000).toFixed(2)} sn`;
-const percent = (wire: ClickWire, lane: number) => Math.min(100, Math.floor((wire.clicks[lane] / wire.track) * 100));
+const percent = (wire: ClickWire, lane: number) => Math.min(100, Math.floor((wire.distance[lane] / wire.track) * 100));
 
 export default function ClickRaceHud({ wire, lanes, self, winner, keys, afterRound, restart }: {
   wire: ClickWire;

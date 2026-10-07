@@ -30,7 +30,15 @@ export interface ClickLaneLook {
   self: boolean;
 }
 
-const PUFFS = 72;
+const PUFFS = 96;
+/** Speed lines show from this speed (m/s) and are full at `STREAK_FULL` (a fast presser's cruise). */
+const STREAK_FROM = 5.5;
+const STREAK_FULL = 8.5;
+const STREAKS = [
+  { z: -0.62, y: 0.55, phase: 0 },
+  { z: 0.05, y: 0.95, phase: 0.37 },
+  { z: 0.66, y: 0.55, phase: 0.71 },
+];
 const PALETTE = { grass: "#93b678", grassDark: "#86aa6d", asphalt: "#3a4347", line: "#ece6d4", kerbA: "#e6e1cf", kerbB: "#ce6d59", dark: "#27363b" };
 
 /**
@@ -174,6 +182,8 @@ export function clickRaceVisual(kit: Group, lanes: readonly ClickLaneLook[]) {
   };
   turn(false);
 
+  const streakGeometry = new PlaneGeometry(1, 0.11);
+  owned.push(streakGeometry);
   // Cars: the kit car in the slot colour, the player's character in the seat, facing +x.
   const cars = lanes.map((look, lane) => {
     const group = new Group(),
@@ -194,7 +204,17 @@ export function clickRaceVisual(kit: Group, lanes: readonly ClickLaneLook[]) {
     group.add(body);
     group.position.set(carX(0), 0, laneZ(lane, count));
     root.add(group);
-    return { group, body, shown: 0, target: 0, pitch: 0 };
+    // Speed lines: thin white streaks trailing the car, only at high speed.
+    const streakMaterial = new MeshBasicMaterial({ color: "#fbf7ea", transparent: true, opacity: 0, depthWrite: false });
+    materials.push(streakMaterial);
+    const streaks = STREAKS.map((line) => {
+      const mesh = new Mesh(streakGeometry, streakMaterial);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.visible = false;
+      group.add(mesh);
+      return { mesh, ...line };
+    });
+    return { group, body, shown: 0, pitch: 0, smoke: 0, speed: 0, streaks, streakMaterial, clock: lane * 0.29 };
   });
 
   // Exhaust puffs: one instanced mesh, each puff grows, drifts back and fades out by shrinking.
@@ -215,36 +235,58 @@ export function clickRaceVisual(kit: Group, lanes: readonly ClickLaneLook[]) {
     p = new Vector3(),
     axis = new Vector3(0, 1, 0);
 
+  /** A puff (two at speed) behind `lane`'s car. */
+  const burst = (lane: number, strength = 1) => {
+    const c = cars[lane];
+    if (!c) return;
+    for (let k = 0; k < (strength > 1 ? 2 : 1); k++) {
+      const it = puff[next];
+      next = (next + 1) % PUFFS;
+      it.age = 0;
+      it.x = c.group.position.x - TRACK.carLength / 2 - 0.15;
+      it.z = c.group.position.z + (k ? 0.45 : -0.45) + (Math.random() - 0.5) * 0.2;
+      it.vx = -1.6 - Math.random() * 1.2;
+      it.vz = (Math.random() - 0.5) * 0.9;
+      it.spin = Math.random() * 6;
+    }
+  };
   return {
     root,
-    /** A puff (or two) behind `lane`'s car. */
-    burst(lane: number, strength = 1) {
-      const c = cars[lane];
-      if (!c) return;
-      for (let k = 0; k < (strength > 1 ? 2 : 1); k++) {
-        const it = puff[next];
-        next = (next + 1) % PUFFS;
-        it.age = 0;
-        it.x = c.group.position.x - TRACK.carLength / 2 - 0.15;
-        it.z = c.group.position.z + (k ? 0.45 : -0.45) + (Math.random() - 0.5) * 0.2;
-        it.vx = -1.6 - Math.random() * 1.2;
-        it.vz = (Math.random() - 0.5) * 0.9;
-        it.spin = Math.random() * 6;
-      }
-    },
-    /** `progress[lane]` is the server's count over the track (0–1); `tall` turns the names. */
-    update(progress: readonly number[], dt: number, tall = false) {
+    burst,
+    /**
+     * `progress[lane]`: where the server has the car (distance over the track, past 1 while
+     * gliding beyond the line); `speed[lane]` its speed (m/s). `tall` turns the names.
+     */
+    update(progress: readonly number[], speed: readonly number[], dt: number, tall = false) {
       turn(tall);
-      const ease = 1 - Math.exp(-dt * 11);
+      const ease = 1 - Math.exp(-dt * 18);
       cars.forEach((c, lane) => {
-        c.target = progress[lane] ?? 0;
-        const before = c.shown;
-        c.shown += (c.target - c.shown) * ease;
-        if (Math.abs(c.target - c.shown) < 1e-4) c.shown = c.target;
-        const speed = dt > 0 ? (c.shown - before) / dt : 0;
-        c.pitch += (Math.min(0.09, speed * 0.9) - c.pitch) * Math.min(1, dt * 10);
+        // Each press is a pulse of speed; the effects follow a calmer speed.
+        c.speed += ((speed[lane] ?? 0) - c.speed) * (1 - Math.exp(-dt * 5));
+        const target = progress[lane] ?? 0,
+          v = c.speed,
+          fast = Math.max(0, Math.min(1, (v - STREAK_FROM) / (STREAK_FULL - STREAK_FROM)));
+        c.shown += (target - c.shown) * ease;
+        if (Math.abs(target - c.shown) < 1e-5) c.shown = target;
+        c.pitch += (Math.min(0.08, v * 0.009) - c.pitch) * Math.min(1, dt * 8);
         c.group.position.x = carX(c.shown);
         c.body.rotation.z = c.pitch;
+        // Exhaust grows with speed: about one puff per 1.2 m driven.
+        c.smoke += v * dt * 0.85;
+        while (c.smoke >= 1) {
+          c.smoke -= 1;
+          burst(lane, v > 7 ? 2 : 1);
+        }
+        // Speed lines trail the car at high speed, flowing backwards.
+        c.clock += dt * (1.6 + v * 0.25);
+        c.streakMaterial.opacity = 0.9 * Math.sqrt(fast);
+        for (const line of c.streaks) {
+          const cycle = (c.clock + line.phase) % 1,
+            length = (1.5 + 3.5 * fast) * (0.6 + 0.4 * Math.sin(Math.PI * cycle));
+          line.mesh.visible = fast > 0;
+          line.mesh.scale.x = length;
+          line.mesh.position.set(-TRACK.carLength / 2 - 0.4 - length / 2 - cycle * 1.4, line.y, line.z);
+        }
       });
       for (let i = 0; i < PUFFS; i++) {
         const it = puff[i];

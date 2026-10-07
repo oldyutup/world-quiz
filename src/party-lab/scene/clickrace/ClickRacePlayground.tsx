@@ -48,7 +48,7 @@ export default function ClickRacePlayground({ source, lanes, self, presses, paus
   }, [camera, get, set]);
   const now = useRef({ source, self, paused, onFrame });
   now.current = { source, self, paused, onFrame };
-  const seen = useRef({ clicks: [] as number[], phase: "", count: 0, pressAt: -Infinity, recent: [] as number[], wire: undefined as ClickWire | undefined, published: 0 });
+  const seen = useRef({ phase: "", count: 0, pressAt: -Infinity, wire: undefined as ClickWire | undefined, published: 0 });
 
   useLayoutEffect(() => {
     const bg = scene.background;
@@ -68,9 +68,7 @@ export default function ClickRacePlayground({ source, lanes, self, presses, paus
       engine.unlock();
       void audio.unlock();
       if (!now.current.source.press(performance.now())) return;
-      const s = seen.current;
-      s.pressAt = performance.now();
-      s.recent.push(s.pressAt);
+      seen.current.pressAt = performance.now();
       visual.burst(now.current.self);
     });
     if (new URLSearchParams(window.location.search).get("clickDebug") === "1")
@@ -102,17 +100,20 @@ export default function ClickRacePlayground({ source, lanes, self, presses, paus
     camera.updateProjectionMatrix();
     const frame = source.frame(dt, paused || document.hidden || !!document.querySelector(".pl-menu-root"));
     if (!frame) {
-      visual.update([], dt, view.portrait);
+      visual.update([], [], dt, view.portrait);
       return;
     }
     const wire = frame.wire;
     s.wire = wire;
-    // Other cars puff when they move; this player's car puffed on the press.
-    wire.clicks.forEach((clicks, lane) => {
-      if (lane !== self && clicks > (s.clicks[lane] ?? 0)) visual.burst(lane, clicks - (s.clicks[lane] ?? 0));
-      s.clicks[lane] = clicks;
-    });
-    visual.update(wire.clicks.map((clicks) => clicks / wire.track), dt, view.portrait);
+    // Where the server has each car now: its last position carried on at its speed for the
+    // snapshot's age (at most one snapshot interval), so cars flow between snapshots.
+    const ahead = Math.min(frame.age, 0.1);
+    visual.update(
+      wire.distance.map((distance, lane) => (distance + wire.speed[lane] * ahead) / wire.track),
+      wire.speed,
+      dt,
+      view.portrait
+    );
     const quiet = paused || document.hidden;
     const count = wire.phase === "countdown" ? Math.ceil(wire.countdown) : 0;
     if (!quiet && count > 0 && count !== s.count) audio.playSfx({ name: "countdown", step: count });
@@ -127,12 +128,10 @@ export default function ClickRacePlayground({ source, lanes, self, presses, paus
       s.published = 0;
       onFrame(frame);
     }
-    // Engine: revs with this player's own pressing.
-    const t = performance.now();
-    while (s.recent.length && s.recent[0] < t - 1000) s.recent.shift();
-    const rate = s.recent.length,
-      throttle = t - s.pressAt < 160 ? 1 : 0;
-    engine.step((rate / 12) * 25, throttle, !quiet && racing(wire, self), audio.settings);
+    // Engine: its pitch climbs with this player's car speed (top speed ≈ the race engine's top).
+    const throttle = performance.now() - s.pressAt < 160 ? 1 : 0,
+      speed = self >= 0 ? wire.speed[self] : 0;
+    engine.step(speed * 3, throttle, !quiet && racing(wire, self), audio.settings);
   });
   return (
     <>

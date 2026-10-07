@@ -10,7 +10,7 @@ import { PLAYERS, type PlayerId } from "./players.js";
 
 const NO_TRANSFORMS = new Uint8Array(0);
 
-/** Tıklama Yarışı on the server: the counted clicks are the only state. */
+/** Tıklama Yarışı on the server: it counts the presses and drives the cars. */
 export class ClickRoundSimulation implements OnlineSimulation {
   readonly mode = "click_race" as const;
   phase: OnlinePhase = "waiting";
@@ -71,6 +71,8 @@ export class ClickRoundSimulation implements OnlineSimulation {
     this.counters.tick++;
     if (this.phase === "waiting") return [];
     if (this.phase === "results") {
+      // The cars glide to a stop under the results.
+      this.game.step();
       if ((this.resultTime += 1 / C.hz) >= C.results) {
         this.phase = "waiting";
         this.mask = 0;

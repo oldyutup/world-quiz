@@ -1,3 +1,5 @@
+import { CLICK_RACE } from "../../../../shared/party-lab/simulation/clickrace/config";
+
 /**
  * Tıklama Yarışı geometry: straight side-by-side lanes along +x (start → finish) and a
  * fixed, slightly tilted orthographic camera that fits the whole track into the screen.
@@ -5,8 +7,8 @@
  */
 export const TRACK = {
   laneWidth: 3.4,
-  /** Start line to finish line, m. */
-  run: 40,
+  /** Start line to finish line, m: the same metres the server drives the cars in. */
+  run: CLICK_RACE.trackLength,
   carLength: 4.3,
   /** Grass framed around the track (start grid, finish run-out, sides), m. */
   frame: { back: 10, front: 4, side: 1.4 },
@@ -18,11 +20,15 @@ export const TRACK = {
 export const START_X = -TRACK.run / 2;
 export const FINISH_X = TRACK.run / 2;
 
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 /** Lane centre across the track; lane 0 is drawn first (top, or left on a tall screen). */
 export const laneZ = (lane: number, lanes: number) => (lane - (lanes - 1) / 2) * TRACK.laneWidth;
-/** Car centre for a progress of 0–1: the nose sits on the start line, then crosses the finish. */
-export const carX = (progress: number) => START_X - TRACK.carLength / 2 + clamp01(progress) * TRACK.run;
+/** How far past the line a finished car may glide on screen, m (the track frame ends at 4). */
+const RUN_OUT = 3;
+/**
+ * Car centre for a progress of 0–1 (distance over the track): the nose sits on the start
+ * line, then crosses the finish; a finished car glides up to `RUN_OUT` metres further.
+ */
+export const carX = (progress: number) => START_X - TRACK.carLength / 2 + Math.max(0, Math.min(1 + RUN_OUT / TRACK.run, progress)) * TRACK.run;
 
 export function trackBounds(lanes: number) {
   const half = (lanes * TRACK.laneWidth) / 2 + TRACK.frame.side;

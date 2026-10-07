@@ -166,10 +166,10 @@ test("the fixed camera shows the whole track and every driver for 2 to 6 lanes, 
     }
   assert.ok(Math.abs(carX(0) + TRACK.carLength / 2 - START_X) < 1e-9, "nose on the start line");
   assert.ok(Math.abs(carX(1) + TRACK.carLength / 2 - FINISH_X) < 1e-9, "nose on the finish line");
-  assert.equal(carX(2), carX(1));
-  // The track looks the same at any press count; a press covers run / trackClicks.
-  assert.equal(TRACK.run, 40);
-  assert.ok(Math.abs(carX(1 / C.trackClicks) - carX(0) - 40 / 90) < 1e-9, "one press moves the car 0.44 m");
+  // A finished car glides on past the line, but stays on the drawn run-out.
+  assert.ok(carX(1.05) > carX(1) && carX(5) === carX(2) && carX(5) + TRACK.carLength / 2 <= FINISH_X + TRACK.frame.front);
+  // The arena draws the metres the server drives in.
+  assert.equal(TRACK.run, C.trackLength);
 });
 
 test("results: finishing order, average and best presses per second", () => {
@@ -178,8 +178,8 @@ test("results: finishing order, average and best presses per second", () => {
   for (let t = 1; t <= 600; t++) g.step([t % 6 === 0 ? [(t * 1000) / 60] : [], t % 5 === 0 ? [(t * 1000) / 60] : [], []]);
   const w = clickSection(g, [0, 1, 2]);
   assert.deepEqual(resultOrder(w), [1, 0, 2]);
-  assert.equal(averageRate(w, 0), 10);
-  assert.equal(averageRate(w, 1), 12);
+  assert.ok(Math.abs(averageRate(w, 0) - 10) < 0.5, `${averageRate(w, 0)}`);
+  assert.ok(Math.abs(averageRate(w, 1) - 12) < 0.5, `${averageRate(w, 1)}`);
   assert.ok(w.peak[1] >= 12 && w.peak[1] <= 13);
   assert.equal(averageRate(w, 2), 0);
 });
@@ -222,8 +222,8 @@ test("Yerel Test Arenası race: the player and three bots on the server's rules"
   for (let t = 0; t < 60 * 60 && frame.wire.phase !== "results"; t++) frame = race.frame(1 / 60, false);
   assert.equal(frame.wire.phase, "results");
   const finish = frame.wire.finish.map((ms) => ms / 1000);
-  // 90 presses: about 7.5, 10 and 15 s (plus the bots' start).
-  assert.ok(Math.abs(finish[2] - 7.8) < 1 && Math.abs(finish[1] - 10.3) < 1.2 && Math.abs(finish[3] - 15.3) < 1.8, `bot finishes ${finish}`);
+  // About 5.6, 7.5 and 12 s for 12, 9 and 6 presses a second (plus the bots' start).
+  assert.ok(Math.abs(finish[2] - 5.9) < 0.8 && Math.abs(finish[1] - 7.8) < 1 && Math.abs(finish[3] - 12.1) < 1.5, `bot finishes ${finish}`);
   assert.deepEqual(resultOrder(frame.wire), [2, 1, 3, 0], "fast, average, slow, then the idle player");
   assert.equal(frame.winner, 2);
   for (const players of [2, 3]) assert.equal(localClickRace(players, "gazelle").looks.length, players);
