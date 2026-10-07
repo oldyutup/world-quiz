@@ -1,10 +1,11 @@
 /**
  * LOCAL BOARD E2E SERVER: a test tool, never deployed.
  *
- * Runs the real Party Lab server plus one HTTP hook on 127.0.0.1 that ends the running
- * mini game with a chosen winner, so a headed browser can play a whole Tahta Oyunu
- * without bots for twelve modes. Kart race is finished through its own rules (the real
- * results path); any other mode reports its result to the board directly.
+ * Runs the real Party Lab server plus HTTP hooks on 127.0.0.1: one ends the running mini
+ * game with a chosen winner, so a headed browser can play a whole Tahta Oyunu without bots
+ * for every mode (kart race is finished through its own rules, the real results path; any
+ * other mode reports its result to the board directly); one queues the next die faces, so
+ * a run can land on each kind of special square.
  *
  * It lives outside src/: the production build (tsconfig.build.json) compiles src/ and
  * shared/party-lab only, Railway starts dist/servers/party-lab/src/index.js, and nothing
@@ -17,6 +18,7 @@ import { matchMaker } from "@colyseus/core";
 import { createPartyServer } from "../src/server.js";
 import type { PartyRoom } from "../src/PartyRoom.js";
 import { RaceRoundSimulation } from "../../../shared/party-lab/simulation/raceRound.js";
+import type { BoardSession } from "../../../shared/party-lab/board/session.js";
 
 if (process.env.NODE_ENV === "production") throw new Error("board-e2e-server is a local test tool");
 const port = Number(process.env.PORT ?? 2567);
@@ -24,6 +26,8 @@ const hookPort = Number(process.env.BOARD_E2E_HOOK_PORT ?? 2599);
 const { server } = createPartyServer();
 await server.listen(port, "127.0.0.1");
 
+/** Queued die faces per board match; the match's own (crypto) die once the queue is empty. */
+const forced = new WeakMap<BoardSession, number[]>();
 const json = (res: import("node:http").ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
@@ -58,6 +62,22 @@ const hook = createServer((req, res) => {
     }
     board.miniResult(winner, null);
     return json(res, 200, { ok: true, path: "board" });
+  }
+  if (url.pathname === "/board-e2e/dice") {
+    const board = room.board;
+    if (!board) return json(res, 409, { error: "NO_BOARD" });
+    const values = (url.searchParams.get("values") ?? "").split(",").map(Number).filter((v) => Number.isInteger(v) && v >= 1 && v <= 6);
+    let queue = forced.get(board);
+    if (!queue) {
+      // The session's die is private; this local tool wraps it.
+      const seat = board as unknown as { die: () => number };
+      const own = seat.die;
+      const q: number[] = [];
+      seat.die = () => q.shift() ?? own();
+      forced.set(board, (queue = q));
+    }
+    queue.push(...values);
+    return json(res, 200, { ok: true, queued: queue.length });
   }
   json(res, 404, { error: "NOT_FOUND" });
 });
