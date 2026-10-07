@@ -50,8 +50,8 @@ function finishAt(rate: number) {
   run(g, C.limit + 1, (lane, ms) => (lane === 0 ? every(rate)(ms) : []));
   return g.lanes[0].finish === null ? Infinity : g.lanes[0].finish / 1000;
 }
-/** Places a car just before the line, so its next press finishes. */
-const nearLine = (g: ClickRaceGame, lane: number) => g.setDistance(lane, g.track - 0.02);
+/** Places a car just before the line: half of what one press moves it in a step, so it finishes. */
+const nearLine = (g: ClickRaceGame, lane: number) => g.setDistance(lane, g.track - C.pressSpeed / C.hz / 2);
 
 test("driving: about 9 presses a second finish in 7–8 s, about 12 in 5–6 s; the limit is 30 s", () => {
   assert.equal(C.limit, 30);
@@ -67,24 +67,56 @@ test("driving: about 9 presses a second finish in 7–8 s, about 12 in 5–6 s; 
   assert.ok(g.lanes[0].distance < g.lanes[1].distance && g.lanes[1].distance < g.lanes[2].distance, `${g.lanes.map((l) => l.distance.toFixed(1))}`);
 });
 
-test("let go, the car glides about half a second and stops; never at once", () => {
-  const g = racing();
-  run(g, 3, (lane, ms) => (lane === 0 ? every(9)(ms) : []));
+/** Lets lane 0 go: when it is below 0.3 m/s, when it stops (s) and how far it glides (m). */
+function letGo(g: ClickRaceGame) {
   const from = g.lanes[0].distance,
     speed = g.lanes[0].speed;
-  assert.ok(speed > 3, `cruising at ${speed} m/s`);
   let stopped = -1,
     slow = -1;
-  for (let t = 1; t <= 60; t++) {
+  for (let t = 1; t <= 5 * C.hz && stopped < 0; t++) {
     g.step();
-    if (t === 1) assert.ok(g.lanes[0].speed > speed * 0.8 && g.lanes[0].distance > from, "still rolling right after the last press");
+    if (t === 1) assert.ok(g.lanes[0].speed > speed * 0.9 && g.lanes[0].distance > from, "still rolling right after the last press");
+    if (t === C.hz) assert.ok(g.lanes[0].speed > 0, "still rolling a second later");
     if (slow < 0 && g.lanes[0].speed < 0.3) slow = t / C.hz;
-    if (stopped < 0 && g.lanes[0].speed === 0) stopped = t / C.hz;
+    if (g.lanes[0].speed === 0) stopped = t / C.hz;
   }
-  assert.ok(slow >= 0.35 && slow <= 0.6, `below 0.3 m/s after ${slow} s`);
-  assert.ok(stopped > 0 && stopped <= 0.7, `stopped after ${stopped} s`);
-  const glided = g.lanes[0].distance - from;
-  assert.ok(glided > 0.5 && glided < 2, `glided ${glided} m`);
+  return { speed, slow, stopped, glided: g.lanes[0].distance - from };
+}
+
+test("let go at top speed, the car glides about 2 s and stops; never at once", () => {
+  const top = racing();
+  run(top, 3, (lane, ms) => (lane === 0 ? every(25)(ms) : []));
+  const fast = letGo(top);
+  assert.ok(fast.speed > 9, `top speed ${fast.speed} m/s`);
+  assert.ok(fast.stopped >= 1.8 && fast.stopped <= 2.2, `stopped after ${fast.stopped} s`);
+  assert.ok(fast.slow >= 1.3 && fast.slow <= 1.9, `below 0.3 m/s after ${fast.slow} s`);
+  assert.ok(fast.glided > 3 && fast.glided < 7, `glided ${fast.glided} m`);
+  // From an average player's cruise it glides a little less.
+  const cruise = racing();
+  run(cruise, 3, (lane, ms) => (lane === 0 ? every(9)(ms) : []));
+  const average = letGo(cruise);
+  assert.ok(average.stopped >= 1.3 && average.stopped < fast.stopped, `cruise stopped after ${average.stopped} s`);
+});
+
+test("pressing in bursts (1 s on, 0.5 s off) still finishes in a fair time; the car rolls on in the rests", () => {
+  const on = (ms: number) => ms % 1500 < 1000;
+  const g = racing();
+  let restMoves = 0,
+    restStops = 0;
+  run(g, C.limit + 1, (lane, ms) => {
+    if (lane !== 0) return [];
+    if (!on(ms) && g.lanes[0].finish === null) {
+      if (g.lanes[0].speed > 0) restMoves++;
+      else restStops++;
+    }
+    return on(ms) ? every(9)(ms) : [];
+  });
+  const seconds = g.lanes[0].finish! / 1000,
+    steady = finishAt(9);
+  assert.ok(g.lanes[0].finish !== null, "finished");
+  assert.ok(seconds < 12.5 && seconds < 1.6 * steady, `bursts of 9/s: ${seconds} s (steady 9/s: ${steady} s)`);
+  assert.equal(restStops, 0, "never stops in a half-second rest");
+  assert.ok(restMoves > 0);
 });
 
 test("there is a top speed: past about 15/s, faster pressing hardly helps", () => {
@@ -279,7 +311,7 @@ test("a player who leaves stops and ranks last; the last player racing wins at o
 test("a dropped player's car glides to a stop and moves on when they are back", () => {
   const g = racing(2);
   run(g, 1, (_, ms) => every(10)(ms));
-  run(g, 1, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
+  run(g, 2.5, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
   const parked = g.lanes[0].distance;
   assert.equal(g.lanes[0].speed, 0, "stopped while away");
   run(g, 1, (lane, ms) => (lane === 1 ? every(10)(ms) : []));
