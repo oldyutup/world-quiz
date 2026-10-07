@@ -44,10 +44,12 @@ const every = (rate: number) => (ms: number) => {
   return out;
 };
 
-test("the track suits an average player: 8–10 clicks a second finish in 15–20 s", () => {
+test("90 presses to the finish: 8–10 a second finish in 9–11.5 s, well inside the 30 s limit", () => {
+  assert.equal(C.trackClicks, 90);
+  assert.equal(C.limit, 30);
   for (const rate of [8, 9, 10]) {
     const seconds = C.trackClicks / rate;
-    assert.ok(seconds >= 15 && seconds <= 20, `${rate}/s → ${seconds} s`);
+    assert.ok(seconds >= 9 && seconds <= 11.5, `${rate}/s → ${seconds} s`);
     const g = racing();
     run(g, 30, (lane, ms) => (lane === 0 ? every(rate)(ms) : []));
     assert.equal(g.lanes[0].clicks, C.trackClicks);
@@ -93,8 +95,8 @@ test("at most 25 presses count in any second; the rest are ignored without a pen
   assert.equal(steady.dropped, 0);
   // No penalty: back to a human pace, every press counts again.
   const before = fast.clicks;
-  run(g, 2, (lane, ms) => (lane === 0 ? every(10)(ms) : []));
-  assert.equal(fast.clicks - before, 20);
+  run(g, 1, (lane, ms) => (lane === 0 ? every(10)(ms) : []));
+  assert.equal(fast.clicks - before, 10);
 });
 
 test("presses a stalled link delivers together are all counted (window on press stamps, not arrival)", () => {
@@ -138,7 +140,7 @@ test("forged stamps buy nothing: they are pulled back to the race clock and neve
 
 test("time limit: the furthest car wins; places by finish order, then distance", () => {
   const g = racing(3);
-  run(g, C.limit + 1, (lane, ms) => every([3, 2, 1][lane])(ms));
+  run(g, C.limit + 1, (lane, ms) => every([2, 1.5, 1][lane])(ms));
   assert.equal(g.phase, "results");
   assert.equal(g.ticks, C.limit * C.hz);
   assert.deepEqual(g.lanes.map((l) => l.finish), [null, null, null]);

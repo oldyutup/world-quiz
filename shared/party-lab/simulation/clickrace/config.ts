@@ -4,16 +4,17 @@
  */
 export const CLICK_RACE = {
   /**
-   * Clicks from the start line to the finish: the one track-length knob. 150 puts an
-   * average player (8–10 clicks/s) at the finish in 15–19 s.
+   * Clicks from the start line to the finish: the one track-length knob (the track looks
+   * the same; a press moves the car further). 90 puts an average player (8–10 clicks/s)
+   * at the finish in 9–11 s.
    */
-  trackClicks: 150,
+  trackClicks: 90,
   /** Simulation steps per second (the room's fixed step). */
   hz: 60,
   /** 3-2-1 before BAŞLA, seconds. Clicks before BAŞLA never count. */
   countdown: 3,
   /** Racing time limit, seconds; the furthest car wins if nobody finished. */
-  limit: 45,
+  limit: 30,
   /** Results screen, seconds. */
   results: 8,
   /** At most this many clicks count in any `windowMs` (autoclicker cap). */
