@@ -42,7 +42,7 @@ import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
 import { MODE_NAMES } from "../../../shared/party-lab/modes";
 import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
-import { controlHint } from "./arenaMenu";
+import { afterRoundText, controlHint } from "./arenaMenu";
 import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 
 class GraphicsBoundary extends Component<
@@ -550,7 +550,7 @@ function OnlineRooftopArena(props: Props) {
             </strong>
             <span>
               {lobby.phase === "results"
-                ? "Yeni tur için lobiye dönülüyor."
+                ? afterRoundText(!!lobby.board)
                 : lobby.phase === "countdown"
                 ? "Hazır ol!"
                 : ""}

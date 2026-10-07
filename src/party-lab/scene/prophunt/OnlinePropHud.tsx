@@ -4,6 +4,7 @@ import { PROP_HUNT } from "../../../../shared/party-lab/simulation/prophunt/conf
 import { PLAYERS, type PlayerId } from "../players";
 import type { PropHudElements, PropSnapshot } from "./PropHuntPlayground";
 import { revealLabel } from "./reveal";
+import { afterRoundText } from "../arenaMenu";
 
 const ROLE_NAMES = { seeker: "Arayan", hider: "Saklanan" } as const;
 
@@ -21,7 +22,7 @@ const ROLE_NAMES = { seeker: "Arayan", hider: "Saklanan" } as const;
  *   placed per frame over its prop, through walls: the round is over).
  * The debug readout exists only when the Esc debug panel is open (`?partyDebug=1`).
  */
-export default function OnlinePropHud({ snapshot, hud, debugOpen, slot, names, ammoMax, proximity, whistleSeconds }: { snapshot: PropSnapshot; hud: MutableRefObject<PropHudElements>; debugOpen: boolean; slot: PlayerId; names: string[]; ammoMax: number; proximity: boolean; whistleSeconds: number }) {
+export default function OnlinePropHud({ snapshot, hud, debugOpen, slot, names, ammoMax, proximity, whistleSeconds, afterRound = afterRoundText(false) }: { snapshot: PropSnapshot; hud: MutableRefObject<PropHudElements>; debugOpen: boolean; slot: PlayerId; names: string[]; ammoMax: number; proximity: boolean; whistleSeconds: number; afterRound?: string }) {
   const { phase, role } = snapshot;
   const seeker = role === "seeker";
   const out = !seeker && !snapshot.alive[slot] && phase === "search";
@@ -157,7 +158,7 @@ export default function OnlinePropHud({ snapshot, hud, debugOpen, slot, names, a
                   : snapshot.reason === "ammo"
                   ? `${seeker ? "Mermin bitti!" : "Arayanın mermisi bitti!"} ${snapshot.hidden} saklanan bulunamadı. `
                   : snapshot.reason === "forfeit" ? "Oyuncu ayrıldı. " : `Süre doldu, ${snapshot.hidden} saklanan bulunamadı. `}
-                Yeni tur için lobiye dönülüyor.
+                {afterRound}
               </span>
               {snapshot.reveal.map((r) => (
                 <em key={r.id} className="pl-prop-result-line">

@@ -13,6 +13,9 @@ import { whistleKey } from "./prophunt/controls";
  */
 export type MenuView = "main" | "controls" | "audio";
 
+/** A finished round's footer: a board match goes back to the board, otherwise to the lobby. */
+export const afterRoundText = (board: boolean) => (board ? "Tahtaya dönülüyor." : "Yeni tur için lobiye dönülüyor.");
+
 /** Esc: closed → menu; a sub-view → back to the menu; the menu → back to the game. */
 export function escapeStep(view: MenuView | null): MenuView | null {
   if (view === null) return "main";

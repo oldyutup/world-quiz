@@ -112,7 +112,7 @@ export function ArenaStatus({ lobby, spectating }: { lobby: LobbySnapshot; spect
       <p className={`pl-online-status pl-arena-chip${normal ? " pl-visually-hidden" : ""}${lobby.status === "connected" && lobby.link === "degraded" ? " is-degraded" : ""}`} role="status">
         {text}
       </p>
-      {spectating && <p className="pl-arena-chip">İzliyorsun. Sonraki tur lobide hazır olabilirsin.</p>}
+      {spectating && <p className="pl-arena-chip">{lobby.board ? "İzliyorsun. Tahta bitince rövanşa katılabilirsin." : "İzliyorsun. Sonraki tur lobide hazır olabilirsin."}</p>}
     </>
   );
 }

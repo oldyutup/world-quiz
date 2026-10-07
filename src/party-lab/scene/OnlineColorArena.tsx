@@ -26,7 +26,7 @@ import { STAGE_SIZES } from "../../../shared/party-lab/simulation/colors/shrink"
 import { ColorFieldKnowledge, COLOR_FLAG, decodeColorSnapshot, type DecodedColors } from "../../../shared/party-lab/simulation/colors/wire";
 import { MODE_NAMES } from "../../../shared/party-lab/modes";
 import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
-import { controlHint } from "./arenaMenu";
+import { afterRoundText, controlHint } from "./arenaMenu";
 import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
@@ -815,7 +815,7 @@ export default function OnlineColorArena(props: Props) {
                 <strong style={winner ? { color: winner.color } : undefined}>{winner ? `${winner.nickname} kazandı!` : "Berabere!"}</strong>
                 <span>
                   {(colors?.result && RESULT_TEXT[colors.result]) ?? ""}
-                  {colors ? `${colors.cycle.index} tur · ${(colors.t / 60).toFixed(1)} sn · ` : ""}Yeni tur için lobiye dönülüyor.
+                  {colors ? `${colors.cycle.index} tur · ${(colors.t / 60).toFixed(1)} sn · ` : ""}{afterRoundText(!!lobby.board)}
                 </span>
               </>
             ) : (

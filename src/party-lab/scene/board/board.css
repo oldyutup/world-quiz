@@ -1,0 +1,65 @@
+/* Tahta Oyunu HUD: the cream cards of the other Party Lab modes over the board. */
+[data-mode="board_game"] .pl-menu-button{left:auto;right:24px}
+.pl-board-hud{position:absolute;inset:0;pointer-events:none;color:oklch(31% .035 170);font-family:inherit}
+.pl-board-card{background:oklch(96% .018 90 / .94);border-radius:12px;box-shadow:0 8px 28px oklch(28% .03 170 / .10)}
+.pl-board-heading{position:absolute;top:26px;left:28px;display:flex;flex-direction:column;gap:3px;padding:12px 16px;max-width:260px}
+.pl-board-heading>span:first-child{font-size:13px;font-weight:800;letter-spacing:.12em}
+.pl-board-heading strong{font-size:30px;line-height:1.15}
+.pl-board-heading>span{font-size:13px}
+.pl-board-heading p{margin:8px 0 0;font-size:12.5px;line-height:1.5;border-top:1px solid oklch(85% .025 90);padding-top:8px}
+.pl-board-players{position:absolute;right:26px;top:84px;display:flex;flex-direction:column;gap:6px;margin:0;padding:8px;list-style:none;min-width:250px}
+.pl-board-players li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;border:2px solid transparent;transition:border-color .2s,background .2s}
+.pl-board-players li[data-current="true"]{border-color:var(--board-player);background:oklch(99% .01 90)}
+.pl-board-players li[data-away="true"]{opacity:.62}
+.pl-board-players i{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:50%;background:var(--board-player);font-style:normal;font-size:17px}
+.pl-board-players span{flex:1;font-size:14px;font-weight:750;min-width:0}
+.pl-board-players em{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.06em;margin-left:6px;padding:2px 6px;border-radius:6px;background:oklch(31% .035 170);color:oklch(96% .022 90);vertical-align:2px}
+.pl-board-players span small{display:block;font-size:11px;font-weight:500;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-board-players b{font-size:24px;line-height:1;text-align:right;font-variant-numeric:tabular-nums}
+.pl-board-players b small{display:block;font-size:10px;font-weight:600;opacity:.7}
+.pl-board-banner{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:2px;padding:11px 22px;border-radius:14px;background:oklch(96% .018 90 / .95);box-shadow:0 8px 28px oklch(28% .03 170 / .12);text-align:center;max-width:min(520px,calc(100% - 640px));min-width:260px}
+.pl-board-banner strong{font-size:22px;line-height:1.25}
+.pl-board-banner span{font-size:13px}
+.pl-board-banner[data-phase="intro"] strong{font-size:28px}
+.pl-board-timer{font-variant-numeric:tabular-nums}
+.pl-board-actions{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:12px;pointer-events:auto;max-width:calc(100% - 32px)}
+.pl-board-actions p{flex-basis:100%;margin:0;text-align:center;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:8px;background:oklch(96% .018 90 / .9);justify-self:center;width:max-content;max-width:100%;margin-inline:auto}
+.pl-board-choice,.pl-board-roll{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:200px;padding:14px 22px 12px;border:0;border-radius:14px;cursor:pointer;font:inherit;color:oklch(25% .03 170);background:oklch(96% .022 90);box-shadow:0 6px 0 oklch(70% .05 80),0 12px 30px oklch(28% .03 170 / .18);transition:transform .08s,box-shadow .08s}
+.pl-board-choice strong,.pl-board-roll strong{font-size:21px}
+.pl-board-choice small,.pl-board-roll small{font-size:12px;opacity:.8}
+.pl-board-choice kbd,.pl-board-roll kbd{position:absolute;top:8px;right:9px;font-family:inherit;font-size:11px;font-weight:800;padding:1px 6px;border-radius:5px;color:oklch(31% .035 170);background:oklch(99% .01 90);border:1px solid oklch(70% .04 90);box-shadow:none}
+.pl-board-cover{position:absolute;inset:0;display:grid;place-items:center;background:#cfe1d6;pointer-events:none}
+.pl-board-cover span{font-size:14px;font-weight:700;color:oklch(31% .035 170);opacity:.75}
+.pl-board-roll{min-width:260px;background:oklch(86% .12 85);box-shadow:0 6px 0 oklch(62% .12 70),0 12px 30px oklch(28% .03 170 / .2);animation:pl-board-glow 1.6s ease-in-out infinite}
+.pl-board-roll strong{font-size:26px}
+.pl-board-choice:hover,.pl-board-roll:hover{transform:translateY(-1px)}
+.pl-board-choice:active,.pl-board-roll:active{transform:translateY(4px);box-shadow:0 2px 0 oklch(62% .12 70)}
+.pl-board-choice:focus-visible,.pl-board-roll:focus-visible{outline:3px solid oklch(45% .1 170);outline-offset:3px}
+/* A glow, not a bounce: the button never moves under the pointer. */
+@keyframes pl-board-glow{0%,100%{box-shadow:0 6px 0 oklch(62% .12 70),0 12px 30px oklch(28% .03 170 / .2),0 0 0 0 oklch(86% .12 85 / .0)}50%{box-shadow:0 6px 0 oklch(62% .12 70),0 12px 30px oklch(28% .03 170 / .2),0 0 0 8px oklch(86% .12 85 / .45)}}
+.pl-board-finish{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);min-width:320px;max-width:calc(100% - 32px);text-align:center;padding:24px 34px 20px;border-radius:20px;background:oklch(96% .022 90 / .97);box-shadow:0 16px 48px oklch(28% .03 170 / .2);animation:pl-board-pop .5s cubic-bezier(.2,1.4,.4,1)}
+.pl-board-finish>span{display:block;font-size:44px;line-height:1}
+.pl-board-finish strong{display:block;font-size:32px;margin-top:8px;text-shadow:0 1px 0 oklch(40% .04 170 / .35)}
+.pl-board-finish p{margin:6px 0 12px;font-size:14px}
+.pl-board-finish ol{list-style:none;margin:0 0 14px;padding:0;font-size:14px;font-weight:650;line-height:1.8}
+.pl-board-finish ol small{font-weight:500;opacity:.7;margin-left:4px}
+.pl-board-finish>small{font-size:12px;opacity:.75}
+@keyframes pl-board-pop{from{transform:translateX(-50%) scale(.85);opacity:0}to{transform:translateX(-50%) scale(1);opacity:1}}
+.pl-board-menu-controls{padding:24px;max-width:520px}.pl-board-menu-controls p{line-height:1.9}
+.pl-board-menu-controls kbd{font-family:inherit;font-size:12px;font-weight:750;padding:1px 6px;border-radius:5px;background:oklch(92% .025 90);border:1px solid oklch(78% .03 90)}
+[data-mode="board_game"] .pl-arena-side{top:auto;bottom:24px;left:28px}
+@media (max-width:900px){
+  .pl-board-banner{top:auto;bottom:150px;max-width:calc(100% - 32px)}
+  .pl-board-players{top:auto;bottom:auto;top:16px;right:16px;min-width:0;padding:6px}
+  .pl-board-players li{padding:5px 7px;gap:7px}.pl-board-players span small{display:none}
+  .pl-board-heading{top:16px;left:16px;max-width:180px;padding:9px 12px}.pl-board-heading strong{font-size:22px}.pl-board-heading p{display:none}
+}
+@media (max-width:600px){
+  .pl-board-players{top:auto;bottom:220px;right:16px;left:16px;flex-direction:row;flex-wrap:wrap}
+  .pl-board-players li{flex:1 1 140px}
+  .pl-board-choice,.pl-board-roll{min-width:150px;padding:12px 14px 10px}
+  .pl-board-roll{min-width:200px}
+  .pl-board-banner{bottom:auto;top:76px;min-width:0;width:calc(100% - 32px)}
+  .pl-board-finish{padding:20px 18px;min-width:0;width:calc(100% - 32px)}
+}
+@media (prefers-reduced-motion:reduce){.pl-board-roll,.pl-board-finish{animation:none}}

@@ -35,7 +35,7 @@ import { shotDirections, weaponRange, type WeaponKind } from "../../../shared/pa
 import { castHistoric, type HistoricView } from "../../../shared/party-lab/simulation/barn/rewind";
 import { MODE_NAMES } from "../../../shared/party-lab/modes";
 import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
-import { controlHint } from "./arenaMenu";
+import { afterRoundText, controlHint } from "./arenaMenu";
 import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
@@ -855,7 +855,7 @@ export default function OnlineBarnArena(props: Props) {
             </strong>
             <span>
               {lobby.phase === "results"
-                ? `${scores.map(({ player, f }) => `${player.nickname} ${f?.kills ?? 0}`).join(" · ")} · Yeni tur için lobiye dönülüyor.`
+                ? `${scores.map(({ player, f }) => `${player.nickname} ${f?.kills ?? 0}`).join(" · ")} · ${afterRoundText(!!lobby.board)}`
                 : lobby.phase === "countdown"
                 ? "En çok öldüren kazanır · 2:30"
                 : ""}

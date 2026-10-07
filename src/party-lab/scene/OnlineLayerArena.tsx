@@ -24,7 +24,7 @@ import { decodeLayerSnapshot, LAYER_FLAG, LayerTileKnowledge, type DecodedLayers
 import { TILE_STAGES } from "../../../shared/party-lab/simulation/layers/timeline";
 import { MODE_NAMES } from "../../../shared/party-lab/modes";
 import { ArenaMenu, ArenaStatus, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
-import { controlHint } from "./arenaMenu";
+import { afterRoundText, controlHint } from "./arenaMenu";
 import { ACCUMULATOR_START, FrameClock, frameTime } from "./frameClock";
 import { usePartyAudio } from "../audio/PartyAudio";
 import { CameraFeel } from "../audio/feel";
@@ -759,7 +759,7 @@ export default function OnlineLayerArena(props: Props) {
                 <strong style={winner ? { color: winner.color } : undefined}>{winner ? `${winner.nickname} kazandı!` : "Berabere!"}</strong>
                 <span>
                   {(layers?.result && RESULT_TEXT[layers.result]) ?? ""}
-                  {layers ? `${(layers.t / 60).toFixed(1)} sn · ` : ""}Yeni tur için lobiye dönülüyor.
+                  {layers ? `${(layers.t / 60).toFixed(1)} sn · ` : ""}{afterRoundText(!!lobby.board)}
                 </span>
               </>
             ) : (

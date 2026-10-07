@@ -10,7 +10,7 @@ import type { MovementInput } from "../../../shared/party-lab/intent";
 import type { PlayerId } from "./players";
 import { ArenaMenu, ArenaStatus, MenuButton, ControlHint, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { usePartyAudio } from "../audio/PartyAudio";
-import { controlHint } from "./arenaMenu";
+import { afterRoundText, controlHint } from "./arenaMenu";
 import OnlinePropView from "./prophunt/OnlinePropView";
 import OnlinePropHud from "./prophunt/OnlinePropHud";
 import type { PropSnapshot, PropHudElements } from "./prophunt/PropHuntPlayground";
@@ -54,7 +54,7 @@ export default function OnlinePropArena(props: Props) {
         {wire && <OnlinePropView key={`${lobby.round}:${slot}`} lobby={lobby} stream={props.stream} sendInput={props.sendInput} slot={slot} role={role} onStatus={setStatus} onSnapshot={setSnapshot} hud={hud} bindings={bindings} paused={paused} menuOpen={menuOpen || lobby.status !== "connected"} audio={audio} shakeEnabled={settings.cameraShake} look={look} view={view} onView={setView} proximityEnabled={wire.settings.proximity} />}
       </Canvas>
       <MenuButton onOpen={() => menu.setView("main")} />
-      {snapshot && wire && <OnlinePropHud snapshot={snapshot} hud={hud} debugOpen={!!props.debug && debug.open} slot={slot} names={names} ammoMax={wire.settings.ammo} proximity={wire.settings.proximity} whistleSeconds={Math.ceil(wire.whistle[slot] / 60)} />}
+      {snapshot && wire && <OnlinePropHud snapshot={snapshot} hud={hud} debugOpen={!!props.debug && debug.open} slot={slot} names={names} ammoMax={wire.settings.ammo} proximity={wire.settings.proximity} whistleSeconds={Math.ceil(wire.whistle[slot] / 60)} afterRound={afterRoundText(!!lobby.board)} />}
       <div className="pl-arena-side"><ArenaStatus lobby={lobby} spectating={!self?.participating} /></div>
       {(status === "loading" || status === "error") && <div className="pl-arena-message" role="status"><strong>{status === "error" ? "Arena yüklenemedi" : "Arena bağlanıyor…"}</strong></div>}
       {lookMode === "lock" && lookStatus !== "locked" && !inputOff && !out && wire?.phase !== "results" && <div className="pl-arena-message pl-look-prompt"><strong>Kamerayı çevirmek için arenaya tıkla</strong><span>Fare ya da trackpad ile çevir · Esc menü</span></div>}

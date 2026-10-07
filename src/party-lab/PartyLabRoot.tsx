@@ -13,6 +13,7 @@ import "./party-lab.css";
 
 const PREVIEW_MESSAGE = "Arkadaşlarınla buluş, hazır ol ve aynı arenada kapış. 2–3 oyuncu.";
 const OnlineArena = lazy(() => import("./scene/OnlineArena"));
+const OnlineBoardArena = lazy(() => import("./scene/board/OnlineBoardArena"));
 const ArenaScene = lazy(() => import("./scene/ArenaScene"));
 
 export default function PartyLabRoot() {
@@ -30,8 +31,11 @@ function PartyLab() {
     setBindings(next);
     setControlsSaved(saveControls(next));
   }, []);
+  const board = network.snapshot.board;
+  // A board match is "in the arena" between its mini games too.
+  const onlineArena = !!network.snapshot.code && (network.snapshot.phase !== "waiting" || !!board);
   const settings = controlsOpen ? <ControlsSettings bindings={bindings} onChange={updateBindings}
-    saved={controlsSaved} inArena={inArena || (!!network.snapshot.code && network.snapshot.phase !== "waiting")} online={!!network.snapshot.code && network.snapshot.phase !== "waiting"} onClose={() => {
+    saved={controlsSaved} inArena={inArena || onlineArena} online={onlineArena} onClose={() => {
       setControlsOpen(false);
       requestAnimationFrame(() => controlsEntry.current?.focus());
     }} /> : null;
@@ -93,7 +97,11 @@ function PartyLab() {
     const leave = () => { setRoomCode(network.snapshot.code); network.leave(); setControlsOpen(false); setStatus(PREVIEW_MESSAGE); };
     return <>
       <div hidden={controlsOpen}>
-        {network.snapshot.phase === 'waiting'
+        {board && !(board.phase === "minigame" && network.snapshot.phase !== "waiting")
+          ? <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Tahta hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
+              <OnlineBoardArena lobby={network.snapshot} onChoose={network.chooseBoardDice} onRoll={network.rollBoardDice} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} />
+            </Suspense>
+          : network.snapshot.phase === 'waiting'
           ? <PartyLobby controlsRef={controlsEntry} lobby={network.snapshot} onChat={network.sendChat} onLeave={leave} onReady={network.setReady} onMode={network.setMode} onPropSettings={network.setPropSettings} onBowlingSettings={network.setBowlingSettings} onBoardSettings={network.setBoardSettings} onControls={() => setControlsOpen(true)} diagnostics={network.diagnostics} debug={network.debug} />
           : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
               <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} diagnostics={network.diagnostics} debug={network.debug}/>
