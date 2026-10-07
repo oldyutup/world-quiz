@@ -7,6 +7,8 @@ import { snowballScreenInput } from './snowball/screenInput.js';
 import { snowballSection, snowballTransforms } from './snowball/wire.js';
 import { newRoomCounters, type RoomCounters, type OnlineSimulation } from './online.js';
 import type { PlayerId } from './players.js';
+import { seatRanks } from '../board/rules.js';
+import { PLAYERS } from './players.js';
 
 /** Latest physical elimination wins an all-fall. Exact-tick ties rotate priority
  * through occupied seats each round, seeded once by the authoritative match. */
@@ -25,6 +27,7 @@ export class SnowballRoundSimulation implements OnlineSimulation {
   get tick(){return this.counters.tick;} get roundId(){return this.counters.round;}
   get seconds(){return this.phase==='countdown'?Math.max(0,Math.ceil(C.countdown-this.game.phaseTime)):this.phase==='results'?Math.max(0,10-this.resultTime):0;}
   get winner(){const wins=this.game.wins,max=Math.max(...wins),leaders=wins.flatMap((n,i)=>n===max?[i]:[]);return this.phase==='results'&&leaders.length===1?this.seats[leaders[0]]:-1;}
+  placements(){return seatRanks(this.seats,this.game.wins,PLAYERS.length);}
   start(slots:readonly PlayerId[]) {
     if(this.phase!=='waiting'||slots.length<2||slots.length>3||new Set(slots).size!==slots.length||slots.some(s=>!Number.isInteger(s)||s<0||s>2))return false;
     this.seats=[...slots].sort((a,b)=>a-b);this.mask=slots.reduce<number>((m,s)=>m|1<<s,0);this.forfeits.clear();this.out=slots.map(()=>-1);

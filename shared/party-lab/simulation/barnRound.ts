@@ -1,6 +1,7 @@
 import { PlaygroundPhysics, IDLE_INPUT, PHYSICS } from "./physics.js";
 import { PhysicsFeedback } from "./feedback.js";
 import { PLAYERS, type PlayerId } from "./players.js";
+import { ranksByScore } from "../board/rules.js";
 import { PARTS } from "./ragdoll/config.js";
 import type { MovementInput } from "../intent.js";
 import { arenaMap } from "../maps/index.js";
@@ -122,6 +123,10 @@ export class BarnRoundSimulation implements OnlineSimulation {
   neutralize(slot: PlayerId) {
     // Input is already neutral (the room clears the mailbox); stop a swing in progress.
     this.barn.fighters[slot].punch.age = -1;
+  }
+  /** Board placements: kills, like the winner. */
+  placements() {
+    return ranksByScore(PLAYERS.map(({ id }) => (this.mask & (1 << id) ? this.barn.fighters[id].kills : null)));
   }
   remove(slot: PlayerId) {
     const p = this.physics.players[slot];

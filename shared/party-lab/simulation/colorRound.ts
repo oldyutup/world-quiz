@@ -18,6 +18,7 @@ import { encodeColorField } from "./colors/wire.js";
 import { retire } from "./layers/game.js";
 import { captureLayerPredictionState } from "./predictionState.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "./online.js";
+import { eliminationRanks } from "../board/rules.js";
 
 const IDLE = PLAYERS.map(() => IDLE_INPUT);
 /** Stagger shorter than this counts as over (the brawl's own epsilon). */
@@ -87,6 +88,10 @@ export class ColorRoundSimulation implements OnlineSimulation {
   }
   get winner() {
     return this.phase === "results" ? this.round.winner ?? -1 : -1;
+  }
+  /** Board placements: still standing first, then the later eliminations. */
+  placements() {
+    return eliminationRanks(this.round.outAt, this.mask);
   }
   /** Round tick the snapshot reports: the next step's in play, the final one in results. */
   get roundTick() {

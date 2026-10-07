@@ -17,6 +17,7 @@ import { retire } from "./layers/game.js";
 import { BombTagGame, type BombTagPose } from "./bomb/game.js";
 import { captureBombPredictionState } from "./predictionState.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "./online.js";
+import { eliminationRanks } from "../board/rules.js";
 
 const IDLE = PLAYERS.map(() => IDLE_INPUT);
 const EPSILON = 1e-9;
@@ -49,6 +50,8 @@ export class BombRoundSimulation implements OnlineSimulation {
   get tick() { return this.counters.tick; }
   get seconds() { return this.phase === "waiting" ? 0 : this.round.seconds; }
   get winner() { return this.phase === "results" ? this.round.winner ?? -1 : -1; }
+  /** Board placements: still standing first, then the later eliminations. */
+  placements() { return eliminationRanks(this.round.outAt, this.mask); }
   get roundTick() {
     return this.phase === "playing" ? this.round.tick : this.phase === "results" ? Math.max(0, this.round.endedAt) : 0;
   }

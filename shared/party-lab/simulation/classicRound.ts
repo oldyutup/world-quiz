@@ -6,6 +6,8 @@ import {positionAt,directionAt,powerAt} from './classicbowling/config.js';
 import {classicTransforms,type ClassicWire} from './classicbowling/wire.js';
 import {newRoomCounters,type RoomCounters,type OnlineSimulation} from './online.js';
 import type {PlayerId} from './players.js';
+import {seatRanks} from '../board/rules.js';
+import {PLAYERS} from './players.js';
 const selecting=(phase:string)=>['position','direction','power'].includes(phase);
 export class ClassicRoundSimulation implements OnlineSimulation{
  readonly mode='classic_bowling' as const;phase:OnlinePhase='waiting';mask=0;game:ClassicGame;seats:PlayerId[]=[];epoch=0;phaseStart=0;
@@ -13,6 +15,7 @@ export class ClassicRoundSimulation implements OnlineSimulation{
  constructor(readonly counters:RoomCounters=newRoomCounters(),seed=7281,readonly now:()=>number=Date.now){this.seed=seed;this.game=new ClassicGame(2,seed);this.game.bots=false;}
  get tick(){return this.counters.tick;}get roundId(){return this.counters.round;}get seconds(){return this.phase==='countdown'?this.countdown:this.phase==='results'?Math.max(0,10-this.resultTime):0;}
  get winner(){const w=this.game.score.winners;return this.phase==='results'&&w.length===1?this.seats[w[0]]:-1;}
+ placements(){return seatRanks(this.seats,this.game.score.totals,PLAYERS.length);}
  start(slots:readonly PlayerId[]){if(this.phase!=='waiting'||slots.length<2||slots.length>3||new Set(slots).size!==slots.length||slots.some(s=>!Number.isInteger(s)||s<0||s>2))return false;
   this.seats=[...slots].sort((a,b)=>a-b);this.mask=slots.reduce<number>((m,s)=>m|1<<s,0);this.forfeits.clear();this.sequence=slots.map(()=>-1);this.game.dispose();this.game=new ClassicGame(slots.length as 2|3,++this.seed);this.game.bots=false;this.counters.round++;this.phase='countdown';this.countdown=3;this.epoch=0;this.events=[];this.eventId=0;this.resultTime=0;return true;
  }

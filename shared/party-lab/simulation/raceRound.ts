@@ -5,12 +5,16 @@ import {IDLE,type DriveInput} from './kartrace/config.js';
 import {raceSection,raceTransforms} from './kartrace/wire.js';
 import {newRoomCounters,type RoomCounters,type OnlineSimulation} from './online.js';
 import type {PlayerId} from './players.js';
+import {seatRanks} from '../board/rules.js';
+import {PLAYERS} from './players.js';
 export class RaceRoundSimulation implements OnlineSimulation{
  readonly mode='kart_race' as const;phase:OnlinePhase='waiting';mask=0;game:RaceGame;seats:PlayerId[]=[];
  private forfeits=new Set<number>();private resultTime=0;private sequences:number[]=[];private held:number[]=[];private inputs:DriveInput[]=[];
  constructor(readonly counters:RoomCounters=newRoomCounters()){this.game=new RaceGame(2);this.game.bots=false;}
  get tick(){return this.counters.tick;}get roundId(){return this.counters.round;}get seconds(){return this.phase==='countdown'?Math.max(0,this.game.countdown):this.phase==='results'?Math.max(0,10-this.resultTime):0;}
  get winner(){const w=this.game.snapshot().winner;return this.phase==='results'&&w!==null?this.seats[w]:-1;}
+ /** Board placements: the race order (finishers by time, then distance covered). */
+ placements(){const order=this.game.snapshot().order.map(o=>o.id);return seatRanks(this.seats,this.seats.map((_,i)=>-order.indexOf(i)),PLAYERS.length);}
  start(slots:readonly PlayerId[]){if(this.phase!=='waiting'||slots.length<2||slots.length>3||new Set(slots).size!==slots.length||slots.some(s=>!Number.isInteger(s)||s<0||s>2))return false;
   this.seats=[...slots].sort((a,b)=>a-b);this.mask=slots.reduce<number>((m,s)=>m|1<<s,0);this.forfeits.clear();this.sequences=slots.map(()=>-1);this.held=slots.map(()=>0);this.inputs=slots.map(()=>({...IDLE}));
   this.game.dispose();this.game=new RaceGame(slots.length as 2|3);this.game.bots=false;this.counters.round++;this.phase='countdown';this.resultTime=0;return true;

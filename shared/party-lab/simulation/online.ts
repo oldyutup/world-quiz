@@ -29,6 +29,12 @@ export interface OnlineSimulation {
   readonly seconds: number;
   /** Winning slot of the last finished round, −1 for none/draw. */
   readonly winner: number;
+  /**
+   * The finished round's places per slot (0 best, equal places share one, −1 not in the
+   * round), or null when the mode only knows its winner. The board game reads it once, at
+   * results, to order the moves after the winner.
+   */
+  placements?(): readonly number[] | null;
   start(slots: readonly PlayerId[]): boolean;
   cancelCountdown(): void;
   /** Disconnected (reconnect grace): stop acting, body stays. */

@@ -6,6 +6,8 @@ import {BowlingClock} from './bowling/clock.js';
 import {bowlingSection,bowlingTransforms} from './bowling/wire.js';
 import {newRoomCounters,type RoomCounters,type OnlineSimulation} from './online.js';
 import type {PlayerId} from './players.js';
+import {seatRanks} from '../board/rules.js';
+import {PLAYERS} from './players.js';
 /** The exact local Rapier game, with every occupied seat driven by room inputs. */
 export class BowlingRoundSimulation implements OnlineSimulation {
  readonly mode='human_bowling' as const;
@@ -18,6 +20,7 @@ export class BowlingRoundSimulation implements OnlineSimulation {
  get activeSeat(){return this.seats[this.game.score.current]??-1;}
  get seconds(){return this.phase==='countdown'?Math.max(0,2.1-this.game.phaseTime):this.phase==='results'?Math.max(0,10-this.resultTime):0;}
  get winner(){const w=this.game.score.winners;return this.phase==='results'&&w.length===1?this.seats[w[0]]:-1;}
+ placements(){return seatRanks(this.seats,this.game.score.totals,PLAYERS.length);}
  start(slots:readonly PlayerId[]){
   if(this.phase!=='waiting'||slots.length<2||slots.length>3||new Set(slots).size!==slots.length||slots.some(s=>s<0||s>2))return false;
   this.seats=[...slots].sort((a,b)=>a-b);this.mask=slots.reduce<number>((m,s)=>m|1<<s,0);this.forfeits.clear();

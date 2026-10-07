@@ -5,6 +5,8 @@ import { CRATE_RAIN as C, IDLE } from './craterain/config.js';
 import { crateSection, crateTransforms } from './craterain/wire.js';
 import { newRoomCounters, type RoomCounters, type OnlineSimulation } from './online.js';
 import type { PlayerId } from './players.js';
+import { seatRanks } from '../board/rules.js';
+import { PLAYERS } from './players.js';
 export class CrateRoundSimulation implements OnlineSimulation {
   readonly mode = 'crate_rain' as const;
   phase: OnlinePhase = 'waiting'; mask = 0; game: CrateRainGame;
@@ -14,6 +16,7 @@ export class CrateRoundSimulation implements OnlineSimulation {
   get tick() { return this.counters.tick; } get roundId() { return this.counters.round; }
   get seconds() { return this.phase === 'countdown' ? Math.max(0, C.countdown - this.game.phaseTime) : this.phase === 'results' ? Math.max(0, 10 - this.resultTime) : 0; }
   get winner() { const wins = this.game.wins, best = Math.max(...wins), ids = wins.flatMap((n, i) => n === best ? [i] : []); return this.phase === 'results' && ids.length === 1 ? this.seats[ids[0]] : -1; }
+  placements() { return seatRanks(this.seats, this.game.wins, PLAYERS.length); }
   start(slots: readonly PlayerId[]) {
     if (this.phase !== 'waiting' || slots.length < 2 || slots.length > 3 || new Set(slots).size !== slots.length || slots.some(s => !Number.isInteger(s) || s < 0 || s > 2)) return false;
     this.seats = [...slots].sort((a,b) => a-b); this.mask = slots.reduce<number>((m,s) => m | 1 << s, 0); this.forfeits.clear(); this.sequences = slots.map(() => -1); this.held = slots.map(() => 0);
