@@ -15,9 +15,9 @@ async function until(f:()=>boolean,ms=8000){const end=Date.now()+ms;while(!f()){
 before(async()=>{await server.listen(0,'127.0.0.1');endpoint=`http://127.0.0.1:${(httpServer.address() as AddressInfo).port}`;});
 after(async()=>{for(const r of rooms){r.reconnection.enabled=false;if(r.connection.isOpen)await r.leave().catch(()=>{});}await server.gracefullyShutdown(false);});
 async function peer(code?:string){const client=new Client(endpoint),r=code?await client.joinById<LobbyState>(code,{protocol:NET.version,nickname:'Guest',intent:'join',code}):await client.create<LobbyState>('party_lab',{protocol:NET.version,nickname:'Host',intent:'create'});rooms.push(r);r.onMessage('notice',()=>{});r.onMessage('feedback',()=>{});const snapshots:GameSnapshot[]=[];r.onMessage('snapshot',(s:GameSnapshot)=>snapshots.push(s));Object.assign(r.reconnection,{minUptime:0,minDelay:100,maxDelay:150,maxRetries:10});return {r,snapshots};}
-test('health is 15; a protocol-14 browser is refused before room creation',async()=>{
-  assert.deepEqual(await (await fetch(`${endpoint}/health`)).json(),{ok:true,service:'party-lab',protocol:15});
-  await assert.rejects(new Client(endpoint).create('party_lab',{protocol:14,nickname:'OldClient',intent:'create'}),/PROTOCOL_MISMATCH/);
+test('health is 16; a protocol-15 browser is refused before room creation',async()=>{
+  assert.deepEqual(await (await fetch(`${endpoint}/health`)).json(),{ok:true,service:'party-lab',protocol:16});
+  await assert.rejects(new Client(endpoint).create('party_lab',{protocol:15,nickname:'OldClient',intent:'create'}),/PROTOCOL_MISMATCH/);
 });
 for(const count of [2,3])test(`Snowball ${count} seats: host/Ready, WASD ownership, same-seat reconnect in five phases, scores and rematch`,{timeout:30000},async()=>{
   const peers=[await peer()];for(let i=1;i<count;i++)peers.push(await peer(peers[0].r.roomId));const room=matchMaker.getLocalRoomById(peers[0].r.roomId) as PartyRoom;

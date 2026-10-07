@@ -4,9 +4,11 @@ import {validateFightInput, type FightInputPacket} from "./fightInput.js";
 import {validateCrateInput, type CrateInputPacket} from "./crateInput.js";
 import {validateSnowballInput, type SnowballInputPacket} from "./snowballInput.js";
 import {validateBowlingInput, type BowlingInputPacket} from "./bowlingInput.js";
+import {validateClickInput, type ClickInputPacket} from "./clickInput.js";
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import type { GameMode } from "../modes.js";
+import { CLICK_RACE } from "../simulation/clickrace/config.js";
 export const NET = {
   // 3: rooftop arena. Prediction replays against the static map, so a client
   // built for another map must refuse this server's snapshots.
@@ -33,7 +35,9 @@ export const NET = {
   // would show the board's turns as the lobby and a v13 server rejects the messages.
   // 15: Tahta Oyunu special squares. The board JSON gains the layout, bonus dice, the
   // effect phase and the latest effect; a v14 page would refuse every board ("effect").
-  version: 15,
+  // 16: Tıklama Yarışı (click_race). A new mode, its stamped click packet and snapshot
+  // section; a v15 page cannot draw a click round and a v15 server refuses the packet.
+  version: 16,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -180,7 +184,7 @@ export interface BombInputPacket extends LayerInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && "jumpPressed" in p && !("attackPressed" in p);
@@ -378,6 +382,7 @@ export interface GameSnapshot {
   snowball?: import("../simulation/snowball/wire.js").SnowballWire;
   bowling?: import("../simulation/bowling/wire.js").BowlingWire;
   prop?: import("../simulation/prophunt/wire.js").PropSnapshotWire;
+  click?: import("../simulation/clickrace/wire.js").ClickWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -591,6 +596,7 @@ export class InputMailbox {
   private fightPacket: FightInputPacket | null = null;
   private fightThrow = false;
   private cratePacket: CrateInputPacket | null = null;
+  private clickPacket: ClickInputPacket | null = null;
   private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
@@ -612,6 +618,16 @@ export class InputMailbox {
       if(!p||p.round!==round||p.seq<=this.seq)return false;
       this.fightThrow ||= p.throwPressed && !this.fightPacket?.throwPressed;
       this.seq=p.seq;this.received=now;this.fightPacket=p;return true;
+    }
+    if (mode === "click_race") {
+      const p = validateClickInput(value);
+      if (!p || p.round !== round || p.seq <= this.seq) return false;
+      // Every packet carries only new presses: they queue until the next step counts them.
+      const queued = this.clickPacket?.stamps ?? [];
+      this.seq = p.seq;
+      this.received = now;
+      this.clickPacket = { ...p, stamps: [...queued, ...p.stamps].slice(-CLICK_RACE.maxQueued) };
+      return true;
     }
     if (mode === "crate_rain") {
       const p=validateCrateInput(value);
@@ -719,6 +735,14 @@ export class InputMailbox {
     return true;
   }
   read(now: number): MovementInput {
+    // Presses are events, not held state: they are counted however late the step reads them.
+    if (this.clickPacket) {
+      const p = this.clickPacket;
+      this.clickPacket = null;
+      this.processedSeq = p.seq;
+      this.processedRound = p.round;
+      return { ...neutralIntent(), click: p };
+    }
     if (now - this.received > NET.staleMs) this.clear();
     if(this.classicPacket){const p=this.classicEdge??{...this.classicPacket,pressed:false};this.classicEdge=null;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),classic:p};}
     if(this.racePacket){const p={...this.racePacket,reset:this.raceReset};this.raceReset=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),race:p};}
@@ -807,6 +831,7 @@ export class InputMailbox {
     this.racePacket=null;this.raceReset=false;
     this.fightPacket=null;this.fightThrow=false;
     this.cratePacket=null;
+    this.clickPacket=null;
     this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;
     this.propPacket = null;

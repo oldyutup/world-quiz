@@ -21,7 +21,7 @@ function fixture() {
 function emptyRun(g: CrateRainGame) { g.players.forEach(p => p.body.setEnabled(false)); g.bots = false; g.phase = 'playing'; }
 
 test('approved standard size and grid; Crate Rain is registered online', () => {
-  assert.equal(C.id, 'crate_rain'); assert.equal(C.rounds, 3); assert.equal(C.countdown, 3); assert.equal(C.maxRoundTime, 20); assert.equal(NET.version, 15);
+  assert.equal(C.id, 'crate_rain'); assert.equal(C.rounds, 3); assert.equal(C.countdown, 3); assert.equal(C.maxRoundTime, 20); assert.equal(NET.version, 16);
   assert.ok(GAME_MODES.includes("crate_rain")); assert.equal(MODE_SELECTIONS.length, GAME_MODES.length + 2); // + Mixed + Tahta Oyunu assert.ok(MODE_SELECTIONS.includes(C.id));
   for (const kind of BOX_KINDS) assert.deepEqual(BOXES[kind].size, [1.4, 1.4, 1.4]);
   const g = fixture(); assert.equal(g.cells.length, 100);

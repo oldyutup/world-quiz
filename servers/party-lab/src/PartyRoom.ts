@@ -1,4 +1,5 @@
 import {ClassicRoundSimulation} from "../../../shared/party-lab/simulation/classicRound.js";
+import { ClickRoundSimulation } from "../../../shared/party-lab/simulation/clickRound.js";
 import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
 import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
 import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
@@ -100,6 +101,7 @@ const cryptoDie = () => randomInt(1, 7);
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
+  if (mode === "click_race") return new ClickRoundSimulation(counters);
   if (mode === "classic_bowling") return new ClassicRoundSimulation(counters, cryptoSeed());
   if (mode === "kart_race") return new RaceRoundSimulation(counters);
   if (mode === "snowball_fight") return new FightRoundSimulation(counters, cryptoSeed());
