@@ -16,6 +16,10 @@ import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layer
 import { ColorRoundSimulation } from "../../../shared/party-lab/simulation/colorRound.js";
 import { BombRoundSimulation } from "../../../shared/party-lab/simulation/bombRound.js";
 import { NO_COLOR } from "../../../shared/party-lab/simulation/colors/layouts.js";
+import { BoardSession, type BoardHost } from "../../../shared/party-lab/board/session.js";
+import { BOARD } from "../../../shared/party-lab/board/config.js";
+import { encodeBoard } from "../../../shared/party-lab/board/wire.js";
+import { DEFAULT_BOARD_SETTINGS, validBoardSettings } from "../../../shared/party-lab/boardSettings.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import {
   DEFAULT_MODE_SELECTION,
@@ -41,7 +45,7 @@ import {
 } from "../../../shared/party-lab/network/protocol.js";
 import { allowedOrigin } from "./origin.js";
 import { LoopMetrics, processMetrics } from "./diagnostics.js";
-import { randomUUID, randomBytes } from "node:crypto";
+import { randomUUID, randomBytes, randomInt } from "node:crypto";
 import {
   getMessageBytes,
   Protocol,
@@ -89,6 +93,9 @@ function options(value: unknown): {
 }
 
 const cryptoSeed = () => randomBytes(4).readUInt32LE();
+const cryptoRandom = () => cryptoSeed() / 2 ** 32;
+/** Board dice: the server's CSPRNG, never the client. */
+const cryptoDie = () => randomInt(1, 7);
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
@@ -125,6 +132,15 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   readonly rotation = new MixedRotation();
   readonly propRotation = new PropRotation(cryptoSeed());
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
+  /** Tahta Oyunu: the next match's mini game order (its first one is the lobby preview). */
+  boardRotation = new MixedRotation(cryptoRandom);
+  /** The board match in progress: mini games start without the lobby until someone wins. */
+  board: BoardSession | null = null;
+  private readonly boardHost: BoardHost = {
+    startMini: (mode, slots) => this.startBoardMini(mode, slots),
+    endMini: () => this.retireSimulation(),
+    connected: (slot) => [...this.state.players.values()].some((p) => p.slot === slot && p.connected),
+  };
   /** Join order (the host is the earliest-joined connected player). */
   private joined = new Map<string, number>();
   private joinCounter = 0;
@@ -151,13 +167,20 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   };
 
   private syncGameState() {
-    const game = this.game;
-    if(game.phase === "waiting" && this.selection === "mixed") {
+    const game = this.game, board = this.board;
+    if(!board && game.phase === "waiting" && this.selection === "mixed") {
       const old=this.upcoming;
       this.rotation.setPlayers([...this.state.players.values()].filter(p=>p.connected).length);
       this.upcoming=this.rotation.next;
       if(old!==this.upcoming)for(const p of this.state.players.values())p.ready=false;
     }
+    if (!board && game.phase === "waiting" && this.selection === "board_game") {
+      this.boardRotation.setPlayers([...this.state.players.values()].filter((p) => p.connected).length);
+      this.upcoming = this.boardRotation.next;
+    }
+    if (board) this.upcoming = board.mode;
+    const encoded = encodeBoard(board?.wire() ?? null);
+    if (this.state.board !== encoded) this.state.board = encoded;
     this.state.phase = game.phase;
     this.state.round = game.roundId;
     this.state.seconds = game.seconds;
@@ -204,7 +227,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (selection === this.selection) return;
     this.selection = selection;
     if (selection === "mixed") this.rotation.reset();
-    this.upcoming = upcomingMode(selection, this.rotation);
+    this.upcoming = upcomingMode(selection, selection === "board_game" ? this.boardRotation : this.rotation);
     // A different game is a new decision: everyone confirms again.
     for (const p of this.state.players.values()) p.ready = false;
     this.syncGameState();
@@ -215,12 +238,16 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     for (const input of this.mailboxes.values()) input.clear();
   }
   private tryStart() {
-    if (this.game.phase !== "waiting") return;
+    if (this.game.phase !== "waiting" || this.board) return;
     const eligible = [...this.state.players.values()].filter(
       (p) => p.connected
     );
-    if (this.upcoming === "prop_hunt" && eligible.length !== 3) return;
+    if (this.selection !== "board_game" && this.upcoming === "prop_hunt" && eligible.length !== 3) return;
     if (eligible.length < 2 || !eligible.every((p) => p.ready)) return;
+    if (this.selection === "board_game") {
+      this.startBoard(eligible.map((p) => p.slot));
+      return;
+    }
     this.participants = new Set(eligible.map((p) => p.id));
     this.ensureSimulation(this.upcoming);
     if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
@@ -229,10 +256,55 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     for (const input of this.mailboxes.values()) input.clear();
     this.syncGameState();
   }
+  /** Everyone ready on Tahta Oyunu: a board match takes over until someone reaches the treasure. */
+  private startBoard(slots: number[]) {
+    const rotation = this.boardRotation;
+    this.boardRotation = new MixedRotation(cryptoRandom);
+    this.board = new BoardSession(this.boardHost, { length: this.state.boardLength, slots, random: cryptoRandom, die: cryptoDie, rotation });
+    // Lobby Ready means nothing during the match; the rematch asks for it again.
+    for (const p of this.state.players.values()) p.ready = false;
+    this.syncGameState();
+  }
+  /** A board round: the mini game starts at once for every board player, present or not. */
+  private startBoardMini(mode: GameMode, slots: readonly number[]) {
+    this.participants = new Set([...this.state.players.values()].filter((p) => slots.includes(p.slot)).map((p) => p.id));
+    this.ensureSimulation(mode);
+    if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
+    if (this.game instanceof BowlingRoundSimulation) this.game.settings = { obstacles: this.state.bowlingObstacles };
+    const started = this.game.start(slots as PlayerId[]);
+    for (const input of this.mailboxes.values()) input.clear();
+    return started;
+  }
+  /**
+   * Board: the mini game's results were shown long enough (or it is abandoned). A fresh,
+   * idle simulation of the same mode replaces it; the next round builds its own anyway.
+   */
+  private retireSimulation() {
+    const mode = this.game.mode;
+    this.game.dispose();
+    this.simulations.disposed++;
+    this.game = createSimulation(mode, this.counters, this.propRotation);
+    this.simulations.created++;
+    this.participants.clear();
+    // Cues of the retired round never reach the next one.
+    this.events = [];
+    for (const input of this.mailboxes.values()) input.clear();
+  }
+  private endBoard() {
+    this.board = null;
+    this.participants.clear();
+    for (const p of this.state.players.values()) p.ready = false;
+    this.syncGameState();
+  }
   private tick() {
     const now = performance.now();
     // Measured before the lobby early-return so event-loop stalls show up in any phase.
     this.loop.tick(now);
+    if (this.board) {
+      this.board.step(1 / NET.physicsHz);
+      if (this.board.done) this.endBoard();
+      else if (this.game.phase === "waiting") this.syncGameState();
+    }
     if (this.game.phase === "waiting") return;
     const before = this.game.phase;
     const intent = PLAYERS.map(() => neutralIntent());
@@ -274,11 +346,20 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     const phase = this.game.phase as OnlinePhase;
     if (before !== phase) {
       for (const input of this.mailboxes.values()) input.clear();
-      if (phase === "waiting") this.resetReady();
-      // Mixed: once a round is under way its mode is used up; the lobby shows the next one.
-      if (phase === "playing" && this.selection === "mixed") {
-        this.rotation.played();
-        this.upcoming = this.rotation.next;
+      if (this.board) {
+        // The board reads the result the moment it exists, and moves on when it is over.
+        if (phase === "results") this.board.miniResult(this.game.winner, this.game.placements?.() ?? null);
+        if (phase === "waiting") {
+          this.participants.clear();
+          this.board.miniEnded();
+        }
+      } else {
+        if (phase === "waiting") this.resetReady();
+        // Mixed: once a round is under way its mode is used up; the lobby shows the next one.
+        if (phase === "playing" && this.selection === "mixed") {
+          this.rotation.played();
+          this.upcoming = this.rotation.next;
+        }
       }
     }
     this.syncGameState();
@@ -369,6 +450,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.state.propAmmo = DEFAULT_PROP_SETTINGS.ammo;
     this.state.propProximity = DEFAULT_PROP_SETTINGS.proximity;
     this.state.bowlingObstacles = DEFAULT_BOWLING_SETTINGS.obstacles;
+    this.state.boardLength = DEFAULT_BOARD_SETTINGS.length;
+    this.state.board = "";
     this.state.winner = -1;
     this.state.selection = this.selection;
     this.state.mode = this.upcoming;
@@ -398,7 +481,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     // Host only, lobby only: one of the modes or Mixed. Clears every Ready.
     this.onMessage("mode", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p?.connected || this.game.phase !== "waiting" || !isModeSelection(data)) return;
+      if (!p?.connected || this.game.phase !== "waiting" || this.board || !isModeSelection(data)) return;
       if (this.state.hostId !== client.sessionId) {
         client.send("notice", "MODE_HOST_ONLY");
         return;
@@ -407,7 +490,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     });
     this.onMessage("propSettings", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p?.connected || this.game.phase !== "waiting" || !validPropSettingsPatch(data)) return;
+      if (!p?.connected || this.game.phase !== "waiting" || this.board || !validPropSettingsPatch(data)) return;
       if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
       const ammo = data.ammo ?? this.state.propAmmo, proximity = data.proximity ?? this.state.propProximity;
       if (this.state.propAmmo === ammo && this.state.propProximity === proximity) return;
@@ -418,19 +501,38 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     });
     this.onMessage("bowlingSettings", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p?.connected || this.game.phase !== "waiting" || !validBowlingSettings(data)) return;
+      if (!p?.connected || this.game.phase !== "waiting" || this.board || !validBowlingSettings(data)) return;
       if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
       if (this.state.bowlingObstacles === data.obstacles) return;
       this.state.bowlingObstacles = data.obstacles;
       this.resetReady();
       this.syncGameState();
     });
+    this.onMessage("boardSettings", (client, data: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p?.connected || this.game.phase !== "waiting" || this.board || !validBoardSettings(data)) return;
+      if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
+      if (this.state.boardLength === data.length) return;
+      this.state.boardLength = data.length;
+      this.resetReady();
+      this.syncGameState();
+    });
+    // Board turns: only the player whose turn it is; the server rolls, the client animates.
+    this.onMessage("boardChoice", (client, data: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      if (p?.connected && this.board?.choose(p.slot, data)) this.syncGameState();
+    });
+    this.onMessage("boardRoll", (client) => {
+      const p = this.state.players.get(client.sessionId);
+      if (p?.connected && this.board?.rollPressed(p.slot)) this.syncGameState();
+    });
     this.onMessage("ready", (client, data: unknown) => {
       const p = this.state.players.get(client.sessionId);
       if (
         !p?.connected ||
         typeof data !== "boolean" ||
-        this.game.phase !== "waiting"
+        this.game.phase !== "waiting" ||
+        this.board
       )
         return;
       p.ready = data;
@@ -577,12 +679,14 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.droppedAt.set(client.sessionId, performance.now());
     this.log("drop", client, ` code=${code ?? "-"}`);
     const player = this.state.players.get(client.sessionId);
+    // A board player keeps their place: the turn is played for them and the seat waits longer.
+    const onBoard = !!player && !!this.board?.has(player.slot);
     if (player) {
       player.connected = false;
       player.ready = false;
       this.mailboxes.get(client.sessionId)?.clear();
       this.game.neutralize(player.slot as PlayerId);
-      if (this.game.phase === "countdown" && player.participating) {
+      if (!this.board && this.game.phase === "countdown" && player.participating) {
         this.game.cancelCountdown();
         this.resetReady();
         this.syncGameState();
@@ -592,7 +696,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.syncHost();
     // The reserved seat still counts toward maxClients.
     try {
-      await this.allowReconnection(client, RECONNECT_SECONDS);
+      await this.allowReconnection(client, onBoard ? BOARD.reconnectSeconds : RECONNECT_SECONDS);
     } catch {
       /* Expiry is expected; Colyseus subsequently calls onLeave. */
     }
@@ -617,11 +721,13 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     const player = this.state.players.get(client.sessionId);
     if (player?.participating) {
       this.game.remove(player.slot as PlayerId);
-      if (this.game.phase === "countdown") {
+      if (!this.board && this.game.phase === "countdown") {
         this.game.cancelCountdown();
         this.resetReady();
       }
     }
+    // Leaving the room (Esc menu, or the seat grace ran out) leaves the board; one player left wins.
+    if (player && this.board?.has(player.slot)) this.board.remove(player.slot);
     this.participants.delete(client.sessionId);
     this.mailboxes.delete(client.sessionId);
     this.joined.delete(client.sessionId);

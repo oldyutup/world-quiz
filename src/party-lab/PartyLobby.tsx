@@ -1,5 +1,7 @@
 import type { BowlingSettings } from "../../shared/party-lab/bowlingSettings";
 import type { PropSettings } from "../../shared/party-lab/propSettings";
+import type { BoardSettings } from "../../shared/party-lab/boardSettings";
+import { BOARD_LENGTHS, BOARD_LENGTH_NAMES, type BoardLength } from "../../shared/party-lab/board/config";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { CHAT_MAX_LENGTH, type LobbySnapshot } from "./network/types";
 import type { NetDiagnostics } from "./network/diagnostics";
@@ -23,6 +25,7 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   prop_hunt: "Bir arayan, iki saklanan. Eşyaya dönüş ve bulunmadan dayan.",
   bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
   mixed: "On iki mod, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",
+  board_game: "Her tur bir mini oyun; birinci daha iyi zar atar. Hazineye ilk ulaşan kazanır.",
 };
 
 /** Opt-in (`?partyDebug=1`) link/chat timing lines; refresh on their own clock while shown. */
@@ -137,15 +140,18 @@ function ModePicker({ selection, next, isHost, hostName, enabled, onMode }: {
       </div>
     </div>
     <p className="pl-mode-next" role="status" data-next-mode={next}>
-      {selection === "mixed" ? <>Sıradaki tur: <b>{MODE_NAMES[next]}</b> · {MODE_HINTS.mixed}</> : MODE_HINTS[selection]}
+      {selection === "mixed" ? <>Sıradaki tur: <b>{MODE_NAMES[next]}</b> · {MODE_HINTS.mixed}</>
+        : selection === "board_game" ? <>{MODE_HINTS.board_game} İlk mini oyun: <b>{MODE_NAMES[next]}</b></>
+        : MODE_HINTS[selection]}
     </p>
   </section>;
 }
 
-export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onBowlingSettings, onControls, controlsRef, diagnostics, debug }: {
+export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onBowlingSettings, onBoardSettings, onControls, controlsRef, diagnostics, debug }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onMode?: (selection: ModeSelection) => void; onControls: () => void;
   onBowlingSettings?: (settings: BowlingSettings) => void;
   onPropSettings?: (settings: Partial<PropSettings>) => void;
+  onBoardSettings?: (settings: BoardSettings) => void;
   controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
   const [text, setText] = useState("");
@@ -228,9 +234,14 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
               <label>Arayan mermisi <select aria-label="Arayan mermisi" disabled={!connected} value={lobby.propAmmo} onChange={e => onPropSettings?.({ ammo: Number(e.target.value) as PropSettings["ammo"] })}>{([5, 10, 15] as const).map(n => <option key={n} value={n}>{n}</option>)}</select></label>
             </div> : <p className="pl-prop-settings-summary">Saklambaç · {lobby.propAmmo} mermi · Yakınlık {lobby.propProximity ? "açık" : "kapalı"}</p>
           )}
-          {(lobby.selection === "human_bowling" || lobby.selection === "mixed") && (
+          {lobby.selection === "board_game" && (
             isHost ? <div className="pl-prop-settings">
-              <label>{lobby.selection === "mixed" ? "Bowling · Engeller" : "Engeller"} <select aria-label="Engeller" disabled={!connected} value={lobby.bowlingObstacles ? "on" : "off"} onChange={e => onBowlingSettings?.({ obstacles: e.target.value === "on" })}><option value="off">Kapalı</option><option value="on">Açık</option></select></label>
+              <label>Harita uzunluğu <select aria-label="Harita uzunluğu" disabled={!connected} value={lobby.boardLength} onChange={e => onBoardSettings?.({ length: Number(e.target.value) as BoardLength })}>{BOARD_LENGTHS.map(n => <option key={n} value={n}>{BOARD_LENGTH_NAMES[n]} ({n} kare)</option>)}</select></label>
+            </div> : <p className="pl-prop-settings-summary">Tahta Oyunu · {BOARD_LENGTH_NAMES[lobby.boardLength]} ({lobby.boardLength} kare)</p>
+          )}
+          {(lobby.selection === "human_bowling" || lobby.selection === "mixed" || lobby.selection === "board_game") && (
+            isHost ? <div className="pl-prop-settings">
+              <label>{lobby.selection !== "human_bowling" ? "Bowling · Engeller" : "Engeller"} <select aria-label="Engeller" disabled={!connected} value={lobby.bowlingObstacles ? "on" : "off"} onChange={e => onBowlingSettings?.({ obstacles: e.target.value === "on" })}><option value="off">Kapalı</option><option value="on">Açık</option></select></label>
             </div> : <p className="pl-prop-settings-summary">Bowling · Engeller · {lobby.bowlingObstacles ? "Açık" : "Kapalı"}</p>
           )}
           <div className="pl-room-roster-heading"><h2>Oyuncular</h2><span>{playersOnline.length} / 3</span></div>
@@ -251,7 +262,7 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
         <footer className="pl-room-ready">
           <p className="pl-ready-summary" role="status">{!connected
             ? lobby.status === "reconnecting" ? "Yeniden bağlanılıyor…" : "Bağlantı kapandı. Lobiye tekrar katıl."
-            : lobby.mode === "prop_hunt" && playersOnline.length !== 3 ? "Saklambaç için 3 oyuncu gerekli."
+            : lobby.selection !== "board_game" && lobby.mode === "prop_hunt" && playersOnline.length !== 3 ? "Saklambaç için 3 oyuncu gerekli."
             : playersOnline.length < 2 ? "Başlamak için bir arkadaşını davet et."
             : `${readyCount} / ${playersOnline.length} oyuncu hazır`}</p>
           <button className={`pl-button pl-create pl-ready-button${ready ? " is-ready" : ""}`} data-sfx="uiConfirm" disabled={!connected} aria-pressed={ready}

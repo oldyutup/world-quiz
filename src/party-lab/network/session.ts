@@ -3,6 +3,10 @@ import {encodeBowlingInput,validateBowlingInput,type BowlingInputPacket} from ".
 import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
 import type { BowlingSettings } from "../../../shared/party-lab/bowlingSettings";
 import type { PropSettings } from "../../../shared/party-lab/propSettings";
+import type { BoardSettings } from "../../../shared/party-lab/boardSettings";
+import { BOARD, DEFAULT_BOARD_LENGTH, isBoardLength } from "../../../shared/party-lab/board/config";
+import { isWinnerChoice, type WinnerChoice } from "../../../shared/party-lab/board/rules";
+import { parseBoard, type BoardWire } from "../../../shared/party-lab/board/wire";
 import type { PropOnlineEvent } from "../../../shared/party-lab/simulation/prophunt/wire";
 import { GameStream } from "./gameStream";
 import { LINK, NetDiagnostics } from "./diagnostics";
@@ -53,6 +57,9 @@ const notices: Record<string, string> = {
   INVALID_MESSAGE: "Bu işlem lobide desteklenmiyor.",
   MODE_HOST_ONLY: "Oyun modunu yalnızca oda sahibi seçebilir.",
 };
+/** SDK retries (≤ 2 s apart): the usual 15 s seat grace, or the board's longer one. */
+const RETRIES = 10;
+export const BOARD_RETRIES = Math.ceil(BOARD.reconnectSeconds / 2) + 5;
 /** Colyseus CloseCode.MAY_TRY_RECONNECT: the SDK fires onclose at once and reconnects. */
 const MAY_TRY_RECONNECT = 4010;
 const HEALTH_CHECK_MS = 250;
@@ -93,6 +100,9 @@ export class LobbySession {
   /** Barn: the last aim sent, reused by neutral packets so pausing never turns the body. */
   private lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
   private chatIds = new Set<string>();
+  /** The board JSON last parsed: an unchanged board keeps its object (no re-render). */
+  private boardText = "";
+  private boardView: BoardWire | null = null;
   readonly diagnostics = new NetDiagnostics();
   private readonly createClient: () => Client;
   private readonly debug: boolean;
@@ -149,7 +159,7 @@ export class LobbySession {
       this.room = room;
       Object.assign(room.reconnection, {
         minUptime: 0,
-        maxRetries: 10,
+        maxRetries: RETRIES,
         minDelay: 500,
         maxDelay: 2000,
         maxEnqueuedMessages: 0,
@@ -191,6 +201,14 @@ export class LobbySession {
             this.diagnostics.chatReceived(message.id, message.sentAt, performance.now(), Date.now());
         });
         chatPrimed = true;
+        if (state.board !== this.boardText) {
+          this.boardText = state.board ?? "";
+          this.boardView = parseBoard(this.boardText);
+        }
+        const board = this.boardView,
+          self = players.find((p) => p.id === room.sessionId);
+        // On the board the seat waits two minutes, so the page keeps trying that long too.
+        room.reconnection.maxRetries = board && self && board.pieces.some(([slot]) => slot === self.slot) ? BOARD_RETRIES : RETRIES;
         // A fresh array/object every patch: React must never see a mutated message list.
         this.update({
           code: state.code,
@@ -203,6 +221,8 @@ export class LobbySession {
           propAmmo: state.propAmmo,
           propProximity: state.propProximity,
           bowlingObstacles: state.bowlingObstacles,
+          boardLength: isBoardLength(state.boardLength) ? state.boardLength : DEFAULT_BOARD_LENGTH,
+          board,
           selection: isModeSelection(state.selection) ? state.selection : "rooftop_brawl",
           mode: isGameMode(state.mode) ? state.mode : "rooftop_brawl",
           hostId: state.hostId ?? "",
@@ -245,11 +265,12 @@ export class LobbySession {
         if (!current()) return;
         this.diagnostics.dropped(code, reason, performance.now());
         this.stream.clearPresentation();
+        const boardSeat = room.reconnection.maxRetries === BOARD_RETRIES;
         this.update({
           status: "reconnecting",
           game: null,
           link: "good",
-          notice: "Bağlantı kesildi. Yeniden bağlanılıyor…",
+          notice: boardSeat ? "Bağlantı kesildi. Yeniden bağlanılıyor… Tahtadaki yerin 2 dakika korunur." : "Bağlantı kesildi. Yeniden bağlanılıyor…",
         });
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = setTimeout(() => {
@@ -261,7 +282,7 @@ export class LobbySession {
                 "Yeniden bağlanılamadı. Lobiden çıkıp tekrar katılabilirsin.",
             });
           }
-        }, 16000);
+        }, boardSeat ? (BOARD.reconnectSeconds + 2) * 1000 : 16000);
       });
       room.onReconnect(() => {
         if (!current()) return;
@@ -360,6 +381,17 @@ export class LobbySession {
   }
   setBowlingSettings(settings: BowlingSettings) {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("bowlingSettings", settings);
+  }
+  setBoardSettings(settings: BoardSettings) {
+    if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting" && !this.snapshot.board) this.room.send("boardSettings", settings);
+  }
+  /** Board turn (the server checks it is ours): the mini game winner's dice choice. */
+  chooseBoardDice(choice: WinnerChoice) {
+    if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.board?.phase === "choose" && isWinnerChoice(choice)) this.room.send("boardChoice", choice);
+  }
+  /** Board turn: "Zar At". The server rolls; the page only animates the result. */
+  rollBoardDice() {
+    if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.board?.phase === "roll") this.room.send("boardRoll");
   }
   setPropSettings(settings: Partial<PropSettings>) {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("propSettings", settings);
@@ -532,6 +564,8 @@ export class LobbySession {
     this.heldJump = this.heldPunch = this.heldPickup = this.heldWhistle = false;
     this.lastAim = { yaw: 0, pitch: 0, eye: shoulderEye(0) };
     this.chatIds = new Set();
+    this.boardText = "";
+    this.boardView = null;
     const room = this.room;
     this.room = null;
     if (room) {
@@ -577,6 +611,9 @@ export function useLobbySession() {
     setReady: (ready: boolean) => session.current?.setReady(ready),
     setBowlingSettings: (settings: BowlingSettings) => session.current?.setBowlingSettings(settings),
     setPropSettings: (settings: Partial<PropSettings>) => session.current?.setPropSettings(settings),
+    setBoardSettings: (settings: BoardSettings) => session.current?.setBoardSettings(settings),
+    chooseBoardDice: (choice: WinnerChoice) => session.current?.chooseBoardDice(choice),
+    rollBoardDice: () => session.current?.rollBoardDice(),
     setMode: (selection: ModeSelection) => session.current?.setMode(selection),
     connect: (action: "create" | "join", nickname: string, code: string, costumeId: SelectableCostumeId) =>
       session.current?.connect(action, nickname, code, costumeId),

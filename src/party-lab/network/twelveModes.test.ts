@@ -4,7 +4,7 @@ import {GAME_MODES,MODE_SELECTIONS,MODE_NAMES,MixedRotation,mixedCycle} from '..
 import {NET} from '../../../shared/party-lab/network/protocol';
 const added=['crate_rain','snowball_fight','kart_race','classic_bowling']as const;
 test('protocol 13 compact registry exposes twelve unique modes and all four approved names',()=>{
- assert.equal(NET.version,13);assert.equal(GAME_MODES.length,12);assert.equal(new Set(GAME_MODES).size,12);assert.equal(MODE_SELECTIONS.length,13);
+ assert.equal(NET.version,14);assert.equal(GAME_MODES.length,12);assert.equal(new Set(GAME_MODES).size,12);assert.equal(MODE_SELECTIONS.length,14);
  assert.deepEqual(added.map(m=>MODE_NAMES[m]),['Kutu Yağmuru','Kartopu Savaşı','Araba Yarışı','Klasik Bowling']);
 });
 for(const players of [2,3])test(`Mixed ${players}P: deterministic complete eligible bags, no duplicates or boundary repeat`,()=>{

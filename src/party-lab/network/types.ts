@@ -5,6 +5,8 @@ import type {
 } from "../../../shared/party-lab/network/protocol";
 import type { SelectableCostumeId } from "../../../shared/party-lab/costumes";
 import type { GameMode, ModeSelection } from "../../../shared/party-lab/modes";
+import type { BoardWire } from "../../../shared/party-lab/board/wire";
+import { DEFAULT_BOARD_LENGTH, type BoardLength } from "../../../shared/party-lab/board/config";
 import type { LinkQuality } from "./diagnostics";
 export interface LobbyPlayer {
   id: string;
@@ -36,6 +38,9 @@ export interface LobbyState {
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
   bowlingObstacles: boolean;
+  boardLength: number;
+  /** JSON (shared/party-lab/board/wire.ts), "" without a board match. */
+  board: string;
   players: { forEach(callback: (player: LobbyPlayer) => void): void };
   messages: { forEach(callback: (message: ChatMessage) => void): void };
 }
@@ -62,6 +67,10 @@ export interface LobbySnapshot {
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
   bowlingObstacles: boolean;
+  /** Host's Tahta Oyunu length. */
+  boardLength: BoardLength;
+  /** The board match in progress (validated), null in the lobby or a normal round. */
+  board: BoardWire | null;
   selfId: string;
   players: LobbyPlayer[];
   messages: ChatMessage[];
@@ -87,6 +96,8 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   propAmmo: 15,
   propProximity: true,
   bowlingObstacles: false,
+  boardLength: DEFAULT_BOARD_LENGTH,
+  board: null,
   game: null,
   link: "good",
 };

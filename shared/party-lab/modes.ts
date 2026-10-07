@@ -7,8 +7,11 @@ import type { ArenaMapId, ModeArenaId, TileArenaId } from "./maps/types.js";
  */
 export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"] as const;
 export type GameMode = (typeof GAME_MODES)[number];
-/** What the room host picks in the lobby: one mode, or all of them in a shuffled rotation. */
-export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "mixed"] as const;
+/**
+ * What the room host picks in the lobby: one mode, all of them in a shuffled rotation, or
+ * the board game (Tahta Oyunu), whose rounds are mini games picked like Mixed.
+ */
+export const MODE_SELECTIONS = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "mixed", "board_game"] as const;
 export type ModeSelection = (typeof MODE_SELECTIONS)[number];
 
 export const DEFAULT_MODE_SELECTION: ModeSelection = "rooftop_brawl";
@@ -41,6 +44,7 @@ export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   crate_rain: "Kutu Yağmuru",
   snowball_fight: "Kartopu Savaşı",
   mixed: "Karışık",
+  board_game: "Tahta Oyunu",
 };
 
 export const isGameMode = (value: unknown): value is GameMode =>
@@ -106,7 +110,7 @@ export class MixedRotation {
   }
 }
 
-/** The next round's mode for a single-mode selection; Mixed asks its rotation. */
+/** The next round's mode for a single-mode selection; Mixed (and the board's mini games) ask a rotation. */
 export function upcomingMode(selection: ModeSelection, rotation: MixedRotation): GameMode {
-  return selection === "mixed" ? rotation.next : selection;
+  return selection === "mixed" || selection === "board_game" ? rotation.next : selection;
 }

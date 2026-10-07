@@ -35,7 +35,7 @@ export const LobbyState = schema(
     round: t.number(),
     seconds: t.number(),
     winner: t.number(),
-    /** Host's choice: one of the twelve modes, or mixed. */
+    /** Host's choice: one of the twelve modes, mixed, or board_game. */
     selection: t.string(),
     /** The current round's mode during a round; in the lobby, the next round's (Mixed resolved). */
     mode: t.string(),
@@ -46,6 +46,10 @@ export const LobbyState = schema(
     players: t.map(LobbyPlayer),
     messages: t.array(ChatMessage),
     bowlingObstacles: t.boolean(),
+    /** Host's Tahta Oyunu length (squares to the treasure). */
+    boardLength: t.number(),
+    /** The board match in progress as JSON (shared/party-lab/board/wire.ts), "" when none. */
+    board: t.string(),
   },
   "LobbyState"
 );
