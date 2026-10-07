@@ -6,6 +6,7 @@ import {
   type GameEvent,
 } from "../../../shared/party-lab/network/protocol";
 import { SFX_NAMES } from "../audio/events";
+import { validClickWire } from "../../../shared/party-lab/simulation/clickrace/wire";
 /**
  * Remote playout clock. The target is unchanged (latest arrival + elapsed − delay),
  * but the render clock follows it at a bounded rate instead of jumping: TCP
@@ -46,7 +47,7 @@ export class SnapshotBuffer {
       snapshot.tick < 0 ||
       !Number.isSafeInteger(snapshot.round) ||
       !(snapshot.transforms instanceof Uint8Array) ||
-      (snapshot.mode === "classic_bowling" ? !snapshot.classic || snapshot.transforms.byteLength !== 308 : snapshot.mode === "kart_race" ? !snapshot.race || snapshot.transforms.byteLength !== snapshot.race.seats.length * 28 : snapshot.mode === "snowball_fight" ? !snapshot.fight || snapshot.transforms.byteLength !== snapshot.fight.seats.length * 28 : snapshot.mode === "crate_rain" ? !snapshot.crate || snapshot.transforms.byteLength !== snapshot.crate.seats.length * 28 || !(snapshot.crate.journal instanceof Uint8Array) || snapshot.crate.journal.length % 6 !== 0 || snapshot.crate.journal.length > 720 : snapshot.mode === "snowball_brawl" ? !snapshot.snowball || snapshot.transforms.byteLength !== snapshot.snowball.seats.length * 28 || snapshot.snowball.motion?.byteLength !== snapshot.transforms.byteLength : snapshot.mode === "human_bowling" ? ![28,560].includes(snapshot.transforms.byteLength) : snapshot.transforms.byteLength !== TRANSFORM_BYTES)
+      (snapshot.mode === "click_race" ? !validClickWire(snapshot.click) || snapshot.transforms.byteLength !== 0 : snapshot.mode === "classic_bowling" ? !snapshot.classic || snapshot.transforms.byteLength !== 308 : snapshot.mode === "kart_race" ? !snapshot.race || snapshot.transforms.byteLength !== snapshot.race.seats.length * 28 : snapshot.mode === "snowball_fight" ? !snapshot.fight || snapshot.transforms.byteLength !== snapshot.fight.seats.length * 28 : snapshot.mode === "crate_rain" ? !snapshot.crate || snapshot.transforms.byteLength !== snapshot.crate.seats.length * 28 || !(snapshot.crate.journal instanceof Uint8Array) || snapshot.crate.journal.length % 6 !== 0 || snapshot.crate.journal.length > 720 : snapshot.mode === "snowball_brawl" ? !snapshot.snowball || snapshot.transforms.byteLength !== snapshot.snowball.seats.length * 28 || snapshot.snowball.motion?.byteLength !== snapshot.transforms.byteLength : snapshot.mode === "human_bowling" ? ![28,560].includes(snapshot.transforms.byteLength) : snapshot.transforms.byteLength !== TRANSFORM_BYTES)
     )
       return false;
     const last = this.frames[this.frames.length - 1];

@@ -1,0 +1,44 @@
+.pl-viewport[data-mode="click_race"] { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.party-lab .pl-viewport[data-mode="click_race"] .pl-arena-side { top: auto; bottom: 58px; }
+.pl-click-hud { position: absolute; inset: 0; pointer-events: none; color: oklch(96% .025 85); font-family: Barlow, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 2px 3px oklch(23% .018 160 / .55); }
+.pl-click-lanes { position: absolute; top: 14px; left: 140px; right: 96px; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pl-click-lanes li { flex: 1 1 150px; max-width: 240px; display: grid; gap: 4px; padding: 8px 12px 9px; border-radius: 10px; background: oklch(24% .025 160 / .88); border-left: 4px solid var(--lane); }
+.pl-click-lanes li.is-self { background: oklch(29% .04 150 / .94); box-shadow: 0 0 0 1px oklch(85% .1 90 / .55); }
+.pl-click-name { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-click-name i { width: 9px; height: 9px; border-radius: 50%; background: var(--lane); flex: none; }
+.pl-click-name small { margin-left: auto; font-size: 11px; letter-spacing: 1px; color: oklch(88% .12 88); }
+.pl-click-stats { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.pl-click-stats b { font-size: 21px; line-height: 1; }
+.pl-click-bar { height: 4px; border-radius: 2px; background: oklch(45% .02 160 / .6); overflow: hidden; }
+.pl-click-bar span { display: block; height: 100%; background: var(--lane); transition: width .12s linear; }
+.pl-click-clock { position: absolute; top: 14px; right: 16px; min-width: 64px; padding: 6px 12px; border-radius: 10px; background: oklch(24% .025 160 / .88); text-align: center; font-size: 30px; font-weight: 900; line-height: 1.1; }
+.pl-click-callout { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; }
+.pl-click-callout span { display: block; font-weight: 800; letter-spacing: 3px; font-size: 24px; }
+.pl-click-callout strong { display: block; font-size: 110px; line-height: 1.1; }
+.pl-click-callout small { font-size: 17px; }
+.pl-click-callout.is-go strong { font-size: 84px; color: oklch(91% .14 88); }
+.pl-click-hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); margin: 0; padding: 7px 14px; border-radius: 8px; background: oklch(24% .025 160 / .86); font-size: 14px; white-space: nowrap; }
+.pl-click-hint kbd { font: inherit; font-weight: 800; }
+.pl-click-results { pointer-events: auto; position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px)); box-sizing: border-box; padding: 24px 28px; border-radius: 16px; border: 1px solid oklch(65% .04 130); background: oklch(24% .025 160 / .97); box-shadow: 0 20px 65px oklch(18% .02 160 / .35); text-align: center; }
+.pl-click-results p { margin: 0; font-size: 12px; letter-spacing: 3px; opacity: .65; }
+.pl-click-results h2 { margin: 6px 0 16px; font-size: 30px; color: oklch(87% .12 85); }
+.pl-click-results table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl-click-results th { font-size: 11px; letter-spacing: 1px; font-weight: 700; opacity: .65; text-align: left; padding: 0 6px 6px; }
+.pl-click-results td { padding: 9px 6px; border-top: 1px solid oklch(55% .03 150 / .3); text-align: left; white-space: nowrap; }
+.pl-click-results tr.is-self td { color: oklch(90% .1 88); }
+.pl-click-results td:first-child { font-weight: 800; width: 28px; }
+.pl-click-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; }
+.pl-click-results small { display: block; margin-top: 14px; font-size: 12px; opacity: .65; }
+@media (max-width: 700px), (max-height: 520px) {
+  .pl-click-lanes { top: 58px; left: 12px; right: 12px; gap: 6px; }
+  .pl-click-lanes li { flex-basis: 96px; padding: 6px 8px 7px; }
+  .pl-click-name { font-size: 13px; }
+  .pl-click-stats { font-size: 11px; flex-wrap: wrap; gap: 2px 8px; }
+  .pl-click-stats b { font-size: 17px; }
+  .pl-click-clock { font-size: 24px; min-width: 50px; top: 14px; right: 12px; }
+  .pl-click-callout strong { font-size: 80px; }
+  .pl-click-hint { bottom: 10px; font-size: 12px; }
+  .pl-click-results { padding: 18px 12px; }
+  .pl-click-results table { font-size: 12px; }
+  .pl-click-results td, .pl-click-results th { padding-left: 3px; padding-right: 3px; }
+}

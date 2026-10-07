@@ -431,7 +431,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = this.snapshot.mode === "classic_bowling"
+    const packet: AnyInputPacket = this.snapshot.mode === "click_race"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,stamps:intent.click?.stamps??[]}
+      : this.snapshot.mode === "classic_bowling"
       ? {seq:++this.inputSeq,round:this.snapshot.round,epoch:intent.classic?.epoch??this.snapshot.game?.classic?.epoch??0,pressed:intent.classic?.pressed??false,eventTime:intent.classic?.eventTime??0}
       : this.snapshot.mode === "kart_race"
       ? {seq:++this.inputSeq,round:this.snapshot.round,resetEpoch:intent.race?.resetEpoch??0,throttle:intent.race?.throttle??0,brake:intent.race?.brake??0,steer:intent.race?.steer??0,handbrake:intent.race?.handbrake??false,reset:intent.race?.reset??false}
