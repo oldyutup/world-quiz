@@ -1278,7 +1278,9 @@ test("controls: WASD camera-relative, Shift sprint, Space jump, F punches (passe
 // ─── Regression ─────────────────────────────────────────────────────────────
 
 test("online integration: protocol 13 exposes Bomba Sende after the existing modes; bomb sounds stay appended", () => {
-  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"]);
+  // The existing modes stay, in order; new ones are appended.
+  const existing = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"];
+  assert.deepEqual(GAME_MODES.slice(0, existing.length), existing);
   assert.ok((MODE_SELECTIONS as readonly string[]).includes(BOMB_TAG.mode));
   assert.equal(NET.version, 14);
   assert.deepEqual([...ARENA_MAP_IDS].sort(), ["barn", "rooftop", "test"]);

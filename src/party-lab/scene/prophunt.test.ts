@@ -1281,8 +1281,10 @@ test("whistle audio: positional and rough — equal-power panning toward its sid
 
 // ─── Regression ─────────────────────────────────────────────────────────────
 
-test("regression: online integration — the existing modes, twelve-mode Mixed, protocol (13) and static map registry remain available", () => {
-  assert.deepEqual([...GAME_MODES], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"]);
+test("regression: online integration — the existing modes, Mixed, protocol (13) and static map registry remain available", () => {
+  // The existing modes stay, in order; new ones are appended.
+  const existing = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling"];
+  assert.deepEqual(GAME_MODES.slice(0, existing.length), existing);
   assert.ok((MODE_SELECTIONS as readonly string[]).includes(PROP_HUNT.mode));
   assert.equal(NET.version, 14);
   assert.deepEqual([...ARENA_MAP_IDS].sort(), ["barn", "rooftop", "test"]);

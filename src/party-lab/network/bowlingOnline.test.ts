@@ -9,7 +9,7 @@ import {BOWLING,FLIGHT,BULLET} from '../../../shared/party-lab/simulation/bowlin
 import {courseSteering} from '../../../shared/party-lab/simulation/bowling/courseDriving';
 import {NET,InputMailbox,neutralIntent,type GameSnapshot} from '../../../shared/party-lab/network/protocol';
 import {validateBowlingInput,encodeBowlingInput,type BowlingInputPacket} from '../../../shared/party-lab/network/bowlingInput';
-import {GAME_MODES,MixedRotation} from '../../../shared/party-lab/modes';
+import {GAME_MODES,MixedRotation,modeFits} from '../../../shared/party-lab/modes';
 import {SnapshotBuffer} from './gameStream';
 import {BowlingPrediction} from './prediction/bowlingRig';
 import type {MovementInput} from '../../../shared/party-lab/intent';
@@ -32,8 +32,8 @@ test('SPACE press/release between physics ticks survives mailbox coalescing; sta
  const m=new InputMailbox();for(const [i,space] of [true,false,true,false].entries())assert.ok(m.accept({...packet(i+1),space},1,0,'human_bowling'));
  assert.deepEqual([0,1,2,3].map(()=>m.read(0).bowling?.space),[true,false,true,false]);assert.equal(m.read(301).bowling,undefined);
 });
-test('twelve-mode Mixed with three seats, eleven eligible modes with two: complete bags and no boundary repeat',()=>{
- for(const count of [2,3]){let seed=3;const r=new MixedRotation(()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/2**32));r.setPlayers(count);const expected=GAME_MODES.filter(m=>count===3||m!=='prop_hunt');let last='';
+test('Mixed with three seats and with two: complete bags of the modes that fit, and no boundary repeat',()=>{
+ for(const count of [2,3]){let seed=3;const r=new MixedRotation(()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/2**32));r.setPlayers(count);const expected=GAME_MODES.filter(m=>modeFits(m,count));let last='';
  for(let bag=0;bag<100;bag++){const seen=[];for(let i=0;i<expected.length;i++){const next=r.next;assert.notEqual(next,last);seen.push(next);last=next;r.played();}assert.deepEqual(seen.sort(),[...expected].sort());assert.equal(seen.filter(m=>m==='human_bowling').length,1);}}
 });
 test('online physical first throw matches the approved shared local game at every tick',()=>{

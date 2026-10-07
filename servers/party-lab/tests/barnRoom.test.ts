@@ -1,4 +1,4 @@
-import {GAME_MODES} from "../../../shared/party-lab/modes.js";
+import {GAME_MODES, modeFits} from "../../../shared/party-lab/modes.js";
 import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
 import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
 import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
@@ -190,8 +190,8 @@ test("mode selector: the creator is host; only the host changes it; everyone see
   assert.equal(room.state.players.get(a.room.sessionId)?.ready, false, "changing the mode clears Ready");
   a.room.send("mode", "mixed");
   await until(() => [a, b].every((p) => p.room.state.selection === "mixed"));
-  // Two players: every mode except Prop Hunt (exactly three) is eligible.
-  assert.ok((GAME_MODES as readonly string[]).filter((m) => m !== "prop_hunt").includes(b.room.state.mode), "Mixed shows a real two-player mode");
+  // Two players: only the modes that fit two (MODE_PLAYERS) are eligible.
+  assert.ok((GAME_MODES.filter((m) => modeFits(m, 2)) as string[]).includes(b.room.state.mode), "Mixed shows a real two-player mode");
   assert.equal(b.room.state.mode, room.upcoming, "Mixed shows the actual next mode");
   await close(a, b);
 });
@@ -255,7 +255,9 @@ test("barn round over real sockets: explicit mode, barn packets acknowledged, ro
   await close(a, b);
 });
 
-test("Mixed: all twelve modes once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; 26 switches do not leak", { timeout: 60000 }, async () => {
+/** Mixed with three players: two full cycles of the modes that fit three, plus two rounds. */
+const THREE = GAME_MODES.filter((m) => modeFits(m, 3)), MIXED_ROUNDS = 2 * THREE.length + 2;
+test(`Mixed: every three-player mode once per shuffled cycle, never twice in a row; each switch rebuilds and disposes the simulation; ${MIXED_ROUNDS} switches do not leak`, { timeout: 2500 * MIXED_ROUNDS }, async () => {
   const a = await create("Alice"),
     b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol");
   const room = local(a);
@@ -263,7 +265,7 @@ test("Mixed: all twelve modes once per shuffled cycle, never twice in a row; eac
   await until(() => room.selection === "mixed");
   const played: string[] = [];
   const memory: number[] = [];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < MIXED_ROUNDS; i++) {
     if (i === 7) {
       a.room.send("propSettings", { ammo: 5, proximity: false });
       await until(() => room.state.propAmmo === 5 && !room.state.propProximity);
@@ -286,8 +288,8 @@ test("Mixed: all twelve modes once per shuffled cycle, never twice in a row; eac
     }
   }
   for (let i = 1; i < played.length; i++) assert.notEqual(played[i], played[i - 1], `no repeat (${played.join(",")})`);
-  for (let c = 0; c + GAME_MODES.length <= played.length; c += GAME_MODES.length)
-    assert.deepEqual([...played.slice(c, c + GAME_MODES.length)].sort(), [...GAME_MODES].sort(), `cycle ${c / GAME_MODES.length} has every mode once (${played.join(",")})`);
+  for (let c = 0; c + THREE.length <= played.length; c += THREE.length)
+    assert.deepEqual([...played.slice(c, c + THREE.length)].sort(), [...THREE].sort(), `cycle ${c / THREE.length} has every mode once (${played.join(",")})`);
   assert.equal(room.simulations.created, 1 + played.length - (played[0] === "rooftop_brawl" ? 1 : 0));
   assert.equal(room.simulations.disposed, room.simulations.created - 1);
   const growth = memory[memory.length - 1] - memory[0];

@@ -5,7 +5,7 @@ import { BOARD, BOARD_LENGTHS, boardSquares, moveSeconds } from "../../../shared
 import { dieFrom, eliminationRanks, moveOrder, ranksByScore, rollDice, seatRanks } from "../../../shared/party-lab/board/rules.js";
 import { encodeBoard, parseBoard } from "../../../shared/party-lab/board/wire.js";
 import { boardPath, numberedSquare, pawnOffset, SQUARE_SIZE } from "../../../shared/party-lab/board/layout.js";
-import { GAME_MODES, MixedRotation, type GameMode } from "../../../shared/party-lab/modes.js";
+import { GAME_MODES, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
 
 const DT = 1 / 60;
 function seeded(seed = 1) {
@@ -121,7 +121,7 @@ test("a 2P round: intro → mini game → 5 s results → winner chooses → rol
   run(board, BOARD.introSeconds);
   assert.equal(board.phase, "minigame");
   assert.deepEqual(host.minis[0].slots, [0, 2]);
-  assert.ok(host.minis[0].mode !== "prop_hunt", "prop hunt needs exactly three");
+  assert.ok(modeFits(host.minis[0].mode, 2), "the mini game fits two players");
   run(board, 20);
   board.miniResult(2, [1, -1, 0]);
   assert.equal(board.wire().mini, "results");

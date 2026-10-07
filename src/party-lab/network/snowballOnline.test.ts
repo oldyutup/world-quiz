@@ -9,7 +9,7 @@ import {SNOWBALL as C,IDLE,arenaRadiusAt} from '../../../shared/party-lab/simula
 import {snowballScreenInput} from '../../../shared/party-lab/simulation/snowball/screenInput';
 import {snowballAxes,encodeSnowballInput,validateSnowballInput,type SnowballInputPacket} from '../../../shared/party-lab/network/snowballInput';
 import {NET,InputMailbox,neutralIntent,type GameSnapshot} from '../../../shared/party-lab/network/protocol';
-import {GAME_MODES,MixedRotation} from '../../../shared/party-lab/modes';
+import {GAME_MODES,MixedRotation,modeFits} from '../../../shared/party-lab/modes';
 import {SnapshotBuffer} from './gameStream';
 import {SnowballPrediction} from './prediction/snowballRig';
 before(initializePhysics);
@@ -62,8 +62,8 @@ test('disconnect expiry forfeits current/future rounds; neutralization retains s
   const s=playing(3),body=s.game.balls[0].body;body.setLinvel({x:4,y:0,z:0},true);s.neutralize(0);assert.equal(s.game.balls[0].body,body);assert.equal(body.linvel().x,4);
   s.remove(0);assert.equal(s.accepts(0,1),false);for(let i=0;i<12000&&s.phase!=='results';i++)s.step([]);assert.equal(s.phase,'results');assert.equal(s.game.wins[0],0);assert.equal(s.game.invalidBodies,0);s.dispose();
 });
-test('Mixed: 8 at 3P, 7 at 2P, Snowball once and no bag boundary repeat',()=>{
-  for(const n of [2,3]){const r=new MixedRotation();r.setPlayers(n);const expected=GAME_MODES.filter(m=>n===3||m!=='prop_hunt');assert.equal(expected.length,n===3?12:11);let last='';for(let b=0;b<100;b++){const seen=[];for(let i=0;i<expected.length;i++){assert.notEqual(r.next,last);seen.push(r.next);last=r.next;r.played();}assert.deepEqual(seen.sort(),[...expected].sort());assert.equal(seen.filter(m=>m==='snowball_brawl').length,1);}}
+test('Mixed at 2P and 3P: every mode that fits once per bag, Snowball once and no bag boundary repeat',()=>{
+  for(const n of [2,3]){const r=new MixedRotation();r.setPlayers(n);const expected=GAME_MODES.filter(m=>modeFits(m,n));let last='';for(let b=0;b<100;b++){const seen=[];for(let i=0;i<expected.length;i++){assert.notEqual(r.next,last);seen.push(r.next);last=r.next;r.played();}assert.deepEqual(seen.sort(),[...expected].sort());assert.equal(seen.filter(m=>m==='snowball_brawl').length,1);}}
 });
 for(const [rtt,jitter,loss] of [[0,0,0],[150,40,.02],[250,60,.05]])test(`authoritative high-speed head-on prediction ${rtt}ms RTT / ${jitter}ms jitter / ${loss*100}% packet loss`,()=>{
   const s=playing(),pred=[new SnowballPrediction(0,2),new SnowballPrediction(1,2)],buffers=[new SnapshotBuffer(),new SnapshotBuffer()];

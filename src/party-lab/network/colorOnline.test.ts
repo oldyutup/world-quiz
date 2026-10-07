@@ -14,7 +14,7 @@ import { FINAL_CYCLE, FOUR_TILES, SHRINK_START_CYCLE, STAGE_MASKS, STAGE_SIZES }
 import type { ColorCycleState } from "../../../shared/party-lab/simulation/colors/schedule";
 import { COLOR_BITSET_BYTES, COLOR_LAYOUT_BYTES, ColorFieldKnowledge, cycleTicks, decodeColorSnapshot, encodeColorField } from "../../../shared/party-lab/simulation/colors/wire";
 import { readLayerPredictionState } from "../../../shared/party-lab/simulation/predictionState";
-import { MODE_MAP, MODE_NAMES, MODE_SELECTIONS } from "../../../shared/party-lab/modes";
+import { GAME_MODES, MODE_MAP, MODE_NAMES, MODE_SELECTIONS } from "../../../shared/party-lab/modes";
 import {
   InputMailbox,
   LAYER_FLAG,
@@ -119,7 +119,8 @@ const sameCycle = (a: ColorCycleState, b: ColorCycleState, label: string) => {
 
 test("protocol 13: Renk Kaosu remains before Bomba Sende and Karışık in the compact picker", () => {
   assert.equal(NET.version, 14);
-  assert.deepEqual([...MODE_SELECTIONS], ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "mixed", "board_game"]);
+  assert.deepEqual([...MODE_SELECTIONS], [...GAME_MODES, "mixed", "board_game"]);
+  assert.ok(MODE_SELECTIONS.indexOf("color_chaos") < MODE_SELECTIONS.indexOf("bomb_tag"));
   assert.equal(MODE_NAMES.color_chaos, "Renk Kaosu");
   assert.equal(MODE_MAP.color_chaos, "colors");
   const valid: LayerInputPacket = { seq: 4, round: 2, moveX: 1, moveZ: 1, jumpPressed: false, sprintHeld: true, punchPressed: false };

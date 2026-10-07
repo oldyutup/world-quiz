@@ -15,7 +15,7 @@ const place=(g:SnowballGame,id:number,x:number,z:number,vx=0,vz=0,y=C.radius+0.0
 };
 test('approved local config is also available online in protocol 13',()=>{
   assert.equal(C.id,'snowball_brawl');assert.deepEqual(C.players,[2,3]);assert.equal(C.rounds,3);
-  assert.equal(NET.version,14);assert.equal(GAME_MODES.length,12);assert.equal(MODE_SELECTIONS.length,14);
+  assert.equal(NET.version,14);assert.equal(MODE_SELECTIONS.length,GAME_MODES.length+2);
   assert.ok([...MODE_SELECTIONS].some(m=>String(m)===C.id));
 });
 test('equal spaced spawns are inside arena and cannot overlap, including future capacity',()=>{
