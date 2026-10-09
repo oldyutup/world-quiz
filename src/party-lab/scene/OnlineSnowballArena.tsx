@@ -12,7 +12,7 @@ interface Props extends SnowballOnline {bindings:Bindings;paused:boolean;onLeave
 export default function OnlineSnowballArena(props:Props){
   const {lobby,paused}=props,{audio}=usePartyAudio(),viewport=useRef<HTMLDivElement>(null);
   const [snapshot,setSnapshot]=useState<SnowSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
-  const menu=useArenaMenu(!paused),off=paused||menu.view!==null||lobby.status!=='connected';
+  const menu=useArenaMenu(!paused),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
   const retained=useRef(lobby.game);if(lobby.game?.snowball)retained.current=lobby.game;
   const game=lobby.game??retained.current,wire=game?.snowball,self=lobby.players.find(p=>p.id===lobby.selfId);
   const names=wire?.seats.map(id=>lobby.players.find(p=>p.slot===id)?.nickname??'Ayrıldı'),index=wire?.seats.indexOf(self?.slot??-1)??-1;

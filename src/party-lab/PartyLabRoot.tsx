@@ -9,6 +9,7 @@ import { loadSelectedCostume, saveSelectedCostume } from "./scene/visual/costume
 import { COSTUME_NAMES, SELECTABLE_COSTUME_IDS, type SelectableCostumeId } from "./scene/visual/costumes";
 import { useLobbySession } from "./network/session";
 import { normalizeNickname, normalizeRoomCode, validNickname, validRoomCode } from "./network/types";
+import ArenaChat, { ArenaChatProvider } from "./scene/ArenaChat";
 import "./party-lab.css";
 
 const PREVIEW_MESSAGE = "Arkadaşlarınla buluş, hazır ol ve aynı arenada kapış. 2–3 oyuncu.";
@@ -95,9 +96,12 @@ function PartyLab() {
 
   if (network.snapshot.code) {
     const leave = () => { setRoomCode(network.snapshot.code); network.leave(); setControlsOpen(false); setStatus(PREVIEW_MESSAGE); };
-    return <>
+    const boardShown = !!board && !(board.phase === "minigame" && network.snapshot.phase !== "waiting");
+    // One chat over the board and every mini game (it stays mounted between them); not in the lobby.
+    const chatPlace = boardShown ? "board_game" : network.snapshot.phase !== "waiting" ? network.snapshot.mode : null;
+    return <ArenaChatProvider messages={network.snapshot.messages} synced={network.snapshot.players.length > 0}>
       <div hidden={controlsOpen}>
-        {board && !(board.phase === "minigame" && network.snapshot.phase !== "waiting")
+        {boardShown
           ? <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Tahta hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
               <OnlineBoardArena lobby={network.snapshot} onChoose={network.chooseBoardDice} onRoll={network.rollBoardDice} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} />
             </Suspense>
@@ -106,9 +110,10 @@ function PartyLab() {
           : <Suspense fallback={<div className="party-lab pl-arena-loading"><p role="status">Online arena hazırlanıyor…</p><button onClick={leave}>Odadan Ayrıl</button></div>}>
               <OnlineArena lobby={network.snapshot} stream={network.stream} sendInput={network.sendInput} bindings={bindings} onBindings={updateBindings} bindingsSaved={controlsSaved} paused={controlsOpen} onLeave={leave} diagnostics={network.diagnostics} debug={network.debug}/>
             </Suspense>}
+        {chatPlace && !controlsOpen && <ArenaChat lobby={network.snapshot} onChat={network.sendChat} place={chatPlace} />}
       </div>
       {settings}
-    </>;
+    </ArenaChatProvider>;
   }
 
   if (inArena) {

@@ -32,7 +32,7 @@ export default function OnlinePropArena(props: Props) {
   const [view, setView] = useState<SeekerView>("third");
   const [lookMode, setLookMode] = useState<LookMode>(loadLookMode), [lookStatus, setLookStatus] = useState<LookStatus>("unlocked");
   const look = useRef<LookController | null>(null), lookNow = useRef(lookMode); lookNow.current = lookMode;
-  const menu = useArenaMenu(!paused), menuOpen = menu.view !== null, inputOff = paused || menuOpen;
+  const menu = useArenaMenu(!paused), menuOpen = menu.view !== null || menu.chatOpen, inputOff = paused || menuOpen;
   const debug = useDebugPanel(!!props.debug);
   const self = lobby.players.find((p) => p.id === lobby.selfId), slot = (self?.slot ?? 0) as PlayerId;
   const wire = lobby.game?.mode === "prop_hunt" ? lobby.game.prop : null;

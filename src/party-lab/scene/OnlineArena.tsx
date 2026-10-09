@@ -444,7 +444,8 @@ function OnlineRooftopArena(props: Props) {
     performanceLabel = useRef<HTMLSpanElement>(null),
     netLabel = useRef<HTMLPreElement>(null);
   const menu = useArenaMenu(!paused);
-  const menuOpen = menu.view !== null;
+  // The in-game chat holds input like the menu.
+  const menuOpen = menu.view !== null || menu.chatOpen;
   const debugPanel = useDebugPanel(!!props.debug);
   const game = lobby.game;
   const self = lobby.players.find((p) => p.id === lobby.selfId);

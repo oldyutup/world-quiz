@@ -31,7 +31,10 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
   const board = lobby.board!;
   const { audio } = usePartyAudio();
   const menu = useArenaMenu(!paused);
-  const off = paused || menu.view !== null || lobby.status !== "connected";
+  // Keys stop behind the menu and while the in-game chat is open; the buttons stop only
+  // behind the menu (a tap outside the open chat just closes it).
+  const off = paused || menu.view !== null || menu.chatOpen || lobby.status !== "connected";
+  const buttonsOff = paused || menu.view !== null || lobby.status !== "connected";
   const self = lobby.players.find((p) => p.id === lobby.selfId);
   const selfSlot = self && board.pieces.some(([slot]) => slot === self.slot) ? self.slot : -1;
   // A roll seen arriving is animated from now; one already over when the page opened is not replayed.
@@ -55,7 +58,7 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
   useEffect(() => {
     if (!off) viewport.current?.focus();
   }, [off]);
-  // Keys for my own turn: Space/Enter roll, 1/2 choose.
+  // Keys for my own turn: Space rolls, 1/2 choose. Enter opens the chat (ArenaChat).
   const turn = useRef({ board, selfSlot, off });
   turn.current = { board, selfSlot, off };
   useEffect(() => {
@@ -63,7 +66,7 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
       const { board, selfSlot, off } = turn.current;
       if (off || event.repeat || board.current !== selfSlot || selfSlot < 0) return;
       if (event.target instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
-      if (board.phase === "roll" && (event.code === "Space" || event.code === "Enter")) {
+      if (board.phase === "roll" && event.code === "Space") {
         event.preventDefault();
         onRoll();
       } else if (board.phase === "choose" && (event.code === "Digit1" || event.code === "Numpad1")) onChoose("two");
@@ -83,7 +86,7 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
         </Canvas>
         {!drawn && <div className="pl-board-cover" aria-hidden="true"><span>Tahta hazırlanıyor…</span></div>}
         <MenuButton onOpen={() => menu.setView("main")} />
-        <BoardHud board={board} players={lobby.players} selfSlot={selfSlot} diceShown={diceShown} connected={lobby.status === "connected" && !off} onChoose={onChoose} onRoll={onRoll} />
+        <BoardHud board={board} players={lobby.players} selfSlot={selfSlot} diceShown={diceShown} connected={!buttonsOff} onChoose={onChoose} onRoll={onRoll} />
         <div className="pl-arena-side">
           <ArenaStatus lobby={lobby} spectating={selfSlot < 0} />
         </div>
@@ -108,7 +111,7 @@ export default function OnlineBoardArena({ lobby, onChoose, onRoll, bindings, on
                 </button>
               </header>
               <p>
-                <kbd>Space</kbd> veya <kbd>Enter</kbd> zar at · <kbd>1</kbd> İki zar · <kbd>2</kbd> +1
+                <kbd>Space</kbd> zar at · <kbd>1</kbd> İki zar · <kbd>2</kbd> +1 · <kbd>Enter</kbd> sohbet
                 <br />
                 Butonlara tıklayarak da oynayabilirsin. Mini oyunlarda her modun kendi kontrolleri geçerli.
                 <br />

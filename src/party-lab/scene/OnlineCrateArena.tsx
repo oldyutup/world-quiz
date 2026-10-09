@@ -16,7 +16,7 @@ export default function OnlineCrateArena(props:Props){
   const [snapshot,setSnapshot]=useState<CrateSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading'),[view,setView]=useState<CrateView>('third');
   const [overrides,setOverrides]=useState(loadCrateOverrides),[saved,setSaved]=useState(true),bindings=useMemo(()=>crateBindings(props.bindings,overrides),[props.bindings,overrides]);
   const update=useCallback((next:CrateOverrides)=>{setOverrides(next);setSaved(saveCrateOverrides(next));},[]);
-  const menu=useArenaMenu(!paused),off=paused||menu.view!==null||lobby.status!=='connected';
+  const menu=useArenaMenu(!paused),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
   const lockEnded=useCallback(()=>menu.setView('main'),[menu.setView]);
   const retained=useRef(lobby.game);if(lobby.game?.crate)retained.current=lobby.game;
   const game=lobby.game??retained.current,wire=game?.crate,self=lobby.players.find(p=>p.id===lobby.selfId);

@@ -5,7 +5,8 @@ import AudioSettings from "../audio/AudioSettings";
 import type { Bindings } from "../input/bindings";
 import type { LookMode } from "../input/look";
 import type { LobbySnapshot } from "../network/types";
-import { EscapeGate, HINT_MS, escapeStep, type MenuView } from "./arenaMenu";
+import { EscapeGate, HINT_MS, escapeOpensMenu, escapeStep, type MenuView } from "./arenaMenu";
+import { useArenaChat } from "./ArenaChat";
 
 /*
  * Immersive arena chrome, shared by online Rooftop Brawl and Barn Shootout and the local
@@ -34,12 +35,24 @@ async function toggleFullscreen() {
  * Esc and lock-loss handling. `enabled` is false while the arena is hidden (Controls
  * opened from the lobby). `lockEnded` is called when the browser ends Pointer Lock on
  * its own (Esc, focus loss); fullscreen ending the same way is handled here.
+ *
+ * `chatOpen`: the online in-game chat (ArenaChat) is open. It holds this player's input
+ * exactly like the menu: every arena stops its input on `view !== null || chatOpen`.
  */
 export function useArenaMenu(enabled: boolean) {
   const [view, setView] = useState<MenuView | null>(null);
   const gate = useRef(new EscapeGate());
   const live = useRef(enabled);
   live.current = enabled;
+  const chat = useArenaChat();
+  const reportMenu = chat?.reportMenu;
+  const menuShown = enabled && view !== null;
+  // The menu takes over from an open chat, and Enter in the menu stays with its buttons.
+  useEffect(() => {
+    if (!reportMenu) return;
+    reportMenu(menuShown);
+    return () => reportMenu(false);
+  }, [reportMenu, menuShown]);
   const lockEnded = useCallback(() => {
     gate.current.lockEnded(performance.now());
     if (live.current) setView((current) => current ?? "main");
@@ -48,7 +61,7 @@ export function useArenaMenu(enabled: boolean) {
     if (!enabled) return;
     // Bubble phase: the key capture in Controls (window, capture phase) swallows its own Esc.
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.repeat || event.isComposing) return;
+      if (!escapeOpensMenu(event)) return;
       if (!gate.current.accepts(performance.now(), !!document.pointerLockElement)) return;
       event.preventDefault();
       setView(escapeStep);
@@ -75,7 +88,7 @@ export function useArenaMenu(enabled: boolean) {
       setHintReplay((n) => n + 1);
     }
   }, [view]);
-  return { view: enabled ? view : null, setView, lockEnded, hintReplay };
+  return { view: enabled ? view : null, setView, lockEnded, hintReplay, chatOpen: enabled && !!chat?.open };
 }
 
 /** The controls line: shown when the arena opens, fades HINT_MS into play; `replay` shows it again. */

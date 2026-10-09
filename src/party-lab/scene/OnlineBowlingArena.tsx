@@ -11,7 +11,7 @@ interface Props extends BowlingOnline {bindings:Bindings;paused:boolean;onLeave:
 export default function OnlineBowlingArena(props:Props){
  const {lobby,paused}=props,{audio}=usePartyAudio(),viewport=useRef<HTMLDivElement>(null);
  const [snapshot,setSnapshot]=useState<BowlingSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
- const menu=useArenaMenu(!paused),debug=useDebugPanel(!!props.debug),off=paused||menu.view!==null||lobby.status!=='connected';
+ const menu=useArenaMenu(!paused),debug=useDebugPanel(!!props.debug),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
  // The session clears its presentation stream while reconnecting. Keep this
  // scene mounted so camera selection and one-shot eject audio survive the gap.
  const retainedGame=useRef(lobby.game);

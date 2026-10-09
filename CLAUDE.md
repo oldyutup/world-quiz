@@ -15,4 +15,5 @@ Nasıl:
 - Biri oyundan çıkınca kalan oyuncu turu kazanmalı; skor korunan modlar (`SCORE_KEPT_ON_FORFEIT`) bilinçli istisnadır.
 - `servers/party-lab/tests/modeContract.test.ts` bunların hepsini `GAME_MODES` üzerinde döner; yeni mod sağlamazsa patlar. Mod sayısını sabitleyen eski testler (örn. `12`/`11`, `GAME_MODES.length + 1`) elle güncellenir.
 - İstemci: `src/party-lab/scene/OnlineArena.tsx`'te görünüm dalı (eksikse Çatı Kavgası görünümüne düşer), `src/party-lab/PartyLobby.tsx`'te mod açıklaması.
+- Oyun içi sohbet: arena girdisini `useArenaMenu()`'nun `chatOpen`'ı açıkken de kesmeli (`menu.view !== null || menu.chatOpen`; `scene/gameChat.test.ts` eksikse patlar). `scene/gameChat.ts` → `CHAT_LAYOUT`'a modun HUD'unu kapatmayan yerini (alt boşluk, gerekirse genişlik; geniş/dar/telefon) ekle (Record olduğu için eksikse derlenmez).
 - Yerel Test Arenası: `shared/party-lab/localArenas.ts` → `LOCAL_MODE_ARENAS`'a modun `MODE_MAP` id'sini ekle (sözleşme testi eksikse patlar). `src/party-lab/scene/ArenaScene.tsx`'te isim, oynatma alanı, HUD ve menüdeki "sen + bot" oyuncu sayısı; botlar oyuncunun yerine geçmeyen, modu gerçekten oynayan rakipler olmalı.

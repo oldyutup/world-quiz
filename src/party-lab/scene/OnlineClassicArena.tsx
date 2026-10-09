@@ -12,7 +12,7 @@ interface Props extends ClassicOnline {bindings:Bindings;paused:boolean;onLeave:
 export default function OnlineClassicArena(props:Props){
  const {lobby,paused}=props,{audio}=usePartyAudio(),viewport=useRef<HTMLDivElement>(null);
  const [snapshot,setSnapshot]=useState<ClassicSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
- const menu=useArenaMenu(!paused),off=paused||menu.view!==null||lobby.status!=='connected';
+ const menu=useArenaMenu(!paused),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
  const retained=useRef(lobby.game);if(lobby.game?.classic)retained.current=lobby.game;
  const game=lobby.game??retained.current,wire=game?.classic,self=lobby.players.find(p=>p.id===lobby.selfId),names=wire?.seats.map(id=>lobby.players.find(p=>p.slot===id)?.nickname??'Ayrıldı');
  return <div className="party-lab pl-playground pl-immersive" data-mode="classic_bowling">

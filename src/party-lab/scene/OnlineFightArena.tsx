@@ -12,7 +12,7 @@ interface Props extends FightOnline {bindings:Bindings;paused:boolean;onLeave:()
 export default function OnlineFightArena(props:Props){
  const {lobby,paused}=props,{audio}=usePartyAudio(),viewport=useRef<HTMLDivElement>(null),look=useRef<LookController|null>(null);
  const [snapshot,setSnapshot]=useState<FightSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading'),[lookStatus,setLookStatus]=useState<LookStatus>('unlocked');
- const menu=useArenaMenu(!paused),off=paused||menu.view!==null||lobby.status!=='connected';
+ const menu=useArenaMenu(!paused),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
  const lockEnded=useCallback(()=>menu.setView('main'),[menu.setView]);
  useEffect(()=>{if(!viewport.current)return;const c=bindLook(viewport.current,'lock',setLookStatus,lockEnded);look.current=c;return()=>{c.dispose();look.current=null;};},[lockEnded]);
  useEffect(()=>{look.current?.setEnabled(!off);if(!off)viewport.current?.focus();},[off]);

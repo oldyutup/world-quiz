@@ -27,7 +27,7 @@ export default function OnlineGoldArena(props: Props) {
     viewport = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const menu = useArenaMenu(!paused),
-    off = paused || menu.view !== null || lobby.status !== "connected";
+    off = paused || menu.view !== null || menu.chatOpen || lobby.status !== "connected";
   const retained = useRef(lobby.game);
   if (lobby.game?.gold) retained.current = lobby.game;
   const game = lobby.game ?? retained.current,

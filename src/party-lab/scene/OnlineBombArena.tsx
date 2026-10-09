@@ -401,7 +401,7 @@ export default function OnlineBombArena(props: Props) {
   const viewport = useRef<HTMLDivElement>(null), hud = useRef<HudRefs>({ fuse: null, bar: null, callout: null, arrow: null, vignette: null, debug: null, net: null });
   const [lookMode, setLookMode] = useState<LookMode>(loadLookMode), [lookStatus, setLookStatus] = useState<LookStatus>("unlocked"), [view, setView] = useState<ViewState>({ spectating: null });
   const look = useRef<LookController | null>(null), lookNow = useRef(lookMode); lookNow.current = lookMode;
-  const menu = useArenaMenu(!paused), menuOpen = menu.view !== null, inputOff = paused || menuOpen, debugPanel = useDebugPanel(!!props.debug);
+  const menu = useArenaMenu(!paused), menuOpen = menu.view !== null || menu.chatOpen, inputOff = paused || menuOpen, debugPanel = useDebugPanel(!!props.debug);
   const game = lobby.game?.mode === "bomb_tag" ? lobby.game : null, bomb = bombOf(game), self = lobby.players.find((p) => p.id === lobby.selfId);
   useEffect(() => { if (!inputOff) viewport.current?.focus(); }, [inputOff]);
   const { lockEnded } = menu;

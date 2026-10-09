@@ -23,6 +23,13 @@ export function escapeStep(view: MenuView | null): MenuView | null {
 }
 
 /**
+ * A keydown the Esc menu acts on. One something on the page already handled is not (the
+ * in-game chat's field closes on Esc and must not open the menu on the same press).
+ */
+export const escapeOpensMenu = (event: { key: string; repeat: boolean; isComposing: boolean; defaultPrevented: boolean }) =>
+  event.key === "Escape" && !event.repeat && !event.isComposing && !event.defaultPrevented;
+
+/**
  * A press this soon after a lock ended is the same Esc that ended it: browsers differ on
  * whether (and before or after `pointerlockchange`) that press also reaches the page.
  */

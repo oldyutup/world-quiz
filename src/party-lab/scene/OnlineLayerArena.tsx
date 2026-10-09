@@ -642,7 +642,8 @@ export default function OnlineLayerArena(props: Props) {
   const lookModeNow = useRef(lookMode);
   lookModeNow.current = lookMode;
   const menu = useArenaMenu(!paused);
-  const menuOpen = menu.view !== null;
+  // The in-game chat holds input like the menu.
+  const menuOpen = menu.view !== null || menu.chatOpen;
   const inputOff = paused || menuOpen;
   const debugPanel = useDebugPanel(!!props.debug);
   const game = lobby.game?.mode === "layer_chaos" ? lobby.game : null;

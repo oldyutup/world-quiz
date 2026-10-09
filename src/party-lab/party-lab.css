@@ -873,3 +873,66 @@ body:has(.pl-immersive) { overflow: hidden; }
 .party-lab .pl-prop-settings label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pl-muted); }
 .party-lab .pl-prop-settings select { min-height: 36px; border: 1px solid var(--pl-border); border-radius: 8px; background: var(--pl-surface-raised); color: var(--pl-ink); padding: 4px 8px; font: inherit; }
 .party-lab .pl-prop-settings-summary { margin: 0 0 12px; font-size: 12px; color: var(--pl-muted); }
+
+/* ─── In-game chat (ArenaChat): the lobby's channel over the online arenas and the board.
+   Bottom-left, clear of each arena's HUD (bottom and width per arena and screen class:
+   CHAT_LAYOUT in gameChat.ts). On touch screens the open field moves to the top, which the
+   on-screen keyboard leaves visible, so the page is never pushed up under it. Below the Esc
+   menu (z-index 5). */
+.party-lab.pl-game-chat-root { display: contents; }
+.party-lab .pl-game-chat {
+  --pl-chat-b: var(--pl-chat-bottom-wide, 24px); --pl-chat-w: var(--pl-chat-width-wide, 360px);
+  --pl-chat-l: var(--pl-chat-left-wide, 24px); --pl-chat-lines: var(--pl-chat-lines-wide, visible); --pl-chat-lines-wait: var(--pl-chat-lines-wait-wide, 0.75s);
+  position: fixed; z-index: 4; left: var(--pl-chat-l); bottom: var(--pl-chat-b);
+  width: min(var(--pl-chat-w), calc(100vw - var(--pl-chat-l) - 24px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  font-size: 13px; line-height: 1.35; pointer-events: none;
+}
+@media (max-width: 900px) { .party-lab .pl-game-chat { --pl-chat-b: var(--pl-chat-bottom-narrow, 24px); --pl-chat-w: var(--pl-chat-width-narrow, 360px); --pl-chat-l: var(--pl-chat-left-narrow, 24px); --pl-chat-lines: var(--pl-chat-lines-narrow, visible); --pl-chat-lines-wait: var(--pl-chat-lines-wait-narrow, 0.75s); } }
+@media (max-height: 500px) { .party-lab .pl-game-chat { --pl-chat-b: var(--pl-chat-bottom-short, 24px); --pl-chat-w: var(--pl-chat-width-short, 360px); --pl-chat-l: var(--pl-chat-left-short, 24px); --pl-chat-lines: var(--pl-chat-lines-short, visible); --pl-chat-lines-wait: var(--pl-chat-lines-wait-short, 0.75s); } }
+@media (max-width: 600px) { .party-lab .pl-game-chat { --pl-chat-b: var(--pl-chat-bottom-phone, 24px); --pl-chat-w: var(--pl-chat-width-phone, 260px); --pl-chat-l: var(--pl-chat-left-phone, 16px); --pl-chat-lines: var(--pl-chat-lines-phone, visible); --pl-chat-lines-wait: var(--pl-chat-lines-wait-phone, 0.75s); font-size: 12px; } }
+/* Hidden lines come back only after what they gave way to has faded (the hint fades in 700 ms). */
+.party-lab .pl-game-chat-lines { transition: visibility 0s linear 0s; }
+.party-lab .pl-game-chat:not([data-open="true"]) .pl-game-chat-lines { visibility: var(--pl-chat-lines); transition-delay: var(--pl-chat-lines-wait); }
+/* Status chips (slow link, spectating) sit bottom-left in these arenas: the chat goes above them. */
+body:has(.pl-immersive .pl-arena-side > .pl-arena-chip:not(.pl-visually-hidden)) .party-lab .pl-game-chat:is([data-chat-place="click_race"], [data-chat-place="gold_miner"]):not([data-touch="true"][data-open="true"]) { bottom: max(var(--pl-chat-b), 168px); }
+body:has(.pl-immersive .pl-arena-side > .pl-arena-chip:not(.pl-visually-hidden)) .party-lab .pl-game-chat[data-chat-place="board_game"]:not([data-touch="true"][data-open="true"]) { bottom: max(var(--pl-chat-b), 132px); }
+/* The board's own turn buttons and its finish panel (bottom centre): narrower beside them;
+   on a phone they fill the bottom, so the closed chat keeps only its button meanwhile. */
+@media (max-width: 900px), (max-height: 500px) { body:has(:is(.pl-board-actions, .pl-board-finish)) .party-lab .pl-game-chat[data-chat-place="board_game"] { --pl-chat-w: 190px; } }
+@media (max-width: 600px) { body:has(:is(.pl-board-actions, .pl-board-finish)) .party-lab .pl-game-chat[data-chat-place="board_game"]:not([data-open="true"]) .pl-game-chat-lines { visibility: hidden; transition-delay: 0s; } }
+/* Passing bottom-centre HUD (a round's first-seconds controls line, bowling hit and callout):
+   the closed chat's lines wait. */
+body:has(:is(.pl-control-hint[data-shown="true"], .pl-bowling-hit, .pl-bowling-callout)) .party-lab .pl-game-chat:not([data-open="true"]) .pl-game-chat-lines { visibility: hidden; transition-delay: 0s; }
+.party-lab .pl-game-chat-lines { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; margin: 0; padding: 0; list-style: none; }
+/* Half see-through; a visible line takes clicks (they are not game input), a faded one lets them through. */
+.party-lab .pl-game-chat-lines li {
+  max-width: 100%; padding: 3px 9px 4px; border-radius: 8px;
+  background: oklch(16% 0.02 180 / 52%); color: var(--pl-ink); overflow-wrap: anywhere;
+  opacity: 0; transition: opacity 1.4s ease-in;
+}
+.party-lab .pl-game-chat-lines li > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.party-lab .pl-game-chat-lines li[data-shown="true"] { opacity: 0.9; pointer-events: auto; transition-duration: 150ms; }
+.party-lab .pl-game-chat-lines b { font-weight: 700; }
+.party-lab .pl-game-chat[data-open="true"] { pointer-events: auto; }
+.party-lab .pl-game-chat[data-open="true"] .pl-game-chat-lines li { opacity: 1; background: oklch(16% 0.02 180 / 82%); }
+.party-lab .pl-game-chat[data-open="true"] .pl-game-chat-lines li > span { -webkit-line-clamp: 5; }
+@media (max-height: 500px) { .party-lab .pl-game-chat-lines li:nth-last-child(n + 4) { display: none; } }
+.party-lab .pl-game-chat-notice { margin: 0; padding: 4px 10px; border-radius: 8px; background: oklch(30% 0.07 45 / 90%); color: oklch(93% 0.05 75); font-size: 12px; }
+.party-lab .pl-game-chat-compose { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; pointer-events: auto; }
+.party-lab .pl-game-chat-compose input { flex: 1 1 200px; height: 40px; padding: 0 12px; border-radius: 10px; border-color: oklch(70% 0.035 70 / 45%); background: oklch(16% 0.02 180 / 92%); font-size: 16px; }
+.party-lab .pl-game-chat-compose input:focus-visible { outline-offset: 1px; }
+.party-lab .pl-game-chat-keys { width: 100%; color: var(--pl-muted); font-size: 11px; text-shadow: 0 1px 2px oklch(10% 0.01 60 / 80%); }
+.party-lab .pl-game-chat-send { height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: var(--pl-accent); color: var(--pl-bg); font: inherit; font-size: 14px; font-weight: 700; touch-action: manipulation; cursor: pointer; }
+.party-lab .pl-game-chat-toggle {
+  display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--pl-border); border-radius: 12px; background: oklch(20% 0.03 180 / 82%); color: var(--pl-ink);
+  pointer-events: auto; touch-action: manipulation; cursor: pointer;
+}
+.party-lab .pl-game-chat-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+@media (max-height: 500px) { .party-lab .pl-game-chat-toggle { width: 36px; height: 36px; } }
+.party-lab .pl-game-chat[data-touch="true"][data-open="true"] { top: calc(env(safe-area-inset-top, 0px) + 12px); bottom: auto; left: 12px; right: 12px; width: auto; max-width: 560px; }
+.party-lab .pl-game-chat[data-touch="true"][data-open="true"] .pl-game-chat-compose { order: -1; }
+/* Typing at the top covers that HUD for a moment: solid lines read cleanly over it. */
+.party-lab .pl-game-chat[data-touch="true"][data-open="true"] .pl-game-chat-lines li { background: oklch(16% 0.02 180 / 95%); }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-game-chat-lines li { transition: none; } }

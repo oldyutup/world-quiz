@@ -15,7 +15,7 @@ export default function OnlineRaceArena(props:Props){
  const [snapshot,setSnapshot]=useState<RaceSnapshot|null>(null),[status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
  const [extras,setExtras]=useState(loadRaceExtras),[saved,setSaved]=useState(true),bindings=useMemo(()=>raceBindings(props.bindings,extras),[props.bindings,extras]);
  const updateExtras=(value:RaceExtras)=>{setExtras(value);setSaved(saveRaceExtras(value));};
- const menu=useArenaMenu(!paused),off=paused||menu.view!==null||lobby.status!=='connected';
+ const menu=useArenaMenu(!paused),off=paused||menu.view!==null||menu.chatOpen||lobby.status!=='connected';
  const retained=useRef(lobby.game);if(lobby.game?.race)retained.current=lobby.game;
  const game=lobby.game??retained.current,wire=game?.race,self=lobby.players.find(p=>p.id===lobby.selfId),names=wire?.seats.map(id=>lobby.players.find(p=>p.slot===id)?.nickname??'Ayrıldı'),index=wire?.seats.indexOf(self?.slot??-1)??-1;
  return <div className="party-lab pl-playground pl-immersive" data-mode="kart_race">
