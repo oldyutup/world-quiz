@@ -17,6 +17,7 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   snowball_fight: "Kar topla, siper al ve kartopu fırlat. 2–3 oyuncu, 80 saniye.",
   crate_rain: "Kutulardan kaç, avlu dolarken hayatta kal. 2–3 oyuncu, 3 tur.",
   click_race: "Tuşa ya da ekrana durmadan bas, araban her basışta ilerler. Bitişe ilk varan kazanır. 2–3 oyuncu.",
+  bomber: "Yuvarlak arenada kutuları bombalayıp yol aç, rakiplerini patlamaya yakala: her vuruş +1, kendi bomban −1. Bomba ışın ve halka boyunca 3 hücre gider. Son 15 saniyede dış halkalar çöker. 60 saniyede en çok puanı toplayan kazanır. 2–3 oyuncu.",
   gold_miner: "Sallanan kancanı doğru anda fırlat, altını ve elması kap. Ağır eşya yavaş gelir, taş zaman yer. 30 saniyede en çok puanı toplayan kazanır. 2–3 oyuncu.",
   rooftop_brawl: "Yumruk, tut, kaldır. Son ayakta kalan kazanır.",
   barn_shootout: "Silah bul, nişan al. 2:30 sonunda en çok öldüren kazanır.",

@@ -8,6 +8,7 @@ const OnlineBowlingArena = lazy(() => import("./OnlineBowlingArena"));
 const OnlinePropArena = lazy(() => import("./OnlinePropArena"));
 const OnlineClickArena = lazy(() => import("./OnlineClickArena"));
 const OnlineGoldArena = lazy(() => import("./OnlineGoldArena"));
+const OnlineBomberArena = lazy(() => import("./OnlineBomberArena"));
 import {
   Component,
   useEffect,
@@ -423,6 +424,7 @@ function OnlineView({
  * never guesses it from poses or map data. Rooftop Brawl keeps its original view.
  */
 export default function OnlineArena(props: Props) {
+  if (props.lobby.mode === "bomber") return <Suspense fallback={<p>Bombacı yükleniyor…</p>}><OnlineBomberArena {...props} /></Suspense>;
   if (props.lobby.mode === "gold_miner") return <Suspense fallback={<p>Altın Madenci yükleniyor…</p>}><OnlineGoldArena {...props} /></Suspense>;
   if (props.lobby.mode === "click_race") return <Suspense fallback={<p>Tıklama Yarışı yükleniyor…</p>}><OnlineClickArena {...props} /></Suspense>;
   if (props.lobby.mode === "classic_bowling") return <Suspense fallback={<p>Klasik Bowling yükleniyor…</p>}><OnlineClassicArena {...props} /></Suspense>;

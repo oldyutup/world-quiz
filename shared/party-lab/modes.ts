@@ -5,7 +5,7 @@ import type { ArenaMapId, ModeArenaId, TileArenaId } from "./maps/types.js";
  * server before the round starts and sent explicitly (lobby state and every
  * snapshot). Clients never infer the mode from geometry or a map name.
  */
-export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner"] as const;
+export const GAME_MODES = ["rooftop_brawl", "barn_shootout", "layer_chaos", "color_chaos", "bomb_tag", "prop_hunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner", "bomber"] as const;
 export type GameMode = (typeof GAME_MODES)[number];
 /**
  * What the room host picks in the lobby: one mode, all of them in a shuffled rotation, or
@@ -35,6 +35,7 @@ export const MODE_PLAYERS: Readonly<Record<GameMode, { readonly min: number; rea
   classic_bowling: { min: 2, max: 3 },
   click_race: { min: 2, max: 3 },
   gold_miner: { min: 2, max: 3 },
+  bomber: { min: 2, max: 3 },
 };
 export const modeFits = (mode: GameMode, players: number) =>
   players >= MODE_PLAYERS[mode].min && players <= MODE_PLAYERS[mode].max;
@@ -54,6 +55,7 @@ export const MODE_MAP: Readonly<Record<GameMode, ArenaMapId | TileArenaId | Mode
   snowball_fight: "snowball_fight",
   click_race: "click_race",
   gold_miner: "gold_miner",
+  bomber: "bomber",
 };
 export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   rooftop_brawl: "Çatı Kavgası",
@@ -70,6 +72,7 @@ export const MODE_NAMES: Readonly<Record<ModeSelection, string>> = {
   snowball_fight: "Kartopu Savaşı",
   click_race: "Tıklama Yarışı",
   gold_miner: "Altın Madenci",
+  bomber: "Bombacı",
   mixed: "Karışık",
   board_game: "Tahta Oyunu",
 };

@@ -104,6 +104,10 @@ import GoldMinerHud from "./goldminer/GoldMinerHud";
 import { localGoldMiner } from "./goldminer/local";
 import type { GoldFrame } from "./goldminer/online";
 import { BOT_LEVELS, BOT_LEVEL_NAMES, type BotLevel } from "./goldminer/bots";
+import BomberHud from "./bomber/BomberHud";
+import { localBomber, type BomberFrame } from "./bomber/source";
+import { BOMBER_BOT_LEVELS, BOMBER_BOT_NAMES, type BomberBotLevel } from "../../../shared/party-lab/simulation/bomber/bots";
+import { bindingLabel } from "../input/bindings";
 import { LOCAL_ARENA_IDS, type LocalArenaId } from "../../../shared/party-lab/localArenas";
 import RaceControls from "./kartrace/RaceControls";
 import { loadRaceExtras, saveRaceExtras, raceBindings, type RaceExtras } from "./kartrace/controls";
@@ -115,6 +119,7 @@ const SnowballPlayground = lazy(() => import("./snowball/SnowballPlayground"));
 const BowlingPlayground = lazy(() => import("./bowling/BowlingPlayground"));
 const ClickRacePlayground = lazy(() => import("./clickrace/ClickRacePlayground"));
 const GoldMinerPlayground = lazy(() => import("./goldminer/GoldMinerPlayground"));
+const BomberPlayground = lazy(() => import("./bomber/BomberPlayground"));
 
 /**
  * What the local arena can open (shared/party-lab/localArenas.ts): every shared static map,
@@ -123,14 +128,14 @@ const GoldMinerPlayground = lazy(() => import("./goldminer/GoldMinerPlayground")
  * Saklambaç's forest camp, scene/prophunt/; and the rest).
  */
 const localArenaName = (id: LocalArenaId) =>
-  id === "gold_miner" ? "Altın Madenci" : id === "click_race" ? "Tıklama Yarışı" : id === "classic_bowling" ? "Klasik Bowling" : id === "kart_race" ? "Araba Yarışı" : id === "snowball_fight" ? "Kartopu Savaşı" : id === "crate_rain" ? "Kutu Yağmuru" : id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
+  id === "bomber" ? "Bombacı" : id === "gold_miner" ? "Altın Madenci" : id === "click_race" ? "Tıklama Yarışı" : id === "classic_bowling" ? "Klasik Bowling" : id === "kart_race" ? "Araba Yarışı" : id === "snowball_fight" ? "Kartopu Savaşı" : id === "crate_rain" ? "Kutu Yağmuru" : id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
  * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner"]);
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner", "bomber"]);
 /** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
@@ -845,6 +850,14 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   const [goldRestart, setGoldRestart] = useState(0);
   const [goldFrame, setGoldFrame] = useState<GoldFrame | null>(null);
   const goldLocal = useMemo(() => localGoldMiner(goldPlayers, goldLevel, costumeId), [goldPlayers, goldLevel, costumeId, goldRestart]); // a restart is a new mine
+  const bomber = mapId === "bomber";
+  const [bomberPlayers, setBomberPlayers] = useState<2 | 3>(3);
+  const [bomberLevel, setBomberLevel] = useState<BomberBotLevel>("medium");
+  const [bomberRestart, setBomberRestart] = useState(0);
+  const [bomberFrame, setBomberFrame] = useState<BomberFrame | null>(null);
+  const [bomberPortraits, setBomberPortraits] = useState<string[]>([]);
+  const bomberLocal = useMemo(() => localBomber(bomberPlayers, bomberLevel, costumeId), [bomberPlayers, bomberLevel, costumeId, bomberRestart]); // a restart is a new arena
+  const bomberHud = useMemo(() => bomberLocal.looks.map((look, lane) => ({ name: look.name, color: look.color, connected: true, portrait: bomberPortraits[lane] ?? "" })), [bomberLocal, bomberPortraits]);
   const race = mapId === "kart_race";
   const [raceExtras, setRaceExtras] = useState(loadRaceExtras);
   const [raceBindingsSaved, setRaceBindingsSaved] = useState(true);
@@ -879,10 +892,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
   /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
-  const modePlayground = tileMode || bomb || prophunt || bowling || snowball || craterain || snowfight || race || classic || clickrace || goldminer;
-  const modeId = goldminer ? "gold_miner" : clickrace ? "click_race" : classic ? "classic_bowling" : race ? "kart_race" : snowfight ? "snowball_fight" : craterain ? "crate_rain" : snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
+  const modePlayground = tileMode || bomb || prophunt || bowling || snowball || craterain || snowfight || race || classic || clickrace || goldminer || bomber;
+  const modeId = bomber ? "bomber" : goldminer ? "gold_miner" : clickrace ? "click_race" : classic ? "classic_bowling" : race ? "kart_race" : snowfight ? "snowball_fight" : craterain ? "crate_rain" : snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
-  const chaseCamera = barn || (modePlayground && !bowling && !snowball && !craterain && !race && !classic && !clickrace && !goldminer);
+  const chaseCamera = barn || (modePlayground && !bowling && !snowball && !craterain && !race && !classic && !clickrace && !goldminer && !bomber);
   const immersive = IMMERSIVE_MAPS.has(mapId);
   // Bowling and the local snowball prototype pause while the menu is open;
   // the other existing modes keep simulating as before.
@@ -1045,7 +1058,11 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </div>
             }
           >
-            {mapId === "gold_miner" ? (
+            {mapId === "bomber" ? (
+              <Suspense fallback={null}>
+                <BomberPlayground key={`bomber-${bomberPlayers}-${bomberLevel}-${bomberRestart}`} source={bomberLocal.source} looks={bomberLocal.looks} first={bomberLocal.first} bindings={bindings} paused={inputOff} audio={audio} onStatus={setStatus} onFrame={setBomberFrame} onPortraits={setBomberPortraits} />
+              </Suspense>
+            ) : mapId === "gold_miner" ? (
               <Suspense fallback={null}>
                 <GoldMinerPlayground key={`gold-${goldPlayers}-${goldLevel}-${goldRestart}`} source={goldLocal.source} lanes={goldLocal.looks} first={goldLocal.first} self={0} presses={clickPresses} paused={inputOff} audio={audio} onStatus={setStatus} onFrame={setGoldFrame} />
               </Suspense>
@@ -1161,6 +1178,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
         </SceneBoundary>
         {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
         {classic && status === "ready" && classicSnapshot && <ClassicHud bindings={bindings} snapshot={classicSnapshot} restart={() => { setStatus("loading"); setClassicSnapshot(null); setClassicRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
+        {bomber && status === "ready" && bomberFrame && <BomberHud wire={bomberFrame.wire} step={bomberFrame.step} lanes={bomberHud} self={0} winner={bomberFrame.winner} keys={bindingLabel(bindings.jump[0])} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setBomberFrame(null); setBomberRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {goldminer && status === "ready" && goldFrame && <GoldMinerHud wire={goldFrame.wire} lanes={goldLocal.hud} self={0} winner={goldFrame.winner} keys={pressLabel(bindings)} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setGoldFrame(null); setGoldRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {clickrace && status === "ready" && clickFrame && <ClickRaceHud wire={clickFrame.wire} lanes={clickLocal.hud} self={0} winner={clickFrame.winner} keys={pressLabel(bindings)} afterRound="Oyuncu sayısı için Esc" restart={() => { setStatus("loading"); setClickFrame(null); setClickRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {race && status === "ready" && raceSnapshot && <RaceHud bindings={raceControls} snapshot={raceSnapshot} restart={() => { setStatus("loading"); setRaceSnapshot(null); setRaceRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
@@ -1457,7 +1475,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           leaveLabel="Lobiye Dön"
           lobby={null}
           modeName={localArenaName(mapId)}
-          menuNote={classic || race || snowfight || snowball || craterain || clickrace || goldminer ? 'Maç duraklatıldı.' : undefined}
+          menuNote={classic || race || snowfight || snowball || craterain || clickrace || goldminer || bomber ? 'Maç duraklatıldı.' : undefined}
           controlsContent={classic ? <ClassicControls bindings={bindings} onBindings={onBindings} onClose={() => menu.setView("main")} /> : race ? <RaceControls bindings={raceControls} shared={bindings} onShared={onBindings} onExtras={updateRaceExtras} saved={bindingsSaved && raceBindingsSaved} onClose={() => menu.setView("main")} /> : snowfight ? <div className="pl-fight-menu-controls" data-party-controls>
             <button className="pl-button pl-join" onClick={() => menu.setView("main")}>← Menüye Dön</button>
             <h2 id="pl-menu-title">Kartopu Savaşı kontrolleri</h2>
@@ -1473,7 +1491,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera && !snowfight ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={classic || race || clickrace || goldminer || snowfight || craterain || snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={classic || race || clickrace || goldminer || bomber || snowfight || craterain || snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1495,6 +1513,22 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               setClassicPlayers(Number(event.target.value) === 2 ? 2 : 3);
               requestAnimationFrame(() => viewport.current?.focus());
             }}><option value={2}>2 (sen + 1 bot)</option><option value={3}>3 (sen + 2 bot)</option></select>
+          </label>}
+          {bomber && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={bomberPlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setBomberFrame(null);
+              setBomberPlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option></select>
+          </label>}
+          {bomber && <label className="pl-menu-row">
+            <span>Bot seviyesi</span>
+            <select aria-label="Bot seviyesi" value={bomberLevel} onChange={event => {
+              menu.setView(null); setStatus("loading"); setBomberFrame(null);
+              setBomberLevel(BOMBER_BOT_LEVELS.find(level => level === event.target.value) ?? "medium");
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}>{BOMBER_BOT_LEVELS.map(level => <option key={level} value={level}>{BOMBER_BOT_NAMES[level]}</option>)}</select>
           </label>}
           {goldminer && <label className="pl-menu-row">
             <span>Oyuncu</span>

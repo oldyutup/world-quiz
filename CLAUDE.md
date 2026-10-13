@@ -6,6 +6,8 @@ Yeni mod eklerken Mixed ve Tahta Oyunu rotasyonuna girmeli, winner doğru dolmal
 
 Her yeni mod Yerel Test Arenası'na da botlarıyla birlikte eklenmeli.
 
+Party Lab yalnızca masaüstünde oynanıyor; yeni modlarda telefon/dokunmatik uyarlaması ve telefon boyutu testi yapılmaz. Mevcut telefon desteğine dokunulmaz (bozulmaz), yalnız yeni işlerde bununla uğraşılmaz.
+
 Nasıl:
 
 - `shared/party-lab/modes.ts` → `GAME_MODES`'a ekle. `MODE_SELECTIONS`, Mixed (`mixedCycle`/`MixedRotation`) ve Tahta Oyunu'nun mini oyun rotasyonu buradan türer; ayrı bir listeye eklemek gerekmez.

@@ -431,7 +431,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = this.snapshot.mode === "gold_miner"
+    const packet: AnyInputPacket = this.snapshot.mode === "bomber"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,moveX:intent.bomber?.moveX??0,moveZ:intent.bomber?.moveZ??0,bombs:intent.bomber?.bombs??0}
+      : this.snapshot.mode === "gold_miner"
       ? {seq:++this.inputSeq,round:this.snapshot.round,shot:intent.gold?.shot??1,at:intent.gold?.at??0}
       : this.snapshot.mode === "click_race"
       ? {seq:++this.inputSeq,round:this.snapshot.round,stamps:intent.click?.stamps??[]}

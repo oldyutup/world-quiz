@@ -8,6 +8,7 @@ export interface MovementInput {
   bowling?: import("./network/bowlingInput.js").BowlingInputPacket;
   click?: import("./network/clickInput.js").ClickInputPacket;
   gold?: import("./network/goldInput.js").GoldInputPacket;
+  bomber?: import("./network/bomberInput.js").BomberInputPacket;
   x: number;
   z: number;
   jump: boolean;

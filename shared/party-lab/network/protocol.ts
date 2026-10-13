@@ -6,6 +6,7 @@ import {validateSnowballInput, type SnowballInputPacket} from "./snowballInput.j
 import {validateBowlingInput, type BowlingInputPacket} from "./bowlingInput.js";
 import {validateClickInput, type ClickInputPacket} from "./clickInput.js";
 import { validateGoldInput, type GoldInputPacket } from "./goldInput.js";
+import { validateBomberInput, type BomberInputPacket } from "./bomberInput.js";
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import type { GameMode } from "../modes.js";
@@ -40,7 +41,9 @@ export const NET = {
   // section; a v15 page cannot draw a click round and a v15 server refuses the packet.
   // 17: Altın Madenci (gold_miner). A new mode, its shot packet (shot number + press
   // time) and snapshot section; a v16 page cannot draw a mine and a v16 server refuses it.
-  version: 17,
+  // 18: Bombacı (bomber). A new mode, its walk + bomb-counter packet and snapshot section
+  // (round arena cells, bombs, flames); a v17 page cannot draw it and a v17 server refuses it.
+  version: 18,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -187,7 +190,7 @@ export interface BombInputPacket extends LayerInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = BomberInputPacket | GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && "jumpPressed" in p && !("attackPressed" in p);
@@ -387,6 +390,7 @@ export interface GameSnapshot {
   prop?: import("../simulation/prophunt/wire.js").PropSnapshotWire;
   click?: import("../simulation/clickrace/wire.js").ClickWire;
   gold?: import("../simulation/goldminer/wire.js").GoldWire;
+  bomber?: import("../simulation/bomber/wire.js").BomberWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -602,6 +606,7 @@ export class InputMailbox {
   private cratePacket: CrateInputPacket | null = null;
   private clickPacket: ClickInputPacket | null = null;
   private goldPacket: GoldInputPacket | null = null;
+  private bomberPacket: BomberInputPacket | null = null;
   private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
@@ -641,6 +646,15 @@ export class InputMailbox {
       this.seq = p.seq;
       this.received = now;
       this.goldPacket = p;
+      return true;
+    }
+    if (mode === "bomber") {
+      const p = validateBomberInput(value);
+      if (!p || p.round !== round || p.seq <= this.seq) return false;
+      // Held state: the newest packet is read every step until a newer one (or staleness).
+      this.seq = p.seq;
+      this.received = now;
+      this.bomberPacket = p;
       return true;
     }
     if (mode === "crate_rain") {
@@ -768,6 +782,12 @@ export class InputMailbox {
     if(this.classicPacket){const p=this.classicEdge??{...this.classicPacket,pressed:false};this.classicEdge=null;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),classic:p};}
     if(this.racePacket){const p={...this.racePacket,reset:this.raceReset};this.raceReset=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),race:p};}
     if(this.fightPacket){const p={...this.fightPacket,throwPressed:this.fightThrow};this.fightThrow=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),fight:p};}
+    if (this.bomberPacket) {
+      const p = this.bomberPacket;
+      this.processedSeq = p.seq;
+      this.processedRound = p.round;
+      return { ...neutralIntent(), bomber: p };
+    }
     if(this.cratePacket){const p=this.cratePacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),crate:p};}
     if(this.snowballPacket){const p=this.snowballPacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),snowball:p};}
     const next=this.bowlingQueue.shift();
@@ -854,6 +874,7 @@ export class InputMailbox {
     this.cratePacket=null;
     this.clickPacket=null;
     this.goldPacket=null;
+    this.bomberPacket=null;
     this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;
     this.propPacket = null;
