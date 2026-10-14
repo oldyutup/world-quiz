@@ -1,0 +1,64 @@
+/* Nişancı HUD: a card over each player's stretch (left from --pl-mm-x-N), the clock top right, the hint below, floating words over the targets. */
+.pl-viewport[data-mode="marksman"] { user-select: none; -webkit-user-select: none; }
+.party-lab .pl-viewport[data-mode="marksman"] .pl-arena-side { top: 84px; left: auto; right: 16px; justify-items: end; max-width: 240px; }
+.pl-mm-hud { --pl-mm-card-min: 120px; --pl-mm-card-max: 120px; position: absolute; inset: 0; pointer-events: none; color: oklch(97% .01 240); font-family: Barlow, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 2px 3px oklch(18% .03 250 / .55); }
+.pl-mm-clock { position: absolute; top: 14px; right: 16px; min-width: 76px; padding: 6px 14px; border-radius: 12px; background: oklch(26% .03 250 / .9); border: 1px solid oklch(46% .03 250 / .7); text-align: center; font-size: 34px; font-weight: 900; line-height: 1.1; }
+.pl-mm-clock.is-low { color: oklch(80% .16 35); border-color: oklch(62% .15 35 / .8); }
+.pl-mm-cards { margin: 0; padding: 0; list-style: none; }
+.pl-mm-cards li { position: absolute; top: 14px; transform: translateX(-50%); display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 0 10px; box-sizing: border-box; width: 220px; min-height: 52px; padding: 5px 14px 5px 5px; border-radius: 12px; background: oklch(26% .03 250 / .9); border: 2px solid var(--lane); box-shadow: inset 0 -3px 0 color-mix(in oklch, var(--lane) 45%, transparent); transition: transform .12s; }
+.pl-mm-cards li.is-self { background: oklch(31% .04 250 / .95); box-shadow: inset 0 -3px 0 var(--lane), 0 0 0 2px oklch(93% .05 90 / .55); }
+.pl-mm-cards li.is-stunned { animation: pl-mm-shake .32s linear infinite; }
+.pl-mm-face { width: 46px; height: 46px; border-radius: 9px; overflow: hidden; background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--lane) 55%, white), color-mix(in oklch, var(--lane) 60%, black)); }
+.pl-mm-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pl-mm-face i { display: block; width: 100%; height: 100%; }
+.pl-mm-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--lane); }
+.pl-mm-name small { font-size: 10px; letter-spacing: 1px; color: oklch(88% .1 90); }
+.pl-mm-score { font-size: 30px; line-height: 1; font-weight: 900; color: var(--lane); text-shadow: 0 2px 2px oklch(15% .03 250 / .75); white-space: nowrap; }
+.pl-mm-status { position: absolute; left: 60px; bottom: 3px; font-size: 11px; opacity: .85; }
+.pl-mm-status.is-stun { left: auto; right: 12px; bottom: -9px; padding: 1px 7px; border-radius: 6px; background: oklch(80% .16 85); color: oklch(25% .05 60); font-weight: 900; letter-spacing: 1px; opacity: 1; text-shadow: none; }
+.pl-mm-pops { position: absolute; inset: 0; overflow: hidden; }
+.pl-mm-pop { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-size: 26px; font-weight: 900; letter-spacing: .5px; color: var(--lane); -webkit-text-stroke: 1.5px oklch(18% .03 250 / .85); paint-order: stroke fill; text-shadow: 0 3px 4px oklch(15% .03 250 / .6); animation: pl-mm-float 1s cubic-bezier(.2, .7, .3, 1) forwards; }
+.pl-mm-pop b { font-size: 34px; }
+.pl-mm-pop.is-slow { font-size: 22px; }
+.pl-mm-pop.is-slow b { font-size: 28px; }
+.pl-mm-pop.is-bomb { font-size: 30px; animation-name: pl-mm-boom; }
+.pl-mm-pop.is-bomb b { font-size: 38px; }
+@keyframes pl-mm-float {
+  0% { opacity: 0; transform: translate(-50%, -20%) scale(.6); }
+  12% { opacity: 1; transform: translate(-50%, -70%) scale(1.12); }
+  25% { transform: translate(-50%, -85%) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -190%) scale(.95); }
+}
+@keyframes pl-mm-boom {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(.5); }
+  10% { opacity: 1; transform: translate(-52%, -70%) scale(1.3); }
+  18% { transform: translate(-48%, -75%) scale(1.15); }
+  26% { transform: translate(-51%, -80%) scale(1.1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -170%) scale(1); }
+}
+@keyframes pl-mm-shake {
+  0%, 100% { transform: translateX(-50%) rotate(0); }
+  25% { transform: translateX(calc(-50% - 3px)) rotate(-1.5deg); }
+  75% { transform: translateX(calc(-50% + 3px)) rotate(1.5deg); }
+}
+.pl-mm-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); margin: 0; padding: 7px 14px; border-radius: 10px; background: oklch(26% .03 250 / .82); font-size: 15px; white-space: nowrap; }
+.pl-mm-hint kbd, .pl-mm-callout kbd { font: inherit; font-weight: 800; }
+.pl-mm-callout { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px)); text-align: center; }
+.pl-mm-callout span { display: block; font-weight: 800; letter-spacing: 4px; font-size: 26px; }
+.pl-mm-callout strong { display: block; font-size: 112px; line-height: 1.1; }
+.pl-mm-callout small { display: inline-block; padding: 6px 12px; border-radius: 10px; background: oklch(24% .03 250 / .8); font-size: 17px; }
+.pl-mm-callout.is-go strong { font-size: 88px; color: oklch(90% .15 80); }
+.pl-mm-callout.is-over strong { font-size: 64px; color: oklch(84% .14 40); }
+.pl-mm-results { pointer-events: auto; position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(600px, calc(100% - 24px)); box-sizing: border-box; padding: 18px 22px; border-radius: 16px; border: 1px solid oklch(55% .05 250); background: oklch(23% .03 250 / .97); box-shadow: 0 20px 65px oklch(12% .03 250 / .45); text-align: center; }
+.pl-mm-results p { margin: 0; font-size: 12px; letter-spacing: 2px; opacity: .7; text-transform: uppercase; }
+.pl-mm-results h2 { margin: 6px 0 14px; font-size: 30px; color: oklch(88% .14 80); }
+.pl-mm-results table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl-mm-results th { font-size: 11px; letter-spacing: 1px; font-weight: 700; opacity: .65; text-align: left; padding: 0 6px 6px; }
+.pl-mm-results td { padding: 9px 6px; border-top: 1px solid oklch(50% .04 250 / .3); text-align: left; white-space: nowrap; }
+.pl-mm-results tr.is-self td { color: oklch(90% .1 88); }
+.pl-mm-results td:first-child { font-weight: 800; width: 28px; }
+.pl-mm-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; }
+.pl-mm-results small { display: block; margin-top: 12px; font-size: 12px; opacity: .7; }
+.pl-mm-results button { width: 100%; min-height: 44px; margin-top: 16px; }

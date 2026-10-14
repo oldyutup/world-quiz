@@ -106,6 +106,10 @@ import type { GoldFrame } from "./goldminer/online";
 import { BOT_LEVELS, BOT_LEVEL_NAMES, type BotLevel } from "./goldminer/bots";
 import BomberHud from "./bomber/BomberHud";
 import TowerHud from "./boxtower/TowerHud";
+import MarksmanHud from "./marksman/MarksmanHud";
+import { laneViews, localMarksman, type MarksmanFrame } from "./marksman/source";
+import { AimKeys, aimBindings, aimLabel, fireBindings, fireLabel } from "./marksman/input";
+import { MARKSMAN_BOT_LEVELS, MARKSMAN_BOT_NAMES, type MarksmanBotLevel } from "../../../shared/party-lab/simulation/marksman/bots";
 import { localTower, yardViews, type TowerFrame } from "./boxtower/source";
 import { dropBindings, dropLabel } from "./boxtower/input";
 import { TOWER_BOT_LEVELS, TOWER_BOT_NAMES, type TowerBotLevel } from "../../../shared/party-lab/simulation/boxtower/bots";
@@ -126,6 +130,7 @@ const ClickRacePlayground = lazy(() => import("./clickrace/ClickRacePlayground")
 const GoldMinerPlayground = lazy(() => import("./goldminer/GoldMinerPlayground"));
 const BomberPlayground = lazy(() => import("./bomber/BomberPlayground"));
 const TowerPlayground = lazy(() => import("./boxtower/TowerPlayground"));
+const MarksmanPlayground = lazy(() => import("./marksman/MarksmanPlayground"));
 
 /**
  * What the local arena can open (shared/party-lab/localArenas.ts): every shared static map,
@@ -134,14 +139,14 @@ const TowerPlayground = lazy(() => import("./boxtower/TowerPlayground"));
  * Saklambaç's forest camp, scene/prophunt/; and the rest).
  */
 const localArenaName = (id: LocalArenaId) =>
-  id === "box_tower" ? "Kutu Kulesi" : id === "bomber" ? "Bombacı" : id === "gold_miner" ? "Altın Madenci" : id === "click_race" ? "Tıklama Yarışı" : id === "classic_bowling" ? "Klasik Bowling" : id === "kart_race" ? "Araba Yarışı" : id === "snowball_fight" ? "Kartopu Savaşı" : id === "crate_rain" ? "Kutu Yağmuru" : id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
+  id === "marksman" ? "Nişancı" : id === "box_tower" ? "Kutu Kulesi" : id === "bomber" ? "Bombacı" : id === "gold_miner" ? "Altın Madenci" : id === "click_race" ? "Tıklama Yarışı" : id === "classic_bowling" ? "Klasik Bowling" : id === "kart_race" ? "Araba Yarışı" : id === "snowball_fight" ? "Kartopu Savaşı" : id === "crate_rain" ? "Kutu Yağmuru" : id === "snowball_brawl" ? "Kartopu Çarpışması" : id === "human_bowling" ? "İnsan Bowlingi" : id === "layers" ? LAYER_CHAOS.label : id === "colors" ? COLOR_CHAOS.label : id === "bomb" ? BOMB_TAG.label : id === "prophunt" ? PROP_HUNT.label : arenaMap(id).name;
 /**
  * Katman Kaosu, Renk Kaosu, Bomba Sende and Saklambaç open immersive, like the online arenas
  * (ArenaChrome): the arena fills the page, only gameplay HUD sits on it, and settings, map
  * and player count move into the Esc menu. The other local test maps keep the header/footer
  * test layout.
  */
-const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner", "bomber", "box_tower"]);
+const IMMERSIVE_MAPS: ReadonlySet<LocalArenaId> = new Set(["layers", "colors", "bomb", "prophunt", "human_bowling", "snowball_brawl", "crate_rain", "snowball_fight", "kart_race", "classic_bowling", "click_race", "gold_miner", "bomber", "box_tower", "marksman"]);
 /** `?layerDebug=1` / `?colorDebug=1` / `?bombDebug=1` / `?propDebug=1` / `?partyDebug=1`: the modes' debug readout starts open. */
 const debugAtStart = () => {
   const query = new URLSearchParams(window.location.search);
@@ -877,6 +882,23 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     towerPresses.bindings = dropBindings(bindings);
     towerPresses.clear();
   }, [towerPresses, bindings]);
+  const marksman = mapId === "marksman";
+  const [marksmanPlayers, setMarksmanPlayers] = useState<2 | 3>(3);
+  const [marksmanLevel, setMarksmanLevel] = useState<MarksmanBotLevel>("medium");
+  const [marksmanRestart, setMarksmanRestart] = useState(0);
+  const [marksmanFrame, setMarksmanFrame] = useState<MarksmanFrame | null>(null);
+  const [marksmanPortraits, setMarksmanPortraits] = useState<string[]>([]);
+  const marksmanLocal = useMemo(() => localMarksman(marksmanPlayers, marksmanLevel, costumeId), [marksmanPlayers, marksmanLevel, costumeId, marksmanRestart]); // a restart is a new round
+  const marksmanHud = useMemo(() => marksmanLocal.looks.map((look, lane) => ({ name: look.name, color: look.color, connected: true, portrait: marksmanPortraits[lane] ?? "" })), [marksmanLocal, marksmanPortraits]);
+  const marksmanViews = useMemo(() => (marksmanFrame ? laneViews(marksmanFrame) : []), [marksmanFrame]);
+  const [marksmanPresses] = useState(() => new ClickPresses(fireBindings(bindings)));
+  const [marksmanAim] = useState(() => new AimKeys(aimBindings(bindings).left, aimBindings(bindings).right));
+  useEffect(() => {
+    marksmanPresses.bindings = fireBindings(bindings);
+    marksmanPresses.clear();
+    Object.assign(marksmanAim, aimBindings(bindings));
+    marksmanAim.clear();
+  }, [marksmanPresses, marksmanAim, bindings]);
   const bomberHud = useMemo(() => bomberLocal.looks.map((look, lane) => ({ name: look.name, color: look.color, connected: true, portrait: bomberPortraits[lane] ?? "" })), [bomberLocal, bomberPortraits]);
   const race = mapId === "kart_race";
   const [raceExtras, setRaceExtras] = useState(loadRaceExtras);
@@ -912,10 +934,10 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   /** Katman Kaosu or Renk Kaosu: a tile mode with its own playground and HUD. */
   const tileMode = layers || colors;
   /** A mode with its own playground and HUD (the tile modes, Bomba Sende, Saklambaç). */
-  const modePlayground = tileMode || bomb || prophunt || bowling || snowball || craterain || snowfight || race || classic || clickrace || goldminer || bomber || tower;
-  const modeId = tower ? "box_tower" : bomber ? "bomber" : goldminer ? "gold_miner" : clickrace ? "click_race" : classic ? "classic_bowling" : race ? "kart_race" : snowfight ? "snowball_fight" : craterain ? "crate_rain" : snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
+  const modePlayground = tileMode || bomb || prophunt || bowling || snowball || craterain || snowfight || race || classic || clickrace || goldminer || bomber || tower || marksman;
+  const modeId = marksman ? "marksman" : tower ? "box_tower" : bomber ? "bomber" : goldminer ? "gold_miner" : clickrace ? "click_race" : classic ? "classic_bowling" : race ? "kart_race" : snowfight ? "snowball_fight" : craterain ? "crate_rain" : snowball ? "snowball_brawl" : bowling ? "human_bowling" : layers ? LAYER_CHAOS.mode : colors ? COLOR_CHAOS.mode : bomb ? BOMB_TAG.mode : prophunt ? PROP_HUNT.mode : undefined;
   /** Mouse/trackpad look drives a chase camera (Barn, Katman Kaosu, Renk Kaosu, Bomba Sende). */
-  const chaseCamera = barn || (modePlayground && !bowling && !snowball && !craterain && !race && !classic && !clickrace && !goldminer && !bomber && !tower);
+  const chaseCamera = barn || (modePlayground && !bowling && !snowball && !craterain && !race && !classic && !clickrace && !goldminer && !bomber && !tower && !marksman);
   const immersive = IMMERSIVE_MAPS.has(mapId);
   // Bowling and the local snowball prototype pause while the menu is open;
   // the other existing modes keep simulating as before.
@@ -1069,7 +1091,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
       >
         <SceneBoundary onError={() => setStatus("graphics-error")}>
           <Canvas
-            dpr={bomber ? BOMBER_DPR : tower ? [1, 2] : [1, 1.5]}
+            dpr={bomber ? BOMBER_DPR : tower || marksman ? [1, 2] : [1, 1.5]}
             camera={{ position: [0, 12, 14], fov: 45, near: 0.1, far: 180 }}
             gl={{ antialias: true, alpha: true }}
             fallback={
@@ -1078,7 +1100,11 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               </div>
             }
           >
-            {mapId === "box_tower" ? (
+            {mapId === "marksman" ? (
+              <Suspense fallback={null}>
+                <MarksmanPlayground key={`marksman-${marksmanPlayers}-${marksmanLevel}-${marksmanRestart}`} source={marksmanLocal.source} looks={marksmanLocal.looks} self={0} presses={marksmanPresses} aimKeys={marksmanAim} paused={inputOff} audio={audio} onStatus={setStatus} onFrame={setMarksmanFrame} onPortraits={setMarksmanPortraits} />
+              </Suspense>
+            ) : mapId === "box_tower" ? (
               <Suspense fallback={null}>
                 <TowerPlayground key={`tower-${towerPlayers}-${towerLevel}-${towerRestart}`} source={towerLocal.source} looks={towerLocal.looks} self={0} presses={towerPresses} paused={inputOff} audio={audio} onStatus={setStatus} onFrame={setTowerFrame} onPortraits={setTowerPortraits} />
               </Suspense>
@@ -1202,6 +1228,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
         </SceneBoundary>
         {immersive && <MenuButton onOpen={() => menu.setView("main")} />}
         {classic && status === "ready" && classicSnapshot && <ClassicHud bindings={bindings} snapshot={classicSnapshot} restart={() => { setStatus("loading"); setClassicSnapshot(null); setClassicRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
+        {marksman && status === "ready" && marksmanFrame && <MarksmanHud wire={marksmanFrame.wire} now={marksmanFrame.now} views={marksmanViews} lanes={marksmanHud} self={0} winner={marksmanFrame.winner} keys={{ aim: aimLabel(bindings), fire: fireLabel(bindings) }} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setMarksmanFrame(null); setMarksmanRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {tower && status === "ready" && towerFrame && <TowerHud wire={towerFrame.wire} now={towerFrame.now} best={towerBest} lanes={towerHud} self={0} winner={towerFrame.winner} keys={dropLabel(bindings)} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setTowerFrame(null); setTowerRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {bomber && status === "ready" && bomberFrame && <BomberHud wire={bomberFrame.wire} step={bomberFrame.step} lanes={bomberHud} self={0} winner={bomberFrame.winner} keys={bindingLabel(bindings.jump[0])} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setBomberFrame(null); setBomberRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
         {goldminer && status === "ready" && goldFrame && <GoldMinerHud wire={goldFrame.wire} lanes={goldLocal.hud} self={0} winner={goldFrame.winner} keys={pressLabel(bindings)} afterRound="Oyuncu sayısı ve bot seviyesi için Esc" restart={() => { setStatus("loading"); setGoldFrame(null); setGoldRestart(n => n + 1); requestAnimationFrame(() => viewport.current?.focus()); }} />}
@@ -1500,7 +1527,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           leaveLabel="Lobiye Dön"
           lobby={null}
           modeName={localArenaName(mapId)}
-          menuNote={classic || race || snowfight || snowball || craterain || clickrace || goldminer || bomber || tower ? 'Maç duraklatıldı.' : undefined}
+          menuNote={classic || race || snowfight || snowball || craterain || clickrace || goldminer || bomber || tower || marksman ? 'Maç duraklatıldı.' : undefined}
           controlsContent={classic ? <ClassicControls bindings={bindings} onBindings={onBindings} onClose={() => menu.setView("main")} /> : race ? <RaceControls bindings={raceControls} shared={bindings} onShared={onBindings} onExtras={updateRaceExtras} saved={bindingsSaved && raceBindingsSaved} onClose={() => menu.setView("main")} /> : snowfight ? <div className="pl-fight-menu-controls" data-party-controls>
             <button className="pl-button pl-join" onClick={() => menu.setView("main")}>← Menüye Dön</button>
             <h2 id="pl-menu-title">Kartopu Savaşı kontrolleri</h2>
@@ -1516,7 +1543,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
           onBindings={onBindings}
           bindingsSaved={bindingsSaved}
           look={chaseCamera && !snowfight ? { mode: lookMode, onChange: setLookMode } : undefined}
-          debug={classic || race || clickrace || goldminer || bomber || tower || snowfight || craterain || snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
+          debug={classic || race || clickrace || goldminer || bomber || tower || marksman || snowfight || craterain || snowball || (bomb && !bombTools) || (prophunt && !propTools) || (bowling && !bowlingTools) ? null : { open: debugPanel.open, onToggle: debugPanel.toggle }}
         >
           <label className="pl-menu-row">
             <span>Harita</span>
@@ -1538,6 +1565,22 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               setClassicPlayers(Number(event.target.value) === 2 ? 2 : 3);
               requestAnimationFrame(() => viewport.current?.focus());
             }}><option value={2}>2 (sen + 1 bot)</option><option value={3}>3 (sen + 2 bot)</option></select>
+          </label>}
+          {marksman && <label className="pl-menu-row">
+            <span>Oyuncu</span>
+            <select aria-label="Oyuncu" value={marksmanPlayers} onChange={event => {
+              menu.setView(null); setStatus("loading"); setMarksmanFrame(null);
+              setMarksmanPlayers(Number(event.target.value) === 2 ? 2 : 3);
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}><option value={3}>3 (sen + 2 bot)</option><option value={2}>2 (sen + 1 bot)</option></select>
+          </label>}
+          {marksman && <label className="pl-menu-row">
+            <span>Bot seviyesi</span>
+            <select aria-label="Bot seviyesi" value={marksmanLevel} onChange={event => {
+              menu.setView(null); setStatus("loading"); setMarksmanFrame(null);
+              setMarksmanLevel(MARKSMAN_BOT_LEVELS.find(level => level === event.target.value) ?? "medium");
+              requestAnimationFrame(() => viewport.current?.focus());
+            }}>{MARKSMAN_BOT_LEVELS.map(level => <option key={level} value={level}>{MARKSMAN_BOT_NAMES[level]}</option>)}</select>
           </label>}
           {tower && <label className="pl-menu-row">
             <span>Oyuncu</span>

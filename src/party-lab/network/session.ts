@@ -431,7 +431,9 @@ export class LobbySession {
       this.diagnostics.inputsCoalesced++;
       return null;
     }
-    const packet: AnyInputPacket = this.snapshot.mode === "box_tower"
+    const packet: AnyInputPacket = this.snapshot.mode === "marksman"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,aim:intent.marksman?.aim??0,fired:intent.marksman?.fired??0,shots:intent.marksman?.shots??[]}
+      : this.snapshot.mode === "box_tower"
       ? {seq:++this.inputSeq,round:this.snapshot.round,drop:intent.tower?.drop??1,at:intent.tower?.at??0}
       : this.snapshot.mode === "bomber"
       ? {seq:++this.inputSeq,round:this.snapshot.round,moveX:intent.bomber?.moveX??0,moveZ:intent.bomber?.moveZ??0,bombs:intent.bomber?.bombs??0}

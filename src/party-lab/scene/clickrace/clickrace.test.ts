@@ -36,8 +36,8 @@ function environment(check: (win: EventTarget, surface: EventTarget & HTMLElemen
   }
 }
 
-test("Tıklama Yarışı is a registered 2–3 player mode on protocol 19", () => {
-  assert.equal(NET.version, 19);
+test("Tıklama Yarışı is a registered 2–3 player mode on protocol 20", () => {
+  assert.equal(NET.version, 20);
   assert.ok(GAME_MODES.includes("click_race"));
   assert.equal(MODE_NAMES.click_race, "Tıklama Yarışı");
   assert.deepEqual(MODE_PLAYERS.click_race, { min: 2, max: 3 });

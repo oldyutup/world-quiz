@@ -11,6 +11,8 @@ import {BomberRoundSimulation} from "../../../shared/party-lab/simulation/bomber
 import {BOMBER} from "../../../shared/party-lab/simulation/bomber/config.js";
 import {TowerRoundSimulation} from "../../../shared/party-lab/simulation/towerRound.js";
 import {BOX_TOWER} from "../../../shared/party-lab/simulation/boxtower/config.js";
+import {MarksmanRoundSimulation} from "../../../shared/party-lab/simulation/marksmanRound.js";
+import {MARKSMAN} from "../../../shared/party-lab/simulation/marksman/config.js";
 import {SnowballRoundSimulation} from "../../../shared/party-lab/simulation/snowballRound.js";
 import {BowlingRoundSimulation} from "../../../shared/party-lab/simulation/bowlingRound.js";
 import { PropRoundSimulation } from "../../../shared/party-lab/simulation/propRound.js";
@@ -99,11 +101,11 @@ async function close(...list: Peer[]) {
 /** Jump a phase to its last 30 ms (the fixed-step loop then finishes it for real). */
 function skip(room: PartyRoom) {
   const game = room.game as unknown as { elapsed: number; phase: string; round: { elapsed: number; phase: string } };
-  if (room.game instanceof ClickRoundSimulation || room.game instanceof GoldRoundSimulation || room.game instanceof BomberRoundSimulation || room.game instanceof TowerRoundSimulation) {
+  if (room.game instanceof ClickRoundSimulation || room.game instanceof GoldRoundSimulation || room.game instanceof BomberRoundSimulation || room.game instanceof TowerRoundSimulation || room.game instanceof MarksmanRoundSimulation) {
     const sim = room.game;
     if (sim.phase === "countdown") sim.game.countdownTicks = 2;
     else if (sim.phase === "playing") sim.game.ticks = sim.game.limitTicks - 2;
-    else (sim as unknown as { resultTime: number }).resultTime = (sim instanceof GoldRoundSimulation ? GOLD_MINER.results : sim instanceof BomberRoundSimulation ? BOMBER.results : sim instanceof TowerRoundSimulation ? BOX_TOWER.results : CLICK_RACE.results) - 0.03;
+    else (sim as unknown as { resultTime: number }).resultTime = (sim instanceof GoldRoundSimulation ? GOLD_MINER.results : sim instanceof BomberRoundSimulation ? BOMBER.results : sim instanceof TowerRoundSimulation ? BOX_TOWER.results : sim instanceof MarksmanRoundSimulation ? MARKSMAN.results : CLICK_RACE.results) - 0.03;
   } else if (room.game instanceof CrateRoundSimulation || room.game instanceof FightRoundSimulation || room.game instanceof RaceRoundSimulation || room.game instanceof ClassicRoundSimulation) {
     const sim=room.game;
     if(sim.phase==='countdown'){

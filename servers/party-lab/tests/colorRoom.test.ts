@@ -121,9 +121,9 @@ function sameFloor(s: GameSnapshot, sim: ColorRoundSimulation) {
   return COLOR_TILES.length;
 }
 
-test("health reports protocol 19", async () => {
+test("health reports protocol 20", async () => {
   const response = await fetch(`${endpoint}/health`);
-  assert.deepEqual(await response.json(), { ok: true, service: "party-lab", protocol: 19 });
+  assert.deepEqual(await response.json(), { ok: true, service: "party-lab", protocol: 20 });
 });
 
 test("colour round over real sockets (2 players): explicit mode, shove packets acknowledged, other modes' packets refused, recipient-only prediction, the same complete floor for both clients", { timeout: 30000 }, async () => {
