@@ -35,7 +35,7 @@ import {
   visitTrail,
   type TrailInput,
 } from "../../../shared/party-lab/simulation/trails/game.js";
-import { sweepSegment } from "../../../shared/party-lab/simulation/trails/sweep.js";
+import { segmentDistance, sweepSegment } from "../../../shared/party-lab/simulation/trails/sweep.js";
 import { TRAIN_PASSES, TRAIN_SPEED, trainDir, trainEnter, trainLeave, trainSpan, trainState, trainWarn } from "../../../shared/party-lab/simulation/trails/train.js";
 import { TrailBot, type TrailBotLevel } from "../../../shared/party-lab/simulation/trails/bots.js";
 import { restoreTrails, trailSection, validTrailWire, wireLines } from "../../../shared/party-lab/simulation/trails/wire.js";
@@ -95,7 +95,7 @@ function pieces(game: TrailGame, lane: number, step = game.ticks) {
   return out;
 }
 
-test("running: never stops — 5 m/s straight on without keys; keys are screen directions; turns at most 210°/s; diagonals; a U-turn is a smooth half circle", () => {
+test("running: never stops — 7 m/s straight on without keys; keys are screen directions; turns at most 294°/s; diagonals; a U-turn is a smooth half circle", () => {
   const g = playing(2),
     p = g.players[0],
     parked = { 1: [10, 7] as [number, number] };
@@ -114,7 +114,7 @@ test("running: never stops — 5 m/s straight on without keys; keys are screen d
     before = p.a;
   }
   assert.equal(p.a, -Math.PI / 2, "W: up the screen");
-  assert.equal(turning, Math.ceil(Math.PI / 2 / PER_STEP), "90° takes 90/3.5 steps");
+  assert.equal(turning, Math.ceil(Math.PI / 2 / PER_STEP), "90° takes 90/4.9 steps");
   // Two keys: the diagonal.
   run(g, 30, [{ x: 1, z: -1 }], parked);
   assert.ok(Math.abs(p.a + Math.PI / 4) < 1e-12, "W+D: up and right");
@@ -139,7 +139,9 @@ test("running: never stops — 5 m/s straight on without keys; keys are screen d
   assert.equal(head.a, 1.234);
 });
 
-test("trails: a point every 3 steps on the centimetre; each lives 4.5 s, fading over its last second", () => {
+test("trails: a point every 3 steps on the centimetre; each lives 2.5 s, fading over its last 0.6 s", () => {
+  assert.equal(L.trailLife, 2.5);
+  assert.equal(L.trailFade, 0.6);
   const g = playing(2),
     parked = { 1: [10, 7] as [number, number] };
   place(g, 0, -10, -6, 0);
@@ -147,40 +149,46 @@ test("trails: a point every 3 steps on the centimetre; each lives 4.5 s, fading 
   const line = g.lines[0];
   for (let i = 1; i < line.t.length; i++) assert.equal(line.t[i] - line.t[i - 1], 3);
   for (const v of [...line.x, ...line.z]) assert.equal(v, onCentimetre(v));
-  // Brightness: full until 3.5 s, then down to nothing at 4.5 s; a dead trail goes in 0.4 s.
-  assert.equal(trailAlpha(0, -1, ticks(3.5)), 1);
-  assert.ok(Math.abs(trailAlpha(0, -1, ticks(4)) - 0.5) < 1e-9);
+  // Brightness: full until 1.9 s, then down to nothing at 2.5 s; a dead trail goes in 0.4 s.
+  assert.equal(trailAlpha(0, -1, ticks(1.9)), 1);
+  assert.ok(Math.abs(trailAlpha(0, -1, ticks(2.2)) - 0.5) < 1e-9);
+  assert.ok(trailAlpha(0, -1, ticks(2.45)) > 0, "still there just before the end");
   assert.equal(trailAlpha(0, -1, LIFE), 0);
   assert.ok(Math.abs(trailAlpha(0, 100, 100 + DEATH_FADE / 2) - 0.5) < 1e-9);
   assert.equal(trailAlpha(0, 100, 100 + DEATH_FADE), 0);
-  // Old points go: nothing older than its life is kept or visible.
-  run(g, LIFE + 30, [UP, undefined], parked);
+  // Old points go: straight on, the visible trail is exactly 2.5 s of running behind the head.
+  place(g, 0, -10, -6, 0);
+  run(g, LIFE + 30, [], parked);
+  const p = g.players[0];
+  assert.ok(p.alive);
   assert.ok(g.lines[0].t[1] + LIFE > g.ticks, "pruned");
-  for (const [ax, , bx] of pieces(g, 0)) assert.ok(Number.isFinite(ax + bx));
+  const tail = Math.min(...pieces(g, 0).map(([ax, , bx]) => Math.min(ax, bx)));
+  assert.ok(Math.abs(p.x - tail - L.speed * L.trailLife) < 0.01, `trail ${(p.x - tail).toFixed(3)} m long`);
 });
 
-test("a trail kills as long as it can be seen: while fading too (4 s old), not once it is gone (4.6 s)", () => {
+test("a trail kills as long as it can be seen: while fading too (2.3 s old), not once it is gone (2.6 s)", () => {
   for (const [age, dies] of [
-    [4.0, true],
-    [3.0, true],
-    [4.6, false],
+    [2.3, true],
+    [2.45, true],
+    [1.5, true],
+    [2.6, false],
   ] as const) {
     const g = playing(3),
       parked = { 2: [10, 7] as [number, number] };
-    // Lane 1's trail across x at z = −5; lane 0 runs up into it from 2 m below (0.4 s).
+    // Lane 1's trail across x at z = −5; lane 0 runs up into it from 2 m below (0.23 s).
     const reach = Math.round(((2 - HIT) / L.speed) * L.hz);
     ghost(g, 1, [
       [-5, -5],
       [5, -5],
     ], g.ticks - ticks(age) + reach);
     place(g, 0, 0, -3, -Math.PI / 2);
-    run(g, 60, [], parked);
+    run(g, 30, [], parked);
     assert.equal(!g.players[0].alive, dies, `${age} s old`);
     if (dies) {
       assert.equal(g.players[0].cause, TRAIL);
       assert.equal(g.players[0].by, 1);
       assert.ok(Math.abs(g.players[0].z - (-5 + HIT)) < 1e-6, "stopped where it touched");
-      if (age > 3.5) assert.ok(trailAlpha(g.lines[1].t[0] ?? 0, -1, g.players[0].died) < 1, "it was fading");
+      if (age > L.trailLife - L.trailFade) assert.ok(trailAlpha(g.lines[1].t[0] ?? 0, -1, g.players[0].died) < 1, "it was fading");
     }
   }
 });
@@ -208,6 +216,26 @@ test("your own trail: the newest 0.7 m never hits you; the rest does (a full cir
   assert.ok(!p.alive && p.cause === SELF, `cause ${p.cause}`);
   const lap = (2 * Math.PI * RADIUS_TURN) / L.speed;
   assert.ok(steps / L.hz > lap * 0.8 && steps / L.hz < lap * 1.15, `${(steps / L.hz).toFixed(2)} s for a lap of ${lap.toFixed(2)} s`);
+});
+
+test("the tightest turn (the turn rate held, three quarters round) never comes near your own trail past the grace, at either speed", () => {
+  assert.equal(L.speed, 7);
+  assert.ok(Math.abs(L.turnRate - (294 * Math.PI) / 180) < 1e-12, "294°/s");
+  assert.ok(Math.abs(L.speed / L.turnRate - 5 / ((210 * Math.PI) / 180)) < 1e-12, "the same turning circle as 5 m/s at 210°/s");
+  for (const rush of [false, true]) {
+    const g = playing(2),
+      p = g.players[0];
+    if (rush) g.ticks = RUSH_AT + 5;
+    place(g, 0, -4, -4, 0);
+    const lap = Math.round((2 * Math.PI) / (turnRateAt(g.ticks + 1) / L.hz));
+    let closest = Infinity;
+    for (let i = 0; i < lap * 0.75; i++) {
+      run(g, 1, [{ x: Math.round(Math.cos(p.a + Math.PI / 2)), z: Math.round(Math.sin(p.a + Math.PI / 2)) }], { 1: [10, 7] });
+      assert.ok(p.alive, `${rush ? "rush" : "normal"}: step ${i}`);
+      visitTrail(g.lines[0], -1, g.ticks, p, L.selfGrace, (ax, az, bx, bz) => (closest = Math.min(closest, segmentDistance(p.x, p.z, ax, az, bx, bz))));
+    }
+    assert.ok(closest > HIT + 0.2, `${rush ? "rush" : "normal"}: ${closest.toFixed(3)} m`);
+  }
 });
 
 test("swept hits: a head moving 3 m in one step cannot jump a thin trail (both ends clear of it)", () => {
@@ -395,7 +423,7 @@ test("winning and places: the last one running wins that very step; out in the s
 });
 
 for (const count of [2, 3])
-  test(`${count} players: the start ring — equally spaced along the ellipse, all facing clockwise, turned at random each round; fair to the rail; going straight on is safe for 1.5 s`, () => {
+  test(`${count} players: the start ring — equally spaced along the ellipse, all facing clockwise, turned at random each round; fair to the rail; going straight on is safe for 1.1 s`, () => {
     const len = (from: number, to: number) => {
       let total = 0;
       const n = Math.ceil(3000 * (to - from));
@@ -435,7 +463,7 @@ for (const count of [2, 3])
     assert.ok(Math.abs(mean - 0.5) < 0.05 && new Set(turns).size === turns.length, "a fresh turn every round");
     const avg = rail.map((r) => r / 300);
     assert.ok(Math.max(...avg) - Math.min(...avg) < 0.5, `distance to the rail by lane ${avg.map((x) => x.toFixed(2))}`);
-    // Nobody pressing anything: at least 1.5 s before anyone hits anything, heads far apart.
+    // Nobody pressing anything: at least 1.1 s (7.7 m) before anyone hits anything, heads far apart.
     for (let i = 0; i < 200; i++) {
       const g = new TrailGame(count, Math.random, i / 200);
       while (g.phase === "countdown") g.step();
@@ -444,7 +472,7 @@ for (const count of [2, 3])
         g.step();
         for (let a = 0; a < count; a++) for (let b = a + 1; b < count; b++) closest = Math.min(closest, Math.hypot(g.players[a].x - g.players[b].x, g.players[a].z - g.players[b].z));
       }
-      assert.ok(g.ticks >= 1.5 * L.hz, `turn ${i / 200}: first crash after ${g.ticks} steps`);
+      assert.ok(g.ticks >= 1.1 * L.hz, `turn ${i / 200}: first crash after ${g.ticks} steps`);
       assert.ok(closest > 3, `heads ${closest.toFixed(2)} m apart`);
       assert.ok(g.players.every((p) => p.alive || p.cause === WALL), "only walls");
     }
@@ -693,25 +721,31 @@ for (const count of [2, 3])
       l0 = lane(peers[0]),
       l1 = lane(peers[1]);
     await until(() => room.game.phase === "playing");
-    // Everyone safe in the middle, heading right; lane 0 is sent W (up the screen).
-    g.players.forEach((_, k) => place(g, k, -9, [-6, -3, 4][k], 0));
-    for (let i = 0; i < 30; i++) {
+    // Everyone running right from the left wall; anyone near the right one goes back (7 m/s is
+    // 3.5 s across); lane 0 is sent W (up the screen), then back along its line.
+    const rows = [-6, -3, 4],
+      keep = () => g.players.forEach((p, k) => p.alive && p.x > 8 && place(g, k, -12, rows[k], 0));
+    g.players.forEach((_, k) => place(g, k, -12, rows[k], 0));
+    for (let i = 0; i < 24; i++) {
       peers[0].send(sim.roundId, 0, -1);
       await pause(16);
     }
     await until(() => g.players[l0].a === -Math.PI / 2);
+    place(g, l0, -12, rows[l0], 0);
     // Lane 1 drops: no input, straight on.
     const r = peers[1].r,
-      id = r.sessionId,
-      heading = g.players[l1].a;
+      id = r.sessionId;
+    place(g, l1, -12, rows[l1], 0);
     r.connection.close(4010);
     await until(() => !room.state.players.get(id)!.connected);
-    assert.equal(g.players[l1].a, heading);
-    await until(() => room.state.players.get(id)!.connected);
+    await pause(350);
+    assert.equal(g.players[l1].a, 0, "straight on, the packets gone stale");
+    assert.ok(g.players[l1].alive);
+    await until(() => (keep(), room.state.players.get(id)!.connected));
     assert.equal(room.game, sim);
     // Everyone but lane 0 into the bottom wall.
     g.players.forEach((_, k) => k !== l0 && place(g, k, [-8, 0, 8][k], HALF_Z - L.radius - 0.05, Math.PI / 2));
-    place(g, l0, -9, -6, 0);
+    place(g, l0, -12, -6, 0);
     await until(() => room.game.phase === "results", 4000);
     const slot = (i: number) => room.state.players.get(peers[i].r.sessionId)!.slot;
     assert.equal(room.state.winner, slot(0));

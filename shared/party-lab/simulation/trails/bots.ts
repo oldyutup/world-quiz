@@ -28,7 +28,7 @@ interface Tuning {
   hunt: number;
 }
 export const TRAIL_BOT_TUNING: Readonly<Record<TrailBotLevel, Tuning>> = {
-  easy: { think: 10, horizon: 42, margin: 0.05, careless: 0.02, forget: 90, noise: 0.25, room: false, hunt: 0 },
+  easy: { think: 10, horizon: 42, margin: 0.05, careless: 0.004, forget: 90, noise: 0.12, room: false, hunt: 0 },
   medium: { think: 5, horizon: 72, margin: 0.18, careless: 0, forget: 0, noise: 0.04, room: true, hunt: 0 },
   hard: { think: 3, horizon: 100, margin: 0.18, careless: 0, forget: 0, noise: 0, room: true, hunt: 400 },
 };

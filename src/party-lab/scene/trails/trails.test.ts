@@ -62,14 +62,14 @@ test("the camera: the whole arena beside the HUD column on every desktop size, t
   assert.deepEqual(TRAIL_DPR, [2, 2]);
 });
 
-test("drawn trails: cut where a life ends, fading over the last second, broken where the train wiped them, gone 0.4 s after a death, and ending at the drawn head", () => {
+test("drawn trails: cut where a life ends, fading over the last 0.6 s, broken where the train wiped them, gone 0.4 s after a death, and ending at the drawn head", () => {
   // Points every 3 steps along x from step 0 to 300.
   const line: TrailLine = { x: [], z: [], t: [], cut: [] };
   for (let t = 0; t <= 300; t += 3) {
     line.x.push(onCentimetre(-10 + t * 0.05));
     line.z.push(-4);
     line.t.push(t);
-    line.cut.push(t === 150);
+    line.cut.push(t === 225);
   }
   const step = 301,
     runs = trailRuns(line, -1, step, { x: 5.1, z: -4 });
@@ -152,8 +152,8 @@ test("prediction: own turns shown at once and replayed exactly (steady 100 ms ro
 
 test("prediction: running into a wall stops the drawn head there; only the server says dead", () => {
   const { sim, tick, prediction } = link(6);
-  Object.assign(sim.game.players[0], { x: HALF_X - 1.2, z: -5, a: 0 });
-  Object.assign(sim.game.lines[0], { x: [onCentimetre(HALF_X - 1.2)], z: [-5], t: [sim.game.ticks], cut: [false] });
+  Object.assign(sim.game.players[0], { x: HALF_X - 2.5, z: -5, a: 0 });
+  Object.assign(sim.game.lines[0], { x: [onCentimetre(HALF_X - 2.5)], z: [-5], t: [sim.game.ticks], cut: [false] });
   let blockedAlive = false;
   for (let i = 0; i < 40 && sim.game.players[0].alive; i++) {
     tick(0, 0);

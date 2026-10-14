@@ -18,18 +18,18 @@ export const LIGHT_TRAILS = {
   trailRadius: 0.1,
 
   /** Running speed, m/s (never zero). */
-  speed: 5,
-  /** Fastest turn, rad/s (210°/s: a turning circle of about 2.7 m). */
-  turnRate: (210 * Math.PI) / 180,
+  speed: 7,
+  /** Fastest turn, rad/s (294°/s: a turning circle of about 2.7 m across, the same as 5 m/s at 210°/s). */
+  turnRate: (294 * Math.PI) / 180,
   /** The last `last` seconds: speed and turn rate × `factor` (the same turning circle, all faster). */
   rush: { last: 15, factor: 1.3 },
 
   /** A trail point every this many steps (the trail is the line through them and the head). */
   trailEvery: 3,
   /** A trail point is gone this long after it was laid, s. */
-  trailLife: 4.5,
+  trailLife: 2.5,
   /** It fades out over its last this many seconds (and kills until it is gone). */
-  trailFade: 1,
+  trailFade: 0.6,
   /** The newest this much of your own trail, m along it from your head, never hits you. */
   selfGrace: 0.7,
   /** A dead (or departed) player's whole trail fades out over this, s (killing until gone). */
