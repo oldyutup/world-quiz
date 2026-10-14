@@ -15,7 +15,7 @@ import { CHAT_LAYOUT } from "../gameChat";
 import { ClickPresses } from "../clickrace/input";
 import { defaultBindings } from "../../input/defaults";
 import { AimKeys, aimBindings, aimLabel, bindMarksmanInput, fireBindings, fireLabel } from "./input";
-import { LocalMarksman, MarksmanClient, OnlineMarksmanSource, LOWER_MS, botView, canShoot, drawTime, judge, laneViews, type MarksmanFrame, type PendingShot } from "./source";
+import { LocalMarksman, MarksmanClient, OnlineMarksmanSource, LOWER_MS, botView, canShoot, drawTime, judge, laneViews, livesOf, type MarksmanFrame, type PendingShot } from "./source";
 import { GALLERY, MARKSMAN_INSETS, fitMarksmanCamera, galleryBounds, laneX, projectMarksman, slotPoint } from "./layout";
 import { points, resultOrder, scoreText } from "./results";
 
@@ -233,6 +233,50 @@ test("canShoot: only while shooting, still in, within the 45 s", () => {
   assert.equal(canShoot(wireOf(new MarksmanGame(2)), 0, 0), false, "countdown");
   g.remove(1);
   assert.equal(canShoot(wireOf(g), 1, 10), false, "left");
+  const k = shooting(3, waves([BOMB, TARGET, TARGET], [BOMB, TARGET, TARGET]));
+  run(k, 1100);
+  k.shoot(0, { at: 1100, aim: -1 });
+  run(k, 3100);
+  k.shoot(0, { at: 3100, aim: -1 });
+  assert.equal(canShoot(wireOf(k), 0, 3200), false, "knocked out");
+  assert.ok(canShoot(wireOf(k), 1, 3200));
+});
+
+test("lives on this screen: an own bomb not counted yet takes a life at once (the first stuns, the second knocks out); the client stops shooting", () => {
+  const g = shooting(2, waves([BOMB, TARGET, EMPTY], [BOMB, BOMB, BOMB]));
+  run(g, 1000);
+  const w = wireOf(g),
+    first = judge(known(g), [], 1100, -1)!,
+    second = judge(known(g), [first], 3100, 0)!;
+  assert.deepEqual(livesOf(w, 0, []), { lives: 2, diedAt: -1, stunUntil: 0 });
+  assert.deepEqual(livesOf(w, 0, [{ n: 1, at: 1100, aim: -1, hit: first }]), { lives: 1, diedAt: -1, stunUntil: 1100 + M.stunMs });
+  assert.deepEqual(livesOf(w, 0, [{ n: 1, at: 1100, aim: -1, hit: first }, { n: 2, at: 3100, aim: 0, hit: second }]), { lives: 0, diedAt: 3100, stunUntil: 1100 + M.stunMs });
+  const [mine] = laneViews(frameOf(g, 3150, 0, 0, [{ n: 1, at: 1100, aim: -1, hit: first }, { n: 2, at: 3100, aim: 0, hit: second }]));
+  assert.deepEqual([mine.lives, mine.diedAt], [0, 3100]);
+  assert.equal(botView(frameOf(g, 3150, 0, 0, [{ n: 1, at: 1100, aim: -1, hit: first }, { n: 2, at: 3100, aim: 0, hit: second }]), 0).playing, false, "the autopilot stops too");
+  // The client: two bombs drawn at once, then no more shots; the server agrees.
+  const client = new MarksmanClient(),
+    wall = (t: number) => 50_000 + t;
+  client.observe(wireOf(g), 1, wall(g.elapsedMs), 0);
+  client.setAim(-1);
+  assert.equal(client.fire(wall(1100)), true);
+  client.setAim(0);
+  assert.equal(client.fire(wall(2000)), false, "stunned");
+  run(g, 1120);
+  g.step([{ aim: 0, fired: 1, shots: [{ at: 1100, aim: -1 }] }]);
+  run(g, 2600);
+  client.observe(wireOf(g), 1, wall(g.elapsedMs), 0);
+  assert.deepEqual([client.pending.length, client.life().lives], [0, 1], "the server counted the first");
+  assert.equal(client.fire(wall(3100)), true);
+  assert.equal(client.life().diedAt, 3100);
+  assert.equal(client.fire(wall(3400)), false, "knocked out");
+  run(g, 3110);
+  g.step([{ aim: 0, fired: 2, shots: [{ at: 1100, aim: -1 }, { at: 3100, aim: 0 }] }]);
+  assert.equal(g.lanes[0].diedAt, 3100);
+  client.observe(wireOf(g), 1, wall(g.elapsedMs), 0);
+  assert.deepEqual(client.pending, []);
+  assert.deepEqual(client.life(), { lives: 0, diedAt: 3100, stunUntil: 2100 });
+  assert.equal(client.fire(wall(3500)), false);
 });
 
 test("lanes as drawn: the wave up in every lane's slots, an own hit at once (target down, score up), a bomb's stun; the others' aim from the server", () => {
@@ -310,7 +354,8 @@ test("local arena: the player shoots through the same rules, bots really play, t
   for (let i = 0; i < 60 * M.hz && local.game.phase !== "results"; i++) local.frame(MS / 1000, false);
   assert.equal(local.game.phase, "results");
   const bots = local.game.lanes.slice(1);
-  assert.ok(bots.every((l) => l.score > 100 && l.shots > 20), `bots ${bots.map((l) => l.score)}`);
+  assert.ok(bots.every((l) => l.shots > 10 && (l.score > 100 || l.diedAt >= 0)), `bots ${bots.map((l) => `${l.score}/${l.diedAt}`)}`);
+  assert.ok(bots.every((l) => l.lives <= M.lives && (l.diedAt < 0) === l.lives > 0), "bots have lives too");
   assert.ok(local.game.winner() >= 1);
   assert.equal(resultOrder(local.frame(0, false).wire)[0], local.game.winner());
   assert.ok(new Set(frame.wire.aim).size >= 1);

@@ -28,6 +28,9 @@ export interface MarksmanWire {
   shotAt: number[];
   shotAim: number[];
   stunUntil: number[];
+  /** Lives left, and when the last one went (−1 still standing). */
+  lives: number[];
+  diedAt: number[];
   good: number[];
   slow: number[];
   bombs: number[];
@@ -67,6 +70,8 @@ export function marksmanSection(game: MarksmanGame, seats: readonly number[]): M
     shotAt: lanes.map((l) => l.shotAt),
     shotAim: lanes.map((l) => l.shotAim),
     stunUntil: lanes.map((l) => l.stunUntil),
+    lives: lanes.map((l) => l.lives),
+    diedAt: lanes.map((l) => l.diedAt),
     good: lanes.map((l) => l.good),
     slow: lanes.map((l) => l.slow),
     bombs: lanes.map((l) => l.bombs),
@@ -121,6 +126,8 @@ export function validMarksmanWire(value: unknown): value is MarksmanWire {
     integers(w.shotAim, lanes, -1, 1) &&
     integers(w.fired, lanes, 0, 1e6) &&
     integers(w.shots, lanes, 0, 1e6) &&
+    integers(w.lives, lanes, 0, M.lives) &&
+    numbers(w.diedAt, lanes) &&
     [w.good, w.slow, w.bombs].every((a) => integers(a, lanes, 0, 1e6)) &&
     [w.score, w.shotAt, w.stunUntil, w.places].every((a) => numbers(a, lanes)) &&
     booleans(w.out, lanes) &&

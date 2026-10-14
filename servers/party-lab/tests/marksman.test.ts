@@ -53,30 +53,33 @@ function shoot(g: MarksmanGame, lane: number, at: number, aim: number, late = 0)
   return l.shots === shots ? null : l.score - before;
 }
 
-test("waves: one schedule, never overlapping, the last closing by 45 s; the tempo speeds up; about one slot in five is a bomb, a lone one about one wave in ten, never a whole bigger wave", () => {
+test("waves: one schedule, never overlapping, the last closing by 45 s; the tempo speeds up (up 1.1 → 0.7 s, pauses 0.4 → 0.2 s); about one slot in four is a bomb, a lone one or a whole bigger wave about one in ten", () => {
   assert.equal(M.limit, 45);
-  assert.deepEqual(M.openMs, { start: 1500, end: 1000 });
-  near(tempo(0).openMs, 1500, 1e-9);
-  near(tempo(LIMIT).openMs, 1000, 1e-9);
-  assert.ok(tempo(LIMIT).gapMs < tempo(0).gapMs);
+  assert.equal(M.goodMs, 500);
+  near(tempo(0).openMs, 1100, 1e-9);
+  near(tempo(LIMIT).openMs, 700, 1e-9);
+  near(tempo(0).gapMs, 400, 1e-9);
+  near(tempo(LIMIT).gapMs, 200, 1e-9);
   assert.ok(tempo(LIMIT).sizes[0] < tempo(0).sizes[0] && tempo(LIMIT).sizes[2] > tempo(0).sizes[2], "multi-slot waves more often");
   let slots = 0,
     bombs = 0,
     singles = 0,
     loneBombs = 0,
+    bigger = 0,
+    allBombs = 0,
     early = { n: 0, multi: 0, open: 0 },
     late = { n: 0, multi: 0, open: 0 };
   for (let seed = 0; seed < 400; seed++) {
     const list = makeWaves(mulberry32(seed));
     assert.deepEqual(makeWaves(mulberry32(seed)), list, "the same seed, the same waves");
-    assert.ok(list.length >= 20 && list.length <= 32, `${list.length} waves`);
+    assert.ok(list.length >= 32 && list.length <= 44, `${list.length} waves`);
     list.forEach((w, i) => {
       assert.ok(w.open < w.close && w.close <= LIMIT);
       if (i > 0) assert.ok(w.open > list[i - 1].close, "a pause between waves");
       const used = w.kinds.filter((k) => k !== EMPTY).length,
         b = w.kinds.filter((k) => k === BOMB).length;
       assert.ok(used >= 1 && used <= 3);
-      if (used > 1) assert.ok(b < used, "a bigger wave is never all bombs");
+      if (used > 1) (bigger++, (allBombs += +(b === used)));
       slots += used;
       bombs += b;
       if (used === 1) (singles++, (loneBombs += b));
@@ -84,10 +87,11 @@ test("waves: one schedule, never overlapping, the last closing by 45 s; the temp
       if (bucket) (bucket.n++, (bucket.multi += +(used > 1)), (bucket.open += w.close - w.open));
     });
   }
-  near(bombs / slots, 0.2, 0.025, "bomb share");
-  near(loneBombs / singles, 0.1, 0.025, "lone bombs");
+  near(bombs / slots, 0.25, 0.025, "bomb share");
+  near(loneBombs / singles, 0.1, 0.02, "lone bombs");
+  near(allBombs / bigger, 0.1, 0.02, "bigger waves all bombs");
   assert.ok(late.multi / late.n > early.multi / early.n + 0.2, "multi-slot waves grow");
-  assert.ok(late.open / late.n < early.open / early.n - 250, "waves stay up shorter");
+  assert.ok(late.open / late.n < early.open / early.n - 200, "waves stay up shorter");
   // waveAt finds the wave up at a moment, none between.
   const list = makeWaves(mulberry32(3));
   assert.equal(waveAt(list, list[4].open), 4);
@@ -112,22 +116,92 @@ test("scoring: within 0.5 s of opening +5, later +2, a closed or empty slot 0; o
   assert.equal(g.lanes[0].shots, 6, "every counted shot, misses too");
 });
 
-test("a bomb: −5 (the score can go below zero) and 1 s stunned: no shot counts, the aim still moves; a lone bomb wave has nothing to hit", () => {
+test("a bomb: −5 (the score can go below zero), a life, and 1 s stunned: no shot counts, the aim still moves; a lone bomb wave has nothing to hit", () => {
+  assert.equal(M.lives, 2);
   const g = shooting(2, waves([B_, T_, E_], [E_, B_, E_], [T_, T_, T_]));
   assert.equal(shoot(g, 0, 1200, -1), M.points.bomb);
-  assert.equal(g.lanes[0].score, -5);
-  assert.equal(g.lanes[0].stunUntil, 2200);
+  assert.deepEqual([g.lanes[0].score, g.lanes[0].lives, g.lanes[0].stunUntil, g.lanes[0].diedAt], [-5, 1, 2200, -1]);
   assert.equal(shoot(g, 0, 1400, 0), null, "stunned: refused");
   stepTo(g, 1600, {});
   g.step([{ aim: 1, fired: g.lanes[0].fired, shots: [] }]);
   assert.equal(g.lanes[0].aim, 1, "the aim moves while stunned");
   assert.equal(shoot(g, 0, 2199, 0), null, "still stunned");
   assert.equal(shoot(g, 0, 2200, 0), M.points.slow, "the stun is over");
-  assert.equal(shoot(g, 0, 3100, 0), M.points.bomb, "a lone bomb: shooting it is the mistake");
-  assert.equal(g.lanes[0].score, -8);
-  assert.equal(g.lanes[0].bombs, 2);
-  assert.equal(shoot(g, 1, 3100, -1), 0, "holding fire (or missing) costs nothing");
-  assert.equal(g.lanes[1].stunUntil, 0);
+  assert.equal(g.lanes[0].score, -3);
+  assert.equal(shoot(g, 1, 3100, -1), 0, "a lone bomb: holding fire (or missing) costs nothing");
+  assert.deepEqual([g.lanes[1].lives, g.lanes[1].stunUntil], [2, 0]);
+});
+
+test("the second bomb knocks the player out: no more shots, and the one left standing wins 150 ms after (shots pressed before the knock-out still count, later ones do not)", () => {
+  const g = shooting(2, waves([B_, T_, E_], [B_, B_, B_], [T_, T_, T_]));
+  shoot(g, 0, 1100, -1);
+  assert.equal(shoot(g, 0, 3100, 1), M.points.bomb, "a wave of bombs only: shooting any is the mistake");
+  assert.deepEqual([g.lanes[0].lives, g.lanes[0].diedAt, g.lanes[0].score], [0, 3100, -10]);
+  assert.equal(g.standing(0), false);
+  assert.equal(g.decidedAt, 3100);
+  assert.equal(g.phase, "shooting", "waits for shots pressed before the knock-out");
+  assert.equal(shoot(g, 1, 3150, 0), null, "pressed after the knock-out: the round is decided");
+  assert.equal(shoot(g, 0, 3200, 0), null, "knocked out: no more shots");
+  while (g.phase === "shooting") g.step();
+  near(g.elapsedMs, 3100 + M.aimToleranceMs, MS);
+  assert.equal(g.winner(), 1);
+  assert.deepEqual(g.places(), [1, 0]);
+  // A knock-out pressed earlier on the other's clock, arriving late, turns it round.
+  const h = shooting(2, waves([B_, T_, E_], [B_, B_, B_]));
+  shoot(h, 0, 1100, -1);
+  shoot(h, 1, 1150, -1);
+  shoot(h, 0, 3100, 0);
+  assert.equal(h.decidedAt, 3100);
+  assert.equal(shoot(h, 1, 3060, 0, 70), M.points.bomb, "pressed 40 ms earlier, seen later");
+  assert.equal(h.lanes[1].diedAt, 3060);
+  while (h.phase === "shooting") h.step();
+  assert.equal(h.winner(), 0, "lane 0 stood longer");
+  assert.deepEqual(h.places(), [0, 1]);
+  // Both at the same moment: a draw.
+  const d = shooting(2, waves([B_, T_, E_], [B_, B_, B_]));
+  shoot(d, 0, 1100, -1);
+  shoot(d, 1, 1100, -1);
+  stepTo(d, 3100, { 0: [{ at: 3100, aim: 0 }], 1: [{ at: 3100, aim: 1 }] });
+  while (d.phase === "shooting") d.step();
+  assert.equal(d.winner(), -1);
+  assert.deepEqual(d.places(), [0, 0]);
+});
+
+test("3 players: a knock-out leaves two playing on; the second one ends it; places: standing by score, then the knocked out by when (later higher)", () => {
+  const g = shooting(3, waves([B_, T_, T_], [B_, T_, T_], [B_, T_, T_], [B_, T_, T_]));
+  shoot(g, 0, 1100, -1);
+  shoot(g, 0, 3100, -1);
+  assert.equal(g.lanes[0].diedAt, 3100);
+  shoot(g, 1, 3200, 0);
+  shoot(g, 1, 3400, 1);
+  assert.equal(g.lanes[1].score, 10);
+  for (let i = 0; i < 30; i++) g.step();
+  assert.equal(g.phase, "shooting", "two still standing");
+  assert.equal(g.decidedAt, null);
+  shoot(g, 2, 5200, 0);
+  shoot(g, 1, 5300, -1);
+  shoot(g, 2, 5400, 1);
+  shoot(g, 2, 7100, 1);
+  assert.equal(g.lanes[2].score, 15);
+  shoot(g, 1, 7300, 0);
+  shoot(g, 1, 7500, -1);
+  assert.equal(g.lanes[1].diedAt, 7500, "the second bomb knocks lane 1 out");
+  while (g.phase === "shooting") g.step();
+  assert.equal(g.winner(), 2);
+  assert.deepEqual(g.places(), [2, 1, 0]);
+  // To the time: the standing ones by score (a tie draws), every knocked out one below them.
+  const t = shooting(3, waves([B_, T_, T_], [B_, T_, T_], [T_, T_, T_]));
+  shoot(t, 0, 1100, 1);
+  shoot(t, 0, 1300, 0);
+  shoot(t, 0, 1500, -1);
+  shoot(t, 0, 3100, -1);
+  assert.ok(t.lanes[0].diedAt > 0);
+  shoot(t, 1, 5100, 0);
+  shoot(t, 2, 5100, 0);
+  while (t.phase === "shooting") t.step();
+  near(t.elapsedMs, LIMIT + M.aimToleranceMs, MS);
+  assert.equal(t.winner(), -1, "5 = 5 standing: a draw");
+  assert.deepEqual(t.places(), [2, 0, 0]);
 });
 
 test("fairness: a shot is judged at its stamp and with its aim however late it arrives (up to 150 ms), so the speed points never pay for the network; older is moved up", () => {
@@ -213,11 +287,11 @@ test("results: the most points wins, equal scores share a place and a tie for fi
   assert.equal(h.winner(), 0, "the last one left");
 });
 
-test("bots really play: Zor scores most, Kolay least and shoots a bomb now and then; all of them aim where they shoot", () => {
-  const stats = {} as Record<MarksmanBotLevel, { score: number; bombs: number; good: number; slow: number }>;
+test("bots really play: Zor scores most, Kolay least and gets knocked out most often; all of them aim where they shoot", () => {
+  const stats = {} as Record<MarksmanBotLevel, { score: number; bombs: number; good: number; slow: number; out: number }>;
   const ROUNDS = 40;
   for (const level of MARKSMAN_BOT_LEVELS) {
-    const r = (stats[level] = { score: 0, bombs: 0, good: 0, slow: 0 });
+    const r = (stats[level] = { score: 0, bombs: 0, good: 0, slow: 0, out: 0 });
     for (let seed = 0; seed < ROUNDS; seed++) {
       const random = mulberry32(300 + seed),
         g = new MarksmanGame(2, random),
@@ -227,7 +301,7 @@ test("bots really play: Zor scores most, Kolay least and shoots a bomb now and t
         recent: MarksmanShot[] = [];
       while (g.phase !== "results") {
         const due = g.elapsedMs + MS,
-          view = { playing: g.phase === "shooting", waves: g.waves.flatMap((wave, id) => (wave.open <= due ? [{ id, wave }] : [])), stunUntil: l.stunUntil };
+          view = { playing: g.phase === "shooting" && g.standing(0), waves: g.waves.flatMap((wave, id) => (wave.open <= due ? [{ id, wave }] : [])), stunUntil: l.stunUntil };
         for (const shot of bot.next(view, due)) {
           assert.equal(bot.aim(shot.at), shot.aim, "the laser points where it fires");
           fired++;
@@ -239,11 +313,12 @@ test("bots really play: Zor scores most, Kolay least and shoots a bomb now and t
       r.bombs += l.bombs / ROUNDS;
       r.good += l.good / ROUNDS;
       r.slow += l.slow / ROUNDS;
+      r.out += +(l.diedAt >= 0) / ROUNDS;
     }
   }
   const { easy, medium, hard } = stats;
   assert.ok(hard.score > medium.score + 25 && medium.score > easy.score + 25, JSON.stringify(stats));
-  assert.ok(easy.bombs >= 0.6, `Kolay shoots a bomb ${easy.bombs.toFixed(2)} a round`);
+  assert.ok(easy.out > 0.5 && medium.out < 0.4 && hard.out < 0.12 && easy.out > medium.out && medium.out > hard.out, `knocked out: Kolay ${easy.out}, Orta ${medium.out}, Zor ${hard.out}`);
   assert.ok(hard.bombs < 0.3, `Zor ${hard.bombs.toFixed(2)}`);
   assert.ok(hard.good > hard.slow * 3 && easy.slow > easy.good * 3, "Zor quick, Kolay slow");
 });
@@ -300,7 +375,7 @@ test("the wire: the waves go out 0.5 s before they open and stay 1.5 s after the
   const wire = marksmanSection(g, [0, 1, 2]);
   assert.ok(validMarksmanWire(wire));
   assert.ok(validMarksmanWire(JSON.parse(JSON.stringify(wire))));
-  for (const bad of [{ ...wire, aim: wire.aim.map(() => 2) }, { ...wire, waveKinds: wire.waveKinds.slice(1) }, { ...wire, phase: "mining" }, { ...wire, seats: [0] }, { ...wire, hitSlot: [3], hitLane: [0], hitWave: [0], hitAt: [1], hitPoints: [5] }, null])
+  for (const bad of [{ ...wire, aim: wire.aim.map(() => 2) }, { ...wire, lives: wire.lives.map(() => 3) }, { ...wire, diedAt: wire.diedAt.slice(1) }, { ...wire, waveKinds: wire.waveKinds.slice(1) }, { ...wire, phase: "mining" }, { ...wire, seats: [0] }, { ...wire, hitSlot: [3], hitLane: [0], hitWave: [0], hitAt: [1], hitPoints: [5] }, null])
     assert.equal(validMarksmanWire(bad), false);
 });
 
@@ -524,4 +599,35 @@ test("room: the player left alone wins the round", { timeout: 30000 }, async () 
   await until(() => room.game.phase === "results");
   assert.equal(sim.winner, room.state.players.get(peers[0].r.sessionId)!.slot);
   await close(peers.slice(0, 1));
+});
+
+test("room 2P: two bombs through real packets knock a player out, the other wins straight after", { timeout: 30000 }, async () => {
+  const { peers, room, sim, lane } = await lobby(2);
+  await until(() => room.game.phase === "playing");
+  const g = sim.game,
+    l = g.lanes[lane(peers[0])];
+  /** Peer 0 shoots the next bomb opening after `after`, 0.2 s after it opens (skipping ahead to it). */
+  const bomb = async (after: number, n: number) => {
+    const w = g.waves.find((x) => x.open > after && x.kinds.includes(BOMB))!,
+      slot = w.kinds.indexOf(BOMB),
+      at = w.open + 200;
+    if (g.elapsedMs < w.open - 300) g.ticks = Math.ceil((w.open - 300) / MS);
+    await until(() => g.elapsedMs >= at);
+    peers[0].send(sim.roundId, slot - 1, at);
+    await until(() => l.bombs >= n);
+    return at;
+  };
+  const first = await bomb(g.elapsedMs + 100, 1);
+  assert.deepEqual([l.lives, l.diedAt, l.stunUntil], [1, -1, first + M.stunMs]);
+  const second = await bomb(first + M.stunMs + 50, 2);
+  assert.deepEqual([l.lives, l.diedAt], [0, second]);
+  await until(() => room.game.phase === "results", 2000);
+  near(g.elapsedMs, second + M.aimToleranceMs, 2 * MS);
+  const slot = (i: number) => room.state.players.get(peers[i].r.sessionId)!.slot;
+  assert.equal(room.state.winner, slot(1));
+  assert.equal(sim.placements()[slot(0)], 1);
+  await until(() => peers[1].snapshots.at(-1)?.phase === "results");
+  const shown = peers[1].snapshots.at(-1)!.marksman!;
+  assert.deepEqual([shown.lives[lane(peers[0])], shown.diedAt[lane(peers[0])]], [0, second]);
+  await close(peers);
 });

@@ -38,6 +38,9 @@ export interface MarksmanLane {
   stamp: number;
   /** No shot counts before this moment (a bomb's stun). */
   stunUntil: number;
+  /** Lives left (a bomb takes one), and when the last one went (−1 still standing). */
+  lives: number;
+  diedAt: number;
   hits: MarksmanHit[];
   good: number;
   slow: number;
@@ -56,10 +59,13 @@ export const isAim = (aim: unknown): aim is number => aim === -1 || aim === 0 ||
  * The Nişancı rules without any network. After a countdown the waves (one schedule for
  * everyone, drawn at construction) open and close on the clock. A shot is judged at its press
  * moment with the aim it was pressed with: a target up in that slot scores `good` when hit at
- * most `goodMs` after it opened, else `slow`; a bomb costs `bomb` and stuns for `stunMs`. Every
- * player has their own copy of every wave, so a hit never touches anyone else's. The round ends
- * `aimToleranceMs` after the limit (late shots pressed in time still count), or at once when
- * one player is left.
+ * most `goodMs` after it opened, else `slow`; a bomb costs `bomb` and a life: the first stuns for
+ * `stunMs`, the last knocks the player out. Every player has their own copy of every wave, so a
+ * hit never touches anyone else's.
+ *
+ * The round ends `aimToleranceMs` after the limit (late shots pressed in time still count); when a
+ * knock-out leaves one player standing (or none), `aimToleranceMs` after that knock-out (shots
+ * pressed before it still count, later ones do not); at once when one player is left in the round.
  */
 export class MarksmanGame {
   phase: MarksmanPhase = "countdown";
@@ -68,6 +74,8 @@ export class MarksmanGame {
   ticks = 0;
   readonly lanes: MarksmanLane[];
   readonly waves: readonly Wave[];
+  /** The knock-out that left one player standing (or none), ms; null while two or more stand. */
+  decidedAt: number | null = null;
   constructor(readonly count: number, random: () => number = Math.random, waves?: readonly Wave[]) {
     if (!Number.isInteger(count) || count < 2 || count > M.maxLanes) throw new RangeError(`Nişancı: ${count} lanes`);
     this.waves = waves ?? makeWaves(random);
@@ -80,6 +88,8 @@ export class MarksmanGame {
       shotAim: 0,
       stamp: NEVER,
       stunUntil: 0,
+      lives: M.lives,
+      diedAt: -1,
       hits: [],
       good: 0,
       slow: 0,
@@ -97,20 +107,25 @@ export class MarksmanGame {
   get limitMs() {
     return M.limit * 1000;
   }
+  /** Still shooting: in the round and not knocked out. */
+  standing(lane: number) {
+    const l = this.lanes[lane];
+    return !!l && !l.out && l.diedAt < 0;
+  }
   /** Has `lane` hit `slot` of wave `wave`. */
   hit(lane: number, wave: number, slot: number) {
     return this.lanes[lane]?.hits.some((h) => h.wave === wave && h.slot === slot) ?? false;
   }
   /**
    * One shot by `lane`, judged at its press moment (kept at most `aimToleranceMs` ago and
-   * `aheadMs` ahead of now) with its aim. Refused (null) outside the shooting time, closer than
-   * `cooldownMs` to the last one on the shooter's clock, or while stunned; otherwise the points
-   * it scored (0 a miss).
+   * `aheadMs` ahead of now) with its aim. Refused (null) outside the shooting time (or after the
+   * knock-out that decided the round), closer than `cooldownMs` to the last one on the shooter's
+   * clock, while stunned or once knocked out; otherwise the points it scored (0 a miss).
    */
   shoot(lane: number, shot: MarksmanShot): number | null {
     const l = this.lanes[lane];
-    if (this.phase !== "shooting" || !l || l.out || !Number.isFinite(shot.at) || !isAim(shot.aim)) return null;
-    if (shot.at < 0 || shot.at >= this.limitMs || shot.at < l.stamp + M.cooldownMs - 1e-6) return null;
+    if (this.phase !== "shooting" || !this.standing(lane) || !Number.isFinite(shot.at) || !isAim(shot.aim)) return null;
+    if (shot.at < 0 || shot.at >= Math.min(this.limitMs, this.decidedAt ?? Infinity) || shot.at < l.stamp + M.cooldownMs - 1e-6) return null;
     const now = this.elapsedMs,
       at = Math.min(now + M.aheadMs, Math.max(shot.at, now - M.aimToleranceMs));
     if (at >= this.limitMs || at < l.stunUntil) return null;
@@ -127,7 +142,8 @@ export class MarksmanGame {
     l.score += points;
     if (kind === BOMB) {
       l.bombs++;
-      l.stunUntil = at + M.stunMs;
+      if (--l.lives > 0) l.stunUntil = at + M.stunMs;
+      else l.diedAt = at;
     } else if (points === M.points.good) l.good++;
     else l.slow++;
     return points;
@@ -150,10 +166,14 @@ export class MarksmanGame {
     } else {
       this.ticks++;
       volleys.forEach((v, lane) => v && this.volley(lane, v));
-      // Time: shots pressed before it may still arrive for aimToleranceMs.
-      if (this.elapsedMs >= this.limitMs + M.aimToleranceMs) this.end();
+      // One standing (or none): decided at the last knock-out so far (a late shot may still knock out
+      // the one standing, before it).
+      const standing = this.lanes.filter((_, lane) => this.standing(lane)).length;
+      if (standing <= 1) this.decidedAt = Math.max(...this.lanes.map((l) => (l.out ? -1 : l.diedAt)));
+      // Time, or the knock-out: shots pressed before it may still arrive for aimToleranceMs.
+      if (this.elapsedMs >= Math.min(this.limitMs, this.decidedAt ?? Infinity) + M.aimToleranceMs) this.end();
     }
-    // The last player left wins at once.
+    // The last player left in the round wins at once.
     if (this.lanes.filter((l) => !l.out).length <= 1) this.end();
   }
   /** A dropped player: the aim back to the middle (their waves keep coming). */
@@ -169,9 +189,15 @@ export class MarksmanGame {
   private end() {
     this.phase = "results";
   }
-  /** Per-lane order, higher first: the score; leavers behind everyone who stayed. */
+  /**
+   * Per-lane order, higher first: those standing by score, then the knocked out by when (later
+   * higher; the same moment shares a place), then leavers.
+   */
   scores() {
-    return this.lanes.map((l) => (l.out ? LEFT + l.score : l.score));
+    return this.lanes.map((l) => {
+      const rank = l.diedAt >= 0 ? l.diedAt : 1e7 + l.score;
+      return l.out ? LEFT + rank : rank;
+    });
   }
   /** Per-lane places: 0 best, equal scores share one. */
   places() {

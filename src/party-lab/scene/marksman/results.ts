@@ -6,3 +6,5 @@ export const resultOrder = (wire: MarksmanWire) => wire.seats.map((_, lane) => l
 export const points = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : "0");
 /** "−12" with a real minus sign, "34" otherwise. */
 export const scoreText = (n: number) => (n < 0 ? `−${-n}` : `${n}`);
+/** "23,4 sn": a moment on the shooting clock. */
+export const seconds = (ms: number) => `${(ms / 1000).toFixed(1).replace(".", ",")} sn`;

@@ -60,8 +60,21 @@ export function judge(waves: ReadonlyMap<number, Wave>, hits: readonly MarksmanH
   }
   return null;
 }
-/** Can `lane` shoot at `t` (cooldown and stun aside): shooting, still in, within the time. */
-export const canShoot = (wire: MarksmanWire, lane: number, t: number) => wire.phase === "shooting" && lane >= 0 && lane < wire.seats.length && !wire.out[lane] && t >= 0 && t < wire.limit * 1000;
+/** Can `lane` shoot at `t` (cooldown and stun aside): shooting, still in and standing, within the time. */
+export const canShoot = (wire: MarksmanWire, lane: number, t: number) =>
+  wire.phase === "shooting" && lane >= 0 && lane < wire.seats.length && !wire.out[lane] && wire.diedAt[lane] < 0 && t >= 0 && t < wire.limit * 1000;
+/** A lane's lives and knock-out as this screen knows them: the server's, less its own bombs not counted yet. */
+export function livesOf(wire: MarksmanWire, lane: number, pending: readonly PendingShot[]) {
+  let lives = wire.lives[lane],
+    diedAt = wire.diedAt[lane],
+    stunUntil = wire.stunUntil[lane];
+  for (const p of pending)
+    if (p.hit?.points === M.points.bomb && lives > 0) {
+      if (--lives > 0) stunUntil = Math.max(stunUntil, p.hit.at + M.stunMs);
+      else diedAt = p.hit.at;
+    }
+  return { lives, diedAt, stunUntil };
+}
 
 /**
  * The client half of the aim (as Altın Madenci): a clock in ms after BAŞLA, and the shots it
@@ -127,10 +140,10 @@ export class MarksmanClient {
     const wire = this.wire;
     return [...(wire && this.lane >= 0 ? wireHits(wire, this.lane) : []), ...this.pending.flatMap((p) => (p.hit ? [p.hit] : []))];
   }
-  /** Stunned until (the server's word, or a bomb this screen just saw hit). */
-  stunUntil() {
+  /** Lives, knock-out and stun (the server's word, with the bombs this screen just saw hit). */
+  life() {
     const wire = this.wire;
-    return Math.max(wire && this.lane >= 0 ? wire.stunUntil[this.lane] : 0, ...this.pending.map((p) => (p.hit && p.hit.points === M.points.bomb ? p.hit.at + M.stunMs : 0)));
+    return wire && this.lane >= 0 ? livesOf(wire, this.lane, this.pending) : { lives: 0, diedAt: -1, stunUntil: 0 };
   }
   /** A fire press at `now`: a shot (sent with the next flush) when the cooldown and the stun allow it. */
   fire(now: number) {
@@ -138,7 +151,8 @@ export class MarksmanClient {
       lane = this.lane;
     if (!wire || !this.started) return false;
     const t = this.clock(now);
-    if (!canShoot(wire, lane, t) || t < this.stamp + M.cooldownMs || t < this.stunUntil()) return false;
+    const life = this.life();
+    if (!canShoot(wire, lane, t) || t < this.stamp + M.cooldownMs || life.diedAt >= 0 || t < life.stunUntil) return false;
     const hit = judge(this.waves, this.hits(), t, this.aim);
     this.pending.push({ n: ++this.fired, at: t, aim: this.aim, hit });
     this.recent = [...this.recent, { at: t, aim: this.aim }].slice(-M.recentShots);
@@ -221,7 +235,7 @@ export class LocalMarksman implements MarksmanSource {
         l = g.lanes[lane],
         mine = this.botShots[i];
       const view: MarksmanBotView = {
-        playing: g.phase === "shooting" && !l.out,
+        playing: g.phase === "shooting" && g.standing(lane),
         waves: g.waves.flatMap((wave, id) => (wave.open <= due ? [{ id, wave }] : [])),
         stunUntil: l.stunUntil,
       };
@@ -285,15 +299,17 @@ export interface LaneView {
   slots: (SlotView | null)[];
   aim: number;
   score: number;
-  /** Stunned until (ms after BAŞLA). */
+  /** Stunned until (ms after BAŞLA); lives left; when knocked out (−1 standing). */
   stunUntil: number;
+  lives: number;
+  diedAt: number;
   /** The last shot (its moment and aim) for the muzzle flash; −1e9 none. */
   shotAt: number;
   shotAim: number;
   hits: MarksmanHit[];
 }
 /** Slots drawn this long after their wave closed (the target goes down). */
-export const LOWER_MS = 220;
+export const LOWER_MS = 160;
 /** Every lane at the frame's moment: the server's state, with this player's own shots at once. */
 export function laneViews(frame: MarksmanFrame): LaneView[] {
   const { wire, now: t, self, pending } = frame;
@@ -308,11 +324,12 @@ export function laneViews(frame: MarksmanFrame): LaneView[] {
     const slots = [0, 1, 2].map((slot): SlotView | null =>
       wave && wave.kinds[slot] !== EMPTY ? { wave: current, kind: wave.kinds[slot], open: wave.open, close: wave.close, hit: hits.find((h) => h.wave === current && h.slot === slot) ?? null } : null
     );
+    const life = livesOf(wire, lane, own);
     return {
       slots,
       aim: lane === self ? frame.aim : wire.aim[lane],
       score: wire.score[lane] + own.reduce((sum, p) => sum + (p.hit?.points ?? 0), 0),
-      stunUntil: Math.max(wire.stunUntil[lane], ...own.map((p) => (p.hit?.points === M.points.bomb ? p.hit.at + M.stunMs : 0))),
+      ...life,
       shotAt: last ? last.at : wire.shotAt[lane],
       shotAim: last ? last.aim : wire.shotAim[lane],
       hits,
@@ -323,10 +340,11 @@ export function laneViews(frame: MarksmanFrame): LaneView[] {
 /** What the autopilot bot sees of `lane` in a frame. */
 export function botView(frame: MarksmanFrame, lane: number): MarksmanBotView {
   const { wire } = frame;
+  const view = laneViews(frame)[lane];
   return {
-    playing: wire.phase === "shooting" && !wire.out[lane],
+    playing: wire.phase === "shooting" && !wire.out[lane] && (view?.diedAt ?? -1) < 0,
     waves: [...frame.waves].flatMap(([id, wave]) => (wave.open <= frame.now ? [{ id, wave }] : [])),
-    stunUntil: laneViews(frame)[lane]?.stunUntil ?? 0,
+    stunUntil: view?.stunUntil ?? 0,
   };
 }
 /** Seconds of shooting left at `t`. */

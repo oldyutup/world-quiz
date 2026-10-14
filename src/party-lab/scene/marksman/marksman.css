@@ -11,11 +11,19 @@
 .pl-mm-face { width: 46px; height: 46px; border-radius: 9px; overflow: hidden; background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--lane) 55%, white), color-mix(in oklch, var(--lane) 60%, black)); }
 .pl-mm-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pl-mm-face i { display: block; width: 100%; height: 100%; }
+.pl-mm-who { display: grid; gap: 2px; min-width: 0; }
 .pl-mm-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--lane); }
 .pl-mm-name small { font-size: 10px; letter-spacing: 1px; color: oklch(88% .1 90); }
 .pl-mm-score { font-size: 30px; line-height: 1; font-weight: 900; color: var(--lane); text-shadow: 0 2px 2px oklch(15% .03 250 / .75); white-space: nowrap; }
-.pl-mm-status { position: absolute; left: 60px; bottom: 3px; font-size: 11px; opacity: .85; }
-.pl-mm-status.is-stun { left: auto; right: 12px; bottom: -9px; padding: 1px 7px; border-radius: 6px; background: oklch(80% .16 85); color: oklch(25% .05 60); font-weight: 900; letter-spacing: 1px; opacity: 1; text-shadow: none; }
+.pl-mm-status { font-size: 11px; opacity: .85; line-height: 16px; }
+.pl-mm-lives { display: flex; gap: 4px; height: 16px; }
+.pl-mm-lives svg { width: 17px; height: 16px; fill: oklch(40% .02 250 / .7); stroke: oklch(70% .02 250 / .6); stroke-width: 1.5; }
+.pl-mm-lives svg.is-full { fill: oklch(64% .22 22); stroke: oklch(88% .08 22); filter: drop-shadow(0 1px 1px oklch(15% .03 250 / .6)); }
+.pl-mm-badge { position: absolute; right: 12px; bottom: -9px; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 900; letter-spacing: 1px; text-shadow: none; }
+.pl-mm-badge.is-stun { background: oklch(80% .16 85); color: oklch(25% .05 60); }
+.pl-mm-badge.is-out { background: oklch(55% .2 25); color: oklch(97% .01 25); }
+.pl-mm-cards li.is-out { background: oklch(20% .015 250 / .92); border-color: color-mix(in oklch, var(--lane) 40%, oklch(30% .01 250)); }
+.pl-mm-cards li.is-out .pl-mm-face, .pl-mm-cards li.is-out .pl-mm-name, .pl-mm-cards li.is-out .pl-mm-score { filter: grayscale(.85) brightness(.7); }
 .pl-mm-pops { position: absolute; inset: 0; overflow: hidden; }
 .pl-mm-pop { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-size: 26px; font-weight: 900; letter-spacing: .5px; color: var(--lane); -webkit-text-stroke: 1.5px oklch(18% .03 250 / .85); paint-order: stroke fill; text-shadow: 0 3px 4px oklch(15% .03 250 / .6); animation: pl-mm-float 1s cubic-bezier(.2, .7, .3, 1) forwards; }
 .pl-mm-pop b { font-size: 34px; }
@@ -45,6 +53,8 @@
 }
 .pl-mm-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); margin: 0; padding: 7px 14px; border-radius: 10px; background: oklch(26% .03 250 / .82); font-size: 15px; white-space: nowrap; }
 .pl-mm-hint kbd, .pl-mm-callout kbd { font: inherit; font-weight: 800; }
+.pl-mm-hint.is-out { background: oklch(30% .08 25 / .9); }
+.pl-mm-hint.is-out strong { margin-right: 6px; color: oklch(85% .12 25); letter-spacing: 1px; }
 .pl-mm-callout { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(620px, calc(100% - 32px)); text-align: center; }
 .pl-mm-callout span { display: block; font-weight: 800; letter-spacing: 4px; font-size: 26px; }
 .pl-mm-callout strong { display: block; font-size: 112px; line-height: 1.1; }

@@ -91,8 +91,8 @@ export default function OnlineMarksmanArena(props: Props) {
       {menu.view && (
         <ArenaMenu view={menu.view} setView={menu.setView} onResume={() => menu.setView(null)} onLeave={props.onLeave} lobby={lobby} modeName="Nişancı" bindings={props.bindings} onBindings={props.onBindings} bindingsSaved={props.bindingsSaved}>
           <p>
-            Önünde kendi renginde üç yuva var. {keys.aim} basılı tutunca nişanın sola/sağa döner, bırakınca ortaya gelir; {keys.fire} ile ateş et. Hedef açıldıktan sonra yarım saniye içinde vurursan +5, geç vurursan +2. Bombayı vurursan −5 ve 1 saniye
-            ateş edemezsin. 45 saniyede en çok puanı toplayan kazanır. Maç menü açıkken sürer.
+            Önünde kendi renginde üç yuva var. {keys.aim} basılı tutunca nişanın sola/sağa döner, bırakınca ortaya gelir; {keys.fire} ile ateş et. Hedef açıldıktan sonra yarım saniye içinde vurursan +5, geç vurursan +2. İki canın var: ilk bomba −5 ve 1 saniye
+            ateş edemezsin, ikinci bomba seni eler. Tek kişi ayakta kalırsa o kazanır; 45 saniye dolarsa ayakta kalanlardan en çok puanı toplayan. Maç menü açıkken sürer.
           </p>
         </ArenaMenu>
       )}

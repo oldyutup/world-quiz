@@ -26,8 +26,8 @@ export function tempo(at: number) {
 /**
  * The round's waves, in order, never overlapping: each opens `gapMs` after the last one closed,
  * and the last one closes by the time limit. A wave opens 1–3 distinct slots (odds by the
- * tempo); a lone slot is a bomb with `bombs.single`, and in a bigger wave every slot is a bomb
- * with `bombs.multi`, but never all of them.
+ * tempo); a lone slot is a bomb with `bombs.single`, a bigger wave is all bombs with `bombs.all`,
+ * and otherwise every slot of a bigger wave is a bomb with `bombs.multi`, but not all of them.
  */
 export function makeWaves(random: () => number): Wave[] {
   const waves: Wave[] = [],
@@ -46,8 +46,9 @@ export function makeWaves(random: () => number): Wave[] {
     }
     const chosen = order.slice(0, size),
       kinds: SlotKind[] = [EMPTY, EMPTY, EMPTY];
-    for (const slot of chosen) kinds[slot] = random() < (size === 1 ? M.bombs.single : M.bombs.multi) ? BOMB : TARGET;
-    if (size > 1 && chosen.every((slot) => kinds[slot] === BOMB)) kinds[chosen[Math.min(size - 1, Math.floor(random() * size))]] = TARGET;
+    const allBombs = size > 1 && random() < M.bombs.all;
+    for (const slot of chosen) kinds[slot] = allBombs || random() < (size === 1 ? M.bombs.single : M.bombs.multi) ? BOMB : TARGET;
+    if (size > 1 && !allBombs && chosen.every((slot) => kinds[slot] === BOMB)) kinds[chosen[Math.min(size - 1, Math.floor(random() * size))]] = TARGET;
     waves.push({ open, close, kinds });
     open = Math.round(close + t.gapMs);
   }

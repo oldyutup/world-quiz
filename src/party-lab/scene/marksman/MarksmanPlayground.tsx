@@ -63,7 +63,7 @@ export default function MarksmanPlayground({ source, looks, self, presses, aimKe
   }, [scene]);
   const now = useRef({ source, self, paused, onFrame });
   now.current = { source, self, paused, onFrame };
-  const seen = useRef({ phase: "", count: 0, published: 0, frame: null as MarksmanFrame | null, fit: "", hits: new Set<string>(), shots: [] as number[], opened: false, off: false, signature: "" });
+  const seen = useRef({ phase: "", count: 0, published: 0, frame: null as MarksmanFrame | null, fit: "", hits: new Set<string>(), shots: [] as number[], down: [] as boolean[], opened: false, off: false, signature: "" });
   const pilot = useRef<{ bot: MarksmanBot | null; aim: number; held: string | null; timers: number[] }>({ bot: null, aim: 0, held: null, timers: [] });
 
   useEffect(() => {
@@ -181,6 +181,7 @@ export default function MarksmanPlayground({ source, looks, self, presses, aimKe
       s.opened = true;
       hitKeys.forEach(({ key: k }) => s.hits.add(k));
       s.shots = views.map((v) => v.shotAt);
+      s.down = views.map((v) => v.diedAt >= 0);
     }
     views.forEach((v, l) => {
       if (v.shotAt <= (s.shots[l] ?? -1e9)) return;
@@ -196,6 +197,12 @@ export default function MarksmanPlayground({ source, looks, self, presses, aimKe
       const mine = l === frame.self;
       sounds.play(h.points === M.points.bomb ? "bomb" : h.points === M.points.good ? "good" : "slow", pan(l), mine ? 1 : 0.4);
     }
+    // A knock-out once (the big boom), when this screen reaches its moment.
+    views.forEach((v, l) => {
+      const down = v.diedAt >= 0 && frame.now >= v.diedAt;
+      if (down && !s.down[l] && !quiet) sounds.play("out", pan(l), l === frame.self ? 1 : 0.6);
+      s.down[l] = down || !!s.down[l];
+    });
     const step = wire.phase === "countdown" ? Math.ceil(wire.countdown) : 0;
     if (!quiet && step > 0 && step !== s.count) audio.playSfx({ name: "countdown", step });
     s.count = step;
@@ -206,7 +213,7 @@ export default function MarksmanPlayground({ source, looks, self, presses, aimKe
     }
     s.phase = wire.phase;
     // The HUD at once for a new hit (the floating word), else about ten times a second.
-    const signature = hitKeys.map((h) => h.key).join(",") + `|${views.map((v) => v.score).join(",")}`;
+    const signature = hitKeys.map((h) => h.key).join(",") + `|${views.map((v) => `${v.score}:${v.lives}:${v.diedAt}`).join(",")}`;
     if (signature !== s.signature) {
       s.signature = signature;
       fresh = true;

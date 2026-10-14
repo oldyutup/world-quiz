@@ -13,7 +13,6 @@ import {
   RepeatWrapping,
   SphereGeometry,
   SRGBColorSpace,
-  TorusGeometry,
   TubeGeometry,
   CatmullRomCurve3,
   Vector3,
@@ -51,6 +50,10 @@ const TIP_MS = 170;
 const BLAST_MS = 480;
 const FLASH_MS = 90;
 const CHEER_MS = 700;
+/** A knock-out: the big blast, the fall, the lane going dark, ms. */
+const BOOM_MS = 950;
+const FALL_MS = 520;
+const DARK_MS = 600;
 
 /** Small deterministic noise. */
 const hash = (n: number) => {
@@ -178,9 +181,10 @@ const backOut = (k: number) => {
 
 /**
  * Nişancı scenery: a shooting gallery booth. The players stand in a row behind one counter,
- * seen from behind; straight ahead of each are their three slots, ringed in their colour on the
- * back wall. Targets and bombs pop up out of the cover board, tip back when hit, and a hit bomb
- * blows up. Each player's laser shows their aim; a stunned player wobbles under circling stars.
+ * seen from behind; straight ahead of each are their three slots on a panel in their colour.
+ * Targets and bombs pop up out of the cover board, tip back when hit, and a hit bomb blows up.
+ * Each player's laser shows their aim; a stunned player wobbles under circling stars; a knocked
+ * out player goes down in a big blast and their stretch of the gallery goes dark.
  * `update` draws a frame from `laneViews` (source.ts); the view decides nothing.
  */
 export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
@@ -228,7 +232,6 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
   const shared = {
     disc: own(new CylinderGeometry(G.radius, G.radius, 0.08, 40)),
     post: own(new BoxGeometry(0.09, 1, 0.07)),
-    ring: own(new TorusGeometry(G.radius + 0.12, 0.045, 8, 48)),
     bomb: own(new SphereGeometry(G.bomb, 28, 18)),
     cap: own(new CylinderGeometry(0.12, 0.14, 0.12, 14)),
     fuse: own(new TubeGeometry(new CatmullRomCurve3([new Vector3(0, 0, 0), new Vector3(0.05, 0.12, 0.02), new Vector3(0.14, 0.2, 0.04), new Vector3(0.22, 0.2, 0.05)]), 12, 0.022, 6)),
@@ -263,21 +266,16 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
     const tint = new Color(look.color),
       mine = lane === self,
       cx = laneX(lane, count);
-    // The lane's panel on the back wall (its colour washed in), its slot rings and its stretch of the cover.
-    const panel = new Mesh(shared.panel, mat(new MeshStandardMaterial({ color: new Color(PALETTE.wall).lerp(tint, mine ? 0.42 : 0.28), roughness: 0.9, emissive: mine ? tint : new Color(0), emissiveIntensity: mine ? 0.08 : 0 })));
+    // The lane's panel on the back wall (its colour washed in) and its stretch of the cover.
+    const panelMaterial = mat(new MeshStandardMaterial({ color: new Color(PALETTE.wall).lerp(tint, mine ? 0.42 : 0.28), roughness: 0.9, emissive: mine ? tint : new Color(0), emissiveIntensity: mine ? 0.08 : 0 }));
+    const panel = new Mesh(shared.panel, panelMaterial);
     panel.position.set(cx, G.targetY + 0.15, G.targetZ - 0.95);
-    const ringMaterial = mat(new MeshStandardMaterial({ color: tint, roughness: 0.5, emissive: tint, emissiveIntensity: mine ? 0.35 : 0.18 }));
-    const rings = [0, 1, 2].map((slot) => {
-      const ring = new Mesh(shared.ring, ringMaterial);
-      const p = slotPoint(lane, count, slot);
-      ring.position.set(p.x, p.y, G.targetZ - 0.88);
-      return ring;
-    });
-    const cover = new Mesh(shared.coverBoard, mat(new MeshStandardMaterial({ color: new Color(PALETTE.cover).lerp(tint, 0.55), roughness: 0.8 })));
+    const coverMaterial = mat(new MeshStandardMaterial({ color: new Color(PALETTE.cover).lerp(tint, 0.55), roughness: 0.8 }));
+    const cover = new Mesh(shared.coverBoard, coverMaterial);
     cover.position.set(cx, G.coverY / 2, G.targetZ + 0.45);
     const trim = new Mesh(own(new BoxGeometry(G.pitch - 0.08, 0.08, 0.2)), mat(new MeshStandardMaterial({ color: new Color(look.color).multiplyScalar(0.7), roughness: 0.6 })));
     trim.position.set(cx, G.coverY, G.targetZ + 0.45);
-    root.add(panel, ...rings, cover, trim);
+    root.add(panel, cover, trim);
 
     // Three slots, each with a target and a bomb on a pivot at the cover's top.
     const face = mat(new MeshStandardMaterial({ map: tex(targetTexture(look.color)), roughness: 0.65 }));
@@ -355,11 +353,30 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
     root.add(core, halo, dot, dotGlow);
     const stars = Array.from({ length: 3 }, () => new Mesh(shared.star, starMaterial));
     root.add(...stars);
-    return { cx, slots, person: person.root, gun, flash, core, halo, dot, dotGlow, stars, aimX: cx, bob: hash(lane * 7) * 6, pops: new Map<string, number>() };
+    // The knock-out: a big blast where the player stands, bits flying out.
+    const boom = new Group();
+    boom.position.set(cx, 1.3, G.personZ - 0.2);
+    const boomFire = new Mesh(shared.glow, blastMaterial.clone()),
+      boomCore = new Mesh(shared.glow, blastCore.clone()),
+      boomSmoke = new Mesh(shared.glow, mat(new MeshBasicMaterial({ color: "#3b3433", transparent: true, opacity: 0.6, depthWrite: false })));
+    materials.push(boomFire.material as Material, boomCore.material as Material);
+    const boomBits = Array.from({ length: 14 }, (_, i) => {
+      const bit = new Mesh(shared.debris, debrisMaterial);
+      bit.userData.dir = new Vector3(Math.cos((i / 14) * Math.PI * 2), 0.5 + hash(i * 5 + lane) * 1.2, Math.sin((i / 14) * Math.PI * 2) * 0.8);
+      bit.scale.setScalar(1.6);
+      return bit;
+    });
+    boom.add(boomSmoke, boomFire, boomCore, ...boomBits);
+    boom.visible = false;
+    root.add(boom);
+    // The colours to go dark from.
+    const base = { panel: panelMaterial.color.clone(), cover: coverMaterial.color.clone(), face: new Color(1, 1, 1) };
+    return { cx, slots, person: person.root, gun, flash, core, halo, dot, dotGlow, stars, boom, boomFire, boomCore, boomSmoke, boomBits, panelMaterial, coverMaterial, face, base, aimX: cx, bob: hash(lane * 7) * 6 };
   });
 
   let clock = 0;
-  const muzzle = new Vector3(),
+  const dark = new Color("#26272d"),
+    muzzle = new Vector3(),
     end = new Vector3(),
     goal = new Vector3(),
     lifts = [0, 0, 0];
@@ -426,7 +443,9 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
 
         // The character turns with its aim; a shot kicks the blaster; a bomb leaves it wobbling under stars.
         const person = y.person,
-          stunned = wire.phase === "shooting" && t >= 0 && t < v.stunUntil,
+          dead = v.diedAt >= 0 && t >= v.diedAt,
+          sinceDeath = dead ? t - v.diedAt : -1,
+          stunned = !dead && wire.phase === "shooting" && t >= 0 && t < v.stunUntil,
           won = ended && frame.winner === lane,
           lost = ended && frame.winner !== lane && frame.winner >= 0,
           sinceShot = t - v.shotAt,
@@ -439,7 +458,8 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
         const yaw = -Math.atan2(y.aimX - y.cx, G.personZ - G.targetZ);
         let pose: Pose = POSES.aim,
           lift = Math.sin(clock * 2.2 + y.bob) * 0.012;
-        if (won) {
+        if (dead) pose = POSES.sad;
+        else if (won) {
           pose = POSES.cheer;
           lift = Math.max(0, Math.sin(Math.PI * ((clock * 1.6) % 1))) * 0.5;
         } else if (lost) pose = POSES.sad;
@@ -451,14 +471,38 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
           part.rotation.x += (p.rx - part.rotation.x) * pe;
           part.rotation.z += (p.rz - part.rotation.z) * pe;
         });
-        person.position.set(y.cx, lift, G.personZ);
-        person.rotation.set(0, Math.PI + (ended ? 0 : yaw), stunned ? Math.sin(clock * 9) * 0.12 : 0);
+        // Knocked out: blown up a little, then down on its back (toward the camera), and it stays down.
+        const fall = dead ? Math.min(1, sinceDeath / FALL_MS) : 0;
+        if (dead) lift = Math.max(0, Math.sin(Math.PI * Math.min(1, sinceDeath / (FALL_MS * 0.8)))) * 0.55;
+        person.position.set(y.cx, lift, G.personZ + fall * 0.3);
+        person.rotation.set(1.42 * fall * fall, Math.PI + (ended || dead ? 0 : yaw), stunned ? Math.sin(clock * 9) * 0.12 : dead ? 0.25 * fall : 0);
         person.visible = !out;
-        y.gun.visible = !ended || !won;
+        // The big blast, and the lane going dark (its targets too).
+        y.boom.visible = dead && sinceDeath < BOOM_MS;
+        if (y.boom.visible) {
+          const k = sinceDeath / BOOM_MS;
+          y.boomCore.scale.setScalar(0.6 + 1.1 * Math.min(1, k * 5));
+          (y.boomCore.material as MeshBasicMaterial).opacity = Math.max(0, 1 - k * 3.5);
+          y.boomFire.scale.setScalar(0.8 + 2.2 * Math.sqrt(k));
+          (y.boomFire.material as MeshBasicMaterial).opacity = 0.95 * (1 - k) ** 1.4;
+          y.boomSmoke.scale.setScalar(0.6 + 2.6 * k);
+          y.boomSmoke.position.y = 0.4 * k;
+          (y.boomSmoke.material as MeshBasicMaterial).opacity = 0.55 * (1 - k);
+          y.boomBits.forEach((bit) => {
+            const d = bit.userData.dir as Vector3;
+            bit.position.set(d.x * k * 3, d.y * k * 3.2 - 4 * k * k, d.z * k * 2.4);
+            bit.rotation.set(k * 11 + d.x, k * 8, k * 6);
+          });
+        }
+        const gloom = dead ? Math.min(1, sinceDeath / DARK_MS) * 0.82 : 0;
+        y.panelMaterial.color.copy(y.base.panel).lerp(dark, gloom);
+        y.coverMaterial.color.copy(y.base.cover).lerp(dark, gloom);
+        y.face.color.copy(y.base.face).lerp(dark, gloom);
+        y.gun.visible = (!ended || !won) && !dead;
         const kick = sinceShot >= 0 && sinceShot < FLASH_MS * 1.6 ? Math.sin((Math.PI * sinceShot) / (FLASH_MS * 1.6)) : 0;
         y.gun.position.z = MUZZLE.z - 0.48 - kick * 0.08;
         y.gun.rotation.x = -kick * 0.25;
-        y.flash.visible = sinceShot >= 0 && sinceShot < FLASH_MS && !out;
+        y.flash.visible = sinceShot >= 0 && sinceShot < FLASH_MS && !out && !dead;
         if (y.flash.visible) {
           const k = sinceShot / FLASH_MS;
           y.flash.scale.setScalar(0.07 + 0.1 * Math.sin(Math.PI * k));
@@ -475,9 +519,9 @@ export function marksmanVisual(looks: readonly MarksmanLook[], self: number) {
         // The laser: from the muzzle to the slot it points at; faint and flickering while stunned.
         person.updateMatrixWorld(true);
         muzzle.copy(MUZZLE).applyMatrix4(person.matrixWorld);
-        // On the target's face while one stands in the aimed slot, else on the ring behind it.
-        end.set(y.aimX, G.targetY, lifts[v.aim + 1] > 0.6 ? G.targetZ + 0.06 : G.targetZ - 0.85);
-        const laser = !out && !ended && wire.phase !== "countdown" ? 1 : wire.phase === "countdown" && !out ? 0.6 : 0;
+        // On the target's face while one stands in the aimed slot, else on the panel behind it.
+        end.set(y.aimX, G.targetY, lifts[v.aim + 1] > 0.6 ? G.targetZ + 0.06 : G.targetZ - 0.88);
+        const laser = out || dead ? 0 : !ended && wire.phase !== "countdown" ? 1 : wire.phase === "countdown" ? 0.6 : 0;
         y.core.visible = y.halo.visible = y.dot.visible = y.dotGlow.visible = laser > 0;
         if (laser > 0) {
           const shot = sinceShot >= 0 && sinceShot < FLASH_MS * 2 ? 1 - sinceShot / (FLASH_MS * 2) : 0,
