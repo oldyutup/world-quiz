@@ -1,6 +1,7 @@
 import { BOMBER as B, ticks } from "./config.js";
-import { BOX, CELLS, FLOOR, PILLAR, SECTORS, VOID, cellAt, cellCenter, cellIndex, neighbour, neighbours, sharedSide } from "./arena.js";
-import { collapseFallAt, type BomberBomb, type BomberGame, type BomberInput } from "./game.js";
+import { BOX, CELLS, FLOOR, SECTORS, cellAt, cellCenter, cellIndex, neighbours, sharedSide } from "./arena.js";
+import { blastCells, blastPlan, type FuseBomb } from "./blast.js";
+import { collapseFallAt, type BomberGame, type BomberInput } from "./game.js";
 
 export const BOMBER_BOT_LEVELS = ["easy", "medium", "hard"] as const;
 export type BomberBotLevel = (typeof BOMBER_BOT_LEVELS)[number];
@@ -39,31 +40,7 @@ interface Danger {
   to: Float64Array;
 }
 /** Cells a bomb on `cell` would burn (itself first), the boxes it would break, the bombs it would set off. */
-export function blastFrom(game: BomberGame, cell: number) {
-  const cells = [cell],
-    boxes: number[] = [],
-    bombs: BomberBomb[] = [];
-  for (let direction = 0; direction < 4; direction++) {
-    let c = cell;
-    for (let k = 1; k <= B.range; k++) {
-      c = neighbour(c, direction);
-      if (c < 0) break;
-      const kind = game.cells[c];
-      if (kind === PILLAR || kind === VOID) break;
-      if (kind === BOX) {
-        if (!game.burn[c]) boxes.push(c);
-        break;
-      }
-      cells.push(c);
-      const bomb = game.bombAt(c);
-      if (bomb) {
-        bombs.push(bomb);
-        break;
-      }
-    }
-  }
-  return { cells, boxes, bombs };
-}
+export const blastFrom = (game: BomberGame, cell: number) => blastCells(game, (c) => game.bombAt(c), cell);
 
 /**
  * The danger map a bot of `lane` believes in: every bomb it has noticed (others' after `react`
@@ -73,31 +50,11 @@ export function blastFrom(game: BomberGame, cell: number) {
 function dangerMap(game: BomberGame, lane: number, react: number, extra = -1): Danger {
   const from = new Float64Array(CELLS).fill(Infinity),
     to = new Float64Array(CELLS).fill(-Infinity);
-  const seen = game.bombs.filter((b) => b.owner === lane || FUSE - b.fuse >= react);
-  const list: { cell: number; time: number; blast: number[] }[] = seen.map((b) => ({ cell: b.cell, time: b.fuse, blast: blastFrom(game, b.cell).cells }));
-  if (extra >= 0 && !game.bombAt(extra)) {
-    // The would-be bomb blocks like one: blasts stop on it and set it off.
-    const fake: BomberBomb = { id: -1, owner: lane, cell: extra, fuse: FUSE, pass: 0 };
-    game.bombs.push(fake);
-    try {
-      for (const item of list) item.blast = blastFrom(game, item.cell).cells;
-      list.push({ cell: extra, time: FUSE, blast: blastFrom(game, extra).cells });
-    } finally {
-      game.bombs.pop();
-    }
-  }
-  // Chains: a bomb in an earlier blast goes off with it.
-  for (let changed = true, guard = 0; changed && guard < 16; guard++) {
-    changed = false;
-    for (const a of list)
-      for (const b of list)
-        if (b !== a && b.time > a.time && a.blast.includes(b.cell)) {
-          b.time = a.time;
-          changed = true;
-        }
-  }
-  for (const { time, blast } of list)
-    for (const c of blast) {
+  const seen: FuseBomb[] = game.bombs.filter((b) => b.owner === lane || FUSE - b.fuse >= react);
+  // The would-be bomb blocks like one: blasts stop on it and set it off.
+  const planned = extra >= 0 && !game.bombAt(extra) ? [...seen, { cell: extra, fuse: FUSE }] : seen;
+  for (const { time, cells } of blastPlan(game, planned, [...game.bombs, ...planned]))
+    for (const c of cells) {
       from[c] = Math.min(from[c], time);
       to[c] = Math.max(to[c], time + FLAME);
     }

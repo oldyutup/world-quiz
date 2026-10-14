@@ -144,8 +144,8 @@ export const CHAT_LAYOUT: Readonly<Record<ChatPlace, { wide: ChatSpot; narrow: C
   classic_bowling: { wide: at(24), narrow: at(24, 200), phone: at(218) },
   click_race: { wide: at(24), narrow: at(24, 260), phone: at(64) },
   gold_miner: { wide: at(24), narrow: at(24, 260), phone: at(64) },
-  // Above the player cards (bottom centre); narrow: they span most of the width.
-  bomber: { wide: at(24, 240), narrow: at(96, 240), phone: at(120) },
+  // Bottom of the left HUD column (the cards are at its top), no wider than it: the arena starts right of it.
+  bomber: { wide: at(24, 236), narrow: at(24, 236), phone: at(120) },
   board_game: { wide: at(24), narrow: at(24, 260), phone: at(24) },
 };
 

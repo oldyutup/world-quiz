@@ -9,6 +9,7 @@ import { playerCostumeAtSlot } from "./visual/costumes";
 import BomberPlayground from "./bomber/BomberPlayground";
 import BomberHud from "./bomber/BomberHud";
 import { OnlineBomberSource, type BomberFrame, type BomberLook, type BomberOnline } from "./bomber/source";
+import { BOMBER_DPR } from "./bomber/layout";
 import type { BomberWire } from "../../../shared/party-lab/simulation/bomber/wire";
 import type { LobbySnapshot } from "../network/types";
 
@@ -64,7 +65,8 @@ export default function OnlineBomberArena(props: Props) {
   return (
     <div className="party-lab pl-playground pl-immersive" data-mode="bomber">
       <div ref={viewport} className="pl-viewport" data-mode="bomber" tabIndex={0} role="region" aria-label="Online Bombacı">
-        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 20, 8], fov: 32, near: 0.5, far: 400 }} gl={{ antialias: true, alpha: true }}>
+        {/* At least 2 device pixels per CSS pixel: at 1.5 a Retina screen showed the arena soft. */}
+        <Canvas dpr={BOMBER_DPR} camera={{ position: [0, 20, 8], fov: 32, near: 0.5, far: 400 }} gl={{ antialias: true, alpha: true }}>
           <Suspense fallback={null}>
             {wire && first && <BomberPlayground key={key} source={source} looks={looks} first={first} bindings={props.bindings} paused={off} audio={audio} onStatus={setStatus} onFrame={setFrame} onPortraits={onPortraits} />}
           </Suspense>

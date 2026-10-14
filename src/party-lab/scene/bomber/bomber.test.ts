@@ -5,14 +5,16 @@ import { NET } from "../../../../shared/party-lab/network/protocol";
 import { GAME_MODES, MODE_NAMES, MODE_SELECTIONS, modeFits } from "../../../../shared/party-lab/modes";
 import { LOCAL_ARENA_IDS } from "../../../../shared/party-lab/localArenas";
 import { BOMBER as B } from "../../../../shared/party-lab/simulation/bomber/config";
-import { cellAt, cellCenter, cellIndex, sectorAngle, sectorOf } from "../../../../shared/party-lab/simulation/bomber/arena";
+import { BOX, CELLS, OUTER, cellAt, cellCenter, cellIndex, sectorAngle, sectorOf } from "../../../../shared/party-lab/simulation/bomber/arena";
 import { BomberRoundSimulation } from "../../../../shared/party-lab/simulation/bomberRound";
 import { newRoomCounters } from "../../../../shared/party-lab/simulation/online";
 import type { BomberInputPacket } from "../../../../shared/party-lab/network/bomberInput";
 import type { PlayerId } from "../../../../shared/party-lab/simulation/players";
 import { CHAT_LAYOUT } from "../gameChat";
 import { BomberPrediction, LocalBomber, NO_CONTROLS, toScreen, toWorld, viewYaw } from "./source";
-import { BOMBER_VIEW, bomberInsets, fitBomberCamera } from "./layout";
+import { BOMBER_DPR, BOMBER_INSETS, BOMBER_VIEW, fitBomberCamera } from "./layout";
+import { blastTimes, previewLook } from "./preview";
+import { BURNING, type BomberWire } from "../../../../shared/party-lab/simulation/bomber/wire";
 
 test("Bombacı is a registered 2–3 player mode on protocol 18, with a local arena and a chat spot", () => {
   assert.equal(NET.version, 18);
@@ -39,18 +41,30 @@ test("controls follow the screen: W walks up it (towards the hub from your start
   }
 });
 
-test("the camera: the whole arena (and anyone on its far edge) fits between the HUD, the player's start at the bottom middle", () => {
-  for (const [w, h] of [[1280, 800], [1920, 1080], [1440, 900], [860, 600], [1024, 640]]) {
+test("the camera: from nearly above, the arena looks round and fills the height right of the HUD column, the player's start at the bottom middle", () => {
+  for (const [w, h] of [[1280, 800], [1920, 1080], [1440, 900], [2560, 1440], [1024, 768]]) {
     for (const lane of [0, 1, 2]) {
       const spawns = [cellIndex(4, 3), cellIndex(4, 11), cellIndex(4, 19)],
         yaw = viewYaw(spawns, lane),
         camera = new PerspectiveCamera();
       const fit = fitBomberCamera(camera, w, h, yaw),
-        insets = bomberInsets(w, h);
+        insets = BOMBER_INSETS;
       assert.ok(fit.box.x0 >= insets.left - 1 && fit.box.x1 <= w - insets.right + 1, `${w}×${h}: across ${fit.box.x0}–${fit.box.x1}`);
       assert.ok(fit.box.y0 >= insets.top - 1 && fit.box.y1 <= h - insets.bottom + 1, `${w}×${h}: down ${fit.box.y0}–${fit.box.y1}`);
-      // Fills the free height or width (no needless shrinking).
-      assert.ok(fit.box.y1 - fit.box.y0 > fit.free.h * 0.97 || fit.box.x1 - fit.box.x0 > fit.free.w * 0.97);
+      // Landscape desktops: the arena takes the whole height but the margins.
+      if (fit.free.w >= fit.free.h) assert.ok(fit.box.y1 - fit.box.y0 > fit.free.h * 0.98, `${w}×${h}: height ${fit.box.y1 - fit.box.y0} of ${fit.free.h}`);
+      // The rim itself (ground level) is a circle, not a flat ellipse.
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let i = 0; i < 96; i++) {
+        const a = (i / 96) * Math.PI * 2,
+          p = new Vector3(Math.cos(a) * OUTER, 0, Math.sin(a) * OUTER).project(camera);
+        x0 = Math.min(x0, p.x * w);
+        x1 = Math.max(x1, p.x * w);
+        y0 = Math.min(y0, p.y * h);
+        y1 = Math.max(y1, p.y * h);
+      }
+      const roundness = (y1 - y0) / (x1 - x0);
+      assert.ok(roundness > 0.97 && roundness < 1.03, `${w}×${h}: height/width ${roundness.toFixed(3)}`);
       const at = cellCenter(spawns[lane]),
         p = new Vector3(at.x, 0, at.z).project(camera),
         centre = new Vector3(0, 0, 0).project(camera);
@@ -58,7 +72,35 @@ test("the camera: the whole arena (and anyone on its far edge) fits between the 
       assert.ok(p.y < centre.y - 0.3, "start at the bottom");
     }
   }
-  assert.ok(BOMBER_VIEW.tilt > 0 && BOMBER_VIEW.tilt < Math.PI / 6, "slightly tilted, not side-on");
+  assert.ok(BOMBER_VIEW.tilt <= (10 * Math.PI) / 180, "nearly straight down");
+  assert.deepEqual(BOMBER_DPR, [2, 2], "sharp on Retina screens");
+});
+
+test("blast preview: every bomb's cells, sooner ones darker; a bomb another blast sets off shows that earlier time", () => {
+  const wire = { cells: new Uint8Array(CELLS) } as unknown as BomberWire;
+  // A (30 steps) at 2.0 reaches B (150 steps) at 2.2: B's cells blow at 30 too. C (120) alone.
+  const times = blastTimes(wire, [{ cell: cellIndex(2, 0), fuse: 30 }, { cell: cellIndex(2, 2), fuse: 150 }, { cell: cellIndex(2, 12), fuse: 120 }]);
+  assert.equal(times[cellIndex(2, 0)], 30);
+  assert.equal(times[cellIndex(2, 5)], 30, "B's far end, chained");
+  assert.equal(times[cellIndex(4, 2)], 30, "B's ray, chained");
+  assert.equal(times[cellIndex(2, 12)], 120);
+  assert.equal(times[cellIndex(2, 8)], Infinity, "out of every blast");
+  // A box stops it (and is not marked); a burning box too.
+  const boxed = { cells: new Uint8Array(CELLS) } as unknown as BomberWire;
+  boxed.cells[cellIndex(2, 1)] = BOX;
+  boxed.cells[cellIndex(1, 0)] = BURNING;
+  const t2 = blastTimes(boxed, [{ cell: cellIndex(2, 0), fuse: 60 }]);
+  assert.equal(t2[cellIndex(2, 1)], Infinity);
+  assert.equal(t2[cellIndex(2, 2)], Infinity);
+  assert.equal(t2[cellIndex(0, 0)], Infinity);
+  assert.equal(t2[cellIndex(2, 23)], 60);
+  // Darker and blinking as the fuse runs out.
+  const fresh = previewLook(150, 0),
+    late = previewLook(10, 0);
+  assert.ok(late.u > fresh.u && late.alpha > fresh.alpha);
+  const blinks = [0, 0.03, 0.06, 0.09].map((t) => previewLook(10, t).alpha);
+  assert.ok(Math.max(...blinks) - Math.min(...blinks) > 0.1, "blinks near the end");
+  assert.equal(previewLook(150, 0).alpha, previewLook(150, 0.3).alpha, "steady when just placed");
 });
 
 /** A fixed-latency link: the client predicts at once, the server sees inputs `delay` steps late, snapshots come every 3 steps, `delay` late. */

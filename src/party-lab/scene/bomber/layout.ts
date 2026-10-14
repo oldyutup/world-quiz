@@ -2,20 +2,25 @@ import { PerspectiveCamera, Vector3 } from "three";
 import { OUTER } from "../../../../shared/party-lab/simulation/bomber/arena";
 import { toWorld } from "./source";
 
-/** The view: a fixed camera above the arena, tilted a little towards the bottom of the screen. */
+/**
+ * The view: a fixed camera almost straight above the arena (8° off vertical, towards the bottom
+ * of the screen), far enough with a narrow lens that the round arena looks round (squashed
+ * about 1%).
+ */
 export const BOMBER_VIEW = {
-  fov: 32,
+  fov: 28,
   /** Tilt from straight down, radians. */
-  tilt: (22 * Math.PI) / 180,
+  tilt: (8 * Math.PI) / 180,
   /** What must fit: the rim (its top) and anyone standing on the far edge. */
   radius: OUTER + 0.45,
-  height: 1.3,
+  height: 1.2,
 } as const;
-/** Screen space the HUD keeps (px): the clock on top, the player cards below. */
-export function bomberInsets(_width: number, height: number) {
-  const short = height < 560;
-  return { top: short ? 56 : 78, bottom: short ? 92 : 124, left: 16, right: 16 };
-}
+/** Canvas pixel ratio: never under 2 (Retina screens looked soft at the arenas' usual 1.5). */
+export const BOMBER_DPR: [number, number] = [2, 2];
+/** The HUD's left column (player cards, hints, hits), px from the left edge; bomber.css --pl-bomber-column. */
+export const BOMBER_COLUMN = 262;
+/** Screen space the HUD keeps (px): the left column; elsewhere a small margin (the clock sits in the top-right corner, outside the circle). */
+export const BOMBER_INSETS = { top: 16, bottom: 16, left: BOMBER_COLUMN + 12, right: 16 } as const;
 
 const point = new Vector3();
 /**
@@ -23,7 +28,7 @@ const point = new Vector3();
  * `yaw` (the player's start at the bottom). Finds the distance by bisection on the projected
  * rim, then shifts the view so the arena sits in the middle of that space.
  */
-export function fitBomberCamera(camera: PerspectiveCamera, width: number, height: number, yaw: number, insets = bomberInsets(width, height)) {
+export function fitBomberCamera(camera: PerspectiveCamera, width: number, height: number, yaw: number, insets: { top: number; bottom: number; left: number; right: number } = BOMBER_INSETS) {
   const free = { w: Math.max(80, width - insets.left - insets.right), h: Math.max(80, height - insets.top - insets.bottom) };
   camera.fov = BOMBER_VIEW.fov;
   camera.aspect = width / Math.max(1, height);

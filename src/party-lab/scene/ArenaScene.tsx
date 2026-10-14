@@ -106,6 +106,7 @@ import type { GoldFrame } from "./goldminer/online";
 import { BOT_LEVELS, BOT_LEVEL_NAMES, type BotLevel } from "./goldminer/bots";
 import BomberHud from "./bomber/BomberHud";
 import { localBomber, type BomberFrame } from "./bomber/source";
+import { BOMBER_DPR } from "./bomber/layout";
 import { BOMBER_BOT_LEVELS, BOMBER_BOT_NAMES, type BomberBotLevel } from "../../../shared/party-lab/simulation/bomber/bots";
 import { bindingLabel } from "../input/bindings";
 import { LOCAL_ARENA_IDS, type LocalArenaId } from "../../../shared/party-lab/localArenas";
@@ -1049,7 +1050,7 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
       >
         <SceneBoundary onError={() => setStatus("graphics-error")}>
           <Canvas
-            dpr={[1, 1.5]}
+            dpr={bomber ? BOMBER_DPR : [1, 1.5]}
             camera={{ position: [0, 12, 14], fov: 45, near: 0.1, far: 180 }}
             gl={{ antialias: true, alpha: true }}
             fallback={

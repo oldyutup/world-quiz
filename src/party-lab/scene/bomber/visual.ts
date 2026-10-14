@@ -7,6 +7,7 @@ import {
   CylinderGeometry,
   DoubleSide,
   DynamicDrawUsage,
+  InstancedBufferAttribute,
   Float32BufferAttribute,
   Group,
   InstancedMesh,
@@ -31,9 +32,15 @@ import { BURNING, type BomberWire } from "../../../../shared/party-lab/simulatio
 import { createCharacterVisual } from "../visual/characterVisual";
 import { PARTS, SHAPES } from "../ragdoll/config";
 import type { BomberFrame, BomberLook } from "./source";
+import { blastTimes, previewLook } from "./preview";
 
 const FUSE = ticks(B.fuse),
   FLAME = ticks(B.flame);
+/** Low blocks: from (nearly) above, tall ones hid the cells behind them. */
+const PILLAR_HEIGHT = 0.42,
+  BOX_HEIGHT = 0.36,
+  /** The hub's bomb, scaled from 0.95 m. */
+  STATUE = 0.45;
 /** Character size on the arena (the shared skins stand 1.48 m). */
 export const PERSON_SCALE = 0.85;
 const PALETTE = {
@@ -48,6 +55,8 @@ const PALETTE = {
   rim: "#4a5563",
   warn: "#c81e3a",
   flameHot: "#ffd35a",
+  previewEarly: "#ff6a00",
+  previewLate: "#d40f28",
   flameEdge: "#ff7a1f",
   bomb: "#2a2d36",
 };
@@ -204,12 +213,19 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
   const boxMat = keep(new MeshStandardMaterial({ map: crate, roughness: 0.8 }));
   // Plain (not additive) blending: on the light floor additive flames washed out to white.
   const flameMat = keep(new MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, side: DoubleSide }));
+  // Blast preview: per-instance colour and opacity (a `previewAlpha` attribute).
+  const previewMat = keep(new MeshBasicMaterial({ transparent: true, depthWrite: false }));
+  previewMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = "attribute float previewAlpha;\nvarying float vPreviewAlpha;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n vPreviewAlpha = previewAlpha;");
+    shader.fragmentShader = "varying float vPreviewAlpha;\n" + shader.fragmentShader.replace("#include <alphamap_fragment>", "#include <alphamap_fragment>\n diffuseColor.a *= vPreviewAlpha;");
+  };
 
   // Floor, pillars, boxes and flames: one instanced mesh per ring, an instance per sector.
   const floors: InstancedMesh[] = [],
     pillars: (InstancedMesh | null)[] = [],
     boxes: InstancedMesh[] = [],
     flames: InstancedMesh[] = [],
+    previews: { mesh: InstancedMesh; alpha: InstancedBufferAttribute }[] = [],
     cores: InstancedMesh[] = [];
   const pocketOf = new Int8Array(CELLS).fill(-1);
   first.spawns.forEach((_, lane) => {
@@ -229,17 +245,26 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
     floors.push(floor);
     root.add(floor);
     if (ring % 2 === 1) {
-      const p = new InstancedMesh(keep(sectorBlock(r0, r1, 0, 1.05, 0.05)), pillarMat, SECTORS / 2);
+      const p = new InstancedMesh(keep(sectorBlock(r0, r1, 0, PILLAR_HEIGHT, 0.05)), pillarMat, SECTORS / 2);
       for (let i = 0; i < SECTORS / 2; i++) p.setMatrixAt(i, turn(i * 2 + 1));
       p.instanceMatrix.setUsage(DynamicDrawUsage);
       pillars.push(p);
       root.add(p);
     } else pillars.push(null);
-    const box = new InstancedMesh(keep(sectorBlock(r0, r1, 0, 0.82, 0.09)), boxMat, SECTORS);
+    const box = new InstancedMesh(keep(sectorBlock(r0, r1, 0, BOX_HEIGHT, 0.09)), boxMat, SECTORS);
     box.instanceMatrix.setUsage(DynamicDrawUsage);
     box.count = 0;
     boxes.push(box);
     root.add(box);
+    const preview = new InstancedMesh(keep(sectorBlock(r0, r1, 0, 0.014, 0.03, 6, false)), previewMat, SECTORS);
+    preview.instanceMatrix.setUsage(DynamicDrawUsage);
+    const alpha = new InstancedBufferAttribute(new Float32Array(SECTORS), 1).setUsage(DynamicDrawUsage);
+    preview.geometry.setAttribute("previewAlpha", alpha);
+    preview.count = 0;
+    preview.frustumCulled = false;
+    preview.renderOrder = 1;
+    previews.push({ mesh: preview, alpha });
+    root.add(preview);
     const flame = new InstancedMesh(keep(sectorBlock(r0, r1, 0, 0.06, 0.04, 6, false)), flameMat, SECTORS);
     flame.instanceMatrix.setUsage(DynamicDrawUsage);
     flame.count = 0;
@@ -257,7 +282,8 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
     const cell = ring * SECTORS + sector,
       lane = pocketOf[cell];
     const base = (ring + sector) % 2 ? PALETTE.floorA : PALETTE.floorB;
-    return lane >= 0 && looks[lane] ? mix(base, looks[lane].color, 0.28) : new Color(base);
+    // A light tint: stronger ones were mistaken for the blast preview.
+    return lane >= 0 && looks[lane] ? mix(base, looks[lane].color, 0.16) : new Color(base);
   }
 
   // The hub: a stone dais with a big bomb, the rim round the edge.
@@ -275,7 +301,9 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
   const statueSpark = new Mesh(keep(new SphereGeometry(0.16, 12, 8)), keep(new MeshBasicMaterial({ color: "#ffcf5a" })));
   statueSpark.position.set(0.12, 1.32, 0);
   statue.add(statueBody, statueCap, statueSpark);
-  statue.position.y = 1.25;
+  // A small ornament: the hub is no landmark to look at.
+  statue.scale.setScalar(STATUE);
+  statue.position.y = 0.28 + 0.95 * STATUE;
   root.add(statue);
   const rimMat = keep(new MeshStandardMaterial({ color: PALETTE.rim, map: stone, roughness: 0.9 }));
   const rim = new Mesh(keep(new CylinderGeometry(OUTER + 0.42, OUTER + 0.42, 0.85, 96, 1, true)), rimMat);
@@ -404,7 +432,7 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
       step = frame.step;
     for (const mark of marks) mark.visible = states[ringOf(mark.userData.cell as number)] !== 2;
     statue.rotation.y += dt * 0.4;
-    statue.position.y = 1.25 + Math.sin(clock * 2) * 0.05;
+    statue.position.y = 0.28 + 0.95 * STATUE + Math.sin(clock * 2) * 0.03;
     statueSpark.scale.setScalar(0.8 + Math.random() * 0.5);
     // Rings: blinking before they fall, then dropping away.
     for (let ring = 0; ring < RINGS; ring++) {
@@ -457,6 +485,24 @@ export function bomberVisual(looks: readonly BomberLook[], first: BomberWire) {
       const boxColors = boxes[ring].instanceColor;
       if (boxColors) boxColors.needsUpdate = true;
     }
+    // Where the bombs will burn (chains included): faint orange to blinking red as fuses run out.
+    const times = blastTimes(w, frame.bombs),
+      shownPreview = new Array(RINGS).fill(0);
+    for (let cell = 0; cell < CELLS; cell++) {
+      if (!(times[cell] < Infinity)) continue;
+      const ring = ringOf(cell),
+        n = shownPreview[ring]++,
+        look = previewLook(times[cell], clock);
+      previews[ring].mesh.setMatrixAt(n, turn(sectorOf(cell)));
+      previews[ring].mesh.setColorAt(n, mix(PALETTE.previewEarly, PALETTE.previewLate, look.u));
+      previews[ring].alpha.setX(n, look.alpha);
+    }
+    previews.forEach(({ mesh, alpha }, ring) => {
+      mesh.count = shownPreview[ring];
+      mesh.instanceMatrix.needsUpdate = alpha.needsUpdate = true;
+      const colors = mesh.instanceColor;
+      if (colors) colors.needsUpdate = true;
+    });
     // Flames: hot while fresh, then fading.
     const fireCount = new Array(RINGS).fill(0);
     for (let i = 0; i + 2 < w.fire.length; i += 3) {

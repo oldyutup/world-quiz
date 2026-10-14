@@ -59,47 +59,55 @@ export default function BomberHud({ wire, step, lanes, self, winner, keys, after
           Halka çöküyor!
         </p>
       )}
-      <ol className="pl-bomber-feed" aria-label="Vuruşlar">
-        {wire.phase === "playing" &&
-          feed(wire, lanes).map((e) => (
-            <li key={e.id}>
-              {e.fell ? (
-                <>
-                  <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> düştü
-                </>
-              ) : e.self ? (
-                <>
-                  <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> kendi bombasıyla <em>−1</em>
-                </>
-              ) : (
-                <>
-                  <b style={{ color: e.by?.color }}>{e.by?.name ?? "?"}</b> → <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> <em>+1</em>
-                </>
-              )}
-            </li>
-          ))}
-      </ol>
-      <ol className="pl-bomber-lanes" aria-label="Oyuncular">
-        {wire.seats.map((_, lane) => {
-          const look = lanes[lane],
-            dead = wire.phase === "playing" && !wire.alive[lane] && !wire.out[lane];
-          return (
-            <li key={lane} className={lane === self ? "is-self" : undefined} style={{ ["--lane" as string]: look?.color ?? "#ccc" }}>
-              <span className="pl-bomber-face" aria-hidden="true">
-                {look?.portrait ? <img src={look.portrait} alt="" /> : <i />}
-              </span>
-              <span className="pl-bomber-name">
-                {look?.name ?? "Ayrıldı"}
-                {lane === self && look?.name !== "Sen" && <small>SEN</small>}
-              </span>
-              <b className="pl-bomber-score">{wire.score[lane]}</b>
-              {(wire.out[lane] || (look && !look.connected) || dead) && (
-                <span className="pl-bomber-status">{wire.out[lane] ? "Ayrıldı" : look && !look.connected ? "Bağlantı koptu" : `Dönüyor ${Math.max(1, Math.ceil(wire.respawn[lane] / B.hz))}`}</span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+      {/* The left column: who is playing, the controls and the latest hits (the arena keeps the rest). */}
+      <aside className="pl-bomber-side">
+        <ol className="pl-bomber-lanes" aria-label="Oyuncular">
+          {wire.seats.map((_, lane) => {
+            const look = lanes[lane],
+              dead = wire.phase === "playing" && !wire.alive[lane] && !wire.out[lane];
+            return (
+              <li key={lane} className={lane === self ? "is-self" : undefined} style={{ ["--lane" as string]: look?.color ?? "#ccc" }}>
+                <span className="pl-bomber-face" aria-hidden="true">
+                  {look?.portrait ? <img src={look.portrait} alt="" /> : <i />}
+                </span>
+                <span className="pl-bomber-name">
+                  {look?.name ?? "Ayrıldı"}
+                  {lane === self && look?.name !== "Sen" && <small>SEN</small>}
+                </span>
+                <b className="pl-bomber-score">{wire.score[lane]}</b>
+                {(wire.out[lane] || (look && !look.connected) || dead) && (
+                  <span className="pl-bomber-status">{wire.out[lane] ? "Ayrıldı" : look && !look.connected ? "Bağlantı koptu" : `Dönüyor ${Math.max(1, Math.ceil(wire.respawn[lane] / B.hz))}`}</span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+        {wire.phase !== "results" && self >= 0 && (
+          <p className="pl-bomber-hint">
+            <kbd>WASD</kbd> yürü · <kbd>{keys}</kbd> bomba
+          </p>
+        )}
+        <ol className="pl-bomber-feed" aria-label="Vuruşlar">
+          {wire.phase === "playing" &&
+            feed(wire, lanes).map((e) => (
+              <li key={e.id}>
+                {e.fell ? (
+                  <>
+                    <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> düştü
+                  </>
+                ) : e.self ? (
+                  <>
+                    <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> kendi bombasıyla <em>−1</em>
+                  </>
+                ) : (
+                  <>
+                    <b style={{ color: e.by?.color }}>{e.by?.name ?? "?"}</b> → <b style={{ color: e.victim?.color }}>{e.victim?.name ?? "?"}</b> <em>+1</em>
+                  </>
+                )}
+              </li>
+            ))}
+        </ol>
+      </aside>
       {wire.phase === "countdown" && (
         <div className="pl-bomber-callout" role="status">
           <span>BOMBACI</span>
@@ -111,11 +119,6 @@ export default function BomberHud({ wire, step, lanes, self, winner, keys, after
         <div className="pl-bomber-callout is-go" role="status">
           <strong>BAŞLA!</strong>
         </div>
-      )}
-      {wire.phase === "playing" && step < B.hz * 8 && self >= 0 && (
-        <p className="pl-bomber-hint">
-          <kbd>WASD</kbd> yürü · <kbd>{keys}</kbd> bomba
-        </p>
       )}
       {wire.phase === "results" && (
         <section className="pl-bomber-results" aria-label="Bombacı sonucu">
