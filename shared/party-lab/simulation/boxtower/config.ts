@@ -10,9 +10,9 @@
  * The speed curve's ends: seconds the sliding box takes from the first column to the last with
  * nothing standing (`start`) and with the tallest column `top` boxes high (`end`). Every box in
  * between speeds it up by the same share: ×(end / start)^(1 / top) ≈ 0.885 per box, about 11.5 %
- * (0.900, 0.797, 0.705, 0.624, 0.552, 0.489, 0.433, 0.383, 0.339, 0.300 s).
+ * (0.750, 0.664, 0.588, 0.520, 0.460, 0.407, 0.361, 0.319, 0.282, 0.250 s).
  */
-const TRAVEL = { start: 0.9, end: 0.3, top: 9 } as const;
+const TRAVEL = { start: 0.75, end: 0.25, top: 9 } as const;
 const travelSeconds: readonly number[] = Array.from({ length: TRAVEL.top + 1 }, (_, height) =>
   height === TRAVEL.top ? TRAVEL.end : TRAVEL.start * (TRAVEL.end / TRAVEL.start) ** (height / TRAVEL.top)
 );
@@ -63,7 +63,7 @@ export const BOX_TOWER = {
    * speed, times (start travel / travel)^`speedGain`, so it misses more as the box speeds up.
    * Alone for 60 s (scratch simulation, 500 rounds each): Zor reaches 10 every time, in about
    * 30 s; Orta about half the time, in about 50 s, otherwise mostly 8–9 high; Kolay about one
-   * round in seven, mostly 7–8 high.
+   * round in nine, mostly 7–8 high.
    */
   bots: {
     easy: { reaction: 1200, error: 130, speedGain: 1.1 },

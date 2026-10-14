@@ -55,13 +55,13 @@ function place(g: BoxTowerGame, lane: number, column: number) {
   assert.equal(l.falling, null);
 }
 
-test("slide: the box crosses the 7 columns in 0.9 s at the start, 0.3 s at 9 high, the same share faster every box, and turns back at both ends", () => {
+test("slide: the box crosses the 7 columns in 0.75 s at the start, 0.25 s at 9 high, the same share faster every box, and turns back at both ends", () => {
   assert.equal(T.columns, 7);
-  near(travelMs(0), 900, 1e-9);
-  near(travelMs(9), 300, 1e-9);
+  near(travelMs(0), 750, 1e-9);
+  near(travelMs(9), 250, 1e-9);
   assert.equal(travelMs(14), travelMs(9), "taller keeps the last entry");
   assert.equal(T.travelSeconds.length, 10);
-  for (let h = 1; h < T.travelSeconds.length; h++) near(travelMs(h) / travelMs(h - 1), (300 / 900) ** (1 / 9), 1e-12, `box ${h}: the same share faster`);
+  for (let h = 1; h < T.travelSeconds.length; h++) near(travelMs(h) / travelMs(h - 1), (250 / 750) ** (1 / 9), 1e-12, `box ${h}: the same share faster`);
   const s: Slide = { spawn: 1000, from: 0, dir: 1, travel: 1600 };
   near(slideX(s, 1000), 0, 1e-12);
   near(slideX(s, 1800), 3, 1e-9, "half way");
@@ -207,11 +207,11 @@ test("speed: the slide speeds up with the player's own tallest column; a miss (a
   assert.equal(g.lanes[0].slide.travel, travelMs(3), "taller again");
   // The other lane never sped up.
   assert.equal(g.lanes[1].slide.travel, travelMs(0));
-  // 9 high: 0.3 s from end to end.
+  // 9 high: 0.25 s from end to end.
   const h = stacking(2, 12);
   for (let i = 0; i < 9; i++) place(h, 1, 6);
   assert.equal(h.lanes[1].best, 9);
-  near(h.lanes[1].slide.travel, 300, 1e-9);
+  near(h.lanes[1].slide.travel, 250, 1e-9);
 });
 
 test("10 in a column ends the round at once (the first to land wins); the others' boxes in the air never land", () => {
