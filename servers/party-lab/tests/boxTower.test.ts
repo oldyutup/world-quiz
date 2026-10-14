@@ -11,7 +11,7 @@ import { createPartyServer } from "../src/server.js";
 import type { PartyRoom } from "../src/PartyRoom.js";
 import type { LobbyState } from "../src/state.js";
 import { BOX_TOWER as T } from "../../../shared/party-lab/simulation/boxtower/config.js";
-import { BoxTowerGame, type TowerPress } from "../../../shared/party-lab/simulation/boxtower/game.js";
+import { BoxTowerGame } from "../../../shared/party-lab/simulation/boxtower/game.js";
 import { SPAN, columnAt, crossings, slideX, travelMs, type Slide } from "../../../shared/party-lab/simulation/boxtower/motion.js";
 import { TowerBot, TOWER_BOT_LEVELS, type TowerBotLevel } from "../../../shared/party-lab/simulation/boxtower/bots.js";
 import { laneHeights, towerSection, validTowerWire, wireSlide } from "../../../shared/party-lab/simulation/boxtower/wire.js";
@@ -55,12 +55,13 @@ function place(g: BoxTowerGame, lane: number, column: number) {
   assert.equal(l.falling, null);
 }
 
-test("slide: the box crosses the 7 columns in 1.6 s at the start, 0.6 s at 9 high, and turns back at both ends", () => {
+test("slide: the box crosses the 7 columns in 0.9 s at the start, 0.3 s at 9 high, the same share faster every box, and turns back at both ends", () => {
   assert.equal(T.columns, 7);
-  assert.equal(travelMs(0), 1600);
-  assert.equal(travelMs(9), 600);
-  assert.equal(travelMs(14), 600, "taller keeps the last entry");
-  for (let h = 1; h < T.travelSeconds.length; h++) assert.ok(travelMs(h) < travelMs(h - 1), "faster every box");
+  near(travelMs(0), 900, 1e-9);
+  near(travelMs(9), 300, 1e-9);
+  assert.equal(travelMs(14), travelMs(9), "taller keeps the last entry");
+  assert.equal(T.travelSeconds.length, 10);
+  for (let h = 1; h < T.travelSeconds.length; h++) near(travelMs(h) / travelMs(h - 1), (300 / 900) ** (1 / 9), 1e-12, `box ${h}: the same share faster`);
   const s: Slide = { spawn: 1000, from: 0, dir: 1, travel: 1600 };
   near(slideX(s, 1000), 0, 1e-12);
   near(slideX(s, 1800), 3, 1e-9, "half way");
@@ -187,7 +188,7 @@ test("every new box starts over a random column going a random way (inward at th
 
 test("speed: the slide speeds up with the player's own tallest column; a miss (another column) does not", () => {
   const g = stacking(2, 11);
-  assert.equal(g.lanes[0].slide.travel, 1600);
+  assert.equal(g.lanes[0].slide.travel, travelMs(0));
   place(g, 0, 3);
   assert.equal(g.lanes[0].slide.travel, travelMs(1));
   place(g, 0, 3);
@@ -205,12 +206,12 @@ test("speed: the slide speeds up with the player's own tallest column; a miss (a
   assert.equal(g.lanes[0].best, 3);
   assert.equal(g.lanes[0].slide.travel, travelMs(3), "taller again");
   // The other lane never sped up.
-  assert.equal(g.lanes[1].slide.travel, 1600);
-  // 9 high: 0.6 s from end to end.
+  assert.equal(g.lanes[1].slide.travel, travelMs(0));
+  // 9 high: 0.3 s from end to end.
   const h = stacking(2, 12);
   for (let i = 0; i < 9; i++) place(h, 1, 6);
   assert.equal(h.lanes[1].best, 9);
-  assert.equal(h.lanes[1].slide.travel, 600);
+  near(h.lanes[1].slide.travel, 300, 1e-9);
 });
 
 test("10 in a column ends the round at once (the first to land wins); the others' boxes in the air never land", () => {
@@ -315,47 +316,47 @@ test("leaving: the leaver ranks last and their box in the air is gone; the last 
   assert.equal(g.winner(), 2);
 });
 
-test("bots really play: they stack, miss more as the box speeds up, and harder bots finish sooner", () => {
-  const results: Record<TowerBotLevel, { finish: number[]; early: number; late: number; earlyN: number; lateN: number }> = {
-    easy: { finish: [], early: 0, late: 0, earlyN: 0, lateN: 0 },
-    medium: { finish: [], early: 0, late: 0, earlyN: 0, lateN: 0 },
-    hard: { finish: [], early: 0, late: 0, earlyN: 0, lateN: 0 },
+test("bots really play alone in their yard: Zor reaches 10 in about 30 s, Orta about half the time, Kolay rarely; all miss more as the box speeds up", () => {
+  const stats: Record<TowerBotLevel, { times: number[]; bests: number[]; early: number; earlyN: number; late: number; lateN: number }> = {
+    easy: { times: [], bests: [], early: 0, earlyN: 0, late: 0, lateN: 0 },
+    medium: { times: [], bests: [], early: 0, earlyN: 0, late: 0, lateN: 0 },
+    hard: { times: [], bests: [], early: 0, earlyN: 0, late: 0, lateN: 0 },
   };
+  const ROUNDS = 80;
   for (const level of TOWER_BOT_LEVELS)
-    for (let seed = 0; seed < 40; seed++) {
+    for (let seed = 0; seed < ROUNDS; seed++) {
+      // The bot in lane 0; lane 1 stays idle, so the round runs until 10 or the time.
       const random = mulberry32(100 + seed),
         g = new BoxTowerGame(2, random),
-        bots = [new TowerBot(level, random), new TowerBot(level, random)],
-        r = results[level],
-        seen = [0, 0],
-        before = [0, 0];
+        bot = new TowerBot(level, random),
+        r = stats[level],
+        l = g.lanes[0];
+      let seen = 0,
+        before = 0;
       while (g.phase !== "results") {
-        const due = g.elapsedMs + MS;
-        g.step(
-          g.lanes.map((l, lane): TowerPress | undefined => {
-            if (g.phase !== "stacking") return undefined;
-            const at = bots[lane].next({ playing: !l.out, busy: !!l.falling, heights: l.heights, slide: l.slide }, due);
-            return at === null ? undefined : { drop: l.drops + 1, at };
-          })
-        );
-        g.lanes.forEach((l, lane) => {
-          if (l.placed === seen[lane]) return;
-          seen[lane] = l.placed;
-          if (before[lane] < 3) (r.earlyN++, (r.early += +l.good));
-          else if (before[lane] >= 6 && before[lane] < 10) (r.lateN++, (r.late += +l.good));
-          before[lane] = l.best;
-        });
+        const at = g.phase === "stacking" ? bot.next({ playing: true, busy: !!l.falling, heights: l.heights, slide: l.slide }, g.elapsedMs + MS) : null;
+        g.step([at === null ? undefined : { drop: l.drops + 1, at }]);
+        if (l.placed === seen) continue;
+        seen = l.placed;
+        if (before >= 1 && before < 3) (r.earlyN++, (r.early += +l.good));
+        else if (before >= 6 && before < 10) (r.lateN++, (r.late += +l.good));
+        before = l.best;
       }
-      const done = g.lanes.flatMap((_, lane) => (g.finished(lane) >= 0 ? [g.finished(lane)] : []));
-      r.finish.push(done.length ? Math.min(...done) : Infinity);
+      if (g.finished(0) >= 0) r.times.push(g.finished(0));
+      r.bests.push(l.best);
     }
-  const median = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
+  const rate = (level: TowerBotLevel) => stats[level].times.length / ROUNDS,
+    mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
   for (const level of TOWER_BOT_LEVELS) {
-    const r = results[level];
+    const r = stats[level];
     assert.ok(r.early / r.earlyN > r.late / r.lateN + 0.15, `${level}: hits ${(r.early / r.earlyN).toFixed(2)} low vs ${(r.late / r.lateN).toFixed(2)} high`);
   }
-  assert.ok(median(results.hard.finish) < median(results.medium.finish) && median(results.medium.finish) < median(results.easy.finish), "harder finishes sooner");
-  assert.ok(median(results.hard.finish) < 30_000, `hard ${median(results.hard.finish)}`);
+  assert.ok(rate("hard") >= 0.95, `Zor reaches 10 ${rate("hard")}`);
+  const hard = mean(stats.hard.times);
+  assert.ok(hard > 24_000 && hard < 36_000, `Zor: ${hard} ms on average`);
+  assert.ok(rate("medium") > 0.3 && rate("medium") < 0.75, `Orta reaches 10 ${rate("medium")}`);
+  assert.ok(stats.medium.bests.filter((b) => b >= 8).length / ROUNDS > 0.85, "Orta: mostly 8–10 at the end");
+  assert.ok(rate("easy") < 0.3, `Kolay reaches 10 ${rate("easy")}`);
 });
 
 test("the round simulation: player counts, slots (not seats) as winner, placements per slot, a dropped player's box keeps sliding", () => {
