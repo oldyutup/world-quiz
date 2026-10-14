@@ -1,0 +1,47 @@
+/* The HUD keeps a left column (layout.ts TRAIL_COLUMN); the arena fills the rest. */
+.pl-viewport[data-mode="light_trails"] { user-select: none; -webkit-user-select: none; }
+.party-lab .pl-viewport[data-mode="light_trails"] .pl-arena-side { top: 112px; left: auto; right: 16px; justify-items: end; max-width: 240px; }
+.pl-trail-hud { --pl-trail-column: 262px; position: absolute; inset: 0; pointer-events: none; color: oklch(96% .02 250); font-family: Barlow, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 2px 3px oklch(10% .03 260 / .7); }
+.pl-trail-clock { position: absolute; top: 14px; right: 16px; min-width: 76px; padding: 6px 14px; border-radius: 12px; background: oklch(18% .04 262 / .9); border: 1px solid oklch(62% .12 220 / .55); box-shadow: 0 0 18px oklch(70% .14 220 / .25); text-align: center; font-size: 34px; font-weight: 900; line-height: 1.1; }
+.pl-trail-clock.is-low { color: oklch(80% .17 345); border-color: oklch(66% .2 345 / .8); box-shadow: 0 0 22px oklch(66% .22 345 / .45); }
+.pl-trail-rush { position: absolute; top: 72px; right: 16px; margin: 0; padding: 4px 12px; border-radius: 8px; background: oklch(48% .2 345 / .92); font-weight: 800; font-size: 14px; letter-spacing: 1px; text-transform: uppercase; }
+.pl-trail-side { position: absolute; top: 64px; left: 14px; width: calc(var(--pl-trail-column) - 26px); display: grid; gap: 12px; align-content: start; }
+.pl-trail-lanes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pl-trail-lanes li { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; gap: 0 10px; min-height: 52px; padding: 6px 12px 6px 6px; border-radius: 12px; background: oklch(18% .04 262 / .9); border: 2px solid var(--lane); box-shadow: 0 0 14px color-mix(in oklch, var(--lane) 35%, transparent), inset 0 -3px 0 color-mix(in oklch, var(--lane) 45%, transparent); transition: opacity .25s, filter .25s; }
+.pl-trail-lanes li.is-self { background: oklch(23% .05 262 / .95); box-shadow: 0 0 16px color-mix(in oklch, var(--lane) 45%, transparent), inset 0 -3px 0 var(--lane), 0 0 0 2px oklch(92% .05 90 / .45); }
+.pl-trail-lanes li.is-out { opacity: .5; filter: grayscale(.85) brightness(.75); box-shadow: none; }
+.pl-trail-face { grid-row: 1 / 3; width: 52px; height: 52px; border-radius: 9px; overflow: hidden; background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--lane) 55%, white), color-mix(in oklch, var(--lane) 60%, black)); }
+.pl-trail-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pl-trail-face i { display: block; width: 100%; height: 100%; }
+.pl-trail-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--lane); }
+.pl-trail-name small { font-size: 10px; letter-spacing: 1px; color: oklch(88% .1 90); }
+.pl-trail-status { font-size: 12px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-trail-train { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 12px 12px; border-radius: 10px; background: oklch(18% .04 262 / .88); border: 1px solid oklch(50% .05 262 / .6); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; overflow: hidden; }
+.pl-trail-train b { font-size: 20px; letter-spacing: 0; }
+.pl-trail-train i { position: absolute; left: 0; bottom: 0; height: 4px; width: var(--fill, 0%); background: oklch(70% .12 220); }
+.pl-trail-train.is-warn { background: oklch(46% .2 25 / .95); border-color: oklch(70% .2 25); animation: pl-trail-blink .32s steps(2, jump-none) infinite; }
+.pl-trail-train.is-run { background: oklch(40% .17 25 / .95); border-color: oklch(65% .18 25); }
+.pl-trail-train.is-done { opacity: .7; }
+@keyframes pl-trail-blink { 50% { background: oklch(28% .12 25 / .95); } }
+.pl-trail-hint { margin: 0; padding: 7px 12px; border-radius: 10px; background: oklch(18% .04 262 / .82); font-size: 14px; }
+.pl-trail-hint kbd { font: inherit; font-weight: 800; }
+/* Callouts and results sit over the arena's middle, not the page's. */
+.pl-trail-callout { position: absolute; left: calc(50% + var(--pl-trail-column) / 2); top: 40%; transform: translate(-50%, -50%); width: min(560px, calc(100% - var(--pl-trail-column) - 32px)); text-align: center; }
+.pl-trail-callout span { display: block; font-weight: 800; letter-spacing: 4px; font-size: 26px; color: oklch(86% .1 220); }
+.pl-trail-callout strong { display: block; font-size: 112px; line-height: 1.1; }
+.pl-trail-callout small { display: inline-block; padding: 6px 12px; border-radius: 10px; background: oklch(16% .04 262 / .82); font-size: 17px; }
+.pl-trail-callout.is-go strong { font-size: 88px; color: oklch(88% .14 210); text-shadow: 0 0 24px oklch(70% .15 220 / .8); }
+.pl-trail-callout.is-rush strong { font-size: 72px; color: oklch(80% .18 345); text-shadow: 0 0 24px oklch(66% .22 345 / .8); }
+.pl-trail-callout.is-out { top: 22%; }
+.pl-trail-callout.is-out strong { font-size: 60px; color: oklch(72% .17 25); }
+.pl-trail-results { pointer-events: auto; position: absolute; left: calc(50% + var(--pl-trail-column) / 2); top: 50%; transform: translate(-50%, -50%); width: min(660px, calc(100% - var(--pl-trail-column) - 24px)); box-sizing: border-box; padding: 22px 26px; border-radius: 16px; border: 1px solid oklch(55% .1 230 / .7); background: oklch(16% .04 262 / .97); box-shadow: 0 20px 65px oklch(8% .03 262 / .5), 0 0 30px oklch(60% .14 220 / .2); text-align: center; }
+.pl-trail-results p { margin: 0; font-size: 12px; letter-spacing: 2px; opacity: .7; text-transform: uppercase; }
+.pl-trail-results h2 { margin: 6px 0 14px; font-size: 30px; color: oklch(86% .13 210); }
+.pl-trail-results table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl-trail-results th { font-size: 11px; letter-spacing: 1px; font-weight: 700; opacity: .65; text-align: left; padding: 0 6px 6px; }
+.pl-trail-results td { padding: 9px 6px; border-top: 1px solid oklch(50% .05 262 / .3); text-align: left; white-space: nowrap; }
+.pl-trail-results tr.is-self td { color: oklch(90% .1 88); }
+.pl-trail-results td:first-child { font-weight: 800; width: 28px; }
+.pl-trail-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+.pl-trail-results small { display: block; margin-top: 12px; font-size: 12px; opacity: .7; }
+.pl-trail-results button { width: 100%; min-height: 44px; margin-top: 16px; }

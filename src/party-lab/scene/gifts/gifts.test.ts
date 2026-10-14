@@ -39,8 +39,8 @@ function poses(snapshot: GameSnapshot) {
   return out;
 }
 
-test("Hediye Kapmaca is a registered 2–3 player mode on protocol 21: local arena, chat spot, lobby hint, online view, Tut labelled", () => {
-  assert.equal(NET.version, 21);
+test("Hediye Kapmaca is a registered 2–3 player mode on protocol 22: local arena, chat spot, lobby hint, online view, Tut labelled", () => {
+  assert.equal(NET.version, 22);
   assert.ok(GAME_MODES.includes("gift_grab"));
   assert.equal(MODE_NAMES.gift_grab, "Hediye Kapmaca");
   assert.ok(LOCAL_ARENA_IDS.includes("gift_grab"));

@@ -11,6 +11,7 @@ export interface MovementInput {
   bomber?: import("./network/bomberInput.js").BomberInputPacket;
   tower?: import("./network/towerInput.js").TowerInputPacket;
   marksman?: import("./network/marksmanInput.js").MarksmanInputPacket;
+  trail?: import("./network/trailInput.js").TrailInputPacket;
   x: number;
   z: number;
   jump: boolean;

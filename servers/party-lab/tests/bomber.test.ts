@@ -478,7 +478,7 @@ test("the round simulation: 2–3 players, slots (not seats) as winner, placemen
   sim.step(inputs);
   sim.step(inputs);
   const snap = sim.snapshot([0, 0, 0]);
-  assert.equal(snap.v, 21);
+  assert.equal(snap.v, 22);
   assert.equal(snap.mode, "bomber");
   assert.ok(validBomberWire(snap.bomber));
   assert.deepEqual(snap.bomber!.held, [2, 2], "the same packet three steps: two extra");
@@ -645,7 +645,7 @@ for (const count of [2, 3])
     assert.equal(sim.placements()[slot(0)], 0);
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 21);
+    assert.equal(shown.v, 22);
     assert.ok(validBomberWire(shown.bomber), "the section survives the wire");
     assert.ok(shown.bomber!.cells instanceof Uint8Array);
     assert.equal(shown.winner, slot(0));
