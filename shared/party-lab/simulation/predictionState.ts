@@ -8,6 +8,8 @@ import {
   LAYER_PREDICTION_FIELDS,
   BOMB_PREDICTION_BYTES,
   BOMB_PREDICTION_FIELDS,
+  GIFT_PREDICTION_BYTES,
+  GIFT_PREDICTION_FIELDS,
   VELOCITY_BYTES,
   type PredictionState,
 } from "../network/protocol.js";
@@ -163,6 +165,52 @@ export function readBombPredictionState(bytes: unknown): Record<(typeof BOMB_PRE
     const v = view.getFloat64(i * 8, true);
     if (!Number.isFinite(v)) return null;
     out[BOMB_PREDICTION_FIELDS[i]] = v;
+  }
+  return out;
+}
+
+/** Hediye Kapmaca: the shove fighter plus carrying (no punch), stun ticks left (no punch) and its home (a carrier entering it puts the box down). */
+export function captureGiftPredictionState(
+  character: Character,
+  fighter: LayerFighter,
+  alive: boolean,
+  carrying: boolean,
+  stunTicks: number,
+  home: { x: number; z: number }
+): PredictionState {
+  const { velocities } = capturePredictionState(character, { nextPunchHand: 0, alternateIn: 0, punches: [] });
+  const gift = new Uint8Array(GIFT_PREDICTION_BYTES),
+    view = new DataView(gift.buffer);
+  const values: Record<(typeof GIFT_PREDICTION_FIELDS)[number], number> = {
+    facing: character.facing,
+    gait: character.gait,
+    jumpIn: character.jumpIn,
+    sprint: character.sprint,
+    alive: alive ? 1 : 0,
+    punchHand: fighter.punchHand,
+    punchCooldown: fighter.punchCooldown,
+    punchAge: fighter.punch.age,
+    punchSwingCooldown: fighter.punch.cooldown,
+    staggerTime: fighter.stagger.time,
+    staggerPosture: fighter.stagger.posture,
+    staggerMobility: fighter.stagger.mobility,
+    carrying: carrying ? 1 : 0,
+    stunTicks,
+    homeX: home.x,
+    homeZ: home.z,
+  };
+  GIFT_PREDICTION_FIELDS.forEach((name, i) => view.setFloat64(i * 8, values[name], true));
+  return { slot: character.id, velocities, controller: [], gift };
+}
+
+export function readGiftPredictionState(bytes: unknown): Record<(typeof GIFT_PREDICTION_FIELDS)[number], number> | null {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength !== GIFT_PREDICTION_BYTES) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = {} as Record<(typeof GIFT_PREDICTION_FIELDS)[number], number>;
+  for (let i = 0; i < GIFT_PREDICTION_FIELDS.length; i++) {
+    const v = view.getFloat64(i * 8, true);
+    if (!Number.isFinite(v)) return null;
+    out[GIFT_PREDICTION_FIELDS[i]] = v;
   }
   return out;
 }

@@ -150,6 +150,8 @@ export const CHAT_LAYOUT: Readonly<Record<ChatPlace, { wide: ChatSpot; narrow: C
   box_tower: { wide: at(24, 300), narrow: at(24, 220), phone: at(64) },
   // Bottom left, narrow enough to leave the centred hint and the first player's character clear.
   marksman: { wide: at(24, 280), narrow: at(24, 210), phone: at(64) },
+  // Bottom of the left HUD column (cards, pile, controls at its top), no wider than it: the yard starts right of it.
+  gift_grab: { wide: at(24, 236), narrow: at(24, 236), phone: at(120) },
   board_game: { wide: at(24), narrow: at(24, 260), phone: at(24) },
 };
 

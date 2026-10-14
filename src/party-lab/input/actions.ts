@@ -26,6 +26,11 @@ export const BARN_ACTION_LABELS: Partial<Record<Action, string>> = {
   lift: "Koş",
 };
 
+/** Hediye Kapmaca's meaning of a shared binding: Tut takes a box (pile, floor or a rival's home). */
+export const GIFT_ACTION_LABELS: Partial<Record<Action, string>> = {
+  grab: "Kutu al",
+};
+
 /** Device-free human intent. Edges (jump/punch) are consumed once per physics step. */
 export interface ActionIntent {
   x: number;

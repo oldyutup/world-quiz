@@ -75,7 +75,9 @@ export class LayerBrawl {
   constructor(
     readonly physics: PlaygroundPhysics,
     private readonly feedback: FeedbackSink = silentFeedback,
-    readonly tuning: ShoveTuning = LAYER_CHAOS.punch
+    readonly tuning: ShoveTuning = LAYER_CHAOS.punch,
+    /** Hediye Kapmaca: a guarded target no punch can touch (no contact, no push, no stagger). */
+    private readonly shield?: (attacker: PlayerId, target: PlayerId) => boolean
   ) {}
 
   reset() {
@@ -118,7 +120,7 @@ export class LayerBrawl {
         facing = { x: Math.sin(actor.facing), y: 0, z: Math.cos(actor.facing) };
       let best: { target: PlayerId; part: PartName; power: number; point: Vec; direction: Vec } | null = null;
       for (const other of this.physics.players) {
-        if (other.id === f.id || other.eliminated) continue;
+        if (other.id === f.id || other.eliminated || this.shield?.(f.id, other.id)) continue;
         for (const name of PARTS) {
           const part = other.parts[name],
             contact = hand.collider.contactCollider(part.collider, COMBAT.punch.contactMargin);

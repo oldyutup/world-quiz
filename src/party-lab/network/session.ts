@@ -417,10 +417,11 @@ export class LobbySession {
     const prop = this.snapshot.mode === "prop_hunt",
       barn = this.snapshot.mode === "barn_shootout" || prop,
       bomb = this.snapshot.mode === "bomb_tag",
+      gift = this.snapshot.mode === "gift_grab",
       layers = this.snapshot.mode === "layer_chaos" || this.snapshot.mode === "color_chaos";
     this.heldJump ||= intent.jump;
     this.heldPunch ||= barn ? !!intent.attack : !!intent.punch;
-    this.heldPickup ||= barn && !!intent.pickup;
+    this.heldPickup ||= (barn || gift) && !!intent.pickup;
     this.heldWhistle ||= prop && !!intent.whistle;
     // While input is not being acknowledged, 60/s would only queue up and arrive as one
     // burst. Send the newest state at 10/s and carry pressed edges into it.
@@ -458,6 +459,8 @@ export class LobbySession {
       ? { ...this.barnPacket(intent), attackHeld: false, whistlePressed: this.heldWhistle }
       : barn
       ? this.barnPacket(intent)
+      : gift
+      ? { ...this.bombPacket(intent), sprintHeld: false, pickupPressed: this.heldPickup }
       : bomb
       ? this.bombPacket(intent)
       : layers

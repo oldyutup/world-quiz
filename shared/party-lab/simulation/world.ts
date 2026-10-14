@@ -15,6 +15,7 @@ function colliderDesc(c: ArenaCollider): RAPIER.ColliderDesc {
       ? RAPIER.ColliderDesc.cylinder(c.halfHeight, c.radius).setTranslation(c.center.x, c.center.y, c.center.z)
       : RAPIER.ColliderDesc.convexHull(new Float32Array(rampHull(c).flatMap((p) => [p.x, p.y, p.z])));
   if (!desc) throw new Error(`Invalid ${c.role} collider`);
+  if (c.shape === "box" && c.yaw) desc.setRotation({ x: 0, y: Math.sin(c.yaw / 2), z: 0, w: Math.cos(c.yaw / 2) });
   desc.setFriction(c.friction ?? ARENA_FRICTION);
   if (c.restitution !== undefined) desc.setRestitution(c.restitution);
   return desc;

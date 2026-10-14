@@ -18,7 +18,7 @@ export type TileArenaId = "layers" | "colors";
  * (propHunt.ts, local only). Their geometry is static, but the rooftop test pins ARENA_MAPS's
  * keys and the local test header lists only those.
  */
-export type ModeArenaId = "marksman" | "box_tower" | "bomber" | "gold_miner" | "click_race" | "classic_bowling" | "kart_race" | "snowball_fight" | "crate_rain" | "snowball_brawl" | "human_bowling" | "bomb" | "prophunt";
+export type ModeArenaId = "gift_grab" | "marksman" | "box_tower" | "bomber" | "gold_miner" | "click_race" | "classic_bowling" | "kart_race" | "snowball_fight" | "crate_rain" | "snowball_brawl" | "human_bowling" | "bomb" | "prophunt";
 
 export interface Vec3 {
   readonly x: number;
@@ -53,6 +53,9 @@ export type ColliderRole =
   | "post"
   // Bomba Sende ("Oyun Parkı")
   | "hop"
+  // Hediye Kapmaca ("Hediye Avlusu")
+  | "pedestal"
+  | "decor"
   // Saklambaç ("Orman Kampı")
   | "boundary"
   | "glass"
@@ -73,6 +76,8 @@ export interface BoxCollider extends ColliderBase {
   readonly shape: "box";
   readonly center: Vec3;
   readonly half: Vec3;
+  /** Turn about +Y (radians, the body's yaw convention); absent: axis-aligned. Only Hediye Kapmaca's round wall uses it. */
+  readonly yaw?: number;
 }
 export interface CylinderCollider extends ColliderBase {
   readonly shape: "cylinder";

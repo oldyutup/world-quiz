@@ -4,6 +4,7 @@ import { GoldRoundSimulation } from "../../../shared/party-lab/simulation/goldRo
 import { BomberRoundSimulation } from "../../../shared/party-lab/simulation/bomberRound.js";
 import { TowerRoundSimulation } from "../../../shared/party-lab/simulation/towerRound.js";
 import { MarksmanRoundSimulation } from "../../../shared/party-lab/simulation/marksmanRound.js";
+import { GiftRoundSimulation } from "../../../shared/party-lab/simulation/giftRound.js";
 import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
 import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
 import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
@@ -105,6 +106,7 @@ const cryptoDie = () => randomInt(1, 7);
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
+  if (mode === "gift_grab") return new GiftRoundSimulation(counters, cryptoSeed());
   if (mode === "marksman") return new MarksmanRoundSimulation(counters, cryptoSeed());
   if (mode === "box_tower") return new TowerRoundSimulation(counters, cryptoSeed());
   if (mode === "bomber") return new BomberRoundSimulation(counters, cryptoSeed());
@@ -407,7 +409,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
             (prediction.barn?.byteLength ?? 0) +
             (prediction.layers?.byteLength ?? 0) +
             (prediction.bomb?.byteLength ?? 0) +
-            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined, layers: undefined, bomb: undefined }).length
+            (prediction.gift?.byteLength ?? 0) +
+            JSON.stringify({ ...prediction, velocities: undefined, barn: undefined, layers: undefined, bomb: undefined, gift: undefined }).length
         );
         if (measure)
           wireBytes = Math.max(wireBytes, getMessageBytes.raw(Protocol.ROOM_DATA, "snapshot", message).byteLength);

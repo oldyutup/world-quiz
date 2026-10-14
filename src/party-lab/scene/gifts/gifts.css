@@ -1,0 +1,52 @@
+/* The HUD keeps a left column (layout.ts GIFT_COLUMN); the yard fills the rest. */
+.pl-viewport[data-mode="gift_grab"] { user-select: none; -webkit-user-select: none; }
+.party-lab .pl-viewport[data-mode="gift_grab"] .pl-arena-side { top: 88px; left: auto; right: 16px; justify-items: end; max-width: 240px; }
+.pl-gift-hud { --pl-gift-column: 262px; position: absolute; inset: 0; pointer-events: none; color: oklch(96% .02 240); font-family: Barlow, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 2px 3px oklch(18% .03 250 / .6); }
+.pl-gift-clock { position: absolute; top: 14px; right: 16px; min-width: 76px; padding: 6px 14px; border-radius: 12px; background: oklch(24% .03 250 / .9); border: 1px solid oklch(45% .03 250 / .7); text-align: center; font-size: 34px; font-weight: 900; line-height: 1.1; }
+.pl-gift-clock.is-low { color: oklch(78% .17 35); border-color: oklch(62% .15 35 / .8); }
+.pl-gift-side { position: absolute; top: 64px; left: 14px; width: calc(var(--pl-gift-column) - 26px); display: grid; gap: 12px; align-content: start; }
+.pl-gift-lanes { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pl-gift-lanes li { position: relative; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 0 10px; min-height: 52px; padding: 6px 12px 6px 6px; border-radius: 12px; background: oklch(24% .03 250 / .9); border: 2px solid var(--lane); box-shadow: inset 0 -3px 0 color-mix(in oklch, var(--lane) 45%, transparent); }
+.pl-gift-lanes li.is-self { background: oklch(29% .04 250 / .95); box-shadow: inset 0 -3px 0 var(--lane), 0 0 0 2px oklch(92% .05 90 / .5); }
+.pl-gift-face { width: 52px; height: 52px; border-radius: 9px; overflow: hidden; background: radial-gradient(circle at 50% 35%, color-mix(in oklch, var(--lane) 55%, white), color-mix(in oklch, var(--lane) 60%, black)); }
+.pl-gift-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pl-gift-face i { display: block; width: 100%; height: 100%; }
+.pl-gift-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 800; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--lane); }
+.pl-gift-name small { font-size: 10px; letter-spacing: 1px; color: oklch(88% .1 90); }
+.pl-gift-count { font-size: 36px; line-height: 1; font-weight: 900; color: var(--lane); text-shadow: 0 2px 2px oklch(15% .03 250 / .75); }
+.pl-gift-status { position: absolute; left: 70px; bottom: 5px; font-size: 12px; opacity: .9; }
+.pl-gift-pile { margin: 0; padding: 7px 12px; border-radius: 10px; background: oklch(24% .03 250 / .82); font-size: 15px; }
+.pl-gift-pile b { font-size: 20px; color: oklch(86% .14 85); }
+.pl-gift-pile[data-empty] { color: oklch(84% .12 40); font-weight: 700; }
+.pl-gift-hint { margin: 0; padding: 7px 12px; border-radius: 10px; background: oklch(24% .03 250 / .82); font-size: 14px; }
+.pl-gift-hint kbd, .pl-gift-prompt kbd { font: inherit; font-weight: 800; }
+/* Prompts, callouts and results sit over the yard's middle, not the page's. */
+.pl-gift-prompt { position: absolute; left: calc(50% + var(--pl-gift-column) / 2); bottom: 22px; transform: translateX(-50%); padding: 8px 16px; border-radius: 12px; background: oklch(24% .03 250 / .88); border: 1px solid oklch(55% .05 250 / .7); font-size: 17px; font-weight: 700; white-space: nowrap; }
+.pl-gift-prompt[data-tone="take"] { border-color: oklch(78% .14 85); color: oklch(92% .1 85); }
+.pl-gift-prompt[data-tone="stun"] { border-color: oklch(70% .16 40); color: oklch(86% .13 50); }
+.pl-gift-callout { position: absolute; left: calc(50% + var(--pl-gift-column) / 2); top: 34%; transform: translate(-50%, -50%); padding: 4px 22px 8px; border-radius: 16px; background: oklch(22% .03 250 / .82); font-size: 52px; font-weight: 900; letter-spacing: 1px; white-space: nowrap; animation: pl-gift-callout 1.1s cubic-bezier(.16, 1, .3, 1) forwards; }
+.pl-gift-callout[data-tone="bad"] { color: oklch(74% .19 28); }
+.pl-gift-callout[data-tone="good"] { color: oklch(86% .16 85); }
+@keyframes pl-gift-callout {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  60% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -90%) scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) { .pl-gift-callout { animation-duration: 1.4s; animation-timing-function: steps(1, end); } }
+.pl-gift-banner { position: absolute; left: calc(50% + var(--pl-gift-column) / 2); top: 44%; transform: translate(-50%, -50%); width: min(600px, calc(100% - var(--pl-gift-column) - 32px)); text-align: center; }
+.pl-gift-banner span { display: block; font-weight: 800; letter-spacing: 4px; font-size: 26px; }
+.pl-gift-banner strong { display: block; font-size: 112px; line-height: 1.1; }
+.pl-gift-banner small { display: inline-block; padding: 6px 12px; border-radius: 10px; background: oklch(22% .03 250 / .8); font-size: 17px; }
+.pl-gift-banner.is-go strong { font-size: 88px; color: oklch(88% .16 75); }
+.pl-gift-results { pointer-events: auto; position: absolute; left: calc(50% + var(--pl-gift-column) / 2); top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - var(--pl-gift-column) - 24px)); box-sizing: border-box; padding: 22px 26px; border-radius: 16px; border: 1px solid oklch(55% .05 250); background: oklch(22% .03 250 / .97); box-shadow: 0 20px 65px oklch(12% .03 250 / .45); text-align: center; }
+.pl-gift-results p { margin: 0; font-size: 12px; letter-spacing: 2px; opacity: .7; text-transform: uppercase; }
+.pl-gift-results h2 { margin: 6px 0 14px; font-size: 30px; color: oklch(88% .14 80); }
+.pl-gift-results table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl-gift-results th { font-size: 11px; letter-spacing: 1px; font-weight: 700; opacity: .65; text-align: left; padding: 0 6px 6px; }
+.pl-gift-results td { padding: 9px 6px; border-top: 1px solid oklch(50% .04 250 / .3); text-align: left; white-space: nowrap; }
+.pl-gift-results tr.is-self td { color: oklch(90% .1 88); }
+.pl-gift-results td:first-child { font-weight: 800; width: 28px; }
+.pl-gift-dot { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; }
+.pl-gift-results small { display: block; margin-top: 12px; font-size: 12px; opacity: .7; }
+.pl-gift-results button { width: 100%; min-height: 44px; margin-top: 16px; }

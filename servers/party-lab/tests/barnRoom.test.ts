@@ -12,6 +12,8 @@ import {BOMBER} from "../../../shared/party-lab/simulation/bomber/config.js";
 import {TowerRoundSimulation} from "../../../shared/party-lab/simulation/towerRound.js";
 import {BOX_TOWER} from "../../../shared/party-lab/simulation/boxtower/config.js";
 import {MarksmanRoundSimulation} from "../../../shared/party-lab/simulation/marksmanRound.js";
+import { GiftRoundSimulation } from "../../../shared/party-lab/simulation/giftRound.js";
+import { GIFT_TICKS } from "../../../shared/party-lab/simulation/gifts/config.js";
 import {MARKSMAN} from "../../../shared/party-lab/simulation/marksman/config.js";
 import {SnowballRoundSimulation} from "../../../shared/party-lab/simulation/snowballRound.js";
 import {BowlingRoundSimulation} from "../../../shared/party-lab/simulation/bowlingRound.js";
@@ -131,6 +133,10 @@ function skip(room: PartyRoom) {
     const r = room.game.round;
     if (r.phase === "hiding") { r.phase = "search"; r.tick = PROP_TICKS.search - 2; }
     else r.tick = (r.phase === "countdown" ? PROP_TICKS.countdown : PROP_TICKS.results) - 2;
+  } else if (room.game instanceof GiftRoundSimulation) {
+    // Every phase to its last ticks (play ends on the clock).
+    const round = room.game.round;
+    round.tick = (round.phase === "countdown" ? GIFT_TICKS.countdown : round.phase === "playing" ? GIFT_TICKS.cap : GIFT_TICKS.results) - 2;
   } else if (room.game instanceof LayerRoundSimulation || room.game instanceof ColorRoundSimulation || room.game instanceof BombRoundSimulation) {
     // Countdown/results: to their last ticks. Play: everyone but the lowest slot falls out (last alive wins).
     const round = room.game.round,

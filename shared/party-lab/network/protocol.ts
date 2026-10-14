@@ -51,7 +51,10 @@ export const NET = {
   // 20: Nişancı (marksman). A new mode, its aim + shots packet (shot counter and the latest
   // stamped shots with their aim) and snapshot section (waves around now, scores, hits); a v19
   // page cannot draw it and a v19 server refuses it.
-  version: 20,
+  // 21: Hediye Kapmaca (gift_grab). A new mode, its packet (Bomba Sende's intent plus the Tut
+  // press), snapshot section (pile, homes, carriers, boxes, stun/guard, box events) and
+  // prediction block; a v20 page cannot draw it and a v20 server refuses it.
+  version: 21,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -196,11 +199,16 @@ export interface LayerInputPacket {
 export interface BombInputPacket extends LayerInputPacket {
   viewTick: number;
 }
+/** Hediye Kapmaca intent: Bomba Sende's (sprint unused) plus the Tut press (take a box). */
+export interface GiftInputPacket extends BombInputPacket {
+  pickupPressed: boolean;
+}
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = MarksmanInputPacket | TowerInputPacket | BomberInputPacket | GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket;
+export type AnyInputPacket = MarksmanInputPacket | TowerInputPacket | BomberInputPacket | GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket | GiftInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
-export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p;
+export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p && !("pickupPressed" in p);
+export const isGiftPacket = (p: AnyInputPacket): p is GiftInputPacket => "viewTick" in p && "punchPressed" in p && "pickupPressed" in p;
 export const isLayerPacket = (p: AnyInputPacket): p is LayerInputPacket => "sprintHeld" in p && "jumpPressed" in p && !("attackPressed" in p);
 export interface GameEvent extends FeedbackEvent {
   id: number;
@@ -219,6 +227,8 @@ export interface PredictionState {
   layers?: Uint8Array;
   /** Bomba Sende: fighter timers plus authoritative carrier/slow modifiers for replay. */
   bomb?: Uint8Array;
+  /** Hediye Kapmaca: GIFT_PREDICTION_FIELDS Float64 LE values (fighter timers, carrying, stun). */
+  gift?: Uint8Array;
 }
 export const VELOCITY_BYTES = 9 * 6 * 4;
 /**
@@ -276,6 +286,9 @@ export const LAYER_PREDICTION_FIELDS = [
 export const LAYER_PREDICTION_BYTES = LAYER_PREDICTION_FIELDS.length * 8;
 export const BOMB_PREDICTION_FIELDS = [...LAYER_PREDICTION_FIELDS, "carrier", "slowTicks"] as const;
 export const BOMB_PREDICTION_BYTES = BOMB_PREDICTION_FIELDS.length * 8;
+/** Hediye Kapmaca: the shove fighter plus whether it carries a box (no punch) and its stun ticks left (no punch either). */
+export const GIFT_PREDICTION_FIELDS = [...LAYER_PREDICTION_FIELDS, "carrying", "stunTicks", "homeX", "homeZ"] as const;
+export const GIFT_PREDICTION_BYTES = GIFT_PREDICTION_FIELDS.length * 8;
 /** Katman Kaosu and Renk Kaosu per-fighter flags (`LayerSnapshot.f`, `ColorFieldSnapshot.f`). */
 export const LAYER_FLAG = { inMatch: 1, alive: 2, body: 4, staggered: 8, forfeit: 16 } as const;
 /** Round result codes (`LayerSnapshot.r`, `ColorFieldSnapshot.r`). */
@@ -401,6 +414,7 @@ export interface GameSnapshot {
   bomber?: import("../simulation/bomber/wire.js").BomberWire;
   tower?: import("../simulation/boxtower/wire.js").TowerWire;
   marksman?: import("../simulation/marksman/wire.js").MarksmanWire;
+  gift?: import("../simulation/gifts/wire.js").GiftWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -579,6 +593,16 @@ export function validateBombInput(value: unknown): BombInputPacket | null {
   const valid = validateLayerInput(layer);
   return valid ? { ...valid, viewTick: p.viewTick } : null;
 }
+const giftKeys = [...bombKeys, "pickupPressed"];
+export function validateGiftInput(value: unknown): GiftInputPacket | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const p = value as GiftInputPacket;
+  if (Object.keys(p).length !== giftKeys.length || Object.keys(p).some((k) => !giftKeys.includes(k))) return null;
+  if (typeof p.pickupPressed !== "boolean") return null;
+  const { pickupPressed, ...bomb } = p;
+  const valid = validateBombInput(bomb);
+  return valid ? { ...valid, pickupPressed } : null;
+}
 export const neutralIntent = (): MovementInput => ({
   x: 0,
   z: 0,
@@ -607,6 +631,7 @@ export class InputMailbox {
   // Katman Kaosu and Renk Kaosu: the latest shove-mode packet (its edges share `jump` / `punch`).
   private layerPacket: LayerInputPacket | null = null;
   private bombPacket: BombInputPacket | null = null;
+  private giftPacket: GiftInputPacket | null = null;
   private classicPacket: ClassicInputPacket | null = null;
   private classicEdge: ClassicInputPacket | null = null;
   private racePacket: RaceInputPacket | null = null;
@@ -719,6 +744,7 @@ export class InputMailbox {
     }
     if (mode === "barn_shootout") return this.acceptBarn(value, round, now);
     if (mode === "bomb_tag") return this.acceptBomb(value, round, now);
+    if (mode === "gift_grab") return this.acceptGift(value, round, now);
     if (mode === "layer_chaos" || mode === "color_chaos") return this.acceptLayer(value, round, now);
     const p = validateInput(value);
     // Transport limits traffic; valid ordered packets may arrive together after network jitter.
@@ -733,6 +759,22 @@ export class InputMailbox {
     this.barnPacket = null;
     this.layerPacket = null;
     this.bombPacket = null;
+    this.received = now;
+    return true;
+  }
+  private acceptGift(value: unknown, round: number, now: number) {
+    const p = validateGiftInput(value);
+    if (!p || p.round !== round || p.seq <= this.seq) return false;
+    this.seq = p.seq;
+    const last = this.giftPacket;
+    this.jump ||= p.jumpPressed && !last?.jumpPressed;
+    this.pickup ||= p.pickupPressed && !last?.pickupPressed;
+    if (p.punchPressed && !last?.punchPressed && !this.punch) {
+      this.punch = true;
+      this.punchSeq = p.seq;
+      this.attackViewTick = p.viewTick;
+    }
+    this.giftPacket = p;
     this.received = now;
     return true;
   }
@@ -844,6 +886,8 @@ export class InputMailbox {
       this.whistle = false;
       return intent;
     }
+    const gift = this.giftPacket;
+    if (gift) return this.readGift(gift);
     const bomb = this.bombPacket;
     if (bomb) return this.readBomb(bomb);
     const l = this.layerPacket;
@@ -865,6 +909,21 @@ export class InputMailbox {
         }
       : neutralIntent();
     this.jump = this.punch = false;
+    return result;
+  }
+  private readGift(p: GiftInputPacket): MovementInput {
+    this.processedSeq = this.seq;
+    this.processedRound = p.round;
+    this.processedPunchSeq = this.punch ? this.punchSeq : -1;
+    const result: MovementInput = {
+      x: p.moveX,
+      z: p.moveZ,
+      jump: this.jump,
+      punch: this.punch,
+      pickup: this.pickup,
+      viewTick: this.punch ? this.attackViewTick : p.viewTick,
+    };
+    this.jump = this.punch = this.pickup = false;
     return result;
   }
   private readBomb(p: BombInputPacket): MovementInput {
@@ -929,6 +988,7 @@ export class InputMailbox {
     this.barnPacket = null;
     this.layerPacket = null;
     this.bombPacket = null;
+    this.giftPacket = null;
     this.jump = this.punch = this.pickup = false;
     this.received = -Infinity;
     this.punchSeq = this.processedPunchSeq = -1;

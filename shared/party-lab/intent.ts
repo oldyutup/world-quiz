@@ -41,7 +41,7 @@ export interface MovementInput {
   attack?: boolean;
   /** Barn: attack held (automatic fire). */
   attackHeld?: boolean;
-  /** Barn: pick up the nearest weapon in reach (pressed this step). */
+  /** Barn: pick up the nearest weapon in reach (pressed this step). Hediye Kapmaca: take a box (Tut pressed). */
   pickup?: boolean;
   /** Barn: aim pitch (radians, > 0 looks down); `facing` is the aim yaw. */
   aimPitch?: number;
