@@ -25,8 +25,8 @@ function mining(count: number, field?: FieldItem[], random: () => number = Math.
 const seats = (g: GoldMinerGame) => g.lanes.map((_, lane) => lane);
 const frameOf = (g: GoldMinerGame, now = g.elapsedMs, self = -1, pending: GoldFrame["pending"] = null): GoldFrame => ({ wire: goldSection(g, seats(g)), now, winner: g.winner(), round: 1, self, pending });
 
-test("Altın Madenci is a registered 2–3 player mode on protocol 18, with a local arena", () => {
-  assert.equal(NET.version, 18);
+test("Altın Madenci is a registered 2–3 player mode on protocol 19, with a local arena", () => {
+  assert.equal(NET.version, 19);
   assert.ok(GAME_MODES.includes("gold_miner"));
   assert.equal(MODE_NAMES.gold_miner, "Altın Madenci");
   assert.deepEqual(MODE_PLAYERS.gold_miner, { min: 2, max: 3 });

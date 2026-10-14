@@ -2,6 +2,7 @@ import {ClassicRoundSimulation} from "../../../shared/party-lab/simulation/class
 import { ClickRoundSimulation } from "../../../shared/party-lab/simulation/clickRound.js";
 import { GoldRoundSimulation } from "../../../shared/party-lab/simulation/goldRound.js";
 import { BomberRoundSimulation } from "../../../shared/party-lab/simulation/bomberRound.js";
+import { TowerRoundSimulation } from "../../../shared/party-lab/simulation/towerRound.js";
 import {RaceRoundSimulation} from "../../../shared/party-lab/simulation/raceRound.js";
 import {FightRoundSimulation} from "../../../shared/party-lab/simulation/fightRound.js";
 import {CrateRoundSimulation} from "../../../shared/party-lab/simulation/crateRound.js";
@@ -103,6 +104,7 @@ const cryptoDie = () => randomInt(1, 7);
 
 /** A mode's authoritative simulation, sharing the room's lifetime counters. */
 export function createSimulation(mode: GameMode, counters: RoomCounters, propRotation?: PropRotation): OnlineSimulation {
+  if (mode === "box_tower") return new TowerRoundSimulation(counters, cryptoSeed());
   if (mode === "bomber") return new BomberRoundSimulation(counters, cryptoSeed());
   if (mode === "gold_miner") return new GoldRoundSimulation(counters, cryptoSeed());
   if (mode === "click_race") return new ClickRoundSimulation(counters);
