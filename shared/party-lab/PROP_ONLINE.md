@@ -298,3 +298,20 @@ The complete local + online feature contains 71 files (39 new, 32 modified):
 | New | `src/party-lab/scene/prophunt/whistle.ts` |
 | New | `src/party-lab/scene/prophuntLayout.test.ts` |
 | New | `src/party-lab/scene/prophuntSeeker.test.ts` |
+
+## Protocol 25: the Market map
+
+The room has a third Saklambaç setting, `propMap` ("camp", "market" or "random"; default
+"random", shown as Orman Kampı / Market / Rastgele). Only the connected host can change it while
+the room waits (the same `propSettings` message, its own field); a change clears every Ready.
+It is used only when Saklambaç itself is the selection: Mixed and Tahta Oyunu always draw the
+map (`mapChoice` "random"). Rastgele tosses the room's crypto coin once per round; a cancelled
+introduction keeps that round's draw (`PropRotation.pending`), like the seat and the layout.
+
+The snapshot's `prop` section gains `map`; its `index` counts that map's rounds (each map's
+layouts chain from its own round 0: `PropRotation.chains`) and `families` is a bitmask over that
+map's own families. A disguise's family index is into `ALL_PROP_FAMILY_IDS` (the camp's twenty
+first, unchanged, then the market's twelve). One snapshot still rebuilds the round: map, seed and
+index give the layout, checked against its hash and mask. The input packet is unchanged (41
+bytes). The online view is keyed by the map, so a round on the other map mounts its own scenery
+and kit (the market kit is only fetched for a market round).

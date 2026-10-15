@@ -590,7 +590,7 @@ test("bots: Zor turns across a rival's way just ahead of it; Orta keeps going", 
   assert.deepEqual(choose("medium"), { x: 0, z: 0 }, "Orta: straight on");
 });
 
-test("the round simulation: 2–3 players, slots (not seats) as winner, placements per slot, held inputs counted, protocol 24", () => {
+test("the round simulation: 2–3 players, slots (not seats) as winner, placements per slot, held inputs counted, protocol 25", () => {
   const sim = new TrailRoundSimulation(undefined, 5);
   assert.equal(sim.start([0] as PlayerId[]), false);
   assert.equal(sim.start([0, 1, 2, 3] as PlayerId[]), false);
@@ -605,8 +605,8 @@ test("the round simulation: 2–3 players, slots (not seats) as winner, placemen
   sim.step(inputs);
   sim.step(inputs);
   const snap = sim.snapshot([0, 0, 0]);
-  assert.equal(snap.v, 24);
-  assert.equal(NET.version, 24);
+  assert.equal(snap.v, 25);
+  assert.equal(NET.version, 25);
   assert.equal(snap.mode, "light_trails");
   assert.ok(validTrailWire(snap.trail));
   assert.equal(snap.transforms.byteLength, 0);
@@ -752,7 +752,7 @@ for (const count of [2, 3])
     assert.equal(sim.placements()[slot(0)], 0);
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 24);
+    assert.equal(shown.v, 25);
     assert.ok(validTrailWire(shown.trail), "the section survives the wire");
     assert.ok(shown.trail!.points instanceof Uint8Array);
     assert.equal(shown.winner, slot(0));

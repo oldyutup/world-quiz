@@ -35,8 +35,8 @@ const base = (patch: Partial<BoardWire> = {}): BoardWire => ({
   ...patch,
 });
 
-test("Tahta Oyunu is a lobby selection with its own name, protocol 24", () => {
-  assert.equal(NET.version, 24);
+test("Tahta Oyunu is a lobby selection with its own name, protocol 25", () => {
+  assert.equal(NET.version, 25);
   assert.ok(MODE_SELECTIONS.includes("board_game"));
   assert.equal(MODE_NAMES.board_game, "Tahta Oyunu");
   assert.equal(afterRoundText(true), "Tahtaya dönülüyor.");

@@ -16,7 +16,8 @@ import { BowlingRoundSimulation } from "../../../shared/party-lab/simulation/bow
 import { validateBowlingInput } from "../../../shared/party-lab/network/bowlingInput.js";
 import { PropRoundSimulation, PropRotation } from "../../../shared/party-lab/simulation/propRound.js";
 import {DEFAULT_BOWLING_SETTINGS,validBowlingSettings} from "../../../shared/party-lab/bowlingSettings.js";
-import { DEFAULT_PROP_SETTINGS, validPropSettingsPatch } from "../../../shared/party-lab/propSettings.js";
+import { DEFAULT_PROP_MAP, DEFAULT_PROP_SETTINGS, validPropSettingsPatch } from "../../../shared/party-lab/propSettings.js";
+import { isPropMapChoice } from "../../../shared/party-lab/maps/propTypes.js";
 import { initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
 import { OnlineRoundSimulation } from "../../../shared/party-lab/simulation/onlineRound.js";
 import { BarnRoundSimulation } from "../../../shared/party-lab/simulation/barnRound.js";
@@ -126,7 +127,11 @@ export function createSimulation(mode: GameMode, counters: RoomCounters, propRot
   if (mode === "barn_shootout") return new BarnRoundSimulation(counters);
   if (mode === "layer_chaos") return new LayerRoundSimulation(counters);
   if (mode === "color_chaos") return new ColorRoundSimulation(counters);
-  if (mode === "prop_hunt") return new PropRoundSimulation(counters, propRotation);
+  if (mode === "prop_hunt") {
+    const sim = new PropRoundSimulation(counters, propRotation);
+    sim.random = cryptoRandom;
+    return sim;
+  }
   if (mode === "bomb_tag") return new BombRoundSimulation(counters);
   return new OnlineRoundSimulation(counters);
 }
@@ -270,11 +275,16 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     }
     this.participants = new Set(eligible.map((p) => p.id));
     this.ensureSimulation(this.upcoming);
-    if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
+    if (this.game instanceof PropRoundSimulation) this.propRound(this.game, this.selection === "prop_hunt");
     if (this.game instanceof BowlingRoundSimulation) this.game.settings = { obstacles: this.state.bowlingObstacles };
     this.game.start(eligible.map((p) => p.slot as PlayerId));
     for (const input of this.mailboxes.values()) input.clear();
     this.syncGameState();
+  }
+  /** Saklambaç's room settings for the next round; the host's map only when Saklambaç itself was chosen (Mixed and Tahta Oyunu: Rastgele). */
+  private propRound(game: PropRoundSimulation, chosen: boolean) {
+    game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
+    game.mapChoice = chosen && isPropMapChoice(this.state.propMap) ? this.state.propMap : "random";
   }
   /** Everyone ready on Tahta Oyunu: a board match takes over until someone reaches the treasure. */
   private startBoard(slots: number[]) {
@@ -290,7 +300,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   private startBoardMini(mode: GameMode, slots: readonly number[]) {
     this.participants = new Set([...this.state.players.values()].filter((p) => slots.includes(p.slot)).map((p) => p.id));
     this.ensureSimulation(mode);
-    if (this.game instanceof PropRoundSimulation) this.game.settings = { ammo: this.state.propAmmo as 5 | 10 | 15, proximity: this.state.propProximity };
+    if (this.game instanceof PropRoundSimulation) this.propRound(this.game, false);
     if (this.game instanceof BowlingRoundSimulation) this.game.settings = { obstacles: this.state.bowlingObstacles };
     const started = this.game.start(slots as PlayerId[]);
     for (const input of this.mailboxes.values()) input.clear();
@@ -471,6 +481,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     this.state.phase = "waiting";
     this.state.propAmmo = DEFAULT_PROP_SETTINGS.ammo;
     this.state.propProximity = DEFAULT_PROP_SETTINGS.proximity;
+    this.state.propMap = DEFAULT_PROP_MAP;
     this.state.bowlingObstacles = DEFAULT_BOWLING_SETTINGS.obstacles;
     this.state.boardLength = DEFAULT_BOARD_SETTINGS.length;
     this.state.board = "";
@@ -514,10 +525,11 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
       const p = this.state.players.get(client.sessionId);
       if (!p?.connected || this.game.phase !== "waiting" || this.board || !validPropSettingsPatch(data)) return;
       if (this.state.hostId !== client.sessionId) { client.send("notice", "MODE_HOST_ONLY"); return; }
-      const ammo = data.ammo ?? this.state.propAmmo, proximity = data.proximity ?? this.state.propProximity;
-      if (this.state.propAmmo === ammo && this.state.propProximity === proximity) return;
+      const ammo = data.ammo ?? this.state.propAmmo, proximity = data.proximity ?? this.state.propProximity, map = data.map ?? this.state.propMap;
+      if (this.state.propAmmo === ammo && this.state.propProximity === proximity && this.state.propMap === map) return;
       this.state.propAmmo = ammo;
       this.state.propProximity = proximity;
+      this.state.propMap = map;
       this.resetReady();
       this.syncGameState();
     });

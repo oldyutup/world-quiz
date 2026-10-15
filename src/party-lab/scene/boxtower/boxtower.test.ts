@@ -28,8 +28,8 @@ function stacking(count = 2, seed = 3) {
 const wireOf = (g: BoxTowerGame): TowerWire => towerSection(g, g.lanes.map((_, lane) => lane));
 const frameOf = (g: BoxTowerGame, now = g.elapsedMs, self = -1, pending: TowerFrame["pending"] = null): TowerFrame => ({ wire: wireOf(g), now, winner: g.winner(), round: 1, self, pending });
 
-test("Kutu Kulesi is a registered 2–3 player mode on protocol 24, with a local arena, a chat spot and a lobby hint", () => {
-  assert.equal(NET.version, 24);
+test("Kutu Kulesi is a registered 2–3 player mode on protocol 25, with a local arena, a chat spot and a lobby hint", () => {
+  assert.equal(NET.version, 25);
   assert.ok(GAME_MODES.includes("box_tower"));
   assert.equal(MODE_NAMES.box_tower, "Kutu Kulesi");
   assert.deepEqual(MODE_PLAYERS.box_tower, { min: 2, max: 3 });

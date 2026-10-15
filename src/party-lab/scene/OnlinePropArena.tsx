@@ -51,7 +51,7 @@ export default function OnlinePropArena(props: Props) {
   return <div className="party-lab pl-playground pl-immersive" data-mode="prop_hunt">
     <div ref={viewport} className="pl-viewport" tabIndex={0} role="region" aria-label="Online Saklambaç" data-mode="prop_hunt" data-look={lookMode} onPointerDown={() => viewport.current?.focus()}>
       <Canvas dpr={[1, 1.5]} camera={{ position: [0, 8, 9], fov: 52, near: 0.1, far: 180 }} gl={{ antialias: true, alpha: true }}>
-        {wire && <OnlinePropView key={`${lobby.round}:${slot}`} lobby={lobby} stream={props.stream} sendInput={props.sendInput} slot={slot} role={role} onStatus={setStatus} onSnapshot={setSnapshot} hud={hud} bindings={bindings} paused={paused} menuOpen={menuOpen || lobby.status !== "connected"} audio={audio} shakeEnabled={settings.cameraShake} look={look} view={view} onView={setView} proximityEnabled={wire.settings.proximity} />}
+        {wire && <OnlinePropView key={`${lobby.round}:${slot}:${wire.map}`} map={wire.map} lobby={lobby} stream={props.stream} sendInput={props.sendInput} slot={slot} role={role} onStatus={setStatus} onSnapshot={setSnapshot} hud={hud} bindings={bindings} paused={paused} menuOpen={menuOpen || lobby.status !== "connected"} audio={audio} shakeEnabled={settings.cameraShake} look={look} view={view} onView={setView} proximityEnabled={wire.settings.proximity} />}
       </Canvas>
       <MenuButton onOpen={() => menu.setView("main")} />
       {snapshot && wire && <OnlinePropHud snapshot={snapshot} hud={hud} debugOpen={!!props.debug && debug.open} slot={slot} names={names} ammoMax={wire.settings.ammo} proximity={wire.settings.proximity} whistleSeconds={Math.ceil(wire.whistle[slot] / 60)} afterRound={afterRoundText(!!lobby.board)} />}

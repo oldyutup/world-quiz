@@ -1,5 +1,6 @@
 import type { BowlingSettings } from "../../shared/party-lab/bowlingSettings";
-import type { PropSettings } from "../../shared/party-lab/propSettings";
+import type { PropSettings, PropSettingsPatch } from "../../shared/party-lab/propSettings";
+import { isPropMapChoice, PROP_MAP_CHOICE_LABEL, PROP_MAP_CHOICES } from "../../shared/party-lab/maps/propTypes";
 import type { BoardSettings } from "../../shared/party-lab/boardSettings";
 import { BOARD_LENGTHS, BOARD_LENGTH_NAMES, type BoardLength } from "../../shared/party-lab/board/config";
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
@@ -158,7 +159,7 @@ function ModePicker({ selection, next, isHost, hostName, enabled, onMode }: {
 export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, onPropSettings, onBowlingSettings, onBoardSettings, onControls, controlsRef, diagnostics, debug }: {
   lobby: LobbySnapshot; onLeave: () => void; onChat: (text: string) => boolean; onReady: (ready: boolean) => void; onMode?: (selection: ModeSelection) => void; onControls: () => void;
   onBowlingSettings?: (settings: BowlingSettings) => void;
-  onPropSettings?: (settings: Partial<PropSettings>) => void;
+  onPropSettings?: (settings: PropSettingsPatch) => void;
   onBoardSettings?: (settings: BoardSettings) => void;
   controlsRef?: RefObject<HTMLButtonElement>; diagnostics?: NetDiagnostics | null; debug?: boolean;
 }) {
@@ -238,9 +239,10 @@ export default function PartyLobby({ lobby, onLeave, onChat, onReady, onMode, on
           <ModePicker selection={lobby.selection} next={lobby.mode} isHost={isHost} hostName={host?.nickname} enabled={connected} onMode={onMode} />
           {(lobby.selection === "prop_hunt" || (lobby.selection === "mixed" && lobby.mode === "prop_hunt")) && (
             isHost && lobby.selection === "prop_hunt" ? <div className="pl-prop-settings">
+              <label>Harita <select aria-label="Harita" disabled={!connected} value={lobby.propMap} onChange={e => isPropMapChoice(e.target.value) && onPropSettings?.({ map: e.target.value })}>{PROP_MAP_CHOICES.map(m => <option key={m} value={m}>{PROP_MAP_CHOICE_LABEL[m]}</option>)}</select></label>
               <label>Yakınlık ipucu <select aria-label="Yakınlık ipucu" disabled={!connected} value={lobby.propProximity ? "on" : "off"} onChange={e => onPropSettings?.({ proximity: e.target.value === "on" })}><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
               <label>Arayan mermisi <select aria-label="Arayan mermisi" disabled={!connected} value={lobby.propAmmo} onChange={e => onPropSettings?.({ ammo: Number(e.target.value) as PropSettings["ammo"] })}>{([5, 10, 15] as const).map(n => <option key={n} value={n}>{n}</option>)}</select></label>
-            </div> : <p className="pl-prop-settings-summary">Saklambaç · {lobby.propAmmo} mermi · Yakınlık {lobby.propProximity ? "açık" : "kapalı"}</p>
+            </div> : <p className="pl-prop-settings-summary">Saklambaç · {PROP_MAP_CHOICE_LABEL[lobby.selection === "prop_hunt" ? lobby.propMap : "random"]} · {lobby.propAmmo} mermi · Yakınlık {lobby.propProximity ? "açık" : "kapalı"}</p>
           )}
           {lobby.selection === "board_game" && (
             isHost ? <div className="pl-prop-settings">

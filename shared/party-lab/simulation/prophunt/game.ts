@@ -1,8 +1,9 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { silentFeedback, type FeedbackEvent, type FeedbackSink } from "../../feedback/events.js";
 import type { MovementInput } from "../../intent.js";
-import { decoyHalf, HIDER_SPAWNS, HIDER_YAW, PROP_HUNT_MAP, SEEKER_SPAWN, SEEKER_YAW, type DecoyPlacement, type PropRole } from "../../maps/propHunt.js";
-import { layoutChange, roundLayout, type PropLayout } from "../../maps/propHuntLayout.js";
+import { decoyHalf, type DecoyPlacement, type PropRole } from "../../maps/propHunt.js";
+import type { PropLayout } from "../../maps/propDealer.js";
+import { PROP_MAPS, type PropMap, type PropMapId } from "../../maps/propMaps.js";
 import { PROP_FAMILIES, shapeHeight, type PropFamilyId } from "../../maps/propHuntProps.js";
 import type { Vec3 } from "../../maps/types.js";
 import { retire } from "../layers/game.js";
@@ -16,7 +17,7 @@ import type { Vec } from "../ragdoll/math.js";
 import { aimDirection, aimEye } from "./aim.js";
 import { PROP_HUNT, PROP_TICKS, WHISTLE_TICKS } from "./config.js";
 import { DisguiseSystem, yawRotation, type Disguise } from "./disguise.js";
-import { ProximitySense, senses, type SenseTarget } from "./proximity.js";
+import { ProximitySense, senses, senseSolids, type SenseSolids, type SenseTarget } from "./proximity.js";
 import { PropHuntRound, type PropRoundEvent } from "./round.js";
 
 export type { PropRole } from "../../maps/propHunt.js";
@@ -56,8 +57,10 @@ export interface PropHuntOptions {
   roles?: readonly PropRole[];
   /** The match's layout seed: every round deals its decoys from it (the same seed, the same layouts). Default 1. */
   seed?: number;
-  /** One fixed layout for every round instead of the dealt ones (tests). */
+  /** One fixed layout for every round instead of the dealt ones (tests). It must belong to `map`. */
   layout?: PropLayout;
+  /** The map (default: Orman Kampı). */
+  map?: PropMapId;
   /** Online authority options; omitted by local play. */
   ammo?: 5 | 10 | 15;
   proximity?: boolean;
@@ -144,6 +147,9 @@ export class PropHuntGame {
   /** The seeker's broad hunch (dwell and rearm latch; never who). */
   readonly sense = new ProximitySense();
   readonly seed: number;
+  /** The map this game is played on (its architecture, spawns and dealer). */
+  readonly map: PropMap;
+  private readonly senseSolids: SenseSolids;
   readonly ammoMax: number;
   readonly proximityEnabled: boolean;
   private readonly online: boolean;
@@ -179,9 +185,11 @@ export class PropHuntGame {
     this.online = options.online ?? false;
     this.seed = (options.seed ?? 1) >>> 0;
     this.fixedLayout = options.layout ?? null;
-    this.physics = new PlaygroundPhysics(this.collect, PROP_HUNT_MAP);
+    this.map = PROP_MAPS[options.map ?? "camp"];
+    this.senseSolids = senseSolids(this.map.arena.colliders);
+    this.physics = new PlaygroundPhysics(this.collect, this.map.arena);
     for (const player of this.physics.players) for (const part of PARTS) this.partOf.set(player.parts[part].collider.handle, player.id);
-    this.applyLayout(this.fixedLayout ?? roundLayout(this.seed, 0, null));
+    this.applyLayout(this.fixedLayout ?? this.map.dealer.roundLayout(this.seed, 0, null));
     this.disguises = new DisguiseSystem(this.physics.world, (collider, id) => this.partOf.get(collider.handle) === id);
     this.placeAll();
   }
@@ -193,8 +201,8 @@ export class PropHuntGame {
   }
   /** Where a slot starts: the seeker's spawn, or the hiders' in slot order. */
   spawnOf(id: PlayerId): { at: Vec3; yaw: number } {
-    if (this.round.roles[id] === "seeker") return { at: SEEKER_SPAWN, yaw: SEEKER_YAW };
-    return { at: HIDER_SPAWNS[this.round.hiders.indexOf(id)], yaw: HIDER_YAW };
+    if (this.round.roles[id] === "seeker") return { at: this.map.seekerSpawn, yaw: this.map.seekerYaw };
+    return { at: this.map.hiderSpawns[this.round.hiders.indexOf(id)], yaw: this.map.hiderYaw };
   }
   /** The round's decoys. */
   get decoys(): readonly DecoyPlacement[] {
@@ -218,8 +226,8 @@ export class PropHuntGame {
     if (this.fixedLayout) return;
     const previous = this.layout;
     this.layoutRound++;
-    const next = roundLayout(this.seed, this.layoutRound, previous);
-    this.layoutChanged = layoutChange(previous, next);
+    const next = this.map.dealer.roundLayout(this.seed, this.layoutRound, previous);
+    this.layoutChanged = this.map.dealer.layoutChange(previous, next);
     this.applyLayout(next);
   }
   private placeAll() {
@@ -388,7 +396,7 @@ export class PropHuntGame {
   /** Whether any hider still hidden is close to the seeker now (proximity.ts: radius, floor, no wall between). Diagnostics and tests: the seeker bot only ever gets the "near" event. */
   hiderNear(seeker: PlayerId = this.round.seeker): boolean {
     const at = this.physics.players[seeker].body.translation();
-    return this.round.hidden.some((id) => senses(at, this.senseTarget(id)));
+    return this.round.hidden.some((id) => senses(at, this.senseTarget(id), this.senseSolids));
   }
   /** Where a hider is for the seeker's hunch: its prop (bottom, middle, near its top) or its body. */
   senseTarget(id: PlayerId): SenseTarget {

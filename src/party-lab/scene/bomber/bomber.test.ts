@@ -16,8 +16,8 @@ import { BOMBER_DPR, BOMBER_INSETS, BOMBER_VIEW, fitBomberCamera } from "./layou
 import { blastTimes, previewLook } from "./preview";
 import { BURNING, type BomberWire } from "../../../../shared/party-lab/simulation/bomber/wire";
 
-test("Bombacı is a registered 2–3 player mode on protocol 24, with a local arena and a chat spot", () => {
-  assert.equal(NET.version, 24);
+test("Bombacı is a registered 2–3 player mode on protocol 25, with a local arena and a chat spot", () => {
+  assert.equal(NET.version, 25);
   assert.ok(GAME_MODES.includes("bomber") && MODE_SELECTIONS.includes("bomber"));
   assert.equal(MODE_NAMES.bomber, "Bombacı");
   assert.ok(modeFits("bomber", 2) && modeFits("bomber", 3) && !modeFits("bomber", 4));

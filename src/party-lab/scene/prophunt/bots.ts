@@ -2,26 +2,10 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { MovementInput } from "../../input/types";
 import { IDLE_INPUT, PHYSICS } from "../physics";
 import type { PlayerId } from "../players";
-import {
-  PLAZA,
-  PROP_HUNT_MAP,
-  ROUTE_CLEARANCES,
-  SEEKER_SPAWN,
-  SHED,
-  STAIR,
-  ENTRY_STEP_HEIGHT,
-  LODGE,
-  LOFT,
-  STRUCTURE_COLLIDERS,
-  STRUCTURE_ZONES,
-  decoyHalf,
-  surfaceBelow,
-  zoneAt,
-  type DecoyPlacement,
-  type ZoneId,
-} from "../../../../shared/party-lab/maps/propHunt";
-import { conflict, placeIn, slotPoses, type PropLayout } from "../../../../shared/party-lab/maps/propHuntLayout";
-import { CONTEXT_FAMILIES, FAMILY_SETTINGS, PROP_SCENES, PROP_SLOTS, SLOT_FAMILIES, slotById, variantItems } from "../../../../shared/party-lab/maps/propHuntScenes";
+import { PLAZA, SHED, STAIR, ENTRY_STEP_HEIGHT, LODGE, LOFT, decoyHalf, type DecoyPlacement, type ZoneId } from "../../../../shared/party-lab/maps/propHunt";
+import { placeIn, type PropLayout } from "../../../../shared/party-lab/maps/propHuntLayout";
+import { variantItems } from "../../../../shared/party-lab/maps/propScenes";
+import { PROP_MAPS, type PropMapId } from "../../../../shared/party-lab/maps/propMaps";
 import { footprintHalf, PROP_FAMILIES, shapeHeight, type PropFamilyId } from "../../../../shared/party-lab/maps/propHuntProps";
 import type { ArenaCollider } from "../../../../shared/party-lab/maps/types";
 import { aimEye } from "../../../../shared/party-lab/simulation/prophunt/aim";
@@ -29,9 +13,13 @@ import { PROP_HUNT } from "../../../../shared/party-lab/simulation/prophunt/conf
 import type { PropHuntGame } from "../../../../shared/party-lab/simulation/prophunt/game";
 import { BombNav, NAV, type EdgeKind, type NavField, type NavNode } from "../bomb/nav";
 
-/** One shared navigation grid for the camp's architecture (static; built once, ~0.4 s). */
-let shared: BombNav | null = null;
-export const propNav = () => (shared ??= new BombNav(PROP_HUNT_MAP));
+/** One shared navigation grid per map's architecture (static; built once, ~0.4 s). */
+const shared = new Map<PropMapId, BombNav>();
+export function propNav(map: PropMapId = "camp") {
+  let nav = shared.get(map);
+  if (!nav) shared.set(map, (nav = new BombNav(PROP_MAPS[map].arena)));
+  return nav;
+}
 
 const [SHED_FLOOR, ENTRY_STEP, LODGE_FLOOR, LOFT_FLOOR] = [SHED.floor, ENTRY_STEP_HEIGHT, LODGE.floor, LOFT.top];
 /** Extra route cost (m-equivalent) of each climb-only node (the crate step, the woodpile, the lean-to roof): bots take the stair unless climbing saves a lot. */
@@ -48,12 +36,14 @@ export class LayoutNav {
   private readonly isBlocked = (id: number) => this.blocked[id] === 1;
   constructor(
     readonly base: BombNav,
-    readonly layout: PropLayout
+    readonly layout: PropLayout,
+    readonly map: PropMapId = "camp"
   ) {
+    const { floors, free } = BOT_MAPS[map];
     this.blocked = new Uint8Array(base.nodes.length);
     this.cost = Float32Array.from(base.nodes, (n) => {
-      const floor = [0, SHED_FLOOR, ENTRY_STEP, LODGE_FLOOR, LOFT_FLOOR].some((y) => Math.abs(n.y - y) < 0.05),
-        stair = n.x >= STAIR.x[0] && n.x <= STAIR.x[1] && n.z >= STAIR.z[0] && n.z <= STAIR.z[1];
+      const floor = floors.some((y) => Math.abs(n.y - y) < 0.05),
+        stair = free.some((r) => n.x >= r.x0 && n.x <= r.x1 && n.z >= r.z0 && n.z <= r.z1);
       return floor || stair ? 0 : CLIMB_COST;
     });
     for (const c of layout.colliders) {
@@ -96,10 +86,10 @@ export class LayoutNav {
   }
 }
 const navs = new WeakMap<PropLayout, LayoutNav>();
-/** The grid for a round's layout (cached with the layout). */
-export function layoutNav(layout: PropLayout): LayoutNav {
+/** The grid for a round's layout on its map (cached with the layout). */
+export function layoutNav(layout: PropLayout, map: PropMapId = "camp"): LayoutNav {
   let nav = navs.get(layout);
-  if (!nav) navs.set(layout, (nav = new LayoutNav(propNav(), layout)));
+  if (!nav) navs.set(layout, (nav = new LayoutNav(propNav(map), layout, map)));
   return nav;
 }
 
@@ -267,8 +257,6 @@ export interface HideSpot {
   /** The camp's recipe spot it fills, empty this round (where a prop of its kind often stands); null: just beside the decoy. */
   readonly slot: string | null;
 }
-/** Route clearances as floor rectangles (a disguise never stands in a walkway either). */
-const ROUTES = ROUTE_CLEARANCES.map((r) => ({ x0: r.x[0], x1: r.x[1], z0: r.z[0], z1: r.z[1], y: r.y }));
 type Rect2 = { x0: number; x1: number; z0: number; z1: number };
 /** Horizontal distance from (x, z) to a collider's footprint (0 inside it). */
 const gapTo = (c: ArenaCollider, x: number, z: number) =>
@@ -294,16 +282,24 @@ export const KEEP_CLEAR: readonly Rect2[] = [
   { x0: 0.2, x1: 2.45, z0: 0.4, z1: 1.5 },
 ];
 const spotsOf = new WeakMap<PropLayout, HideSpot[]>();
+const routesOf = (map: PropMapId) => PROP_MAPS[map].dealer.def.routes.map((r) => ({ x0: r.x[0], x1: r.x[1], z0: r.z[0], z1: r.z[1], y: r.y }));
 /**
  * Every hide spot of a round's layout, computed once per layout (cached with it): for each
  * decoy and each of its four sides, the same family's shape (same turn) placed touching it, if
  * that shape overlaps no solid at its level, stands on the same surface all over, stays in
  * bounds, out of KEEP_CLEAR and the route clearances, and is not in the plaza's middle.
  */
-export function hideSpots(layout: PropLayout): HideSpot[] {
+export function hideSpots(layout: PropLayout, map: PropMapId = "camp"): HideSpot[] {
   const cached = spotsOf.get(layout);
   if (cached) return cached;
-  const solids = [...STRUCTURE_COLLIDERS, ...layout.colliders].filter((c) => c.role !== "floor");
+  const where = PROP_MAPS[map],
+    { keepClear, avoid } = BOT_MAPS[map],
+    routes = routesOf(map),
+    edge = where.half - 0.05,
+    { conflict, slotPoses } = where.dealer,
+    scenes = where.dealer.def.scenes,
+    away = (x: number, z: number) => !avoid || Math.hypot(x - avoid.x, z - avoid.z) >= avoid.radius;
+  const solids = [...where.arena.colliders, ...layout.colliders].filter((c) => c.role !== "floor");
   const out: HideSpot[] = [];
   layout.decoys.forEach((decoy, index) => {
     const shape = PROP_FAMILIES[decoy.family].shape,
@@ -318,10 +314,10 @@ export function hideSpots(layout: PropLayout): HideSpot[] {
       const x = decoy.x + dx * (2 * h.x + 0.08),
         z = decoy.z + dz * (2 * h.z + 0.08),
         r: Rect2 = { x0: x - h.x, x1: x + h.x, z0: z - h.z, z1: z + h.z };
-      if (Math.abs(x) + h.x > 10.95 || Math.abs(z) + h.z > 10.95) continue;
-      if (KEEP_CLEAR.some((k) => r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0)) continue;
-      if (ROUTES.some((k) => Math.abs(k.y - decoy.y) < 0.3 && r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0)) continue;
-      if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < 3.0) continue;
+      if (Math.abs(x) + h.x > edge || Math.abs(z) + h.z > edge) continue;
+      if (keepClear.some((k) => r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0)) continue;
+      if (routes.some((k) => Math.abs(k.y - decoy.y) < 0.3 && r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0)) continue;
+      if (!away(x, z)) continue;
       const blocked = solids.some((c) => {
         const f = footprint(c),
           y0 = c.shape === "cylinder" ? c.center.y - c.halfHeight : c.center.y - c.half.y,
@@ -338,18 +334,18 @@ export function hideSpots(layout: PropLayout): HideSpot[] {
         [r.x1 - 0.05, r.z0 + 0.05],
         [r.x0 + 0.05, r.z1 - 0.05],
         [r.x1 - 0.05, r.z1 - 0.05],
-      ].every(([px, pz]) => Math.abs(surfaceBelow(px, pz, decoy.y + 0.1, layout.colliders) - decoy.y) < 0.03);
+      ].every(([px, pz]) => Math.abs(where.surfaceBelow(px, pz, decoy.y + 0.1, layout.colliders) - decoy.y) < 0.03);
       if (!level) continue;
       const blend = layout.decoys.filter((o) => o.family === decoy.family && Math.hypot(o.x - x, o.z - z) < 3.5).length;
-      out.push({ family: decoy.family, decoy: index, x, y: decoy.y, z, turns: decoy.turns, zone: zoneAt(x, z, decoy.y), blend, slot: null });
+      out.push({ family: decoy.family, decoy: index, x, y: decoy.y, z, turns: decoy.turns, zone: where.zoneAt(x, z, decoy.y), blend, slot: null });
     }
   });
   // Empty recipe spots: where the camp puts a prop of a kind in play this round, with one of that
   // kind the nearest to copy there (facing the same way) — the most natural place to hide.
   const taken = new Set(layout.decoys.map((d) => d.slot));
-  for (const slot of PROP_SLOTS) {
+  for (const slot of scenes.slots) {
     if (taken.has(slot.id)) continue;
-    for (const family of SLOT_FAMILIES.get(slot.id) ?? []) {
+    for (const family of scenes.slotFamilies.get(slot.id) ?? []) {
       if (!layout.active.includes(family)) continue;
       const poses = slotPoses(slot, family),
         pose = poses.find((q) => q.u === 0 && q.v === 0) ?? poses[0];
@@ -358,7 +354,7 @@ export function hideSpots(layout: PropLayout): HideSpot[] {
         h = footprintHalf(PROP_FAMILIES[family].shape, p.turns),
         r: Rect2 = { x0: p.x - h.x, x1: p.x + h.x, z0: p.z - h.z, z1: p.z + h.z };
       if (layout.decoys.some((d) => conflict(d, p))) continue;
-      if (KEEP_CLEAR.some((k) => r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0) || Math.hypot(p.x - PLAZA.x, p.z - PLAZA.z) < 3.0) continue;
+      if (keepClear.some((k) => r.x0 < k.x1 && r.x1 > k.x0 && r.z0 < k.z1 && r.z1 > k.z0) || !away(p.x, p.z)) continue;
       let nearest = -1,
         best = Infinity;
       layout.decoys.forEach((d, i) => {
@@ -383,7 +379,10 @@ export function hideSpots(layout: PropLayout): HideSpot[] {
 // ─── Hider bot ──────────────────────────────────────────────────────────────
 
 /** Where the seeker's eyes are when it is released (hider bots avoid spots in plain view of it). */
-const SEEKER_EYE = { x: SEEKER_SPAWN.x, y: SEEKER_SPAWN.y + 1.0, z: SEEKER_SPAWN.z };
+const seekerEye = (map: PropMapId) => {
+  const s = PROP_MAPS[map].seekerSpawn;
+  return { x: s.x, y: s.y + 1.0, z: s.z };
+};
 
 /** A hider bot's liking (score points) for an empty recipe spot over a place just beside a decoy. */
 const RECIPE_SPOT = 0.3;
@@ -445,8 +444,8 @@ export class HiderBot {
     const round = game.round;
     this.claimed = teamClaims(game);
     // A spot from another layout (last round's) is never used: start over on this one.
-    if (this.spot && !hideSpots(game.layout).includes(this.spot)) this.reset();
-    this.walker.use(layoutNav(game.layout));
+    if (this.spot && !hideSpots(game.layout, game.map.id).includes(this.spot)) this.reset();
+    this.walker.use(layoutNav(game.layout, game.map.id));
     if (!round.alive[this.id]) {
       this.mode = "found";
       return IDLE_INPUT;
@@ -518,15 +517,18 @@ export class HiderBot {
       seconds = game.round.remaining,
       reach = Math.max(8, (seconds - 3.5) * 5.2);
     const best = new Map<ZoneId, { spot: HideSpot; score: number }>();
-    for (const spot of hideSpots(game.layout)) {
+    const map = game.map,
+      eye = seekerEye(map.id),
+      spawn = map.seekerSpawn;
+    for (const spot of hideSpots(game.layout, map.id)) {
       if (this.tried.has(spot) || this.claimed.has(spot)) continue;
       if ([...this.claimed].some((c) => Math.hypot(c.x - spot.x, c.z - spot.z) < 3)) continue;
       const node = this.nav.nodeAt(spot.x, spot.y + 0.78, spot.z),
         path = field.dist[node];
       if (!Number.isFinite(path) || path > reach) continue;
-      const structure = STRUCTURE_ZONES.includes(spot.zone) ? 1.2 : 0,
-        far = Math.min(1, Math.hypot(spot.x - SEEKER_SPAWN.x, spot.z - SEEKER_SPAWN.z) / 14) * 1.5,
-        exposed = game.physics.clearPath(SEEKER_EYE, { x: spot.x, y: spot.y + 0.5, z: spot.z }) ? 1.8 : 0,
+      const structure = map.structureZones.includes(spot.zone) ? 1.2 : 0,
+        far = Math.min(1, Math.hypot(spot.x - spawn.x, spot.z - spawn.z) / 14) * 1.5,
+        exposed = game.physics.clearPath(eye, { x: spot.x, y: spot.y + 0.5, z: spot.z }) ? 1.8 : 0,
         plaza = spot.zone === "plaza" ? 3 : 0;
       const score = structure + Math.min(3, spot.blend) * 0.7 + (spot.slot ? RECIPE_SPOT : 0) + far - exposed - plaza - path * 0.01 + this.random() * 0.6;
       const current = best.get(spot.zone);
@@ -572,7 +574,7 @@ export class HiderBot {
     if (this.unseen < 6 || this.relocateCheck > 0) return;
     this.relocateCheck = 1;
     if (this.random() > 1 / 60) return;
-    const options = hideSpots(game.layout).filter((s) => s.family === worn.family && s !== this.spot && Math.hypot(s.x - p.x, s.z - p.z) < 6 && Math.abs(s.y - (p.y - 0.02)) < 0.1 && game.physics.clearPath({ x: p.x, y: p.y + 0.3, z: p.z }, { x: s.x, y: s.y + 0.3, z: s.z }));
+    const options = hideSpots(game.layout, game.map.id).filter((s) => s.family === worn.family && s !== this.spot && Math.hypot(s.x - p.x, s.z - p.z) < 6 && Math.abs(s.y - (p.y - 0.02)) < 0.1 && game.physics.clearPath({ x: p.x, y: p.y + 0.3, z: p.z }, { x: s.x, y: s.y + 0.3, z: s.z }));
     if (!options.length) return;
     this.spot = options[Math.floor(this.random() * options.length)];
     this.mode = "move";
@@ -583,26 +585,37 @@ export class HiderBot {
 // ─── Seeker bot ─────────────────────────────────────────────────────────────
 
 /** The camp's landmark props (always where they are: the chopping block), as anyone who has seen the camp knows. */
-const LANDMARKS = PROP_SCENES.filter((s) => s.fixed).flatMap((s) =>
-  s.variants.flatMap((v) => variantItems(v).flatMap((i) => i.families.map((family) => placeIn(slotById(i.slots[0])!, family, { turns: 0, u: 0, v: 0 }))))
-);
-/** Every spot the camp's recipes can put a prop of this kind (the camp's logic, the same every round; built on first use). */
-const spots = new Map<PropFamilyId, { x: number; y: number; z: number }[]>();
-function recipeSpots(family: PropFamilyId) {
-  let list = spots.get(family);
+const landmarksOf = new Map<PropMapId, DecoyPlacement[]>();
+function landmarks(map: PropMapId) {
+  let list = landmarksOf.get(map);
   if (!list) {
-    list = PROP_SLOTS.filter((s) => SLOT_FAMILIES.get(s.id)?.includes(family)).flatMap((s) => slotPoses(s, family).map((pose) => placeIn(s, family, pose)));
-    spots.set(family, list);
+    const scenes = PROP_MAPS[map].dealer.def.scenes;
+    list = scenes.scenes.filter((s) => s.fixed).flatMap((s) => s.variants.flatMap((v) => variantItems(v).flatMap((i) => i.families.map((family) => placeIn(scenes.slotById(i.slots[0])!, family, { turns: 0, u: 0, v: 0 })))));
+    landmarksOf.set(map, list);
   }
   return list;
 }
-/** Whether the camp's recipes ever put a prop of this kind near (x, z) on that floor (the camp's logic, not this round's layout). */
-function plausibleAt(family: PropFamilyId, x: number, y: number, z: number) {
-  return PROP_SLOTS.some(
+/** Every spot the map's recipes can put a prop of this kind (the map's logic, the same every round; built on first use). */
+const spots = new Map<string, { x: number; y: number; z: number }[]>();
+function recipeSpots(map: PropMapId, family: PropFamilyId) {
+  const key = `${map}|${family}`;
+  let list = spots.get(key);
+  if (!list) {
+    const { scenes } = PROP_MAPS[map].dealer.def,
+      { slotPoses } = PROP_MAPS[map].dealer;
+    list = scenes.slots.filter((s) => scenes.slotFamilies.get(s.id)?.includes(family)).flatMap((s) => slotPoses(s, family).map((pose) => placeIn(s, family, pose)));
+    spots.set(key, list);
+  }
+  return list;
+}
+/** Whether the map's recipes ever put a prop of this kind near (x, z) on that floor (the map's logic, not this round's layout). */
+function plausibleAt(map: PropMapId, family: PropFamilyId, x: number, y: number, z: number) {
+  const { scenes } = PROP_MAPS[map].dealer.def;
+  return scenes.slots.some(
     (s) =>
       Math.abs(s.y - y) < 0.3 &&
-      CONTEXT_FAMILIES[s.context].includes(family) &&
-      FAMILY_SETTINGS[family].includes(s.setting) &&
+      scenes.contextFamilies[s.context].includes(family) &&
+      (scenes.familySettings[family] ?? []).includes(s.setting) &&
       Math.hypot(Math.max(0, s.x[0] - x, x - s.x[1]), Math.max(0, s.z[0] - z, z - s.z[1])) < 1.0
   );
 }
@@ -610,7 +623,15 @@ function plausibleAt(family: PropFamilyId, x: number, y: number, z: number) {
 export type SeekerMode = "wait" | "patrol" | "look" | "inspect" | "approach" | "aim";
 
 /** Where the seeker bot stands to look over a zone, and roughly where it looks. */
-export const VIEWPOINTS: readonly { readonly zone: ZoneId; readonly x: number; readonly y: number; readonly z: number; readonly look: number }[] = [
+export interface Viewpoint {
+  readonly zone: ZoneId;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  /** Body yaw it looks along (atan2(x, z): 0 south, π north, π/2 east). */
+  readonly look: number;
+}
+export const VIEWPOINTS: readonly Viewpoint[] = [
   { zone: "plaza", x: -1.0, y: 0, z: 1.6, look: Math.PI },
   { zone: "porch", x: -4.6, y: 0.45, z: -0.7, look: -Math.PI / 2 },
   { zone: "lodge", x: -6.3, y: 0.45, z: -4.3, look: Math.PI * 0.85 },
@@ -628,6 +649,57 @@ export const VIEWPOINTS: readonly { readonly zone: ZoneId; readonly x: number; r
   { zone: "border", x: 2.8, y: 0, z: 8.3, look: Math.PI * 0.1 },
   { zone: "border", x: 9.2, y: 0, z: 1.0, look: Math.PI * 0.3 },
 ];
+
+/** What the bots need to know about a map besides its architecture, recipes and spawns. */
+export interface BotMap {
+  /** Floor heights walked at no extra cost (any other standable top is climb-only: CLIMB_COST). */
+  readonly floors: readonly number[];
+  /** Areas walked at no extra cost whatever their height (the camp's stair). */
+  readonly free: readonly Rect2[];
+  /** Walkways a hider bot keeps clear. */
+  readonly keepClear: readonly Rect2[];
+  /** An open middle hider bots never hide in (the camp's plaza), null: none. */
+  readonly avoid: { readonly x: number; readonly z: number; readonly radius: number } | null;
+  /** Where the seeker bot looks over each zone from. */
+  readonly viewpoints: readonly Viewpoint[];
+}
+/**
+ * Market: the depot's two doorways (both sides), the side door, the gap between the freezer and
+ * the west wall, the entrance; viewpoints down every aisle, over the produce, along the fridges,
+ * in the depot, over the tills and the corral.
+ */
+export const MARKET_KEEP_CLEAR: readonly Rect2[] = [
+  { x0: 5.9, x1: 8.7, z0: -7.6, z1: -4.6 },
+  { x0: 2.3, x1: 5.0, z0: -9.6, z1: -7.0 },
+  { x0: -10.7, x1: -9.4, z0: -7.8, z1: -6.2 },
+  { x0: 5.8, x1: 8.8, z0: 8.0, z1: 10.7 },
+];
+export const MARKET_VIEWPOINTS: readonly Viewpoint[] = [
+  { zone: "aisles", x: -2.4, y: 0, z: -4.7, look: 0 },
+  { zone: "aisles", x: 1.3, y: 0, z: -4.7, look: 0 },
+  { zone: "aisles", x: 5.0, y: 0, z: 4.9, look: Math.PI },
+  { zone: "aisles", x: 8.7, y: 0, z: 4.9, look: Math.PI },
+  { zone: "aisles", x: 4.0, y: 0, z: -5.3, look: Math.PI / 2 },
+  { zone: "produce", x: -6.4, y: 0, z: 3.4, look: Math.PI * 0.9 },
+  { zone: "produce", x: -6.6, y: 0, z: -5.3, look: Math.PI * 0.1 },
+  { zone: "fridges", x: -4.4, y: 0, z: -8.7, look: -Math.PI / 2 },
+  { zone: "fridges", x: 1.5, y: 0, z: -8.6, look: -Math.PI / 2 },
+  { zone: "depot", x: 7.3, y: 0, z: -7.9, look: Math.PI / 2 },
+  { zone: "depot", x: 5.2, y: 0, z: -8.0, look: -Math.PI * 0.4 },
+  { zone: "checkout", x: -4.4, y: 0, z: 5.4, look: 0 },
+  { zone: "checkout", x: -8.8, y: 0, z: 5.6, look: Math.PI * 0.15 },
+  { zone: "entrance", x: 6.6, y: 0, z: 5.2, look: Math.PI * 0.6 },
+];
+export const BOT_MAPS: Readonly<Record<PropMapId, BotMap>> = {
+  camp: {
+    floors: [0, SHED_FLOOR, ENTRY_STEP, LODGE_FLOOR, LOFT_FLOOR],
+    free: [{ x0: STAIR.x[0], x1: STAIR.x[1], z0: STAIR.z[0], z1: STAIR.z[1] }],
+    keepClear: KEEP_CLEAR,
+    avoid: { x: PLAZA.x, z: PLAZA.z, radius: 3.0 },
+    viewpoints: VIEWPOINTS,
+  },
+  market: { floors: [0], free: [], keepClear: MARKET_KEEP_CLEAR, avoid: null, viewpoints: MARKET_VIEWPOINTS },
+};
 /** How the seeker bot judges what it sees (per second of looking, suspicion 0…1+). */
 export const SEEKER_SENSE = {
   range: 15,
@@ -752,6 +824,11 @@ export class SeekerBot {
   target: string | null = null;
   private readonly walker: Walker;
   private readonly ray = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  /** The map it searches (its knowledge of where props belong, its viewpoints). */
+  private map: PropMapId = "camp";
+  private get viewpoints() {
+    return BOT_MAPS[this.map].viewpoints;
+  }
   private time = 0;
   private senseIn = 0;
   private yaw = Math.PI;
@@ -813,6 +890,13 @@ export class SeekerBot {
     i.jump = i.sprint = i.attack = false;
     const round = game.round,
       me = game.physics.players[this.id];
+    // Another map: nothing it remembers applies there.
+    if (game.map.id !== this.map) {
+      this.map = game.map.id;
+      this.reset();
+      this.past.length = 0;
+      this.rounds = 0;
+    }
     // A new round (reset was not called): what it saw last round becomes memory.
     if (this.roundOf && this.roundOf !== game.layout) this.reset();
     this.roundOf = game.layout;
@@ -823,7 +907,7 @@ export class SeekerBot {
       return IDLE_INPUT;
     }
     this.time += STEP;
-    this.walker.use(layoutNav(game.layout));
+    this.walker.use(layoutNav(game.layout, game.map.id));
     const p = me.body.translation(),
       v = me.body.linvel();
     // What its last shot did (anyone sees it): a decoy is cleared; a find ends that hider.
@@ -910,10 +994,10 @@ export class SeekerBot {
     if (s.family === "body") return { familiar: false, rate: 1, cap: Infinity };
     const family = s.family,
       near = (p: { x: number; y: number; z: number }, r: number) => Math.abs(p.y - s.y) < 0.3 && Math.hypot(p.x - s.x, p.z - s.z) < r;
-    if (LANDMARKS.some((l) => l.family === family && near(l, K.familiar))) return { familiar: true, rate: 0, cap: Infinity };
+    if (landmarks(this.map).some((l) => l.family === family && near(l, K.familiar))) return { familiar: true, rate: 0, cap: Infinity };
     if (this.past.some((p) => p.round >= this.rounds - K.recall && p.family === family && near(p, K.familiar))) return { familiar: true, rate: 0, cap: Infinity };
-    if (!plausibleAt(family, s.x, s.y, s.z)) return { familiar: false, rate: K.outOfPlace, cap: Infinity };
-    if (recipeSpots(family).some((p) => near(p, K.usual))) return { familiar: false, rate: K.usualRate, cap: K.usualCap };
+    if (!plausibleAt(this.map, family, s.x, s.y, s.z)) return { familiar: false, rate: K.outOfPlace, cap: Infinity };
+    if (recipeSpots(this.map, family).some((p) => near(p, K.usual))) return { familiar: false, rate: K.usualRate, cap: K.usualCap };
     return { familiar: false, rate: 1, cap: Infinity };
   }
   /** This round's sightings go into its memory of the camp (kept for a few rounds). */
@@ -1093,7 +1177,7 @@ export class SeekerBot {
     }
     this.mode = "patrol";
     if (this.view < 0) this.nextView(p);
-    const vp = VIEWPOINTS[this.view],
+    const vp = this.viewpoints[this.view],
       d = Math.hypot(vp.x - p.x, vp.z - p.z);
     if (d < 0.6 && Math.abs(game.feet(game.physics.players[this.id]) - vp.y) < 0.4) {
       this.lookLeft = 2.4;
@@ -1153,7 +1237,7 @@ export class SeekerBot {
       }
     let best = -1,
       bestD = Infinity;
-    VIEWPOINTS.forEach((vp, k) => {
+    this.viewpoints.forEach((vp, k) => {
       if (vp.y > 2.5 !== upstairs) return;
       const d = Math.hypot(vp.x - x, vp.z - z);
       if (d < bestD) {
@@ -1171,19 +1255,19 @@ export class SeekerBot {
     const field = this.walker.field(p);
     let best = -1,
       bestScore = Infinity;
-    VIEWPOINTS.forEach((vp, k) => {
+    this.viewpoints.forEach((vp, k) => {
       const checked = this.checked.get(k),
         age = checked === undefined ? 999 : this.time - checked,
         path = field.dist[this.nav.nodeAt(vp.x, vp.y + 0.78, vp.z)];
       if (!Number.isFinite(path) || age < 8) return;
       // Least recently checked first (unchecked ones most), then the nearest; a little randomness breaks ties.
-      const score = path * SEEKER_SENSE.patrolDistance - Math.min(age, 60) * 0.6 - (STRUCTURE_ZONES.includes(vp.zone) ? SEEKER_SENSE.patrolStructure : 0) + this.random() * 3;
+      const score = path * SEEKER_SENSE.patrolDistance - Math.min(age, 60) * 0.6 - (PROP_MAPS[this.map].structureZones.includes(vp.zone) ? SEEKER_SENSE.patrolStructure : 0) + this.random() * 3;
       if (score < bestScore) {
         bestScore = score;
         best = k;
       }
     });
-    this.view = best < 0 ? Math.floor(this.random() * VIEWPOINTS.length) : best;
+    this.view = best < 0 ? Math.floor(this.random() * this.viewpoints.length) : best;
     this.walker.reset();
   }
 }

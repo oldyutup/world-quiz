@@ -2,7 +2,8 @@ import {encodeSnowballInput, type SnowballInputPacket} from "../../../shared/par
 import {encodeBowlingInput,validateBowlingInput,type BowlingInputPacket} from "../../../shared/party-lab/network/bowlingInput";
 import { encodePropInput, validatePropInput, type PropInputPacket } from "../../../shared/party-lab/network/protocol";
 import type { BowlingSettings } from "../../../shared/party-lab/bowlingSettings";
-import type { PropSettings } from "../../../shared/party-lab/propSettings";
+import type { PropSettingsPatch } from "../../../shared/party-lab/propSettings";
+import { isPropMapChoice } from "../../../shared/party-lab/maps/propTypes";
 import type { BoardSettings } from "../../../shared/party-lab/boardSettings";
 import { BOARD, DEFAULT_BOARD_LENGTH, isBoardLength } from "../../../shared/party-lab/board/config";
 import { isWinnerChoice, type WinnerChoice } from "../../../shared/party-lab/board/rules";
@@ -220,6 +221,7 @@ export class LobbySession {
           winner: state.winner,
           propAmmo: state.propAmmo,
           propProximity: state.propProximity,
+          propMap: isPropMapChoice(state.propMap) ? state.propMap : "random",
           bowlingObstacles: state.bowlingObstacles,
           boardLength: isBoardLength(state.boardLength) ? state.boardLength : DEFAULT_BOARD_LENGTH,
           board,
@@ -393,7 +395,7 @@ export class LobbySession {
   rollBoardDice() {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.board?.phase === "roll") this.room.send("boardRoll");
   }
-  setPropSettings(settings: Partial<PropSettings>) {
+  setPropSettings(settings: PropSettingsPatch) {
     if (this.room?.connection.isOpen && this.snapshot.status === "connected" && this.snapshot.phase === "waiting") this.room.send("propSettings", settings);
   }
   /** Inputs the server has not consumed yet (by the latest snapshot's ack). */
@@ -627,7 +629,7 @@ export function useLobbySession() {
     sendInput,
     setReady: (ready: boolean) => session.current?.setReady(ready),
     setBowlingSettings: (settings: BowlingSettings) => session.current?.setBowlingSettings(settings),
-    setPropSettings: (settings: Partial<PropSettings>) => session.current?.setPropSettings(settings),
+    setPropSettings: (settings: PropSettingsPatch) => session.current?.setPropSettings(settings),
     setBoardSettings: (settings: BoardSettings) => session.current?.setBoardSettings(settings),
     chooseBoardDice: (choice: WinnerChoice) => session.current?.chooseBoardDice(choice),
     rollBoardDice: () => session.current?.rollBoardDice(),

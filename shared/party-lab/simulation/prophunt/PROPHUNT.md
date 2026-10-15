@@ -1,6 +1,8 @@
 # Saklambaç (Prop Hunt), local V1
 
-One seeker, two hiders, in the forest camp "Orman Kampı" (`maps/propHunt.ts`). The hiders turn
+One seeker, two hiders, on one of two maps: the forest camp "Orman Kampı" (`maps/propHunt.ts`,
+described first) or the supermarket "Market" (`maps/market.ts`, see "Map: Market" below; the
+rules are the same on both, `PropHuntGame`'s `map` option). The hiders turn
 into camp props; the seeker has 15 shots to find both. The ordinary props come from authored
 scene recipes (`maps/propHuntScenes.ts`, dealt by `maps/propHuntLayout.ts`): each round keeps
 about half of the camp as it was and redresses the rest, so the camp stays familiar but its exact
@@ -192,6 +194,51 @@ The ordinary decoys are never scattered: each corner of the camp is dressed by a
 In the game, `applyLayout` removes last round's decoy colliders and adds this round's (decoy i
 is `decoyHandles[i]`) at every reset, before the countdown's first physics step brings the
 scene queries up to date.
+
+## Map: "Market" (maps/market.ts, protocol 25)
+
+A one-storey supermarket the camp's size (22 × 22 m), everything indoors under a 5 m ceiling,
+bright and evenly lit (strip lights; every corner readable). Zones (`MARKET_ZONES`): the
+**fridges** (an upright glass-door fridge run on the north wall, two chest-freezer islands in
+front of it, a 2.2 m fridge aisle), the **depot** (NE, behind full-height walls with two 2.2 m
+doorways — never a dead end — and a pallet rack), the **produce** (W: a sloping fruit-and-veg
+rack on the wall, two produce tables with crates, the watermelon heap), the **aisles** (three
+double-sided gondolas — cans, breakfast, snacks — and the drinks wall, 2.6 m aisles, two promo
+spots on every end cap), the **checkout** (three counters, 3.1 m lanes) and the **entrance**
+(the cart corral, basket stacks, two promo islands; the closed glass doors). The seeker starts
+inside the entrance facing the shop, the hiders 3 m apart in the front cross aisle (≥ 6 m from
+it). Shelves, fridges, freezers and counters are furniture: they stop bodies, shots and the
+camera, not the hunch; walls and glass stop all of it.
+
+**Families** (`MARKET_FAMILY_IDS`, the kit fits each model to its shape): small — Konserve kulesi
+(a 3-2-1 can pyramid), Şişe kasası, Balkabağı, Sepet yığını, Karpuz, Koli; medium — Çöp kovası,
+Elma kasası, Portakal kasası, Alışveriş arabası; large — Manav kasası, Koli paleti. Like the camp's,
+they are blown up to the character's scale (no side under 0.45 m: a real-size can could not be
+shot fairly); the real-size goods on the shelves, in the fridges and on the produce rack are
+scenery only. The watermelon heap and the depot rack hold the families' own models, so a hider
+beside them looks like one of the crowd.
+
+**Layouts** (`marketScenes.ts`, 17 scenes; `marketLayout.ts`): the camp's dealer with the
+market's tuning — 58–70 decoys a round (≈ 61), all twelve families in play every round with
+**at least three decoys each** (a disguise is never one of a kind), 45–55% of the ordinary props
+changing from one round to the next, the same squeeze and route-clearance rules. Same-kind groups
+are the point: a row of carts in the corral, carts queueing at the tills, melons round the heap,
+crates along the produce tables, two can towers on an end cap; quieter corners too (the depot's
+corners, the cashiers' side of the counters, the nook beside the fridge run).
+
+**Bots**: the camp's bots with the market's grid (`propNav("market")`, one floor), its own walkways
+kept clear (`MARKET_KEEP_CLEAR`) and 14 seeker viewpoints (`MARKET_VIEWPOINTS`: down every aisle,
+the produce, the fridges, the depot, the tills, the entrance). Structures for both bot roles: the
+depot and the aisles. A seeker bot switching maps forgets what it saw on the other one.
+Bot-vs-bot, 20 matches × 10 rounds with the same harness on both maps: Market — the seeker wins
+49.5%, 1.42 finds, 11.5 shots (7.0 on decoys), the search ends at 59.7 s, every hider disguised,
+hiding spread over the aisles 54%, produce 14%, depot 12%, checkout 9%, fridges 8%, entrance 2%;
+Orman Kampı — 31%, 1.25 finds. The market is a little easier for the seeker bot (one floor,
+aisles seen end to end); 0 physics faults on either.
+
+**Map choice**: the lobby's host picks Orman Kampı, Market or Rastgele (default; a fresh coin toss
+every round); Mixed and Tahta Oyunu always toss. The local arena's Esc menu has the same "Harita"
+choice (Rastgele draws at every start). Each map keeps its own layout sequence (`PropRotation`).
 
 ## The result's reveal
 

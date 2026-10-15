@@ -1,4 +1,5 @@
 import type { PropSettings } from "../../../shared/party-lab/propSettings";
+import type { PropMapChoice } from "../../../shared/party-lab/maps/propTypes";
 import type {
   GameSnapshot,
   OnlinePhase,
@@ -37,6 +38,7 @@ export interface LobbyState {
   hostId: string;
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
+  propMap: string;
   bowlingObstacles: boolean;
   boardLength: number;
   /** JSON (shared/party-lab/board/wire.ts), "" without a board match. */
@@ -66,6 +68,8 @@ export interface LobbySnapshot {
   hostId: string;
   propAmmo: PropSettings["ammo"];
   propProximity: boolean;
+  /** Host's Saklambaç map (Mixed and Tahta Oyunu always draw one). */
+  propMap: PropMapChoice;
   bowlingObstacles: boolean;
   /** Host's Tahta Oyunu length. */
   boardLength: BoardLength;
@@ -95,6 +99,7 @@ export const EMPTY_LOBBY: LobbySnapshot = {
   hostId: "",
   propAmmo: 15,
   propProximity: true,
+  propMap: "random",
   bowlingObstacles: false,
   boardLength: DEFAULT_BOARD_LENGTH,
   board: null,

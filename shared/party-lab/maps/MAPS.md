@@ -193,6 +193,21 @@ each reset. A fixed chopping block (a stump with the axe in it) stands by the wa
 "prophunt"; online `MODE_MAP.prop_hunt` selects it (protocol 9). Layout, rules, bots and
 numbers: `simulation/prophunt/PROPHUNT.md`.
 
+## Market ("prophunt", map "market") — Saklambaç's second map, local and online
+
+`maps/market.ts`: a one-storey supermarket the camp's size (22 × 22 m, x/z −11…11), walls on
+the boundary (the south one a glass shop front with closed glass entrance doors), a 5 m ceiling
+(a camera-only solid). Fixtures are solid boxes (`MARKET_FIXTURES`): the fridge run along the
+north wall and two chest-freezer islands, the depot (NE, full-height walls, two 2.2 m doorways,
+a pallet rack), the produce rack on the west wall, two produce tables and the watermelon heap,
+three double-sided gondolas and the drinks wall (2.6 m aisles, end caps at both ends), three
+checkout counters. Structures stand ≥ 1.4 m apart or touch. `MARKET_ROUTES` keeps the doorways,
+the entrance, the spawns, the checkout ends and the fridge aisle's ends free of decoys.
+`marketScenes.ts` holds 17 scenes; `marketLayout.ts` deals 58–70 decoys a round with every one
+of the twelve market families in play at least three times. The generic machinery is shared
+with the camp: `propScenes.ts` (recipe builders), `propDealer.ts` (the dealer, bound per map),
+`propMaps.ts` (`PROP_MAPS`: architecture, spawns, dealer, zones per map).
+
 ## Assets
 
 `public/party-lab/maps/rooftop/rooftop-kit.glb` (≈178 KB) is generated from the

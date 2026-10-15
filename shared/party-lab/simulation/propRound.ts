@@ -2,7 +2,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { MovementInput } from "../intent.js";
 import { NET, TRANSFORM_BYTES, type GameEvent, type GameSnapshot, type OnlinePhase } from "../network/protocol.js";
 import { DEFAULT_PROP_SETTINGS, type PropSettings } from "../propSettings.js";
-import { roundLayout, type PropLayout } from "../maps/propHuntLayout.js";
+import type { PropLayout } from "../maps/propDealer.js";
+import { pickPropMap, PROP_MAPS, type PropMapChoice, type PropMapId } from "../maps/propMaps.js";
 import { PROP_FAMILIES, shapeHeight } from "../maps/propHuntProps.js";
 import { PLAYERS, type PlayerId } from "./players.js";
 import { PARTS } from "./ragdoll/config.js";
@@ -16,12 +17,20 @@ import { propSection, type PropOnlineEvent } from "./prophunt/wire.js";
 import type { Vec } from "./ragdoll/math.js";
 import { ranksByScore } from "../board/rules.js";
 
-/** Room lifetime, including mode switches and reconnects. Seats rotate 0 → 1 → 2. */
+/**
+ * Room lifetime, including mode switches and reconnects. Seats rotate 0 → 1 → 2. Each map keeps
+ * its own layout sequence (its rounds chain from its own round 0, whatever was played between).
+ */
 export class PropRotation {
   next: PlayerId = 0;
-  index = -1;
-  layout: PropLayout | null = null;
+  readonly chains: Record<PropMapId, { index: number; layout: PropLayout | null }> = { camp: { index: -1, layout: null }, market: { index: -1, layout: null } };
+  /** The map of the round played last (null: none yet). */
+  map: PropMapId | null = null;
+  /** Rastgele's draw for a round not yet under way (a cancelled introduction keeps it). */
+  pending: PropMapId | null = null;
   constructor(readonly seed: number) {}
+  /** The last round's layout index on the map played last (−1: none yet). */
+  get index() { return this.map ? this.chains[this.map].index : -1; }
   played() { this.next = ((this.next + 1) % 3) as PlayerId; }
 }
 interface HistoricalShape { slot: PlayerId; family: string | null; shape: RAPIER.Shape; at: Vec; rotation: { x: number; y: number; z: number; w: number }; }
@@ -36,6 +45,10 @@ export class PropRoundSimulation implements OnlineSimulation {
   phase: OnlinePhase = "waiting";
   mask = 0;
   settings: PropSettings = { ...DEFAULT_PROP_SETTINGS };
+  /** The room's map choice for the next round (Mixed and Tahta Oyunu: always Rastgele; default here: the camp). */
+  mapChoice: PropMapChoice = "camp";
+  /** Rastgele's coin (the room passes its crypto source). */
+  random: () => number = Math.random;
   readonly events: { recipient: PlayerId | null; event: PropOnlineEvent }[] = [];
   private history: PoseFrame[] = [];
   private consumed = false;
@@ -60,12 +73,13 @@ export class PropRoundSimulation implements OnlineSimulation {
   }
   start(slots: readonly PlayerId[]) {
     if (this.phase !== "waiting" || new Set(slots).size !== 3 || !PLAYERS.every(({ id }) => slots.includes(id))) return false;
-    const index = this.rotation.index + 1;
-    const layout = roundLayout(this.rotation.seed, index, this.rotation.layout);
+    const map = this.mapChoice === "random" ? (this.rotation.pending ??= pickPropMap("random", this.random)) : this.mapChoice;
+    const chain = this.rotation.chains[map], index = chain.index + 1;
+    const layout = PROP_MAPS[map].dealer.roundLayout(this.rotation.seed, index, chain.layout);
     this.game.dispose();
     this.game = new PropHuntGame(undefined, {
       roles: PLAYERS.map(({ id }) => id === this.rotation.next ? "seeker" : "hider"),
-      seed: this.rotation.seed, layout, ...this.settings, online: true,
+      seed: this.rotation.seed, layout, map, ...this.settings, online: true,
     });
     this.game.layoutRound = index;
     this.mask = 7;
@@ -151,8 +165,10 @@ export class PropRoundSimulation implements OnlineSimulation {
       this.phase = "playing";
       if (!this.consumed) {
         this.consumed = true;
-        this.rotation.index = this.game.layoutRound;
-        this.rotation.layout = this.game.layout;
+        const map = this.game.map.id;
+        this.rotation.chains[map] = { index: this.game.layoutRound, layout: this.game.layout };
+        this.rotation.map = map;
+        this.rotation.pending = null;
         this.rotation.played();
       }
     }

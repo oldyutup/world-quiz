@@ -1,12 +1,22 @@
 import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import { useLoader } from "@react-three/fiber";
+import type { Object3D } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { buildBlockout, buildPropScenery, PROP_KIT_URL, readPropKit, type PropKit } from "./scenery";
+import type { PropMapId } from "../../../../shared/party-lab/maps/propTypes";
+import { buildBlockout, buildPropScenery, PROP_KIT_URL, readPropKit, type PropKit, type PropSceneryMeshes } from "./scenery";
+import { buildMarketBlockout, buildMarketScenery, MARKET_KIT_URL, readMarketKit } from "./market/scenery";
 
-function KitProps({ onKit }: { onKit: (kit: PropKit | null) => void }) {
-  const gltf = useLoader(GLTFLoader, PROP_KIT_URL);
-  const kit = useMemo(() => readPropKit(gltf.scene), [gltf]);
-  const built = useMemo(() => buildPropScenery(kit), [kit]);
+/** Each map's kit: where it is, how its nodes are read, what is built from it, and the stand-in until it is in. */
+const KITS: Readonly<Record<PropMapId, { url: string; read: (root: Object3D) => PropKit; build: (kit: PropKit) => PropSceneryMeshes; blockout: () => PropSceneryMeshes }>> = {
+  camp: { url: PROP_KIT_URL, read: readPropKit, build: buildPropScenery, blockout: buildBlockout },
+  market: { url: MARKET_KIT_URL, read: readMarketKit, build: buildMarketScenery, blockout: buildMarketBlockout },
+};
+
+function KitProps({ map, onKit }: { map: PropMapId; onKit: (kit: PropKit | null) => void }) {
+  const source = KITS[map];
+  const gltf = useLoader(GLTFLoader, source.url);
+  const kit = useMemo(() => source.read(gltf.scene), [gltf, source]);
+  const built = useMemo(() => source.build(kit), [kit, source]);
   // The merged copies are ours; the loader cache keeps the kit itself.
   useEffect(() => () => built.dispose(), [built]);
   useEffect(() => {
@@ -17,8 +27,8 @@ function KitProps({ onKit }: { onKit: (kit: PropKit | null) => void }) {
 }
 
 /** Until the kit is in (or if it never loads), plain shapes stand where the props are: an obstacle is never invisible. */
-function Blockout() {
-  const built = useMemo(buildBlockout, []);
+function Blockout({ map }: { map: PropMapId }) {
+  const built = useMemo(() => KITS[map].blockout(), [map]);
   useEffect(() => () => built.dispose(), [built]);
   return <primitive object={built.group} />;
 }
@@ -37,14 +47,15 @@ class KitBoundary extends Component<{ children: ReactNode; fallback: ReactNode }
 }
 
 /**
- * Orman Kampı's kit props (scenery.ts): they load on their own and the round never waits.
- * `onKit` hands the loaded kit to the playground (the disguises draw the same models), null while none.
+ * A Saklambaç map's kit props (Orman Kampı: scenery.ts; Market: market/scenery.ts): they load on
+ * their own and the round never waits. `onKit` hands the loaded kit to the playground (the
+ * disguises draw the same models), null while none. Only the played map's kit is fetched.
  */
-export default function PropHuntScenery({ onKit }: { onKit: (kit: PropKit | null) => void }) {
+export default function PropHuntScenery({ onKit, map = "camp" }: { onKit: (kit: PropKit | null) => void; map?: PropMapId }) {
   return (
-    <KitBoundary fallback={<Blockout />}>
-      <Suspense fallback={<Blockout />}>
-        <KitProps onKit={onKit} />
+    <KitBoundary fallback={<Blockout map={map} />}>
+      <Suspense fallback={<Blockout map={map} />}>
+        <KitProps map={map} onKit={onKit} />
       </Suspense>
     </KitBoundary>
   );

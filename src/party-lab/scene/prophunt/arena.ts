@@ -33,7 +33,7 @@ import type { BoxCollider } from "../../../../shared/party-lab/maps/types";
  * and chimney) and one transparent mesh (the window glass). No textures, no shadows. Doors,
  * window frames, rails, furniture and every prop come from the kit (scenery.ts).
  */
-type V = readonly [number, number, number];
+export type V = readonly [number, number, number];
 type Span = readonly [number, number];
 const PALETTE = {
   grassA: "#94c26d",
@@ -65,10 +65,11 @@ const PALETTE = {
   ash: "#5d5752",
   glass: "#cfeaf5",
 } as const;
-const color = (hex: string) => new Color(hex);
-const shade = (c: Color, k: number) => c.clone().multiplyScalar(k);
+export const color = (hex: string) => new Color(hex);
+export const shade = (c: Color, k: number) => c.clone().multiplyScalar(k);
 
-class Mesher {
+/** Flat-shaded, vertex-coloured geometry from quads and boxes (both Saklambaç maps build their shells with it). */
+export class Mesher {
   private positions: number[] = [];
   private normals: number[] = [];
   private colors: number[] = [];
@@ -164,7 +165,7 @@ class Mesher {
     return this.positions.length / 9;
   }
 }
-type Face = "top" | "bottom" | "px" | "nx" | "pz" | "nz";
+export type Face = "top" | "bottom" | "px" | "nx" | "pz" | "nz";
 
 /** Unit normal of a polygon by Newell's method, from its winding. */
 function newell(points: readonly V[]): [number, number, number] {
@@ -186,7 +187,7 @@ const hash = (i: number, j: number) => {
   const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
   return s - Math.floor(s);
 };
-const bounds = (c: BoxCollider) => ({
+export const bounds = (c: BoxCollider) => ({
   x0: c.center.x - c.half.x,
   x1: c.center.x + c.half.x,
   y0: c.center.y - c.half.y,

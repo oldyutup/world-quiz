@@ -14,7 +14,9 @@ import { IDLE_INPUT, initializePhysics, PHYSICS } from "../physics";
 import { PLAYERS, type PlayerId } from "../players";
 import { PARTS, SHAPES } from "../ragdoll/config";
 import { localCostumeForSlot, type SelectableCostumeId } from "../visual/costumes";
-import { surfaceBelow, type PropRole } from "../../../../shared/party-lab/maps/propHunt";
+import type { PropRole } from "../../../../shared/party-lab/maps/propHunt";
+import type { PropMapId } from "../../../../shared/party-lab/maps/propTypes";
+import MarketEnvironment from "./market/MarketEnvironment";
 import type { PropLayout } from "../../../../shared/party-lab/maps/propHuntLayout";
 import { PROP_FAMILIES, shapeHeight, type PropFamilyId } from "../../../../shared/party-lab/maps/propHuntProps";
 import { PROP_HUNT } from "../../../../shared/party-lab/simulation/prophunt/config";
@@ -110,7 +112,7 @@ export function PropEnvironment() {
 
 /**
  * Local Saklambaç: the human (seeker or hider, chosen in the Esc menu) with bots in the other
- * roles, in Orman Kampı. Shared with the other modes: the ragdoll and the look/keyboard input.
+ * roles, in Orman Kampı or the Market (`map`). Shared with the other modes: the ragdoll and the look/keyboard input.
  */
 export default function PropHuntPlayground({
   role,
@@ -128,6 +130,7 @@ export default function PropHuntPlayground({
   view: seekerView,
   onView,
   proximityEnabled,
+  map = "camp",
 }: {
   role: PropRole;
   onStatus: (status: ArenaStatus) => void;
@@ -149,6 +152,8 @@ export default function PropHuntPlayground({
   /** V asks for the other view (the choice lives with the arena, like the Esc menu's). */
   onView: (view: SeekerView) => void;
   proximityEnabled: boolean;
+  /** The map (Orman Kampı by default). */
+  map?: PropMapId;
 }) {
   const { camera, gl } = useThree();
   const beans = useRef<(Group | null)[]>([]);
@@ -177,7 +182,7 @@ export default function PropHuntPlayground({
   const visuals = useMemo(() => new PropVisuals(), []);
   useEffect(() => () => visuals.dispose(), [visuals]);
   /** The camera's solids for the round's layout (rebuilt when a new layout is dealt). */
-  const blockers = useRef<{ layout: PropLayout | null; value: ReturnType<typeof propCameraBlockers> }>({ layout: null, value: propCameraBlockers() });
+  const blockers = useRef<{ layout: PropLayout | null; value: ReturnType<typeof propCameraBlockers> }>({ layout: null, value: propCameraBlockers([], map) });
   /** The whistles heard this round (debug readout). */
   const whistles = useRef<{ id: PlayerId; muffled: boolean; distance: number }[]>([]);
   /** Hunches the local seeker felt this round (debug readout: search seconds only). */
@@ -371,12 +376,12 @@ export default function PropHuntPlayground({
             audio.playSfx(event);
             feel.current.trigger(event);
           },
-          { roles, seed: (Math.random() * 0x100000000) >>> 0 }
+          { roles, seed: (Math.random() * 0x100000000) >>> 0, map }
         );
         game.current = g;
         // `?propDebug=1` only: the running game for browser test harnesses (scenario set-up).
         if (tools) (window as unknown as { __propGame?: PropHuntGame }).__propGame = g;
-        propNav();
+        propNav(map);
         bots.current = PLAYERS.filter((p) => p.id !== 0).map((p) => ({ id: p.id, bot: roles[p.id] === "seeker" ? new SeekerBot(p.id) : new HiderBot(p.id) }));
         accumulator.current = 0;
         resetView(g);
@@ -492,8 +497,9 @@ export default function PropHuntPlayground({
     visuals.update(delta);
     // ── The round's decoys (a new layout each round): drawn, and solid for the camera ──
     visuals.setDecoys(g.layout);
-    if (blockers.current.layout !== g.layout) blockers.current = { layout: g.layout, value: propCameraBlockers(g.layout.colliders) };
+    if (blockers.current.layout !== g.layout) blockers.current = { layout: g.layout, value: propCameraBlockers(g.layout.colliders, map) };
     v.follow.decoys = g.layout.colliders;
+    v.follow.surface = g.map.surfaceBelow;
     // ── Bodies (hidden while disguised; a found hider pops out of its prop and shrinks away) ──
     for (const player of g.physics.players) {
       const bean = beans.current[player.id];
@@ -530,7 +536,7 @@ export default function PropHuntPlayground({
         if (node.scale.x !== 1) node.scale.setScalar(1);
       });
       const hips = bean.getObjectByName("pelvis")!.position,
-        floor = surfaceBelow(hips.x, hips.z, hips.y);
+        floor = g.map.surfaceBelow(hips.x, hips.z, hips.y);
       visuals.setShadow(player.id, Number.isFinite(floor) && hips.y - floor < 2.2 ? s.feet.set(hips.x, floor, hips.z) : null);
     }
     // ── Who the camera follows ──
@@ -905,9 +911,9 @@ export default function PropHuntPlayground({
 
   return (
     <>
-      <PropEnvironment />
+      {map === "market" ? <MarketEnvironment /> : <PropEnvironment />}
       <group ref={scenery} name="prop-kit">
-        <PropHuntScenery onKit={onKit} />
+        <PropHuntScenery onKit={onKit} map={map} />
       </group>
       <primitive object={visuals.group} />
       {PLAYERS.map((player) => (

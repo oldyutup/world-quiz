@@ -78,6 +78,7 @@ import PropHuntPlayground, { type PropHudElements, type PropSnapshot } from "./p
 import PropHuntHud from "./prophunt/PropHuntHud";
 import { PROP_HUNT } from "../../../shared/party-lab/simulation/prophunt/config";
 import type { PropRole } from "../../../shared/party-lab/maps/propHunt";
+import { PROP_MAP_CHOICE_LABEL, PROP_MAP_CHOICES, isPropMapChoice, type PropMapChoice, type PropMapId } from "../../../shared/party-lab/maps/propTypes";
 import type { SeekerView } from "./prophunt/propCamera";
 import { ArenaMenu, ControlHint, MenuButton, useArenaMenu, useDebugPanel } from "./ArenaChrome";
 import { controlHint } from "./arenaMenu";
@@ -857,6 +858,9 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
   /** The seeker's camera (V or the Esc menu): the shoulder view by default; kept across rounds and role changes for this visit. */
   const [propView, setPropView] = useState<SeekerView>("third");
   const [propProximity, setPropProximity] = useState(true);
+  /** The map choice (Rastgele draws one at every start) and the map being played. */
+  const [propMapChoice, setPropMapChoice] = useState<PropMapChoice>("random");
+  const [propMap, setPropMap] = useState<PropMapId>(() => (Math.random() < 0.5 ? "camp" : "market"));
   const [propTools] = useState(propDebugTools);
   const classic = mapId === "classic_bowling";
   const [classicPlayers, setClassicPlayers] = useState<2 | 3>(2);
@@ -1076,6 +1080,15 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
     setStatus("loading");
     setPropSnapshot(null);
     setPropRole(next);
+    if (propMapChoice === "random") setPropMap(Math.random() < 0.5 ? "camp" : "market");
+    requestAnimationFrame(() => viewport.current?.focus());
+  }
+  function choosePropMap(next: PropMapChoice) {
+    menu.setView(null);
+    setStatus("loading");
+    setPropSnapshot(null);
+    setPropMapChoice(next);
+    setPropMap(next === "random" ? (Math.random() < 0.5 ? "camp" : "market") : next);
     requestAnimationFrame(() => viewport.current?.focus());
   }
   const propOut = propSnapshot?.phase === "search" && propSnapshot.role === "hider" && !propSnapshot.alive[0];
@@ -1249,8 +1262,9 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               />
             ) : mapId === "prophunt" ? (
               <PropHuntPlayground
-                key={`prophunt-${propRole}`}
+                key={`prophunt-${propRole}-${propMap}-${propMapChoice}`}
                 role={propRole}
+                map={propMap}
                 onStatus={setStatus}
                 onSnapshot={setPropSnapshot}
                 hud={propHud}
@@ -1826,6 +1840,18 @@ export default function ArenaScene({ onExit, bindings, onBindings, bindingsSaved
               <select value={bombPlayers} onChange={(event) => chooseBombPlayers(Number(event.target.value) === 2 ? 2 : 3)}>
                 <option value={3}>3 (sen + 2 bot)</option>
                 <option value={2}>2 (sen + 1 bot)</option>
+              </select>
+            </label>
+          )}
+          {prophunt && (
+            <label className="pl-menu-row">
+              <span>Harita{propMapChoice === "random" ? ` (${PROP_MAP_CHOICE_LABEL[propMap]})` : ""}</span>
+              <select value={propMapChoice} onChange={(event) => isPropMapChoice(event.target.value) && choosePropMap(event.target.value)}>
+                {PROP_MAP_CHOICES.map((m) => (
+                  <option key={m} value={m}>
+                    {PROP_MAP_CHOICE_LABEL[m]}
+                  </option>
+                ))}
               </select>
             </label>
           )}

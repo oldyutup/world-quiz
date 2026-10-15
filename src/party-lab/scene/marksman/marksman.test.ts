@@ -33,8 +33,8 @@ const wireOf = (g: MarksmanGame): MarksmanWire => marksmanSection(g, g.lanes.map
 const known = (g: MarksmanGame) => new Map(g.waves.map((w, id) => [id, w] as const));
 const frameOf = (g: MarksmanGame, now = g.elapsedMs, self = -1, aim = 0, pending: PendingShot[] = []): MarksmanFrame => ({ wire: wireOf(g), now, winner: g.winner(), round: 1, self, aim, pending, waves: known(g) });
 
-test("Nişancı is a registered 2–3 player mode on protocol 24, with a local arena, a chat spot, a lobby hint and an online view", () => {
-  assert.equal(NET.version, 24);
+test("Nişancı is a registered 2–3 player mode on protocol 25, with a local arena, a chat spot, a lobby hint and an online view", () => {
+  assert.equal(NET.version, 25);
   assert.ok(GAME_MODES.includes("marksman"));
   assert.equal(MODE_NAMES.marksman, "Nişancı");
   assert.deepEqual(MODE_PLAYERS.marksman, { min: 2, max: 3 });

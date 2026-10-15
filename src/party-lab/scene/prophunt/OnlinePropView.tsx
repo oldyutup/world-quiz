@@ -14,7 +14,9 @@ import { initializePhysics, PHYSICS } from "../physics";
 import { PLAYERS, type PlayerId } from "../players";
 import { PARTS, SHAPES } from "../ragdoll/config";
 import { playerCostumeAtSlot } from "../visual/costumes";
-import { surfaceBelow, type PropRole } from "../../../../shared/party-lab/maps/propHunt";
+import type { PropRole } from "../../../../shared/party-lab/maps/propHunt";
+import type { PropMapId } from "../../../../shared/party-lab/maps/propTypes";
+import MarketEnvironment from "./market/MarketEnvironment";
 import type { PropLayout } from "../../../../shared/party-lab/maps/propHuntLayout";
 import { PROP_FAMILIES, shapeHeight, type PropFamilyId } from "../../../../shared/party-lab/maps/propHuntProps";
 import { PROP_HUNT } from "../../../../shared/party-lab/simulation/prophunt/config";
@@ -71,7 +73,7 @@ export function PropEnvironment() {
 }
 
 /**
- * Online presentation of the authoritative camp, with recipient-only movement prediction.
+ * Online presentation of the authoritative round (Orman Kampı or the Market, `map` from the snapshot), with recipient-only movement prediction.
  */
 export default function OnlinePropView({
   lobby, stream, sendInput, slot,
@@ -88,6 +90,7 @@ export default function OnlinePropView({
   view: seekerView,
   onView,
   proximityEnabled,
+  map = "camp",
 }: {
   lobby: LobbySnapshot;
   stream: GameStream;
@@ -110,6 +113,8 @@ export default function OnlinePropView({
   /** V asks for the other view (the choice lives with the arena, like the Esc menu's). */
   onView: (view: SeekerView) => void;
   proximityEnabled: boolean;
+  /** The map (Orman Kampı by default). */
+  map?: PropMapId;
 }) {
   const { camera, gl } = useThree();
   const beans = useRef<(Group | null)[]>([]);
@@ -138,7 +143,7 @@ export default function OnlinePropView({
   const visuals = useMemo(() => new PropVisuals(), []);
   useEffect(() => () => visuals.dispose(), [visuals]);
   /** The camera's solids for the round's layout (rebuilt when a new layout is dealt). */
-  const blockers = useRef<{ layout: PropLayout | null; value: ReturnType<typeof propCameraBlockers> }>({ layout: null, value: propCameraBlockers() });
+  const blockers = useRef<{ layout: PropLayout | null; value: ReturnType<typeof propCameraBlockers> }>({ layout: null, value: propCameraBlockers([], map) });
   /** The whistles heard this round (debug readout). */
   const whistles = useRef<{ muffled: boolean; distance: number }[]>([]);
   /** Hunches the local seeker felt this round (debug readout: search seconds only). */
@@ -439,8 +444,9 @@ export default function OnlinePropView({
     visuals.update(delta);
     // ── The round's decoys (a new layout each round): drawn, and solid for the camera ──
     visuals.setDecoys(g.layout);
-    if (blockers.current.layout !== g.layout) blockers.current = { layout: g.layout, value: propCameraBlockers(g.layout.colliders) };
+    if (blockers.current.layout !== g.layout) blockers.current = { layout: g.layout, value: propCameraBlockers(g.layout.colliders, map) };
     v.follow.decoys = g.layout.colliders;
+    v.follow.surface = g.map.surfaceBelow;
     // ── Bodies (hidden while disguised; a found hider pops out of its prop and shrinks away) ──
     for (const player of g.physics.players) {
       const bean = beans.current[player.id];
@@ -478,7 +484,7 @@ export default function OnlinePropView({
         if (node.scale.x !== 1) node.scale.setScalar(1);
       });
       const hips = bean.getObjectByName("pelvis")!.position,
-        floor = surfaceBelow(hips.x, hips.z, hips.y);
+        floor = g.map.surfaceBelow(hips.x, hips.z, hips.y);
       visuals.setShadow(player.id, Number.isFinite(floor) && hips.y - floor < 2.2 ? s.feet.set(hips.x, floor, hips.z) : null);
     }
     // Prefer the nearest surviving hider when a found player begins spectating.
@@ -790,9 +796,9 @@ export default function OnlinePropView({
 
   return (
     <>
-      <PropEnvironment />
+      {map === "market" ? <MarketEnvironment /> : <PropEnvironment />}
       <group ref={scenery} name="prop-kit">
-        <PropHuntScenery onKit={onKit} />
+        <PropHuntScenery onKit={onKit} map={map} />
       </group>
       <primitive object={visuals.group} />
       {PLAYERS.map((player) => (

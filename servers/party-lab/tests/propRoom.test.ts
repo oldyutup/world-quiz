@@ -88,6 +88,8 @@ test("Prop Hunt lobby: host authority, ready resets, stored settings, exactly 3 
 test("Prop Hunt reconnect seeker and disguised hider: seat, layout, roles, ammo, timers and latch persist", { timeout: 30000 }, async () => {
   const a = await create("Alice"), b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol"), room = local(a);
   a.room.send("mode", "prop_hunt"); await until(() => room.selection === "prop_hunt");
+  // The positions below are the camp's (the lobby's default map is Rastgele).
+  a.room.send("propSettings", { map: "camp" }); await until(() => room.state.propMap === "camp");
   const sim = await start(a, b, c); sim.round.tick = PROP_TICKS.hiding - 2;
   await until(() => sim.round.phase === "search");
   retire(sim.physics.players[1]); sim.game.disguises.wear(1, "crate", { x: 5, y: 0.02, z: 3 }, 0);
@@ -114,6 +116,7 @@ test("Prop Hunt reconnect seeker and disguised hider: seat, layout, roles, ammo,
 test("Prop Hunt wire events: manual whistle strict validation, proximity only to seeker and no identity", { timeout: 20000 }, async () => {
   const a = await create("Alice"), b = await join(a.room.roomId, "Bobby"), c = await join(a.room.roomId, "Carol"), room = local(a);
   a.room.send("mode", "prop_hunt"); await until(() => room.selection === "prop_hunt");
+  a.room.send("propSettings", { map: "camp" }); await until(() => room.state.propMap === "camp");
   const sim = await start(a, b, c); sim.round.tick = PROP_TICKS.hiding - 2; await until(() => sim.round.phase === "search");
   restore(sim.physics.players[0], { x: 5, y: 0.8, z: 6 });
   retire(sim.physics.players[1]); sim.game.disguises.wear(1, "crate", { x: 5, y: 0.02, z: 3 }, 0);

@@ -80,7 +80,8 @@ export const PROP_KIT_NODES = [
   "Bracket",
 ] as const;
 export type PropKitNode = (typeof PROP_KIT_NODES)[number];
-export type PropKit = Record<PropKitNode, BufferGeometry>;
+/** A map's kit: its nodes' geometries by name (Orman Kampı's PROP_KIT_NODES, or Market's, market/scenery.ts). */
+export type PropKit = Readonly<Record<string, BufferGeometry>>;
 
 export interface Placement {
   node: PropKitNode;
@@ -217,7 +218,7 @@ export function forestPlacements(): Placement[] {
 
 /** The kit's nodes as geometries (each one primitive, bottom-centre pivot). */
 export function readPropKit(root: Object3D): PropKit {
-  const kit = {} as PropKit;
+  const kit: Record<string, BufferGeometry> = {};
   for (const node of PROP_KIT_NODES) {
     const object = root.getObjectByName(node);
     const mesh = (object as Mesh | undefined)?.isMesh ? (object as Mesh) : (object?.children.find((c) => (c as Mesh).isMesh) as Mesh | undefined);
@@ -227,7 +228,7 @@ export function readPropKit(root: Object3D): PropKit {
   return kit;
 }
 /** The family's geometry for a disguise (the same one its decoys draw). */
-export const familyGeometry = (kit: PropKit, family: PropFamilyId) => kit[PROP_FAMILIES[family].node as PropKitNode];
+export const familyGeometry = (kit: PropKit, family: PropFamilyId) => kit[PROP_FAMILIES[family].node];
 
 const matrix = new Matrix4(),
   q = new Quaternion(),

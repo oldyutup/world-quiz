@@ -4,7 +4,8 @@ import type { PlayerId } from "../../../../shared/party-lab/simulation/players";
 import { PARTS } from "../../../../shared/party-lab/simulation/ragdoll/config";
 import { PropHuntGame } from "../../../../shared/party-lab/simulation/prophunt/game";
 import { reconstructPropLayout } from "../../../../shared/party-lab/simulation/prophunt/wire";
-import { PROP_FAMILY_IDS } from "../../../../shared/party-lab/maps/propHuntProps";
+import { ALL_PROP_FAMILY_IDS } from "../../../../shared/party-lab/maps/propHuntProps";
+import type { PropMapId } from "../../../../shared/party-lab/maps/propMaps";
 import { retire } from "../../../../shared/party-lab/simulation/layers/game";
 import { connect } from "../../../../shared/party-lab/simulation/ragdoll/character";
 
@@ -13,6 +14,7 @@ export class PropPrediction {
   game: PropHuntGame | null = null;
   private seq = -1;
   private round = -1;
+  private map: PropMapId | null = null;
   private seed = -1;
   private index = -1;
   private pending: { seq: number; input: MovementInput }[] = [];
@@ -26,12 +28,12 @@ export class PropPrediction {
     if (!wire || snapshot.seq <= this.seq) return false;
     const fresh = snapshot.round !== this.round;
     if (fresh) this.pending = [];
-    if (!this.game || wire.seed !== this.seed || wire.index !== this.index || this.game.seeker !== wire.seeker) {
-      const layout = reconstructPropLayout(wire, this.game ? { seed: this.seed, index: this.index, layout: this.game.layout } : undefined);
+    if (!this.game || wire.map !== this.map || wire.seed !== this.seed || wire.index !== this.index || this.game.seeker !== wire.seeker) {
+      const layout = reconstructPropLayout(wire, this.game && this.map ? { map: this.map, seed: this.seed, index: this.index, layout: this.game.layout } : undefined);
       this.game?.dispose();
-      this.game = new PropHuntGame(undefined, { layout, seed: wire.seed, roles: [0, 1, 2].map((id) => id === wire.seeker ? "seeker" : "hider"), ...wire.settings, online: true });
+      this.game = new PropHuntGame(undefined, { layout, seed: wire.seed, map: wire.map, roles: [0, 1, 2].map((id) => id === wire.seeker ? "seeker" : "hider"), ...wire.settings, online: true });
       this.game.layoutRound = wire.index;
-      this.seed = wire.seed; this.index = wire.index;
+      this.map = wire.map; this.seed = wire.seed; this.index = wire.index;
     } else if (this.game.layout.id !== wire.hash) throw Error("Prop Hunt layout mismatch");
     const g = this.game, r = g.round;
     const priorFamily = g.disguiseOf(this.slot)?.family, priorAlive = r.alive[this.slot];
@@ -55,7 +57,7 @@ export class PropPrediction {
       }
       if (d[0] < 0) g.disguises.remove(id);
       else {
-        const family = PROP_FAMILY_IDS[d[0]], at = { x: d[2], y: d[3], z: d[4] };
+        const family = ALL_PROP_FAMILY_IDS[d[0]], at = { x: d[2], y: d[3], z: d[4] };
         const w = g.disguises.wear(id, family, at, d[5]);
         w.vx = d[6]; w.vy = d[7]; w.vz = d[8]; w.grounded = !!d[9];
         g.sourceDecoys[id] = d[1];

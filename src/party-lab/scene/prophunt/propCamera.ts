@@ -1,4 +1,6 @@
 import { LODGE, PAVILION, PROP_HUNT_MAP, SHED, surfaceBelow, type PropRole } from "../../../../shared/party-lab/maps/propHunt";
+import { MARKET, MARKET_MAP } from "../../../../shared/party-lab/maps/market";
+import type { PropMapId } from "../../../../shared/party-lab/maps/propTypes";
 import type { ArenaCollider } from "../../../../shared/party-lab/maps/types";
 import { PROP_HUNT } from "../../../../shared/party-lab/simulation/prophunt/config";
 import { aimDirection, rightOf } from "../../../../shared/party-lab/simulation/prophunt/aim";
@@ -80,14 +82,20 @@ export const disguisePivot = (height: number) => Math.min(1.6, height * 0.75 + 0
  * camera-only solids: the space under the lodge's and shed's gable roofs (their flat ceilings
  * are at the wall tops) and the pavilion's gable over its roof slab.
  */
-export function propCameraBlockers(decoys: readonly ArenaCollider[] = []) {
-  const solids: ArenaCollider[] = [...PROP_HUNT_MAP.colliders, ...decoys].filter((c) => c.role !== "floor" && c.role !== "boundary");
+export function propCameraBlockers(decoys: readonly ArenaCollider[] = [], map: PropMapId = "camp") {
   const box = (role: ArenaCollider["role"], [x0, x1]: readonly [number, number], [y0, y1]: readonly [number, number], [z0, z1]: readonly [number, number]): ArenaCollider => ({
     role,
     shape: "box",
     center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2 },
     half: { x: (x1 - x0) / 2, y: (y1 - y0) / 2, z: (z1 - z0) / 2 },
   });
+  if (map === "market") {
+    // The market: its walls, glass and fixtures, the round's decoys, and the ceiling over it all (camera only).
+    const solids: ArenaCollider[] = [...MARKET_MAP.colliders, ...decoys].filter((c) => c.role !== "floor" && c.role !== "boundary");
+    solids.push(box("roof", [-MARKET.half, MARKET.half], [MARKET.ceiling, MARKET.ceiling + 1], [-MARKET.half, MARKET.half]));
+    return colliderBlockers(solids);
+  }
+  const solids: ArenaCollider[] = [...PROP_HUNT_MAP.colliders, ...decoys].filter((c) => c.role !== "floor" && c.role !== "boundary");
   solids.push(box("roof", LODGE.x, [LODGE.wallTop, LODGE.ridge + 1], LODGE.z));
   solids.push(box("roof", SHED.x, [SHED.wallTop, SHED.ridge + 1], SHED.z));
   // The pavilion's gable above its roof slab.
@@ -106,6 +114,8 @@ export class PropFollow {
   blend = 0;
   /** The round's decoy colliders (a body standing on a crate rides its top). */
   decoys: readonly ArenaCollider[] = [];
+  /** The map's surface query (default: the camp's). */
+  surface: (x: number, z: number, y?: number, extra?: readonly ArenaCollider[]) => number = surfaceBelow;
   private ground = 0;
   reset() {
     this.pivot = null;
@@ -119,7 +129,7 @@ export class PropFollow {
    */
   update(x: number, feet: number, z: number, lift: number, airborne: boolean, dt: number, firstPerson = false): Point {
     const smooth = (tau: number) => 1 - Math.exp(-Math.min(dt, 0.1) / tau);
-    const below = surfaceBelow(x, z, feet + 0.3, this.decoys);
+    const below = this.surface(x, z, feet + 0.3, this.decoys);
     if (!airborne && Number.isFinite(below)) this.ground = below;
     else if (feet < this.ground - 0.2) this.ground = feet;
     const height = firstPerson ? feet + lift : this.ground + Math.max(-0.3, feet - this.ground) * 0.25 + lift;

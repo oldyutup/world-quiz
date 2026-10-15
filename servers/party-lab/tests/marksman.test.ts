@@ -350,7 +350,7 @@ test("the round simulation: player counts, slots (not seats) as winner, placemen
   assert.equal(sim.winner, 2, "the winning lane's slot");
   assert.deepEqual(sim.placements(), [-1, 1, 0]);
   const snap = sim.snapshot([0, 0, 0]);
-  assert.equal(snap.v, 24);
+  assert.equal(snap.v, 25);
   assert.equal(snap.mode, "marksman");
   assert.equal(snap.winner, 2);
   assert.ok(validMarksmanWire(snap.marksman));
@@ -584,7 +584,7 @@ for (const count of [2, 3])
     if (count === 3) assert.equal(places[slot(2)], 1, "5 = 5 share a place");
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 24);
+    assert.equal(shown.v, 25);
     assert.ok(validMarksmanWire(shown.marksman));
     assert.equal(shown.winner, slot(1));
     assert.equal(shown.marksman!.score[l1], 10);

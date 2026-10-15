@@ -1,5 +1,7 @@
 import type { ArenaCollider, ArenaMap, BoxCollider, ColliderRole, CylinderCollider, RampCollider, Vec2, Vec3 } from "./types.js";
 import { footprintHalf, PROP_FAMILIES, SCENERY, shapeHeight, type PropFamilyId, type SceneryKind } from "./propHuntProps.js";
+import type { CampZoneId, ZoneId } from "./propTypes.js";
+export type { CampZoneId, ZoneId } from "./propTypes.js";
 
 /**
  * "Orman Kampı" — Saklambaç's map (local only): a compact summer camp / ranger lodge,
@@ -46,7 +48,7 @@ export const CAMP = {
 } as const;
 const H = CAMP.half;
 
-type Span = readonly [number, number];
+export type Span = readonly [number, number];
 export interface Rect {
   readonly x: Span;
   readonly z: Span;
@@ -173,7 +175,7 @@ export const GLASS_THICKNESS = 0.06;
 
 // ─── Collider helpers ───────────────────────────────────────────────────────
 
-function box(role: ColliderRole, [x0, x1]: Span, [y0, y1]: Span, [z0, z1]: Span): BoxCollider {
+export function box(role: ColliderRole, [x0, x1]: Span, [y0, y1]: Span, [z0, z1]: Span): BoxCollider {
   return {
     role,
     shape: "box",
@@ -184,7 +186,7 @@ function box(role: ColliderRole, [x0, x1]: Span, [y0, y1]: Span, [z0, z1]: Span)
 function ramp(role: ColliderRole, [x0, x1]: Span, [y0, y1]: Span, [z0, z1]: Span, rises: RampCollider["rises"]): RampCollider {
   return { ...box(role, [x0, x1], [y0, y1], [z0, z1]), shape: "ramp", rises };
 }
-function cylinder(role: ColliderRole, x: number, z: number, y0: number, height: number, radius: number): CylinderCollider {
+export function cylinder(role: ColliderRole, x: number, z: number, y0: number, height: number, radius: number): CylinderCollider {
   return { role, shape: "cylinder", center: { x, y: y0 + height / 2, z }, radius, halfHeight: height / 2 };
 }
 /** A wall's box between `a` and `b` along it, from `y0` to `y1`. */
@@ -193,8 +195,11 @@ function wallPiece(spec: WallSpec, [a, b]: Span, [y0, y1]: Span, role: ColliderR
 }
 /** A wall cut by its openings: full-height pieces between them, sills under windows, lintels over everything, glass in windows. */
 export function wallColliders(id: WallId): BoxCollider[] {
-  const spec = WALLS[id],
-    holes = OPENINGS.filter((o) => o.wall === id).sort((p, q) => p.span[0] - q.span[0]),
+  return cutWall(WALLS[id], OPENINGS.filter((o) => o.wall === id));
+}
+/** `spec` cut by `openings` (any map's walls): see wallColliders. */
+export function cutWall(spec: WallSpec, openings: readonly Pick<Opening, "kind" | "span" | "bottom" | "top">[]): BoxCollider[] {
+  const holes = [...openings].sort((p, q) => p.span[0] - q.span[0]),
     out: BoxCollider[] = [];
   // Doors and windows at the same place on different storeys (the lodge's east wall): cut per storey band.
   const cuts: { span: Span; bands: Span[] }[] = [];
@@ -229,7 +234,6 @@ export function wallColliders(id: WallId): BoxCollider[] {
 
 // ─── Placements ─────────────────────────────────────────────────────────────
 
-export type ZoneId = "lodge" | "loft" | "porch" | "leanTo" | "shed" | "yard" | "plaza" | "camp" | "pavilion" | "border";
 /** Zones that are inside, upstairs or under a roof (the searchable structures). */
 export const STRUCTURE_ZONES: readonly ZoneId[] = ["lodge", "loft", "porch", "leanTo", "shed", "pavilion"];
 
@@ -599,13 +603,13 @@ export function overFootprint(c: ArenaCollider, x: number, z: number, margin = 0
 /**
  * Height of the highest standable top at (x, z) that is not above `y` (+ a step's margin):
  * the ground, a floor, a deck, a slope or — with the round's decoy colliders in `extra` — a
- * prop's top. −Infinity outside the play area.
+ * prop's top, among a map's `colliders`. −Infinity outside the play area (|x|, |z| ≤ `half`).
  */
-export function surfaceBelow(x: number, z: number, y = Infinity, extra: readonly ArenaCollider[] = []): number {
-  if (Math.abs(x) > H || Math.abs(z) > H) return -Infinity;
+export function surfaceIn(colliders: readonly ArenaCollider[], half: number, x: number, z: number, y = Infinity, extra: readonly ArenaCollider[] = []): number {
+  if (Math.abs(x) > half || Math.abs(z) > half) return -Infinity;
   let best = 0;
   const limit = y + 0.3;
-  for (const list of [PROP_HUNT_MAP.colliders, extra])
+  for (const list of [colliders, extra])
     for (const c of list) {
       if (c.role === "floor" || c.role === "boundary" || c.role === "glass" || !overFootprint(c, x, z)) continue;
       const top = colliderTop(c, x, z);
@@ -613,9 +617,13 @@ export function surfaceBelow(x: number, z: number, y = Infinity, extra: readonly
     }
   return best;
 }
+/** The camp's `surfaceIn`. */
+export function surfaceBelow(x: number, z: number, y = Infinity, extra: readonly ArenaCollider[] = []): number {
+  return surfaceIn(PROP_HUNT_MAP.colliders, H, x, z, y, extra);
+}
 
 /** Zone rectangles (floor plan), checked in this order. Upstairs (y ≥ 2.5 inside the lodge) is the loft. */
-export const ZONES: readonly { readonly id: ZoneId; readonly rect: Rect }[] = [
+export const ZONES: readonly { readonly id: CampZoneId; readonly rect: Rect }[] = [
   { id: "lodge", rect: LODGE_INSIDE },
   { id: "porch", rect: PORCH },
   { id: "leanTo", rect: { x: [2, 6.5], z: [-11, -7] } },
@@ -627,7 +635,7 @@ export const ZONES: readonly { readonly id: ZoneId; readonly rect: Rect }[] = [
   { id: "border", rect: { x: [-11, 11], z: [-11, 11] } },
 ];
 /** The zone a floor point is in (`y`: its surface height). */
-export function zoneAt(x: number, z: number, y = 0): ZoneId {
+export function zoneAt(x: number, z: number, y = 0): CampZoneId {
   for (const { id, rect } of ZONES) {
     if (x < rect.x[0] || x > rect.x[1] || z < rect.z[0] || z > rect.z[1]) continue;
     if (id === "lodge" && y >= 2.5) return "loft";

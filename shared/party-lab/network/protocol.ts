@@ -66,7 +66,10 @@ export const NET = {
   // as often); Kutu Yağmuru punch (packet punchHeld, punch/stun/guard in the motion rows); Araba
   // Yarışı slipstream + catch-up (tow state in the motion rows), 5 m checkpoint margin and a real
   // "missed" flag in progress. A v23 page would predict other rules and a v23 server refuses the packet.
-  version: 24,
+  // 25: Saklambaç Market map. The room's propMap choice (Orman Kampı / Market / Rastgele) and the
+  // snapshot's prop.map (the round's map; its layout index and family mask are that map's); a v24
+  // page would draw the camp under market poses and a v24 server rejects the map setting.
+  version: 25,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,

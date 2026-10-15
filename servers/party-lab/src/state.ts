@@ -43,6 +43,8 @@ export const LobbyState = schema(
     hostId: t.string(),
     propAmmo: t.number(),
     propProximity: t.boolean(),
+    /** Host's Saklambaç map: "camp", "market" or "random" (Mixed and Tahta Oyunu always draw one). */
+    propMap: t.string(),
     players: t.map(LobbyPlayer),
     messages: t.array(ChatMessage),
     bowlingObstacles: t.boolean(),

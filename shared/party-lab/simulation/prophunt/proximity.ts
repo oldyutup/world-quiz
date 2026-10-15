@@ -16,7 +16,7 @@ import { PROP_HUNT, PROP_TICKS } from "./config.js";
  */
 const P = PROP_HUNT.proximity;
 
-/** Roles that stop the hunch: the camp's architecture only. */
+/** Roles that stop the hunch: a map's architecture only (the market's shelves, fridges and counters are furniture: they never stop it). */
 export const SENSE_BLOCKING: ReadonlySet<ColliderRole> = new Set<ColliderRole>(["wall", "glass", "floor", "deck", "loft", "roof", "woodpile", "tent", "boundary"]);
 
 interface Plane {
@@ -56,8 +56,16 @@ function solidOf(c: ArenaCollider): Solid {
   }
   return { min, max, planes };
 }
-/** The camp's architecture as solids (the map never changes; the round's decoys are never in it). */
-export const SENSE_SOLIDS: readonly Solid[] = PROP_HUNT_MAP.colliders.filter((c) => SENSE_BLOCKING.has(c.role)).map(solidOf);
+export type SenseSolids = readonly Solid[];
+const solidsOf = new WeakMap<readonly ArenaCollider[], SenseSolids>();
+/** A map's architecture as solids (a map never changes; the round's decoys are never in it). Cached per collider list. */
+export function senseSolids(colliders: readonly ArenaCollider[]): SenseSolids {
+  let list = solidsOf.get(colliders);
+  if (!list) solidsOf.set(colliders, (list = colliders.filter((c) => SENSE_BLOCKING.has(c.role)).map(solidOf)));
+  return list;
+}
+/** The camp's architecture as solids. */
+export const SENSE_SOLIDS: SenseSolids = senseSolids(PROP_HUNT_MAP.colliders);
 
 /** Whether the segment a→b passes more than 2 cm through any of `solids` (Cyrus–Beck clipping). */
 export function segmentBlocked(a: Vec, b: Vec, solids: readonly Solid[] = SENSE_SOLIDS): boolean {
@@ -106,14 +114,14 @@ export interface SenseTarget {
 /** Seeker's head and chest above its feet (fixed offsets from the pelvis: no ragdoll wobble). */
 const HEAD = 1.6,
   CHEST = 1.15;
-/** Whether a hider is close to a seeker standing with its pelvis at `seeker` (feet 0.78 m below it). */
-export function senses(seeker: Vec, hider: SenseTarget): boolean {
+/** Whether a hider is close to a seeker standing with its pelvis at `seeker` (feet 0.78 m below it), among a map's `solids` (default: the camp's). */
+export function senses(seeker: Vec, hider: SenseTarget, solids: SenseSolids = SENSE_SOLIDS): boolean {
   if (Math.hypot(hider.x - seeker.x, hider.z - seeker.z) > P.radius) return false;
   const feet = seeker.y - 0.78;
   if (Math.abs(hider.feet - feet) > P.vertical) return false;
   return (
-    !segmentBlocked({ x: seeker.x, y: feet + HEAD, z: seeker.z }, { x: hider.x, y: hider.top, z: hider.z }) ||
-    !segmentBlocked({ x: seeker.x, y: feet + CHEST, z: seeker.z }, { x: hider.x, y: hider.middle, z: hider.z })
+    !segmentBlocked({ x: seeker.x, y: feet + HEAD, z: seeker.z }, { x: hider.x, y: hider.top, z: hider.z }, solids) ||
+    !segmentBlocked({ x: seeker.x, y: feet + CHEST, z: seeker.z }, { x: hider.x, y: hider.middle, z: hider.z }, solids)
   );
 }
 
