@@ -7,6 +7,8 @@ export interface CrateWire {
   /** Six bytes per immutable spawn: cell, paint/layer/landed, start tick, landing tick.
    * Self-contained journal survives lost snapshots and reconnect. Never crate transforms. */
   journal: Uint8Array;
+  /** Per player: velocity, heading, grounded, support, coyote, buffer, jumpHeld, stepped, then
+   * the punch: swing age, landed, held, cooldown, stun, guard (CRATE_PUNCH). */
   motion: number[][]; held: number[];
 }
 export function crateTransforms(g: CrateRainGame) {
@@ -27,7 +29,8 @@ export function crateSection(g: CrateRainGame, seats: number[]): CrateWire {
   }
   return { seats, seed: g.seed, stage: g.round, phase: g.phase, time: g.phaseTime, elapsed: g.elapsed,
     wins: [...g.wins], winner: g.winner, timeout: g.timeout, alive: g.players.map(p => p.alive), journal,
-    held: g.players.map(() => 0), motion: g.players.map(p => { const v = p.body.linvel(); return [v.x, v.y, v.z, p.heading, +p.grounded, p.support ?? -1, p.coyote, p.buffer, +p.jumpHeld, p.stepped]; }) };
+    held: g.players.map(() => 0), motion: g.players.map(p => { const v = p.body.linvel(); return [v.x, v.y, v.z, p.heading, +p.grounded, p.support ?? -1, p.coyote, p.buffer, +p.jumpHeld, p.stepped,
+      p.punchAge, +p.punchHit, +p.punchHeld, p.cooldown, p.stun, p.guard]; }) };
 }
 /** Idempotent reconstruction: unchanged fixed crates are never recreated or moved. */
 export function restoreCrates(g: CrateRainGame, w: CrateWire, elapsed = w.elapsed) {
@@ -63,7 +66,8 @@ export function restoreCratePlayers(g: CrateRainGame, w: CrateWire, poses: Array
     const m = w.motion[i], o = i * 7;
     p.body.setTranslation({ x: poses[o], y: poses[o + 1], z: poses[o + 2] }, true);
     p.body.setLinvel({ x: m[0], y: m[1], z: m[2] }, true);
-    Object.assign(p, { alive: w.alive[i], heading: m[3], grounded: !!m[4], support: m[5] < 0 ? null : m[5], coyote: m[6], buffer: m[7], jumpHeld: !!m[8], stepped: m[9] });
+    Object.assign(p, { alive: w.alive[i], heading: m[3], grounded: !!m[4], support: m[5] < 0 ? null : m[5], coyote: m[6], buffer: m[7], jumpHeld: !!m[8], stepped: m[9],
+      punchAge: m[10], punchHit: !!m[11], punchHeld: !!m[12], cooldown: m[13], stun: m[14], guard: m[15] });
     p.body.setEnabled(p.alive); p.positionBefore = p.body.translation();
   });
   g.world.propagateModifiedBodyPositionsToColliders();

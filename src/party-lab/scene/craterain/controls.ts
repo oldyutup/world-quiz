@@ -1,16 +1,18 @@
 import { bindingLabel, isBinding, type Bindings, type BindingSlots } from '../../input/bindings';
 import { defaultBindings } from '../../input/defaults';
-import { keyboardBinding, isUIInput } from '../../input/device';
+import { keyboardBinding, isUIInput, mouseBinding } from '../../input/device';
 
-export const CRATE_ACTIONS = ['moveForward', 'moveBackward', 'moveLeft', 'moveRight', 'sprint', 'jump', 'camera', 'lookLeft', 'lookRight', 'lookUp', 'lookDown'] as const;
+export const CRATE_ACTIONS = ['moveForward', 'moveBackward', 'moveLeft', 'moveRight', 'sprint', 'jump', 'punch', 'camera', 'lookLeft', 'lookRight', 'lookUp', 'lookDown'] as const;
+/** The only action a mouse button may trigger (left click by default); looking takes the mouse's movement. */
+const MOUSE_ACTIONS: readonly CrateAction[] = ['punch'];
 export type CrateAction = typeof CRATE_ACTIONS[number];
 export type CrateBindings = Record<CrateAction, BindingSlots>;
 export type CrateOverrides = Partial<CrateBindings>;
-export const CRATE_LABELS: Record<CrateAction, string> = { moveForward: 'İleri', moveBackward: 'Geri', moveLeft: 'Sol', moveRight: 'Sağ', sprint: 'Koş', jump: 'Zıpla', camera: 'Kamera', lookLeft: 'Sola bak', lookRight: 'Sağa bak', lookUp: 'Yukarı bak', lookDown: 'Aşağı bak' };
+export const CRATE_LABELS: Record<CrateAction, string> = { moveForward: 'İleri', moveBackward: 'Geri', moveLeft: 'Sol', moveRight: 'Sağ', sprint: 'Koş', jump: 'Zıpla', punch: 'Yumruk', camera: 'Kamera', lookLeft: 'Sola bak', lookRight: 'Sağa bak', lookUp: 'Yukarı bak', lookDown: 'Aşağı bak' };
 export const CRATE_CONTROLS_KEY = 'party-lab-crate-controls-v1';
 export function crateBindings(shared: Bindings, overrides: CrateOverrides = {}): CrateBindings {
   const defaults = defaultBindings();
-  const result = { moveForward: shared.moveForward, moveBackward: shared.moveBackward, moveLeft: shared.moveLeft, moveRight: shared.moveRight, sprint: shared.lift, jump: shared.jump,
+  const result = { moveForward: shared.moveForward, moveBackward: shared.moveBackward, moveLeft: shared.moveLeft, moveRight: shared.moveRight, sprint: shared.lift, jump: shared.jump, punch: shared.punch,
     camera: ['KeyV', null], lookLeft: ['ArrowLeft', null], lookRight: ['ArrowRight', null], lookUp: ['ArrowUp', null], lookDown: ['ArrowDown', null] } as CrateBindings;
   // Only the unchanged stock arrow aliases become look controls in this mode.
   // Custom movement arrows are preserved; conflicting look keys get a free default.
@@ -23,9 +25,10 @@ export function crateBindings(shared: Bindings, overrides: CrateOverrides = {}):
   const ordered = [...CRATE_ACTIONS.filter(a => overrides[a]), ...CRATE_ACTIONS.filter(a => !overrides[a])];
   for (const action of ordered) {
     const slots = [...result[action]] as [string, string | null];
-    if (used.has(slots[0]) || slots[0].startsWith('Mouse')) slots[0] = ['KeyJ', 'KeyL', 'KeyI', 'KeyK', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c => `Key${c}`), ...Array.from({ length: 10 }, (_, i) => `Digit${i}`)].find(k => !used.has(k) && !reserved.has(k))!;
+    const mouse = MOUSE_ACTIONS.includes(action);
+    if (used.has(slots[0]) || (!mouse && slots[0].startsWith('Mouse'))) slots[0] = [...(action === 'punch' ? ['KeyF'] : []), 'KeyJ', 'KeyL', 'KeyI', 'KeyK', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(c => `Key${c}`), ...Array.from({ length: 10 }, (_, i) => `Digit${i}`)].find(k => !used.has(k) && !reserved.has(k))!;
     used.add(slots[0]);
-    if (slots[1] && (used.has(slots[1]) || slots[1].startsWith('Mouse'))) slots[1] = null;
+    if (slots[1] && (used.has(slots[1]) || (!mouse && slots[1].startsWith('Mouse')))) slots[1] = null;
     if (slots[1]) used.add(slots[1]);
     result[action] = slots;
   }
@@ -33,14 +36,14 @@ export function crateBindings(shared: Bindings, overrides: CrateOverrides = {}):
 }
 export const crateBindingLabel = (bindings: CrateBindings, action: CrateAction) => [...new Set(bindings[action].filter((v): v is string => !!v).map(bindingLabel))].join(' / ');
 export function changeCrateBinding(bindings: CrateBindings, action: CrateAction, slot: 0 | 1, key: string | null): CrateBindings | null {
-  if ((!key && slot === 0) || (key && (!isBinding(key) || key.startsWith('Mouse') || CRATE_ACTIONS.some(a => a !== action && bindings[a].includes(key))))) return null;
+  if ((!key && slot === 0) || (key && (!isBinding(key) || (key.startsWith('Mouse') && !MOUSE_ACTIONS.includes(action)) || CRATE_ACTIONS.some(a => a !== action && bindings[a].includes(key))))) return null;
   const slots = [...bindings[action]] as [string, string | null]; slots[slot] = key!;
   return { ...bindings, [action]: slots };
 }
 export function loadCrateOverrides(): CrateOverrides {
   try {
     const data = JSON.parse(window.localStorage.getItem(CRATE_CONTROLS_KEY) ?? 'null');
-    if (data?.version === 1 && data.bindings && typeof data.bindings === 'object' && !Array.isArray(data.bindings) && Object.entries(data.bindings).every(([key, slots]) => CRATE_ACTIONS.includes(key as CrateAction) && Array.isArray(slots) && slots.length === 2 && isBinding(slots[0]) && !slots[0].startsWith('Mouse') && (slots[1] === null || (isBinding(slots[1]) && !slots[1].startsWith('Mouse'))))) return data.bindings;
+    if (data?.version === 1 && data.bindings && typeof data.bindings === 'object' && !Array.isArray(data.bindings) && Object.entries(data.bindings).every(([key, slots]) => CRATE_ACTIONS.includes(key as CrateAction) && Array.isArray(slots) && slots.length === 2 && isBinding(slots[0]) && (MOUSE_ACTIONS.includes(key as CrateAction) || !slots[0].startsWith('Mouse')) && (slots[1] === null || (isBinding(slots[1]) && (MOUSE_ACTIONS.includes(key as CrateAction) || !slots[1].startsWith('Mouse')))))) return data.bindings;
   } catch { /* A blocked store must not prevent keyboard play. */ }
   return {};
 }
@@ -49,19 +52,29 @@ export function saveCrateOverrides(bindings: CrateOverrides) {
 }
 /** Local semantic adapter with Party Lab's held-alias and fresh-press rules. */
 export class CrateInput {
-  private keys = new Set<string>(); private cameraEdge = false;
+  private keys = new Set<string>(); private cameraEdge = false; private punchEdge = false;
   constructor(readonly bindings: CrateBindings) {}
   down(action: CrateAction) { return this.bindings[action].some(key => key !== null && this.keys.has(key)); }
   set(key: string, down: boolean) {
-    const before = this.down('camera');
+    const before = this.down('camera'), punching = this.down('punch');
     if (down) this.keys.add(key); else this.keys.delete(key);
     if (!before && this.down('camera')) this.cameraEdge = true;
+    // A tap released before the next frame still reaches the simulation as one held frame.
+    if (!punching && this.down('punch')) this.punchEdge = true;
   }
-  clear() { this.keys.clear(); this.cameraEdge = false; }
+  clear() { this.keys.clear(); this.cameraEdge = this.punchEdge = false; }
   read() {
-    const out = { x: Number(this.down('moveRight')) - Number(this.down('moveLeft')), z: Number(this.down('moveBackward')) - Number(this.down('moveForward')), sprint: this.down('sprint'), jump: this.down('jump'), yaw: Number(this.down('lookLeft')) - Number(this.down('lookRight')), pitch: Number(this.down('lookDown')) - Number(this.down('lookUp')), camera: this.cameraEdge };
-    this.cameraEdge = false; return out;
+    const out = { x: Number(this.down('moveRight')) - Number(this.down('moveLeft')), z: Number(this.down('moveBackward')) - Number(this.down('moveForward')), sprint: this.down('sprint'), jump: this.down('jump'), punch: this.down('punch') || this.punchEdge, yaw: Number(this.down('lookLeft')) - Number(this.down('lookRight')), pitch: Number(this.down('lookDown')) - Number(this.down('lookUp')), camera: this.cameraEdge };
+    this.cameraEdge = this.punchEdge = false; return out;
   }
+}
+/** Mouse buttons bound to a crate action (the punch), except the presses the look controller claims (taking the lock). */
+export function bindCrateMouse(surface: HTMLElement, manager: CrateInput, enabled: () => boolean, claimed: (event: MouseEvent) => boolean) {
+  const bound = (event: MouseEvent) => { const key = mouseBinding(event.button); return key && Object.values(manager.bindings).some(slots => slots.includes(key)) ? key : null; };
+  const down = (e: MouseEvent) => { const key = bound(e); if (!key || !enabled() || isUIInput(e.target) || claimed(e)) return; e.preventDefault(); manager.set(key, true); };
+  const up = (e: MouseEvent) => { const key = mouseBinding(e.button); if (key) manager.set(key, false); };
+  surface.addEventListener('mousedown', down); window.addEventListener('mouseup', up);
+  return () => { surface.removeEventListener('mousedown', down); window.removeEventListener('mouseup', up); };
 }
 export function bindCrateInput(surface: HTMLElement, manager: CrateInput, enabled: () => boolean, gesture: () => void) {
   const clear = () => manager.clear();

@@ -3,10 +3,10 @@ import { before, test } from 'node:test';
 import { initializePhysics } from '../physics';
 import { NET } from '../../../../shared/party-lab/network/protocol';
 import { MODE_SELECTIONS } from '../../../../shared/party-lab/modes';
-import { CAR, IDLE, RACE, steeringRate, type DriveInput } from './config';
+import { CAR, CATCH_UP, DRAFT, IDLE, RACE, steeringRate, type DriveInput } from './config';
 import { RaceTrack, crossedGate } from './track';
 import { RaceGame } from './game';
-import { advance, missedCheckpoint, newProgress, raceDistance, raceOrder, wrongWay } from './rules';
+import { advance, markMissed, missedCheckpoint, newProgress, raceDistance, raceOrder, wrongWay } from './rules';
 import { VIEWS, newCamera, updateCamera } from './camera';
 before(initializePhysics);
 test('simpler circuit has five readable corners, long straights and a similar lap length',()=>{
@@ -24,7 +24,7 @@ const run=(g:RaceGame,seconds:number,input:DriveInput=IDLE)=>{for(let i=0;i<Math
 const gateCross=(track:RaceTrack,n:number,backward=false)=>{const p=track.checkpoints[n],a={x:p.x-p.tx,y:.64,z:p.z-p.tz},b={x:p.x+p.tx,y:.64,z:p.z+p.tz};return backward?[b,a]:[a,b];};
 function fixture(){const g=new RaceGame(2);g.phase='racing';g.bots=false;g.cars[0].place({x:0,y:.64,z:36},0);g.cars[1].place(g.track.pose(160),0);run(g,.2);return g;}
 
-test('approved identity joins online/mixed selection',()=>{assert.equal(NET.version, 23);assert.ok(MODE_SELECTIONS.some(m=>String(m)===RACE.id));assert.throws(()=>new RaceGame(4 as 2));});
+test('approved identity joins online/mixed selection',()=>{assert.equal(NET.version, 24);assert.ok(MODE_SELECTIONS.some(m=>String(m)===RACE.id));assert.throws(()=>new RaceGame(4 as 2));});
 test('grid has separate equal front row and staggered third seat',()=>{for(const count of [2,3]as const){const g=new RaceGame(count);try{for(let a=0;a<count;a++)for(let b=a+1;b<count;b++){const p=g.cars[a].body.translation(),q=g.cars[b].body.translation();assert.ok(Math.hypot(p.x-q.x,p.z-q.z)>3.9);}assert.equal(g.world.bodies.len(),count);assert.ok(g.cars.every(c=>c.body.isCcdEnabled()));}finally{g.dispose();}}});
 test('countdown ignores throttle, brake, steering and reset',()=>{const g=new RaceGame(3);try{const starts=g.cars.map(c=>c.body.translation());run(g,2.8,{throttle:1,brake:1,steer:1,reset:true});assert.equal(g.phase,'countdown');g.cars.forEach((c,i)=>{assert.ok(Math.hypot(c.body.translation().x-starts[i].x,c.body.translation().z-starts[i].z)<.01);assert.equal(g.progress[i].resets,0);});run(g,.3);assert.equal(g.phase,'racing');}finally{g.dispose();}});
 test('ordered gates arm the start, count exactly three complete laps and finish once',()=>{const t=new RaceTrack(),p=newProgress();let time=0;for(let lap=0;lap<=3;lap++)for(let i=0;i<18;i++){if(lap===3&&i>0)break;const [a,b]=gateCross(t,i);assert.ok(advance(p,t,a,b,++time));assert.equal(p.laps,lap);}assert.equal(p.laps,3);assert.equal(p.finish,55);const [a,b]=gateCross(t,1);assert.equal(advance(p,t,a,b,56),false);});
@@ -36,8 +36,22 @@ test('order uses lap then ordered sector and clamped segment progress',()=>{cons
 test('fall resets only to last valid gate, preserves all progress and applies hold/cooldown',()=>{const g=fixture();try{const p=g.progress[0];p.started=true;p.next=6;p.laps=1;g.cars[0].body.setTranslation({x:70,y:-4,z:60},true);g.step();assert.equal(p.resets,1);assert.equal(p.laps,1);assert.equal(p.next,6);assert.ok(p.hold>1);assert.equal(g.cars[0].speed,0);const at=g.cars[0].body.translation();run(g,.7,{...IDLE,throttle:1,reset:true});assert.equal(p.resets,1);assert.ok(Math.hypot(g.cars[0].body.translation().x-at.x,g.cars[0].body.translation().z-at.z)<.01);assert.equal(p.next,6);}finally{g.dispose();}});
 test('stationary off-road and inverted chassis recover with same reset rules',()=>{for(const upside of [false,true]){const g=fixture();try{const c=g.cars[0];c.place(g.track.pose(150,10),0);if(upside)c.body.setRotation({x:1,y:0,z:0,w:0},true);run(g,4.5);assert.ok(g.progress[0].resets>=1);assert.equal(g.progress[0].laps,0);}finally{g.dispose();}}});
 test('manual reset is edge triggered and cannot jump to unearned sectors',()=>{const g=fixture();try{g.progress[0].started=true;g.progress[0].next=2;g.cars[0].place(g.track.pose(300),0);run(g,6,{...IDLE,reset:true});assert.equal(g.progress[0].resets,1);assert.equal(g.progress[0].next,2);}finally{g.dispose();}});
-test('missed gate warning distinguishes upcoming gates and never awards a cut',()=>{const t=new RaceTrack(),p=newProgress();p.started=true;p.next=5;const s=t.checkpoints[5].s;assert.equal(missedCheckpoint(p,t,s-3),false);assert.equal(missedCheckpoint(p,t,s+3),true);assert.equal(p.next,5);p.hold=1;assert.equal(missedCheckpoint(p,t,s+3),false);});
-test('bot physically backtracks to a missed gate and completes all laps without reset',()=>{const g=new RaceGame(3);try{g.autoHuman=true;while(g.time<15)g.step();const c=g.cars[1],p=g.progress[1],gate=g.track.checkpoints[p.next],expected=p.next;c.place(g.track.pose(gate.s+3,7),Math.atan2(gate.tx,gate.tz));g.step();assert.equal(p.next,expected);assert.equal(g.drivers[1].recovering,expected);while(g.phase!=='results')g.step();assert.equal(p.laps,3);assert.ok(p.finish!==null);assert.equal(p.resets,0);assert.equal(g.invalid,0);}finally{g.dispose();}});
+const beside=(track:RaceTrack,n:number,offset:number,backward=false)=>{const p=track.checkpoints[n],o={x:p.tz*offset,z:-p.tx*offset},a={x:p.x+o.x-p.tx,y:.64,z:p.z+o.z-p.tz},b={x:p.x+o.x+p.tx,y:.64,z:p.z+o.z+p.tz};return backward?[b,a]:[a,b];};
+test('missed gate warning only after a real miss: beside the gate or through a later one, never behind or backwards',()=>{
+  const t=new RaceTrack(),p=newProgress();p.started=true;p.next=5;const w=t.checkpoints[5].width/2;
+  // Within 5 m of the asphalt it is earned, not missed.
+  for(const side of [1,-1]){const q={...p},[a,b]=beside(t,5,side*(w+RACE.gateMargin-.1));assert.ok(advance(q,t,a,b,1));assert.equal(q.next,6);assert.equal(q.missed,false);}
+  // Behind it, driving back over it and beside it backwards: no warning.
+  for(const [a,b] of [beside(t,4,0),beside(t,5,0,true),beside(t,5,w+9,true)]){assert.equal(advance(p,t,a,b,1),false);assert.equal(markMissed(p,t,a,b),false);}
+  assert.equal(missedCheckpoint(p),false);
+  // Beside it (beyond the margin): a miss, kept until the gate is earned.
+  let [a,b]=beside(t,5,w+RACE.gateMargin+1);assert.equal(advance(p,t,a,b,1),false);assert.equal(markMissed(p,t,a,b),true);assert.equal(missedCheckpoint(p),true);assert.equal(p.next,5);
+  p.hold=1;assert.equal(missedCheckpoint(p),false);p.hold=0;
+  [a,b]=gateCross(t,5);assert.ok(advance(p,t,a,b,2));assert.equal(missedCheckpoint(p),false);
+  // Through a later checkpoint (a shortcut): a miss; it never earns anything.
+  const q={...newProgress(),started:true,next:5};[a,b]=gateCross(t,8);assert.equal(advance(q,t,a,b,1),false);assert.equal(markMissed(q,t,a,b),true);assert.equal(q.next,5);
+});
+test('bot physically backtracks to a missed gate and completes all laps without reset',()=>{const g=new RaceGame(3);try{g.autoHuman=true;const c=g.cars[1],p=g.progress[1];while(String(g.phase)!=="racing"||p.next!==4)g.step();const gate=g.track.checkpoints[p.next],expected=p.next;/* Gate 4: open infield beside it (no barrier to get stuck behind). */c.place(g.track.pose(gate.s-2,gate.width/2+RACE.gateMargin+3),Math.atan2(gate.tx,gate.tz));c.body.setLinvel({x:gate.tx*12,y:0,z:gate.tz*12},true);for(let i=0;i<20&&!p.missed;i++)g.step();assert.equal(p.next,expected);assert.equal(p.missed,true);g.step();assert.equal(g.drivers[1].recovering,expected);while(g.phase!=='results')g.step();assert.equal(p.laps,3);assert.ok(p.finish!==null);assert.equal(p.resets,0);assert.equal(g.invalid,0);}finally{g.dispose();}});
 test('asphalt has more acceleration and lateral grip; S brakes before reversing',()=>{const asphalt=fixture(),grass=fixture();try{grass.cars[0].place({x:-7,y:.64,z:36},0);run(asphalt,1,{...IDLE,throttle:1});run(grass,1,{...IDLE,throttle:1});assert.ok(asphalt.cars[0].speed>grass.cars[0].speed*1.7);assert.ok(grass.cars[0].grass);asphalt.cars[0].body.setLinvel({x:0,y:0,z:20},true);run(asphalt,.5,{...IDLE,brake:1});assert.ok(asphalt.cars[0].forwardSpeed>9);run(asphalt,1.8,{...IDLE,brake:1});assert.ok(asphalt.cars[0].forwardSpeed< -2);assert.ok(asphalt.cars[0].forwardSpeed>= -CAR.reverse-.1);assert.ok(steeringRate(8)>steeringRate(25));}finally{asphalt.dispose();grass.dispose();}});
 test('real head-on contact slows both cars without invalid bodies or giant rotation',()=>{const g=fixture();try{const [a,b]=g.cars;a.place({x:0,y:.64,z:32},0);b.place({x:0,y:.64,z:44},Math.PI);a.body.setLinvel({x:0,y:0,z:24},true);b.body.setLinvel({x:0,y:0,z:-20},true);run(g,.5);assert.ok(g.contacts>0);assert.ok(a.speed<10&&b.speed<10);assert.equal(g.invalid,0);assert.ok(Math.abs(a.body.angvel().y)<=3);}finally{g.dispose();}});
 test('physical 90/110/150 km/h barrier impacts cannot tunnel through its outer face',()=>{for(const speed of [90,110,150]){const g=fixture();try{const c=g.cars[0],p=g.track.at(15);c.place(g.track.pose(15,p.width/2-1.5),Math.atan2(p.tz,-p.tx));c.body.setLinvel({x:p.tz*speed/3.6,y:0,z:-p.tx*speed/3.6},true);let far=0;for(let i=0;i<60;i++){g.step();far=Math.max(far,c.projection.distance);}assert.ok(g.contacts>0);assert.ok(far<8.2,`${speed} km/h: ${far} m`);assert.equal(g.invalid,0);}finally{g.dispose();}}});
@@ -61,3 +75,83 @@ test('asphalt slip settles faster than grass while grass acceleration stays pena
   const g=fixture();try{const c=g.cars[0];c.body.setLinvel({x:4,y:0,z:15},true);run(g,.1);const road=Math.abs(c.body.linvel().x);c.place({x:-7,y:.64,z:36},0);c.body.setLinvel({x:4,y:0,z:15},true);run(g,.1);assert.ok(c.grass);assert.ok(Math.abs(c.body.linvel().x)>road*2);assert.ok(CAR.grip>CAR.grassGrip*4);}finally{g.dispose();}
 });
 test('2P and 3P bots run real complete three-lap races; rematch starts clean',()=>{for(const n of [2,3]as const){const g=new RaceGame(n);try{g.autoHuman=true;for(let i=0;i<9000&&g.phase!=='results';i++)g.step();assert.equal(g.phase,'results');assert.ok(g.progress.every(p=>p.finish!==null&&p.laps===3));assert.ok(g.time>75&&g.time<125,`${g.time}`);assert.equal(g.invalid,0);assert.ok(g.progress.every(p=>p.resets===0));}finally{g.dispose();}const fresh=new RaceGame(n);try{assert.equal(fresh.phase,'countdown');assert.equal(fresh.time,0);assert.ok(fresh.progress.every(p=>p.laps===0&&p.finish===null&&p.resets===0));assert.equal(fresh.world.bodies.len(),n);}finally{fresh.dispose();}}});
+
+test('checkpoints count up to 5 m beyond the asphalt on every corner gate, never further',()=>{
+  assert.equal(RACE.gateMargin,5);
+  for(const gate of [3,4,6,11,14,16,17])for(const side of [1,-1])for(const off of [2,4.9,5.3]){
+    const g=new RaceGame(2);try{g.phase='racing';g.bots=false;g.cars[1].place(g.track.pose(gate*33+200),0);
+      const p=g.progress[0],cp=g.track.checkpoints[gate];p.started=true;p.next=gate;
+      // The line through the gate, like a car on the grass or scraping a barrier (sideways moves are not driving).
+      const [a,b]=beside(g.track,gate,side*(cp.width/2+off));
+      assert.equal(advance(p,g.track,a,b,1),off<RACE.gateMargin,`gate ${gate} side ${side} ${off} m off the asphalt`);
+    }finally{g.dispose();}
+  }
+});
+test('R always respawns at the last checkpoint passed and never adds progress, from anywhere on or off the track',()=>{
+  for(const [next,where] of [[2,300],[9,40],[0,580],[1,200],[14,470]] as const){
+    const g=fixture();try{const p=g.progress[0],c=g.cars[0];p.started=true;p.next=next;p.laps=1;c.place(g.track.pose(where,where%2?9:-4),where/40);run(g,.2);
+      const before={laps:p.laps,next:p.next};g.time+=4;g.step({...IDLE,reset:true});assert.equal(p.resets,1);assert.deepEqual({laps:p.laps,next:p.next},before);
+      const last=g.track.checkpoints[(next+17)%18],at=c.body.translation(),q=g.track.project(at);let behind=g.track.wrap(last.s-q.s);if(behind>g.track.length/2)behind-=g.track.length;
+      assert.ok(behind>=0&&behind<15,`next ${next}: ${behind} m behind the last checkpoint`);assert.equal(missedCheckpoint(p),false);
+      run(g,1.3);assert.deepEqual({laps:p.laps,next:p.next},before,'the hold never adds anything');
+    }finally{g.dispose();}
+  }
+});
+/** Two cars on a long straight (a 5× circuit), the second `gap` m behind the first, `side` m off its line, both at `speed`. */
+function towFixture(gap:number,side=0,speed=26){
+  const g=new RaceGame(2,{scale:5,width:100});g.phase='racing';g.bots=false;const t=g.track,lead=t.at(200),h=Math.atan2(lead.tx,lead.tz);
+  g.progress.forEach(p=>{p.started=true;p.next=1;});
+  g.cars[0].place(t.pose(200),h);g.cars[1].place(t.pose(200-gap,side),h);
+  for(const c of g.cars)c.body.setLinvel({x:lead.tx*speed,y:0,z:lead.tz*speed},true);
+  return g;
+}
+const both=(g:RaceGame,seconds:number,throttle=1)=>run2(g,seconds,[{...IDLE,throttle},{...IDLE,throttle}]);
+const run2=(g:RaceGame,seconds:number,inputs:DriveInput[])=>{for(let i=0;i<Math.round(seconds/RACE.step);i++)g.step(IDLE,inputs);};
+test('tow cone: only a few metres right behind, aligned and fast',()=>{
+  const cases:[number,number,number,boolean][]=[[8,0,26,true],[4,.5,26,true],[13.5,1.9,26,true],[2,0,26,false],[15,0,26,false],[8,2.4,26,false],[-8,0,26,false],[8,0,10,false]];
+  for(const [gap,side,speed,tow] of cases){const g=towFixture(gap,side,speed);try{g.step(IDLE,[IDLE,IDLE]);assert.equal(g.inTow(1,0),tow,`${gap} m behind, ${side} m aside, ${speed} m/s`);if(gap>0)assert.equal(g.inTow(0,1),false,'the leader is never towed by the car behind');}finally{g.dispose();}}
+  const turned=towFixture(8);try{const c=turned.cars[1];c.place(c.body.translation(),c.heading+.45);c.body.setLinvel({x:Math.sin(c.heading)*26,y:0,z:Math.cos(c.heading)*26},true);turned.step(IDLE,[IDLE,IDLE]);assert.equal(turned.inTow(1,0),false,'not aligned');}finally{turned.dispose();}
+});
+test('tow builds after 0.6 s in the cone, fills in 1.5 s and fades within 0.8 s outside it',()=>{
+  const g=towFixture(9);try{
+    both(g,DRAFT.charge-.1);assert.equal(g.cars[1].draft,0,'no tow before the charge');
+    both(g,.4);assert.ok(g.cars[1].draft>0&&g.cars[1].draft<.4,`building ${g.cars[1].draft}`);
+    // Hold the gap (the leader at full throttle, the follower easing) until full.
+    for(let i=0;i<120;i++){const gap=Math.hypot(g.cars[0].body.translation().x-g.cars[1].body.translation().x,g.cars[0].body.translation().z-g.cars[1].body.translation().z);g.step(IDLE,[{...IDLE,throttle:1},{...IDLE,throttle:gap>8?1:0}]);}
+    assert.equal(g.cars[1].draft,1);assert.equal(g.cars[0].draft,0,'the leader gets nothing');assert.equal(g.snapshot(1).draft,1);
+    // Out of the cone: gone in 0.8 s.
+    const c=g.cars[1],at=c.body.translation();c.body.setTranslation({x:at.x+Math.cos(c.heading)*6,y:at.y,z:at.z-Math.sin(c.heading)*6},true);
+    both(g,.4);assert.ok(c.draft>.3&&c.draft<.7,`fading ${c.draft}`);both(g,.45);assert.equal(c.draft,0);
+  }finally{g.dispose();}
+});
+test('a full tow lifts the top speed by 12% and catches the car ahead; alone nobody passes the cap',()=>{
+  const g=towFixture(10,0,CAR.maxSpeed-.2);try{let peak=0;
+    for(let i=0;i<Math.round(6/RACE.step);i++){g.step(IDLE,[{...IDLE,throttle:1},{...IDLE,throttle:1}]);peak=Math.max(peak,g.cars[1].forwardSpeed);
+      const a=g.cars[0].body.translation(),b=g.cars[1].body.translation();if(Math.hypot(a.x-b.x,a.z-b.z)<5.5)break;}
+    assert.ok(peak>CAR.maxSpeed*1.04,`towed ${(peak*3.6).toFixed(1)} km/h`);assert.ok(peak<=CAR.maxSpeed*(1+DRAFT.speedBonus)+.05);
+    const a=g.cars[0].body.translation(),b=g.cars[1].body.translation();assert.ok(Math.hypot(a.x-b.x,a.z-b.z)<6,'the follower catches up');
+    assert.ok(g.cars[0].forwardSpeed<=CAR.maxSpeed+.05,'the leader stays at the normal cap');
+  }finally{g.dispose();}
+});
+test('catch-up helps only the last car still racing, from 40 m behind, fully at 120 m (+5%)',()=>{
+  const g=new RaceGame(3,{scale:5,width:100});try{g.phase='racing';g.bots=false;const t=g.track;
+    g.progress.forEach(p=>{p.started=true;p.next=3;});
+    const at=(id:number,s:number)=>{g.cars[id].place(t.pose(s,(id-1)*20),Math.atan2(t.at(s).tx,t.at(s).tz));};
+    const check=(gap:number,expected:number)=>{at(0,500);at(1,480);at(2,480-gap);g.step(IDLE,[IDLE,IDLE,IDLE]);assert.ok(Math.abs(g.cars[2].catchUp-expected)<.02,`${gap} m: ${g.cars[2].catchUp}`);assert.equal(g.cars[0].catchUp,0);assert.equal(g.cars[1].catchUp,0);};
+    check(30,0);check(80,.5);check(160,1);
+    // The car ahead finished: the help is measured to the next one still racing; alone, none.
+    g.progress[1].finish=10;at(2,300);g.step(IDLE,[IDLE,IDLE,IDLE]);assert.ok(Math.abs(g.cars[2].catchUp-1)<.02);
+    g.progress[0].finish=11;g.step(IDLE,[IDLE,IDLE,IDLE]);assert.equal(g.cars[2].catchUp,0);
+    assert.deepEqual({...CATCH_UP},{from:40,full:120,speedBonus:.05,accelBonus:.1});
+  }finally{g.dispose();}
+  const solo=new RaceGame(2,{scale:5,width:100});try{solo.phase='racing';solo.bots=false;const t=solo.track;solo.progress.forEach(p=>{p.started=true;p.next=3;});solo.progress[0].laps=1;
+    solo.cars[0].place(t.pose(900),Math.atan2(t.at(900).tx,t.at(900).tz));solo.cars[1].place(t.pose(1250),Math.atan2(t.at(1250).tx,t.at(1250).tz));
+    run2(solo,9,[IDLE,{...IDLE,throttle:1}]);assert.equal(solo.cars[1].catchUp,1);assert.ok(solo.cars[1].speed>CAR.maxSpeed*1.04&&solo.cars[1].speed<=CAR.maxSpeed*(1+CATCH_UP.speedBonus)+.05,`${solo.cars[1].speed}`);
+  }finally{solo.dispose();}
+});
+test('bots use the tow (tuck in on straights, pull out to pass) and still finish clean races without misses',()=>{
+  let towed=0;
+  for(const n of [2,3] as const){const g=new RaceGame(n);try{g.autoHuman=true;for(let i=0;i<9000&&g.phase!=='results';i++){g.step();towed+=g.cars.filter(c=>c.draft>.5).length*RACE.step;assert.ok(g.progress.every(p=>!p.missed),'bots on the racing line never miss');}
+    assert.equal(g.phase,'results');assert.ok(g.progress.every(p=>p.finish!==null&&p.laps===3));assert.equal(g.invalid,0);}finally{g.dispose();}}
+  assert.ok(towed>2,`bots towed ${towed.toFixed(1)} s`);
+});

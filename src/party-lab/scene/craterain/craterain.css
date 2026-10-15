@@ -23,3 +23,5 @@
 .pl-crate-menu-controls{max-width:620px}.pl-crate-controls{max-width:calc(100% - 32px);flex-wrap:wrap;justify-content:center;gap:8px 18px;white-space:normal;width:max-content}
 
 .pl-crate-heading[data-urgent="true"]>span:last-child{font-weight:800;color:oklch(43% .13 45);font-variant-numeric:tabular-nums}
+.pl-crate-stun{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%);padding:10px 22px;border-radius:10px;background:oklch(86% .14 92 / .95);color:oklch(28% .05 60);font-size:22px;font-weight:800;letter-spacing:.02em;pointer-events:none}
+.pl-crate-stun[data-guard]{top:auto;bottom:126px;transform:translateX(-50%);padding:7px 14px;font-size:13px;background:oklch(92% .05 220 / .92);color:oklch(32% .05 230)}

@@ -18,6 +18,8 @@ export const COURSE = {
 };
 export const BOWLING = {
   mode:'human_bowling', label:'İnsan Bowlingi', step:1/60,
+  /** Each player throws themselves this many times a match (each throw scores 0–10). */
+  throws:2,
   get width(){return COURSE.width;}, get length(){return COURSE.maxZ-COURSE.minZ;},
   get roadWidth(){return COURSE.roadWidth;}, get laneWidth(){return COURSE.laneWidth;},
   get laneLength(){return COURSE.maxZ-COURSE.rampLip;},

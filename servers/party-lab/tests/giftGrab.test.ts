@@ -477,7 +477,7 @@ test("the round simulation: 2–3 players only, slots (not seats) as winner, pla
     assert.equal(places[b], 0);
     for (const { id } of PLAYERS) if (!slots.includes(id)) assert.equal(places[id], -1);
     const snap = sim.snapshot(PLAYERS.map(() => 0));
-    assert.equal(snap.v, 23);
+    assert.equal(snap.v, 24);
     assert.ok(validGiftWire(snap.gift));
     sim.dispose();
   }
@@ -632,7 +632,7 @@ for (const count of [2, 3])
     assert.equal(sim.placements()[s0], 0);
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 23);
+    assert.equal(shown.v, 24);
     assert.ok(validGiftWire(shown.gift), "the section survives the wire");
     assert.equal(shown.winner, s0);
     assert.ok(shown.prediction?.gift instanceof Uint8Array, "recipient-only prediction block");

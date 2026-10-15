@@ -18,8 +18,8 @@ export class BowlingScore {
   turn = 0;
   constructor(readonly players: 2 | 3) { this.throws = Array.from({ length: players }, () => []); }
   get current() { return this.turn % this.players; }
-  get round() { return Math.min(3, Math.floor(this.turn / this.players) + 1); }
-  get done() { return this.turn === this.players * 3; }
+  get round() { return Math.min(BOWLING.throws, Math.floor(this.turn / this.players) + 1); }
+  get done() { return this.turn === this.players * BOWLING.throws; }
   get totals() { return this.throws.map(t => t.reduce((a, b) => a + b, 0)); }
   get winners() { const totals = this.totals; return totals.flatMap((n, i) => n === Math.max(...totals) ? [i] : []); }
   record(points: number) {

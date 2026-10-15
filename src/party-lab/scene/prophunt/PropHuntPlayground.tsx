@@ -28,6 +28,7 @@ import PropHuntScenery from "./PropHuntScenery";
 import type { PropKit } from "./scenery";
 import { BLASTER_MUZZLE, PropVisuals } from "./visuals";
 import { SENSE_AUDIO, SENSE_RECIPE, WHISTLE_AUDIO, WHISTLE_MUFFLE, WHISTLE_RECIPE } from "./whistle";
+import { HUNTED_RECIPE, PropNoticeClock, SEEK_RECIPE, propNotice, showPropNotice } from "./phaseNotice";
 
 /** What the React HUD shows; republished only when it changes. */
 export interface PropSnapshot {
@@ -68,6 +69,8 @@ export interface PropHudElements {
   senseGlow: HTMLElement | null;
   /** Per slot: the result's label over a hider still hidden. */
   reveals: (HTMLElement | null)[];
+  /** The big phase call: "Avcı sayıyor: 12", "Avcı artık seni arıyor, dikkat!", "ARA!" (phaseNotice.ts). */
+  notice?: HTMLElement | null;
 }
 type ArenaStatus = "loading" | "ready" | "error" | "graphics-error";
 
@@ -180,6 +183,7 @@ export default function PropHuntPlayground({
   /** Hunches the local seeker felt this round (debug readout: search seconds only). */
   const senses = useRef<number[]>([]);
   const listener = useRef({ x: 0, y: 0, z: 0 });
+  const noticeClock = useRef(new PropNoticeClock());
   const ray = useMemo(() => new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }), []);
   const view = useRef({
     yaw: Math.PI,
@@ -477,7 +481,6 @@ export default function PropHuntPlayground({
         bots.current.forEach(({ bot }) => bot.reset());
         resetView(g);
       }
-      if (event === "search" && role === "seeker") callout("ARA!", "info");
       if (event === "finished") {
         if (round.reason === "ammo" && role === "seeker") callout("MERMİN BİTTİ!", "warn");
         else callout(round.outcome === (role === "seeker" ? "seeker" : "hiders") ? "KAZANDIN!" : "KAYBETTİN", "win");
@@ -700,6 +703,13 @@ export default function PropHuntPlayground({
     // ── Per-frame HUD: timer, prompt, crosshair, the blindfold ──
     const { timer, bar, prompt, crosshair, blind, blindTime } = hud.current;
     const remaining = round.remaining;
+    // The seeker's count and its end, called out big (and heard once, as the count ends).
+    const now = performance.now() / 1000;
+    if (noticeClock.current.update(round.phase, now)) {
+      if (role === "seeker") audio.playSpatial("propSeek", SEEK_RECIPE, listener.current, SENSE_AUDIO);
+      else if (round.alive[0]) audio.playSpatial("propHunted", HUNTED_RECIPE, listener.current, SENSE_AUDIO);
+    }
+    showPropNotice(hud.current.notice ?? null, propNotice(round.phase, role, round.alive[0], remaining, noticeClock.current.since(now)));
     const phaseLength = round.phase === "hiding" ? PROP_HUNT.timing.hiding : round.phase === "search" ? PROP_HUNT.timing.search : 1;
     if (timer) timer.textContent = round.phase === "hiding" || round.phase === "search" ? (remaining < 10 ? remaining.toFixed(1) : String(Math.ceil(remaining))) : "";
     if (bar) bar.style.transform = `scaleX(${round.phase === "hiding" || round.phase === "search" ? remaining / phaseLength : 0})`;

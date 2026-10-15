@@ -13,9 +13,9 @@ import { MODE_NAMES, MODE_SELECTIONS, type ModeSelection } from "../../shared/pa
 
 const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   classic_bowling: "Konum, yön ve gücü seç. 2–3 oyuncu, kişi başı 3 tur.",
-  kart_race: "3 tur boyunca virajları al, rakiplerini geç. 2–3 oyuncu.",
+  kart_race: "3 tur boyunca virajları al, rüzgâr alıp rakiplerini geç. 2–3 oyuncu.",
   snowball_fight: "Kar topla, siper al ve kartopu fırlat. 2–3 oyuncu, 80 saniye.",
-  crate_rain: "Kutulardan kaç, avlu dolarken hayatta kal. 2–3 oyuncu, 3 tur.",
+  crate_rain: "Kutulardan kaç, rakibini yumrukla sersemlet, avlu dolarken hayatta kal. 2–3 oyuncu, 3 tur.",
   click_race: "Tuşa ya da ekrana durmadan bas, araban her basışta ilerler. Bitişe ilk varan kazanır. 2–3 oyuncu.",
   rhythm_master: "Herkese aynı şarkı çalar, aynı notalar şeritlerden kayar. Nota çembere geldiği anda üstündeki tuşa bas (W A S D ya da oklar): tam zamanında +10, biraz erken ya da geç +5. Doğru vuruşta melodi çalar, ıskalarsan susar. Iskalamak, yanlış tuş ya da boşa basmak komboyu sıfırlar; en uzun kombonun 2 katı sonda bonus. 45 saniyede en çok puanı toplayan kazanır. Müzik tarzı her turda rastgele. 2–3 oyuncu.",
   light_trails: "Hiç durmadan koşarsın, arkanda kendi renginde bir ışık izi kalır. WASD ya da ok tuşları yönü gösterir (W ekranın yukarısı), karakter o yöne yumuşakça döner. İzler 4,5 saniyede söner ama göründüğü sürece öldürür; kendi izin de. Duvara, ize, trene ya da başka bir oyuncuya kafa kafaya çarpan elenir. Ortadaki raydan her 10 saniyede bir tren geçer, raylar kırmızı yanınca uzak dur. Son 15 saniyede herkes hızlanır. Ayakta kalan son oyuncu kazanır; 60 saniye dolarsa kalanlar berabere. 2–3 oyuncu.",
@@ -29,7 +29,7 @@ const MODE_HINTS: Readonly<Record<ModeSelection, string>> = {
   layer_chaos: "Bastığın karo kırılır, katman katman düş. En alttan düşmeyen kazanır.",
   color_chaos: "Hedef renge koş; diğer renkler düşer. Son ayakta kalan kazanır.",
   snowball_brawl: "Kartopunla rakiplerini buzdan düşür. 2–3 oyuncu, 3 tur.",
-  human_bowling: "Sırayla hızlan, fırla, lobutları devir. Kişi başı 3 atış.",
+  human_bowling: "Sırayla hızlan, fırla, lobutları devir. Kişi başı 2 atış.",
   prop_hunt: "Bir arayan, iki saklanan. Eşyaya dönüş ve bulunmadan dayan.",
   bomb_tag: "Bombayı yakındaki oyuncuya ver; fitil bitince elinde tutan patlar.",
   mixed: "Tüm modlar, oyuncu sayısına uygun karışık sırayla; aynı mod art arda gelmez.",

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { initializePhysics } from '../physics';
-import { BOXES, BOX_KINDS, CRATE_RAIN as C, FEET, IDLE, seeded, roundWinner, smoothFacing } from './config';
+import { BOXES, BOX_KINDS, CRATE_PUNCH, CRATE_RAIN as C, FEET, IDLE, seeded, roundWinner, smoothFacing, type Input } from './config';
 import { CrateRainGame } from './game';
 import { CrateBot, type BotSense } from './bots';
 import { CrateCamera, CRATE_CAMERA, nextCrateView, viewMovement } from './camera';
 import { PerspectiveCamera } from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { CrateInput, crateBindings, changeCrateBinding, crateBindingLabel } from './controls';
 import { defaultBindings } from '../../input/defaults';
 import { warningPose } from './warnings';
@@ -21,7 +22,7 @@ function fixture() {
 function emptyRun(g: CrateRainGame) { g.players.forEach(p => p.body.setEnabled(false)); g.bots = false; g.phase = 'playing'; }
 
 test('approved standard size and grid; Crate Rain is registered online', () => {
-  assert.equal(C.id, 'crate_rain'); assert.equal(C.rounds, 3); assert.equal(C.countdown, 3); assert.equal(C.maxRoundTime, 20); assert.equal(NET.version, 23);
+  assert.equal(C.id, 'crate_rain'); assert.equal(C.rounds, 3); assert.equal(C.countdown, 3); assert.equal(C.maxRoundTime, 20); assert.equal(NET.version, 24);
   assert.ok(GAME_MODES.includes("crate_rain")); assert.equal(MODE_SELECTIONS.length, GAME_MODES.length + 2); // + Mixed + Tahta Oyunu assert.ok(MODE_SELECTIONS.includes(C.id));
   for (const kind of BOX_KINDS) assert.deepEqual(BOXES[kind].size, [1.4, 1.4, 1.4]);
   const g = fixture(); assert.equal(g.cells.length, 100);
@@ -168,4 +169,99 @@ test('third-person obstruction pull-in, FPS body hide, natural mouse/keyboard lo
   for(let i=0;i<120;i++)c.steer({...IDLE,yaw:1,pitch:-1},'first',C.step);
   c.update(camera,g,'first',.1); assert.ok(camera.getWorldDirection(camera.position.clone()).y>.8);
   assert.equal(nextCrateView('third'),'first'); assert.equal(nextCrateView('first'),'third');g.dispose();
+});
+
+/** Two players `gap` m apart on the floor (player 1 east of player 0), no crates, the round running. */
+function duel(gap = 1, dy = 0, x = 0) {
+  const g = new CrateRainGame(2); g.bots = g.spawning = false; g.phase = 'playing';
+  g.players[0].body.setTranslation({ x, y: FEET + .025, z: 0 }, true);
+  g.players[1].body.setTranslation({ x: x + gap, y: FEET + .025 + dy, z: 0 }, true);
+  g.world.propagateModifiedBodyPositionsToColliders(); run(g, .1); return g;
+}
+/** Steps with per-player inputs (bots off). */
+const play = (g: CrateRainGame, seconds: number, inputs: Input[]) => { for (let i = 0; i < Math.round(seconds / C.step); i++) g.step(IDLE, inputs); };
+const punch = { ...IDLE, punch: true };
+test('punch: approved Hediye Kapmaca values on the capsule', () => {
+  assert.deepEqual({ ...CRATE_PUNCH }, { startup: .08, active: .27, cooldown: .6, range: 1.3, heightGap: 1, push: 3, lift: .3, stun: 1, guard: 1.5 });
+});
+test('punch lands on a rival within 1.3 m in any direction: pushed away, stunned 1 s, then guarded 1.5 s', () => {
+  for (const side of [1, -1]) {
+    const g = duel(side * 1.05), [a, b] = g.players;
+    // Facing away does not matter (any direction), and the swing needs its startup.
+    a.heading = side > 0 ? Math.PI : 0;
+    g.step(IDLE, [punch, IDLE]); assert.equal(a.punchAge >= 0, true); assert.equal(b.stun, 0);
+    play(g, .1, [punch, IDLE]);
+    assert.ok(Math.abs(b.stun - CRATE_PUNCH.stun) < .1, `stun ${b.stun}`); assert.equal(a.punchHit, true);
+    assert.ok(Math.sign(b.body.linvel().x) === side && Math.abs(b.body.linvel().x) > 1.5, 'pushed away from the attacker');
+    // Stunned: walking, jumping and punching do nothing; the push slides out.
+    const at = b.body.translation(); play(g, .5, [IDLE, { x: -side, z: 0, jump: true, sprint: true, punch: true }]);
+    assert.ok(b.stun > 0); assert.equal(b.punchAge, -1); assert.ok(b.body.translation().y < FEET + .2);
+    assert.ok((b.body.translation().x - at.x) * side >= -1e-3, 'no walking back while stunned');
+    play(g, .55, [IDLE, IDLE]); assert.equal(b.stun, 0); assert.ok(b.guard > 1.3, `guard ${b.guard}`);
+    // Guarded: a fresh punch in reach cannot touch them.
+    b.body.setTranslation({ x: side * 1, y: FEET + .025, z: 0 }, true); b.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    play(g, .1, [IDLE, IDLE]); play(g, .4, [punch, IDLE]); assert.equal(b.stun, 0); assert.equal(a.punchHit, false);
+    play(g, 1.2, [IDLE, IDLE]); assert.equal(b.guard, 0);
+    b.body.setTranslation({ x: side * 1, y: FEET + .025, z: 0 }, true); play(g, .1, [IDLE, IDLE]);
+    play(g, .4, [punch, IDLE]); assert.ok(b.stun > 0, 'hittable again once the guard ends');
+    g.dispose();
+  }
+});
+test('punch misses beyond 1.3 m, more than 1 m above, behind a crate, and never during the countdown', () => {
+  const far = duel(1.45); play(far, .4, [punch, IDLE]); assert.equal(far.players[1].stun, 0); far.dispose();
+  const high = duel(.9); const p = high.players[1];
+  high.addCrate('cedar', .7, .7, -.7); // A crate to stand on, beside the attacker.
+  p.body.setTranslation({ x: .7, y: CRATE_PUNCH.heightGap + 1.4 + FEET, z: -.7 }, true); play(high, .5, [IDLE, IDLE]);
+  assert.ok(p.body.translation().y - high.players[0].body.translation().y > CRATE_PUNCH.heightGap);
+  play(high, .4, [punch, IDLE]); assert.equal(p.stun, 0); high.dispose();
+  // On the floor two capsules never fit within reach across a 1.4 m crate; the sight line still refuses any solid between.
+  const wall = duel(1.2); assert.equal(wall.punchTarget(0), 1);
+  wall.world.createCollider(RAPIER.ColliderDesc.cuboid(.04, 1, 1).setTranslation(.6, 1, 0)); wall.step(); assert.equal(wall.punchTarget(0), null, 'a solid between'); wall.dispose();
+  const early = duel(1); early.phase = 'countdown'; early.phaseTime = 0; play(early, .5, [punch, IDLE]); assert.equal(early.players[0].punchAge, -1); assert.equal(early.players[1].stun, 0); early.dispose();
+});
+test('punch: one swing per press and per 0.6 s; same-step punches stun both', () => {
+  const g = duel(5), a = g.players[0];
+  play(g, .3, [punch, IDLE]); assert.ok(a.cooldown > 0); const swing = a.punchAge;
+  play(g, .1, [IDLE, IDLE]); play(g, .05, [punch, IDLE]); assert.ok(a.punchAge < 0 || a.punchAge > swing, 'no new swing during the cooldown');
+  play(g, .6, [IDLE, IDLE]); play(g, .02, [punch, IDLE]); assert.ok(a.punchAge >= 0 && a.punchAge < .05, 'a new press after the cooldown swings');
+  g.dispose();
+  const both = duel(1); play(both, .2, [punch, punch]); assert.ok(both.players[0].stun > 0 && both.players[1].stun > 0); both.dispose();
+});
+test('stun chains are impossible: spamming punches leaves the victim free 1.5 s after every stun', () => {
+  const g = duel(1), [a, b] = g.players; let stunned = 0, longestFree = 0, free = 0, stuns = 0, was = false;
+  for (let i = 0; i < Math.round(10 / C.step); i++) {
+    // The attacker keeps pressing every 0.1 s and stays glued to the victim.
+    const at = b.body.translation(); a.body.setTranslation({ x: at.x - .9, y: at.y, z: at.z }, true);
+    g.step(IDLE, [{ ...IDLE, punch: i % 24 < 6 }, IDLE]);
+    if (b.stun > 0) { stunned++; if (!was) { stuns++; if (stuns > 1) assert.ok(free * C.step >= CRATE_PUNCH.guard - .02, `free ${free * C.step}`); } free = 0; } else { free++; longestFree = Math.max(longestFree, free); }
+    was = b.stun > 0;
+  }
+  assert.ok(stuns >= 3); assert.ok(stunned * C.step / 10 < .45, `stunned ${stunned * C.step} s of 10`); g.dispose();
+});
+test('crates still knock out a stunned player; a punched round is decided as before', () => {
+  const g = duel(1.05, 0, -3.5), b = g.players[1]; play(g, .2, [punch, IDLE]); assert.ok(b.stun > 0);
+  const at = b.body.translation(); g.warn('cedar', at.x, at.z, .3); play(g, .45, [IDLE, IDLE]);
+  assert.equal(b.alive, false); assert.equal(g.winner, 0); g.dispose();
+});
+test('bots punch rivals in reach while calm, and the stunned are left alone', () => {
+  let punches = 0, onStunned = 0;
+  for (const seed of [3, 11, 29]) {
+    const g = new CrateRainGame(3, seed); g.spawning = false;
+    for (let i = 0; i < Math.round(25 / C.step) && g.phase !== 'results'; i++) {
+      const stunned = g.players.map(p => p.stun > 0); g.step(IDLE); for (const hit of g.punches) { punches++; if (stunned[hit.target]) onStunned++; }
+    }
+    g.dispose();
+  }
+  assert.ok(punches > 0, 'bots throw punches that land'); assert.equal(onStunned, 0);
+  const bot = new CrateBot(1, seeded(4)), sense: BotSense = { x: 0, y: FEET, z: 0, elapsed: 0, grounded: true, half: 7, warnings: [], height: () => 0, clear: () => true, canPunch: true, rivals: [{ x: .8, y: FEET, z: 0, open: true }] };
+  let swung = false; for (let t = 0; t < 3 && !swung; t += .2) swung = !!bot.think({ ...sense, elapsed: t }).punch;
+  assert.ok(swung, 'a bot next to an open rival swings');
+  const guarded = new CrateBot(1, seeded(4)); for (let t = 0; t < 3; t += .2) assert.equal(guarded.think({ ...sense, elapsed: t, rivals: [{ x: .8, y: FEET, z: 0, open: false }] }).punch, false);
+  const busy = new CrateBot(1, seeded(4)); for (let t = 1; t < 3; t += .2) assert.equal(busy.think({ ...sense, elapsed: t, warnings: [{ id: 1, x: 0, z: 0, radius: .7, since: 0 }] }).punch, false);
+});
+test('punch key: shared Yumruk (F / left click), mouse only for the punch, a tap never lost', () => {
+  const b = crateBindings(defaultBindings()); assert.deepEqual(b.punch, ['KeyF', 'MouseLeft']);
+  assert.ok(changeCrateBinding(b, 'punch', 1, 'MouseRight')); assert.equal(changeCrateBinding(b, 'jump', 1, 'MouseRight'), null);
+  const i = new CrateInput(b); i.set('KeyF', true); i.set('KeyF', false); assert.equal(i.read().punch, true); assert.equal(i.read().punch, false);
+  i.set('MouseLeft', true); assert.equal(i.read().punch, true); assert.equal(i.read().punch, true); i.set('MouseLeft', false); assert.equal(i.read().punch, false);
 });

@@ -62,7 +62,11 @@ export const NET = {
   // 23: Ritim Ustası (rhythm_master). A new mode, its press packet (press counter and the latest
   // stamped presses with their keys) and snapshot section (the song's style and seed, scores,
   // combos, recent results); a v22 page cannot draw it and a v22 server refuses it.
-  version: 23,
+  // 24: rule pass. İnsan Bowlingi 2 throws; Tahta Oyunu one bowling a match (İnsan Bowlingi half
+  // as often); Kutu Yağmuru punch (packet punchHeld, punch/stun/guard in the motion rows); Araba
+  // Yarışı slipstream + catch-up (tow state in the motion rows), 5 m checkpoint margin and a real
+  // "missed" flag in progress. A v23 page would predict other rules and a v23 server refuses the packet.
+  version: 24,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -649,6 +653,8 @@ export class InputMailbox {
   private fightPacket: FightInputPacket | null = null;
   private fightThrow = false;
   private cratePacket: CrateInputPacket | null = null;
+  /** A Kutu Yağmuru punch press seen since the last read (a tap's packets may share one tick). */
+  private cratePunch = false;
   private clickPacket: ClickInputPacket | null = null;
   private goldPacket: GoldInputPacket | null = null;
   private bomberPacket: BomberInputPacket | null = null;
@@ -745,6 +751,7 @@ export class InputMailbox {
     if (mode === "crate_rain") {
       const p=validateCrateInput(value);
       if(!p||p.round!==round||p.seq<=this.seq)return false;
+      this.cratePunch ||= p.punchHeld && !this.cratePacket?.punchHeld;
       this.seq=p.seq;this.received=now;this.cratePacket=p;return true;
     }
     if (mode === "snowball_brawl") {
@@ -917,7 +924,7 @@ export class InputMailbox {
       this.processedRound = p.round;
       return { ...neutralIntent(), trail: p };
     }
-    if(this.cratePacket){const p=this.cratePacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),crate:p};}
+    if(this.cratePacket){const p={...this.cratePacket,punchHeld:this.cratePacket.punchHeld||this.cratePunch};this.cratePunch=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),crate:p};}
     if(this.snowballPacket){const p=this.snowballPacket;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),snowball:p};}
     const next=this.bowlingQueue.shift();
     if(next)this.bowlingHeld=next;
@@ -1017,7 +1024,7 @@ export class InputMailbox {
     this.classicPacket=null;this.classicEdge=null;
     this.racePacket=null;this.raceReset=false;
     this.fightPacket=null;this.fightThrow=false;
-    this.cratePacket=null;
+    this.cratePacket=null;this.cratePunch=false;
     this.clickPacket=null;
     this.goldPacket=null;
     this.bomberPacket=null;

@@ -1,17 +1,33 @@
 import { RACE, clamp, type Vec } from './config.js';
-import { crossedGate, type RaceTrack } from './track.js';
+import { crossedGate, gateCrossing, type RaceTrack } from './track.js';
 export interface Progress {
   started:boolean; next:number; laps:number; finish:number|null; wrongDwell:number; rightDwell:number; wrong:boolean; resets:number; hold:number; stuck:number; lastReset:number;
+  /** The car went past its next checkpoint without passing through it (markMissed); cleared when it is earned or on a reset. */
+  missed:boolean;
 }
-export const newProgress=():Progress=>({started:false,next:0,laps:0,finish:null,wrongDwell:0,rightDwell:0,wrong:false,resets:0,hold:0,stuck:0,lastReset:-10});
-export function missedCheckpoint(progress:Progress,track:RaceTrack,s:number){
-  const past=track.wrap(s-track.checkpoints[progress.next].s);
-  return progress.finish===null&&progress.hold===0&&past>2&&past<track.length/2;
+export const newProgress=():Progress=>({started:false,next:0,laps:0,finish:null,wrongDwell:0,rightDwell:0,wrong:false,resets:0,hold:0,stuck:0,lastReset:-10,missed:false});
+/** "KONTROL NOKTASINI KAÇIRDIN": only after a real miss (never behind the checkpoint, driving the wrong way or respawning). */
+export function missedCheckpoint(progress:Progress){
+  return progress.missed&&progress.finish===null&&progress.hold===0;
 }
 export function advance(progress:Progress,track:RaceTrack,previous:Vec,current:Vec,time:number,laps:number=RACE.laps){
   if(progress.finish!==null||progress.hold>0||!crossedGate(previous,current,track.checkpoints[progress.next]))return false;
   if(progress.next===0){if(progress.started)progress.laps++;progress.started=true;if(progress.laps>=laps)progress.finish=time;}
-  progress.next=(progress.next+1)%track.checkpoints.length;return true;
+  progress.next=(progress.next+1)%track.checkpoints.length;progress.missed=false;return true;
+}
+/**
+ * A move that did not earn the next checkpoint is a miss when it crossed that checkpoint's line
+ * forward beside it (beyond `gateMargin`, within `missReach` m of the asphalt), or crossed the line
+ * of one of the `missLookahead` checkpoints after it. Driving back, the wrong way or behind it never is.
+ */
+export function markMissed(progress:Progress,track:RaceTrack,previous:Vec,current:Vec){
+  if(progress.finish!==null||progress.hold>0||progress.missed||!progress.started)return false;
+  const n=track.checkpoints.length;
+  for(let k=0;k<=RACE.missLookahead;k++){
+    const gate=track.checkpoints[(progress.next+k)%n],c=gateCrossing(previous,current,gate);
+    if(c&&c.lateral<=gate.width/2+RACE.missReach&&c.y>-1&&c.y<6)return progress.missed=true;
+  }
+  return false;
 }
 export function wrongWay(progress:Progress,alongSpeed:number,dt:number){
   if(alongSpeed< -3){progress.wrongDwell+=dt;progress.rightDwell=0;}

@@ -5,12 +5,20 @@ import { BOARD, BOARD_LENGTHS, boardSquares, moveSeconds } from "../../../shared
 import { dieFrom, eliminationRanks, moveOrder, ranksByScore, rollDice, seatRanks } from "../../../shared/party-lab/board/rules.js";
 import { encodeBoard, parseBoard } from "../../../shared/party-lab/board/wire.js";
 import { boardPath, numberedSquare, pawnOffset, SQUARE_SIZE } from "../../../shared/party-lab/board/layout.js";
-import { BoardRotation, GAME_MODES, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
+import { BOARD_EXCLUSIVE, BoardRotation, GAME_MODES, MixedRotation, boardCycle, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
 
 const DT = 1 / 60;
 function seeded(seed = 1) {
   return () => ((seed = Math.imul(seed, 1664525) + 1013904223 >>> 0) / 2 ** 32);
 }
+/** Fitting modes a board match can play: each BOARD_EXCLUSIVE group counts once. */
+const boardModes = (count: number) =>
+  GAME_MODES.filter((mode) => modeFits(mode, count)).length -
+  BOARD_EXCLUSIVE.reduce((n, group) => n + Math.max(0, group.filter((mode) => modeFits(mode, count)).length - 1), 0);
+
+/** The fitting modes, minus the bowling a match did not play (only one of the two comes). */
+const playable = (count: number, played: readonly GameMode[]) =>
+  GAME_MODES.filter((mode) => modeFits(mode, count) && !BOARD_EXCLUSIVE.some((group) => group.includes(mode) && !played.includes(mode) && group.some((other) => played.includes(other))));
 /** Dice that return the queued values (then repeat the last). */
 function queued(...values: number[]) {
   let last = values[0] ?? 1;
@@ -410,12 +418,13 @@ const counts = (modes: readonly GameMode[]) => modes.reduce((m, mode) => m.set(m
 
 test("a board match never repeats a mini game: every fitting mode once, then the rounds go on with dice alone", () => {
   for (const count of [2, 3]) {
-    const fits = GAME_MODES.filter((mode) => modeFits(mode, count)).sort();
     const host = new Host();
     // One square a round each on Uzun: 50 rounds, far more than the modes.
     const board = new BoardSession(host, { length: 50, slots: [0, 1, 2].slice(0, count), random: seeded(count), die: queued(1), squares: boardSquares(50) });
     const intros = playOut(board);
     const played = host.minis.map((m) => m.mode);
+    const fits = playable(count, played).sort();
+    assert.equal(fits.length, boardModes(count));
     assert.equal(board.round, 50);
     assert.equal(board.reason, "treasure");
     assert.equal(played.length, fits.length, `${count}P: one mini game per mode`);
@@ -446,9 +455,49 @@ test("a player leaving a board match does not bring back the mini games already 
     after = played.slice(before.length);
   assert.ok([...counts(played).values()].every((n) => n === 1), `no repeats: ${played.join(",")}`);
   assert.ok(!after.includes("prop_hunt"), "Saklambaç needs three");
-  const fits2 = GAME_MODES.filter((mode) => modeFits(mode, 2));
+  const fits2 = playable(2, played);
   assert.deepEqual([...after].sort(), fits2.filter((mode) => !before.includes(mode)).sort());
   assert.ok(host.minis.slice(before.length).every((m) => m.slots.length === 2));
+});
+
+test("BoardRotation: one bowling a match; whichever comes first, the other never follows", () => {
+  for (const first of ["human_bowling", "classic_bowling"] as const) {
+    let hits = 0;
+    for (let match = 0; match < 400; match++) {
+      const rotation = new BoardRotation(seeded(9000 + match));
+      const seen: GameMode[] = [];
+      for (let mode = rotation.next; mode; mode = rotation.next) {
+        seen.push(mode);
+        rotation.played();
+      }
+      const bowled = seen.filter((m) => m === "human_bowling" || m === "classic_bowling");
+      assert.equal(bowled.length, 1, seen.join(","));
+      if (bowled[0] === first) hits++;
+      assert.equal(seen.length, boardModes(3));
+    }
+    assert.ok(hits > 0, `${first} is still drawn`);
+  }
+});
+
+test("BoardRotation: İnsan Bowlingi is drawn half as often as any other mode, with no repeats", () => {
+  for (const count of [2, 3]) {
+    const random = seeded(31 + count),
+      firsts = new Map<GameMode, number>(),
+      draws = 60000;
+    for (let i = 0; i < draws; i++) {
+      const first = boardCycle(random, count)[0];
+      firsts.set(first, (firsts.get(first) ?? 0) + 1);
+    }
+    const fitting = GAME_MODES.filter((mode) => modeFits(mode, count)),
+      others = fitting.filter((mode) => mode !== "human_bowling"),
+      average = others.reduce((n, mode) => n + (firsts.get(mode) ?? 0), 0) / others.length,
+      ratio = (firsts.get("human_bowling") ?? 0) / average;
+    // Expected: weight 0.5 against 1 → half as often (±12% sampling slack).
+    assert.ok(ratio > 0.44 && ratio < 0.56, `${count}P: ratio ${ratio.toFixed(3)}`);
+    const cycle = boardCycle(random, count);
+    assert.equal(new Set(cycle).size, cycle.length);
+    assert.deepEqual([...cycle].sort(), [...fitting].sort());
+  }
 });
 
 test("BoardRotation: each fitting mode once, kept across a player count change, then null", () => {
@@ -466,7 +515,11 @@ test("BoardRotation: each fitting mode once, kept across a player count change, 
   }
   assert.equal(new Set(seen).size, seen.length);
   const first = seen.slice(0, 4);
-  assert.deepEqual(seen.slice(4).sort(), GAME_MODES.filter((m) => modeFits(m, 2) && !first.includes(m)).sort());
+  // Exactly one of the two bowlings; every other fitting mode once.
+  const bowled = seen.filter((m) => m === "human_bowling" || m === "classic_bowling");
+  assert.equal(bowled.length, 1);
+  const other = bowled[0] === "human_bowling" ? "classic_bowling" : "human_bowling";
+  assert.deepEqual(seen.slice(4).sort(), GAME_MODES.filter((m) => modeFits(m, 2) && !first.includes(m) && m !== other).sort());
   assert.equal(rotation.next, null);
   rotation.played();
   assert.equal(rotation.next, null);
@@ -476,7 +529,8 @@ test("real dice and squares on Uzun: no board match repeats a mini game (Ritim U
   // Matches with more rounds than modes (rare, a few in a thousand) run out of mini games instead of repeating one.
   let outOfModes = 0;
   for (const count of [2, 3]) {
-    const fits = GAME_MODES.filter((mode) => modeFits(mode, count)).length;
+    // Each BOARD_EXCLUSIVE group is one mini game a match.
+    const fits = boardModes(count);
     for (let match = 0; match < 2000; match++) {
       const random = seeded(1000 * count + match),
         slots = [0, 1, 2].slice(0, count);
@@ -487,6 +541,7 @@ test("real dice and squares on Uzun: no board match repeats a mini game (Ritim U
       const played = host.minis.map((m) => m.mode);
       assert.equal(new Set(played).size, played.length, `${count}P match ${match}: ${played.join(",")}`);
       assert.ok((counts(played).get("rhythm_master") ?? 0) <= 1);
+      assert.ok(!(played.includes("human_bowling") && played.includes("classic_bowling")), `${count}P match ${match}: both bowlings`);
       assert.equal(played.length, Math.min(board.round, fits));
       if (board.round > fits) outOfModes++;
     }

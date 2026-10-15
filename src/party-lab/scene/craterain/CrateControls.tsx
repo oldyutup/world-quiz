@@ -12,7 +12,7 @@ export default function CrateControls({ bindings, onChange, onClose, saved }: { 
       if (key) {
         const next = changeCrateBinding(bindings, capture.action, capture.slot, key);
         if (next) { onChange(next); setNotice(`${CRATE_LABELS[capture.action]}: ${bindingLabel(key)} atandı.`); }
-        else setNotice('Kullanılmayan bir klavye tuşu seç. Fareyle bakmak isteğe bağlıdır.');
+        else setNotice(capture.action === 'punch' ? 'Kullanılmayan bir tuş ya da fare düğmesi seç.' : 'Kullanılmayan bir klavye tuşu seç. Fareyle bakmak isteğe bağlıdır.');
       } else setNotice('Tuş atama iptal edildi.');
       setCapture(null);
     });
@@ -31,6 +31,6 @@ export default function CrateControls({ bindings, onChange, onClose, saved }: { 
     </div>)}</div>
     {!saved && <p role="alert">Tarayıcı kaydetmedi. Atamalar bu oturumda geçerli.</p>}
     <button className="pl-button pl-join" disabled={!!capture} onClick={() => { onChange({}); setNotice('Ortak hareket atamaları ve varsayılan kamera tuşları geri yüklendi.'); }}>Varsayılana Dön</button>
-    <p>Gölgeleri ve düşüş sesini takip et. Kutular kalır; zıplayıp yığınlara tırman. Son kalan turu kazanır. Esc: menü ve duraklatma.</p>
+    <p>Gölgeleri ve düşüş sesini takip et. Kutular kalır; zıplayıp yığınlara tırman. Yumruk rakibi 1 sn sersemletir, sonra 1,5 sn kimse ona vuramaz. Son kalan turu kazanır. Esc: menü ve duraklatma.</p>
   </div>;
 }

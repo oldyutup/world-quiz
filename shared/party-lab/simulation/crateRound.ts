@@ -32,7 +32,7 @@ export class CrateRoundSimulation implements OnlineSimulation {
     this.seats.forEach((slot,i) => { const seq = inputs[slot]?.crate?.seq ?? -1; this.held[i] = seq === this.sequences[i] ? this.held[i] + 1 : 0; this.sequences[i] = seq; });
     for (let sub = 0; sub < 2; sub++) {
       const g = this.game, stage = g.round;
-      g.step(IDLE, this.seats.map((slot, i) => { const p = inputs[slot]?.crate; return p && p.stage === g.round && !this.forfeits.has(i) ? { x:p.moveX, z:p.moveZ, jump:p.jumpHeld, sprint:p.sprintHeld } : IDLE; }));
+      g.step(IDLE, this.seats.map((slot, i) => { const p = inputs[slot]?.crate; return p && p.stage === g.round && !this.forfeits.has(i) ? { x:p.moveX, z:p.moveZ, jump:p.jumpHeld, sprint:p.sprintHeld, punch:p.punchHeld } : IDLE; }));
       if (g.round !== stage) for (const i of this.forfeits) { g.players[i].alive = false; g.players[i].body.setEnabled(false); }
       if (this.phase === 'countdown' && g.phase !== 'countdown') this.phase = 'playing';
       if (g.phase === 'results') { this.phase = 'results'; this.resultTime = 0; break; }

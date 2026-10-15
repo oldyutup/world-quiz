@@ -1,9 +1,9 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, DynamicDrawUsage, Float32BufferAttribute, Group, InstancedMesh, InstancedBufferAttribute, PlaneGeometry, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Points, PointsMaterial, Quaternion, Sprite, SpriteMaterial, SRGBColorSpace, Vector3 } from 'three';
+import { BoxGeometry, BufferAttribute, OctahedronGeometry, RingGeometry, BufferGeometry, CanvasTexture, CircleGeometry, Color, DynamicDrawUsage, Float32BufferAttribute, Group, InstancedMesh, InstancedBufferAttribute, PlaneGeometry, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Points, PointsMaterial, Quaternion, Sprite, SpriteMaterial, SRGBColorSpace, Vector3 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createCharacterVisual } from '../visual/characterVisual';
 import { PARTS, SHAPES } from '../ragdoll/config';
 import { localCostumeForSlot, type SelectableCostumeId } from '../visual/costumes';
-import { BOXES, BOX_KINDS, CRATE_RAIN as C, FEET, smoothFacing, PLAYER_COLORS, PLAYER_NAMES } from './config';
+import { BOXES, BOX_KINDS, CRATE_PUNCH, CRATE_RAIN as C, FEET, smoothFacing, PLAYER_COLORS, PLAYER_NAMES } from './config';
 import type { CrateRainGame } from './game';
 import { warningPose } from './warnings';
 
@@ -86,6 +86,7 @@ export function crateVisual(count: number, costume: SelectableCostumeId, names =
     shader.fragmentShader = shader.fragmentShader.replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\n diffuseColor.a *= vShadowAlpha;');
   };
   const warningMesh = new InstancedMesh(shadowGeometry, warningMaterial, 144); warningMesh.instanceMatrix.setUsage(DynamicDrawUsage); warningMesh.frustumCulled = false; warningMesh.count = 0; root.add(warningMesh);
+  const starGeometry = new OctahedronGeometry(0.075), starMaterial = new MeshBasicMaterial({ color: '#ffd54a', fog: false });
   const people = Array.from({ length: count }, (_, i) => {
     const person = createCharacterVisual(PLAYER_COLORS[i], localCostumeForSlot(costume, i));
     person.root.scale.setScalar(0.81);
@@ -93,7 +94,11 @@ export function crateVisual(count: number, costume: SelectableCostumeId, names =
     root.add(person.root);
     const tag = label(`${i + 1} · ${names[i]}`, i === 0 ? '#ffd3b9' : '#eef0db'); tag.scale.set(1.1, 0.28, 1); tag.renderOrder = 5; root.add(tag);
     const shadow = new Mesh(new CircleGeometry(0.46, 20), new MeshBasicMaterial({ color: '#546556', transparent: true, opacity: 0.2, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; root.add(shadow);
-    return { person, tag, shadow, round: -1, yaw: 0 };
+    // Stunned: three stars circle the head. Guarded: a pale ring at the feet.
+    const stars = new Group(); stars.visible = false; root.add(stars);
+    for (let k = 0; k < 3; k++) { const star = new Mesh(starGeometry, starMaterial); star.position.set(Math.sin(k * 2.094) * 0.3, 0, Math.cos(k * 2.094) * 0.3); stars.add(star); }
+    const guard = new Mesh(new RingGeometry(0.42, 0.55, 28), new MeshBasicMaterial({ color: '#bfefff', transparent: true, opacity: 0.5, depthWrite: false })); guard.rotation.x = -Math.PI / 2; guard.visible = false; root.add(guard);
+    return { person, tag, shadow, stars, guard, round: -1, yaw: 0 };
   });
   const positions = new Float32Array(72 * 3), velocity = new Float32Array(72 * 3), life = new Float32Array(72); positions.fill(-1000);
   const dustGeometry = new BufferGeometry(); dustGeometry.setAttribute('position', new BufferAttribute(positions, 3));
@@ -139,6 +144,13 @@ export function crateVisual(count: number, costume: SelectableCostumeId, names =
         person.root.children[7].rotation.x = gait; person.root.children[8].rotation.x = -gait;
         person.root.children[3].rotation.x = -gait * 0.8; person.root.children[5].rotation.x = gait * 0.8;
         person.root.children[4].position.z = Math.sin(-gait) * 0.32; person.root.children[6].position.z = Math.sin(gait) * 0.32;
+        // The punch: the right arm shoots out fast and comes back slower.
+        const swing = p.punchAge < 0 ? 0 : p.punchAge / (CRATE_PUNCH.startup + CRATE_PUNCH.active), reach = swing <= 0 ? 0 : swing < 0.25 ? swing / 0.25 : Math.max(0, 1 - (swing - 0.25) / 0.75);
+        if (reach > 0) { person.root.children[5].rotation.x = 1.25 * reach; person.root.children[6].position.z = 0.58 * reach; person.root.children[6].position.y = SHAPES.rightHand.y + 0.28 * reach; }
+        else person.root.children[6].position.y = SHAPES.rightHand.y;
+        visual.stars.visible = p.alive && p.stun > 0; visual.guard.visible = p.alive && p.stun <= 0 && p.guard > 0;
+        if (visual.stars.visible) { visual.stars.position.set(at.x, at.y + 0.72, at.z); visual.stars.rotation.y = g.elapsed * 7; }
+        if (visual.guard.visible) { visual.guard.position.set(at.x, Math.max(0.03, at.y - FEET + 0.03), at.z); (visual.guard.material as MeshBasicMaterial).opacity = 0.25 + 0.25 * Math.abs(Math.sin(g.elapsed * 9)); }
         tag.position.set(at.x, at.y + 0.96, at.z); shadow.position.set(at.x, Math.max(0.023, at.y - FEET + 0.016), at.z); shadow.visible = p.alive && p.grounded;
       });
       for (let i = 0; i < 72; i++) { life[i] -= dt; if (life[i] > 0) { velocity[i * 3 + 1] -= dt * 3; for (let j = 0; j < 3; j++) positions[i * 3 + j] += velocity[i * 3 + j] * dt; } else positions[i * 3 + 1] = -1000; }

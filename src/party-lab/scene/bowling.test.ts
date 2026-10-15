@@ -122,13 +122,14 @@ test('bowling pin detection: sustained >60 degrees, temporary wobble ignored, up
   const q=g.pins[1];q.body.setTranslation({x:0,y:0,z:COURSE.deck.maxZ+.1},true);updatePin(q,1/60);assert.equal(g.knocked,2);updatePin(q,5);assert.equal(g.knocked,2);
 }));
 
-for(const players of [2,3] as const)test(`bowling scoring: ${players} players alternate exactly three throws, max 30 and shared ties`,()=>{
+for(const players of [2,3] as const)test(`bowling scoring: ${players} players alternate exactly two throws, max 20 and shared ties`,()=>{
+  assert.equal(BOWLING.throws,2);
   const s=new BowlingScore(players);const turns=[];
-  for(let i=0;i<players*3;i++){turns.push(s.current);assert.equal(s.round,Math.floor(i/players)+1);s.record(10);}
-  assert.deepEqual(turns,Array.from({length:players*3},(_,i)=>i%players));assert.equal(s.done,true);assert.deepEqual(s.totals,Array(players).fill(30));assert.equal(s.winners.length,players);s.record(10);assert.equal(s.turn,players*3);assert.ok(s.throws.every(t=>t.length===3));
+  for(let i=0;i<players*2;i++){turns.push(s.current);assert.equal(s.round,Math.floor(i/players)+1);assert.equal(s.done,false);s.record(10);}
+  assert.deepEqual(turns,Array.from({length:players*2},(_,i)=>i%players));assert.equal(s.done,true);assert.equal(s.round,2);assert.deepEqual(s.totals,Array(players).fill(20));assert.equal(s.winners.length,players);s.record(10);assert.equal(s.turn,players*2);assert.ok(s.throws.every(t=>t.length===2));
 });
 
-test('bowling scoring: invalid and out of range points cannot exceed 0–10',()=>{const s=new BowlingScore(2);[NaN,-4,99,3.9,0,10].forEach(n=>s.record(n));assert.deepEqual(s.throws,[[0,10,0],[0,3,10]]);assert.deepEqual(s.winners,[1]);});
+test('bowling scoring: invalid and out of range points cannot exceed 0–10',()=>{const s=new BowlingScore(2);[NaN,-4,99,3.9,10].forEach(n=>s.record(n));assert.deepEqual(s.throws,[[0,10],[0,3]]);assert.deepEqual(s.winners,[0]);});
 
 
 test('six authored round layouts reset sensors and give every player the same obstacles',()=>{
@@ -393,7 +394,7 @@ for(const players of [2,3] as const)test(`${players} players complete determinis
  for(let i=0;i<30000&&g.phase!=='results';i++){
   const z=g.car.body.translation().z;clock.advance(g,1/60,{...drive,steer:line(g),eject:g.phase==='drive'?z>=23&&g.angle<26:g.elapsed>2});
  }
- assert.equal(g.phase,'results');assert.equal(g.retries,0);assert.equal(g.score.turn,players*3);return g.score.throws;
+ assert.equal(g.phase,'results');assert.equal(g.retries,0);assert.equal(g.score.turn,players*BOWLING.throws);return g.score.throws;
  }finally{g.dispose();}};assert.deepEqual(run(),run());
  const profiles=Array.from({length:100},(_,i)=>botThrow(i,1,1));assert.equal(new Set(profiles.map(p=>p.skill)).size,3);assert.ok(new Set(profiles.map(p=>p.angle)).size>90);
 });

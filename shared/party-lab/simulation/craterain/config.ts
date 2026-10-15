@@ -21,8 +21,23 @@ export type BoxKind = keyof typeof BOXES;
 export const BOX_KINDS = Object.keys(BOXES) as BoxKind[];
 export const PLAYER_COLORS = ['#ed7056', '#548cce', '#a779c5'];
 export const PLAYER_NAMES = ['Sen', 'Misket', 'Fındık'];
-export type Input = { x: number; z: number; jump: boolean; sprint: boolean };
-export const IDLE: Input = { x: 0, z: 0, jump: false, sprint: false };
+/**
+ * The punch (Yumruk: F / left click), Hediye Kapmaca's values on the capsule. A press swings for
+ * `startup` + `active` s (one press per `cooldown` s). The nearest rival within `range` m in the
+ * active window (centre to centre, any direction; within `heightGap` m up or down; no crate
+ * between) is pushed `push` m/s away (and `lift` m/s up) and stunned for `stun` s: no walking,
+ * jumping or punching, and no braking (it slides); falling crates still knock it out. Then it is
+ * guarded for `guard` s: nobody can punch it, so a stun can never be chained. A stunned player
+ * cannot be punched either.
+ */
+export const CRATE_PUNCH = Object.freeze({
+  startup: 0.08, active: 0.27, cooldown: 0.6,
+  range: 1.3, heightGap: 1.0,
+  push: 3.0, lift: 0.3,
+  stun: 1.0, guard: 1.5,
+});
+export type Input = { x: number; z: number; jump: boolean; sprint: boolean; punch?: boolean };
+export const IDLE: Input = { x: 0, z: 0, jump: false, sprint: false, punch: false };
 export const FEET = CRATE_RAIN.playerRadius + CRATE_RAIN.playerHalf;
 export const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 export function seeded(seed: number) {

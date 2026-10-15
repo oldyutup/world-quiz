@@ -11,7 +11,7 @@ import { MAX_PLAYERS } from "../src/validation.js";
 import { boardSquares } from "../../../shared/party-lab/board/config.js";
 import { BoardSession, type BoardHost } from "../../../shared/party-lab/board/session.js";
 import { LOCAL_ARENA_IDS } from "../../../shared/party-lab/localArenas.js";
-import { GAME_MODES, MODE_MAP, MODE_NAMES, MODE_PLAYERS, MODE_SELECTIONS, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
+import { BOARD_EXCLUSIVE, GAME_MODES, MODE_MAP, MODE_NAMES, MODE_PLAYERS, MODE_SELECTIONS, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
 import { NET } from "../../../shared/party-lab/network/protocol.js";
 import { newRoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import { IDLE_INPUT, initializePhysics } from "../../../shared/party-lab/simulation/physics.js";
@@ -73,7 +73,10 @@ test("Mixed and the board's mini games include every mode that fits the player c
       return mode;
     });
     assert.deepEqual(played.sort(), fits, `Mixed, ${count} players`);
-    // Tahta Oyunu: one mini game per board round; the first rounds cover the same modes.
+    // Tahta Oyunu: one mini game per board round; the first rounds cover the same modes, but only
+    // one mode of each BOARD_EXCLUSIVE group (the two bowlings) a match.
+    const groups = BOARD_EXCLUSIVE.map((group) => group.filter((mode) => fits.includes(mode))).filter((group) => group.length > 1);
+    const boardCount = fits.length - groups.reduce((n, group) => n + group.length - 1, 0);
     const minis: GameMode[] = [];
     const host: BoardHost = { startMini: (mode) => (minis.push(mode), true), endMini() {}, connected: () => true };
     const board = new BoardSession(host, { length: 50, slots: slotsOf(count), random: seeded(count), die: () => 1, squares: boardSquares(50) });
@@ -81,13 +84,15 @@ test("Mixed and the board's mini games include every mode that fits the player c
       for (let t = 0; t < 600 / DT && !done(); t++) act();
       assert.ok(done(), `board stuck in ${board.phase}`);
     };
-    while (minis.length < fits.length) {
+    while (minis.length < boardCount) {
       until(() => board.phase === "minigame");
       board.miniResult(-1, null);
       until(() => board.phase !== "minigame");
       until(() => board.phase === "intro", () => (board.phase === "roll" ? board.rollPressed(board.current) : board.step(DT)));
     }
-    assert.deepEqual(minis.sort(), fits, `Tahta Oyunu, ${count} players`);
+    for (const group of groups) assert.equal(minis.filter((mode) => group.includes(mode)).length, 1, `Tahta Oyunu, ${count} players: one of ${group}`);
+    const skipped = groups.flatMap((group) => group.filter((mode) => !minis.includes(mode)));
+    assert.deepEqual(minis.sort(), fits.filter((mode) => !skipped.includes(mode)), `Tahta Oyunu, ${count} players`);
   }
 });
 

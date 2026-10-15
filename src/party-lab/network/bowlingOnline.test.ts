@@ -22,7 +22,7 @@ export function drive(g:BowlingGame,seq:number):BowlingInputPacket{
 }
 const inputs=(slot:number,p:BowlingInputPacket):MovementInput[]=>[0,1,2].map(i=>({...neutralIntent(),...(i===slot?{bowling:p}:{})}));
 test('protocol 13 Bowling: 29-byte intent rejects state claims, bad flags, nonfinite values and stale epochs',()=>{
- assert.equal(NET.version, 23);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
+ assert.equal(NET.version, 24);const p=packet();assert.deepEqual(validateBowlingInput(encodeBowlingInput(p)),p);
  for(const extra of [{score:10},{position:[0,0,0]},{angle:30},{pins:1023},{camera:2}])assert.equal(validateBowlingInput({...p,...extra}),null);
  assert.equal(validateBowlingInput({...p,throttle:NaN}),null);assert.equal(validateBowlingInput({...p,turn:9}),null);
  const b=encodeBowlingInput(p);b[28]=2;assert.equal(validateBowlingInput(b),null);
@@ -52,9 +52,9 @@ for(const seats of [[0,2],[0,1,2]] as const)test(`${seats.length}-player complet
   if(g.ejected&&!wasEjected)ejects++;if(g.nudgeUsed&&!wasNudged)nudges++;
   if(tick%3===0){const snap=s.snapshot([tick,tick,tick]);sizes.push(packr.pack(snap).length);const buffer=new SnapshotBuffer();assert.ok(buffer.push(snap,tick*1000/60));assert.ok(snap.transforms.length<=560);}
  }
- assert.equal(s.phase,'results');assert.equal(s.game.score.turn,seats.length*3);assert.deepEqual(s.game.score.throws.map(t=>t.length),seats.map(()=>3));assert.equal(s.game.retries,0);
- assert.equal(ejects,seats.length*3);
- assert.equal(nudges,seats.length*2);assert.ok(s.game.score.totals.some(n=>n>0));
+ assert.equal(s.phase,'results');assert.equal(s.game.score.turn,seats.length*BOWLING.throws);assert.deepEqual(s.game.score.throws.map(t=>t.length),seats.map(()=>2));assert.equal(s.game.retries,0);
+ assert.equal(ejects,seats.length*BOWLING.throws);
+ assert.equal(nudges,seats.length*(BOWLING.throws-1));assert.ok(s.game.score.totals.some(n=>n>0));
  assert.deepEqual(order.slice(0,seats.length),[...seats]);
  const sorted=[...times].sort((a,b)=>a-b),maxBytes=Math.max(...sizes);
  console.log(JSON.stringify({bowlingPlayers:seats.length,throws:s.game.score.throws,totals:s.game.score.totals,winner:s.winner,stepAvgMs:times.reduce((a,b)=>a+b,0)/times.length,stepP95Ms:sorted[Math.floor(sorted.length*.95)],stepP99Ms:sorted[Math.floor(sorted.length*.99)],maxSnapshotBytes:maxBytes,maxDownstreamKBs:maxBytes*20/1024,inputBytes:29,inputHz:60,snapshotHz:20,retries:s.game.retries}));
@@ -161,7 +161,7 @@ test('protocol 13 snapshots accept the frozen Bowling setting and reject protoco
   for(const turn of [0,1,5]){
    sim.game.score.turn=turn;sim.game.resetThrow();
    const snapshot=sim.snapshot([-1,-1,-1]);
-   assert.equal(snapshot.v, 23);assert.equal(snapshot.bowling!.obstacles,enabled);
+   assert.equal(snapshot.v, 24);assert.equal(snapshot.bowling!.obstacles,enabled);
    assert.equal(new SnapshotBuffer().push({...snapshot,v:12},0),false);
    assert.equal(new SnapshotBuffer().push(snapshot,0),true);
   }

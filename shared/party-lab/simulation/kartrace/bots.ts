@@ -13,15 +13,20 @@ export class RacingBot {
     // A wide collision can miss a finite gate. Backtrack along the actual route
     // using S/steering, then drive through it normally. Never teleport or award it.
     if(this.recovering!==null&&this.recovering!==progress.next)this.recovering=null;
-    if(missedCheckpoint(progress,track,q.s))this.recovering=progress.next;
+    // The miss stays flagged until the gate is earned: back up only while still past it.
+    if(missedCheckpoint(progress)&&this.recovering===null){const gate=track.checkpoints[progress.next];let past=track.wrap(q.s-gate.s);if(past>track.length/2)past-=track.length;if(past>-2)this.recovering=progress.next;}
     if(this.recovering!==null){
       const gate=track.checkpoints[this.recovering];let past=track.wrap(q.s-gate.s);if(past>track.length/2)past-=track.length;
       if(past< -9)this.recovering=null;
       else {const target=track.pose(q.s-clamp(5+v*.4,6,10)),reverseHeading=Math.atan2(p.x-target.x,p.z-target.z),turn=clamp(angle(reverseHeading-car.heading)*1.7,-1,1);return {throttle:0,brake:1,steer:turn*(car.forwardSpeed>1?1:-1)};}
     }
     let line=this.style==='aggressive'?.45:this.style==='clean'?-.65:0;
-    for(const other of cars){if(other===car)continue;const b=other.body.translation(),dx=b.x-p.x,dz=b.z-p.z,ahead=dx*q.point.tx+dz*q.point.tz,side=dx*q.point.tz-dz*q.point.tx;
-      if(ahead>0&&ahead<17&&Math.abs(side)<3.5)line=(side>=0?-1:1)*(this.style==='clean'?2.65:2.0);
+    // Rüzgâr alma: on a straight, tuck in behind a car ahead for its tow; once the tow is up
+    // (or about to touch its bumper) pull out and pass. In corners: just keep clear.
+    const straight=Math.max(q.point.curve,track.at(q.s+20).curve,track.at(q.s+45).curve)<.006,pullOut=this.style==='clean'?.5:.8;
+    for(const other of cars){if(other===car||!other.body.isEnabled())continue;const b=other.body.translation(),dx=b.x-p.x,dz=b.z-p.z,ahead=dx*q.point.tx+dz*q.point.tz,side=dx*q.point.tz-dz*q.point.tx;
+      if(straight&&ahead>0&&ahead<32&&Math.abs(side)<4.5&&car.draft<pullOut&&ahead>7&&v>15)line=other.projection.lateral;
+      else if(ahead>0&&ahead<17&&Math.abs(side)<3.5)line=(side>=0?-1:1)*(this.style==='clean'?2.65:2.0);
     }
     // Small line error, not a stat advantage or speed rubber band.
     line+=Math.sin(time*.63+this.id*7)*(this.style==='fast'?.12:.32);

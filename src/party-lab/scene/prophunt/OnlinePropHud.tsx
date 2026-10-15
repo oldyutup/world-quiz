@@ -95,6 +95,7 @@ export default function OnlinePropHud({ snapshot, hud, debugOpen, slot, names, a
         </div>
       )}
       <div className="pl-prop-callout" aria-hidden="true" ref={(element) => void (hud.current.callout = element)} />
+      <div className="pl-prop-notice" role="status" aria-live="assertive" data-kind="" ref={(element) => void (hud.current.notice = element)} />
       {PLAYERS.map((player) => {
         const shown = snapshot.reveal.find((r) => r.id === player.id);
         return (

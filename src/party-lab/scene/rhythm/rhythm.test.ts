@@ -35,8 +35,8 @@ const run = (g: RhythmGame, ms: number, volleys: (lane: number) => RhythmPress[]
 };
 const wireOf = (g: RhythmGame): RhythmWire => rhythmSection(g, g.lanes.map((_, lane) => lane));
 
-test("Ritim Ustası is a registered 2–3 player mode on protocol 23, with a local arena (bots, music style), a chat spot, a lobby hint and an online view", () => {
-  assert.equal(NET.version, 23);
+test("Ritim Ustası is a registered 2–3 player mode on protocol 24, with a local arena (bots, music style), a chat spot, a lobby hint and an online view", () => {
+  assert.equal(NET.version, 24);
   assert.ok(GAME_MODES.includes("rhythm_master"));
   assert.equal(MODE_NAMES.rhythm_master, "Ritim Ustası");
   assert.deepEqual(MODE_PLAYERS.rhythm_master, { min: 2, max: 3 });

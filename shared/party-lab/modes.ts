@@ -156,9 +156,33 @@ export class MixedRotation {
 }
 
 /**
- * Tahta Oyunu's mini games: shuffled like Mixed and fit for the player count, but a match
- * plays each mode at most once. A change in the player count keeps what was played; once
- * every fitting mode has been played `next` is null (the rounds go on with dice alone).
+ * Tahta Oyunu plays at most one mode of each group a match: once one is played, the others of
+ * its group count as played too (the two bowlings are too alike to come in the same match).
+ */
+export const BOARD_EXCLUSIVE: readonly (readonly GameMode[])[] = [["human_bowling", "classic_bowling"]];
+/** Tahta Oyunu draw weights (1 when not listed): İnsan Bowlingi comes half as often as the others. */
+export const BOARD_WEIGHTS: Readonly<Partial<Record<GameMode, number>>> = { human_bowling: 0.5 };
+export const boardWeight = (mode: GameMode) => BOARD_WEIGHTS[mode] ?? 1;
+/** The modes a board match counts as played once `mode` is played: its group, or itself. */
+export const boardGroup = (mode: GameMode): readonly GameMode[] => BOARD_EXCLUSIVE.find((group) => group.includes(mode)) ?? [mode];
+
+/**
+ * A board match's mini game order: the fitting modes not in `used`, in a weighted shuffle. Each
+ * mode's key is u^(1/weight) (compared as log u / weight), highest first: the same as drawing
+ * one at a time, each remaining mode with a chance proportional to its weight.
+ */
+export function boardCycle(random: () => number, players: number, used: ReadonlySet<GameMode> = new Set()): GameMode[] {
+  return GAME_MODES.filter((mode) => modeFits(mode, players) && !used.has(mode))
+    .map((mode) => ({ mode, key: Math.log(Math.max(Number.MIN_VALUE, random())) / boardWeight(mode) }))
+    .sort((a, b) => b.key - a.key)
+    .map(({ mode }) => mode);
+}
+
+/**
+ * Tahta Oyunu's mini games: a weighted shuffle (boardCycle) fit for the player count, and a match
+ * plays each mode, and each BOARD_EXCLUSIVE group, at most once. A change in the player count
+ * keeps what was played; once nothing that fits is left `next` is null (the rounds go on with
+ * dice alone).
  */
 export class BoardRotation {
   private queue: GameMode[] = [];
@@ -174,15 +198,15 @@ export class BoardRotation {
   /** The next mini game; null when this match has played every mode that fits. */
   get next(): GameMode | null {
     if (!this.queue.length && GAME_MODES.some((mode) => modeFits(mode, this.players) && !this.used.has(mode)))
-      this.queue = mixedCycle(null, this.random, this.players).filter((mode) => !this.used.has(mode));
+      this.queue = boardCycle(this.random, this.players, this.used);
     return this.queue[0] ?? null;
   }
-  /** A mini game of the next mode started: it never comes back in this match. */
+  /** A mini game of the next mode started: it (and its group) never comes back in this match. */
   played() {
     const mode = this.next;
     if (!mode) return;
-    this.used.add(mode);
-    this.queue.shift();
+    for (const done of boardGroup(mode)) this.used.add(done);
+    this.queue = this.queue.filter((left) => !this.used.has(left));
   }
 }
 

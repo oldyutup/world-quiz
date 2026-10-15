@@ -6,9 +6,9 @@ import { initializePhysics } from '../physics';
 import type { AudioManager } from '../../audio/AudioManager';
 import type { SelectableCostumeId } from '../visual/costumes';
 import { CRATE_RAIN as C } from './config';
-import { CrateRainGame, type CrateSnapshot } from './game';
+import { CrateRainGame, type CrateSnapshot, type PunchEvent } from './game';
 import { CrateCamera, nextCrateView, type CrateView } from './camera';
-import { CrateInput, bindCrateInput, type CrateBindings } from './controls';
+import { CrateInput, bindCrateInput, bindCrateMouse, type CrateBindings } from './controls';
 import { bindLook, type LookController } from '../../input/look';
 import { CrateWarningsAudio } from './warnings';
 import { crateVisual } from './visual';
@@ -25,7 +25,8 @@ export default function CrateRainPlayground({ players, onStatus, onSnapshot, pau
   const controller = useMemo(() => new CrateCamera(), []), warningAudio = useMemo(() => new CrateWarningsAudio(), []);
   const input = useMemo(() => new CrateInput(bindings), [bindings]), look = useRef<LookController | null>(null);
   const currentView = useRef(view); currentView.current = view;
-  const timing = useRef({ acc: 0, publish: 0, count: 0, phase: '', alive: Number(players) });
+  const landed = useRef<PunchEvent[]>([]);
+  const timing = useRef({ acc: 0, publish: 0, count: 0, phase: '', alive: Number(players), swing: -1 });
   const metrics = useRef<CrateMetrics>({ frames: [], js: [], physics: [], drawCalls: 0, triangles: 0, geometries: 0, textures: 0, droppedSeconds: 0 });
   const debug = new URLSearchParams(window.location.search).get('crateDebug') === '1';
   useLayoutEffect(() => {
@@ -59,7 +60,9 @@ export default function CrateRainPlayground({ players, onStatus, onSnapshot, pau
     const enabled = () => !stopped.current && !document.hidden && !document.querySelector('.pl-menu-root');
     const unbind = bindCrateInput(surface, input, enabled, () => { void audio.unlock(); });
     const mouse = bindLook(surface, 'lock', () => {}, onLockLost); look.current = mouse; mouse.setEnabled(enabled() && game.current?.phase !== 'results');
-    return () => { unbind(); mouse.dispose(); look.current = null; };
+    // After the look controller: the click that takes the pointer lock never also punches.
+    const unbindMouse = bindCrateMouse(surface, input, enabled, event => mouse.claimsClick(event));
+    return () => { unbind(); unbindMouse(); mouse.dispose(); look.current = null; };
   }, [gl, input, audio, onLockLost]);
   useFrame((_, delta) => {
     const g = game.current; if (!g) return;
@@ -71,12 +74,18 @@ export default function CrateRainPlayground({ players, onStatus, onSnapshot, pau
     const intent = input.read();
     if (intent.camera && !frozen) { currentView.current = nextCrateView(currentView.current); onView(currentView.current); }
     const movement = controller.steer(intent, currentView.current, frozen ? 0 : dt, look.current?.consume());
-    if(network.current){Object.assign(network.current.options,onlineNow.current);network.current.advance(g,delta,movement,frozen);clock.acc=0;if(!frozen)g.hits.forEach(hit=>{visual.burst(hit);audio.playSpatial('crate-impact',{frequency:130,end:55,duration:.20,noise:.75,gain:.13,priority:1,cooldown:.12},hit,{refDistance:3,maxDistance:16,rolloff:1,gain:.7,spatial:.75});});}
+    if(network.current){Object.assign(network.current.options,onlineNow.current);network.current.advance(g,delta,movement,frozen);clock.acc=0;landed.current.push(...g.punches);if(!frozen)g.hits.forEach(hit=>{visual.burst(hit);audio.playSpatial('crate-impact',{frequency:130,end:55,duration:.20,noise:.75,gain:.13,priority:1,cooldown:.12},hit,{refDistance:3,maxDistance:16,rolloff:1,gain:.7,spatial:.75});});}
     while (!network.current && clock.acc >= C.step) {
-      const phase = g.phase; g.step(movement); clock.acc -= C.step;
+      const phase = g.phase; g.step(movement); clock.acc -= C.step; landed.current.push(...g.punches);
       if (debug && phase !== 'roundOver' && phase !== 'results') m.physics.push(g.physicsMs);
       g.hits.forEach(hit => { visual.burst(hit); audio.playSpatial('crate-impact', { frequency: 130, end: 55, duration: .20, noise: .75, gain: .13, priority: 1, cooldown: .12 }, hit, { refDistance: 3, maxDistance: 16, rolloff: 1, gain: .7, spatial: .75 }); });
     }
+    // Punches: the own swing as it starts (predicted online), every landed hit where it landed.
+    const self = network.current?.self ?? 0, own = g.players[self];
+    if (!frozen && own && own.punchAge >= 0 && (clock.swing < 0 || own.punchAge < clock.swing)) audio.playSfx({ name: 'punchSwing', actor: self, intensity: 0.6 });
+    clock.swing = own?.punchAge ?? -1;
+    if (!frozen) for (const hit of landed.current) { visual.burst(hit); audio.playSfx({ name: 'bodyHit', actor: hit.attacker >= 0 ? hit.attacker : undefined, target: hit.target, intensity: hit.target === self || hit.attacker === self ? 0.8 : 0.45 }); }
+    landed.current.length = 0;
     const alive = g.players.filter(p => p.alive).length, count = g.phase === 'countdown' ? Math.ceil(C.countdown - g.phaseTime) : 0;
     if (!frozen && count > 0 && count !== clock.count) audio.playSfx({ name: 'countdown', step: count }); clock.count = count;
     if (!frozen && alive < clock.alive) audio.playSfx({ name: 'knockout', intensity: 0.55 }); clock.alive = alive;

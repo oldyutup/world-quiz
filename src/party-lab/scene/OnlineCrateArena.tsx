@@ -32,6 +32,6 @@ export default function OnlineCrateArena(props:Props){
       <div className="pl-arena-side"><ArenaStatus lobby={lobby} spectating={!self?.participating}/></div>
       {status!=='ready'&&<div className="pl-arena-message" role="status"><strong>{status==='error'?'Arena yüklenemedi':'Arena bağlanıyor…'}</strong></div>}
     </div>
-    {menu.view&&<ArenaMenu view={menu.view} setView={menu.setView} onResume={()=>menu.setView(null)} onLeave={props.onLeave} lobby={lobby} modeName="Kutu Yağmuru" bindings={props.bindings} onBindings={props.onBindings} bindingsSaved={props.bindingsSaved} controlsContent={<CrateControls bindings={bindings} onChange={update} saved={saved} onClose={()=>menu.setView('main')}/>}><p>3 tur. Kutulara tırman, 20 saniye dayan. Maç menü açıkken sürer.</p></ArenaMenu>}
+    {menu.view&&<ArenaMenu view={menu.view} setView={menu.setView} onResume={()=>menu.setView(null)} onLeave={props.onLeave} lobby={lobby} modeName="Kutu Yağmuru" bindings={props.bindings} onBindings={props.onBindings} bindingsSaved={props.bindingsSaved} controlsContent={<CrateControls bindings={bindings} onChange={update} saved={saved} onClose={()=>menu.setView('main')}/>}><p>3 tur. Kutulara tırman, 20 saniye dayan. Yumrukla rakibini 1 sn sersemlet. Maç menü açıkken sürer.</p></ArenaMenu>}
   </div>;
 }

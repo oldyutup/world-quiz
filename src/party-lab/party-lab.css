@@ -936,3 +936,16 @@ body:has(:is(.pl-control-hint[data-shown="true"], .pl-bowling-hit, .pl-bowling-c
 /* Typing at the top covers that HUD for a moment: solid lines read cleanly over it. */
 .party-lab .pl-game-chat[data-touch="true"][data-open="true"] .pl-game-chat-lines li { background: oklch(16% 0.02 180 / 95%); }
 @media (prefers-reduced-motion: reduce) { .party-lab .pl-game-chat-lines li { transition: none; } }
+
+/* Saklambaç phase calls (phaseNotice.ts): the count for hiders, then the alarm; the seeker's "ARA!". */
+.party-lab .pl-prop-notice {
+  position: absolute; top: 22%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+  padding: 10px 30px 12px; border-radius: 20px; font-weight: 900; line-height: 1.05; text-align: center;
+  box-shadow: 0 10px 40px oklch(10% 0.02 280 / 35%), inset 0 0 0 3px oklch(100% 0 0 / 30%);
+}
+.party-lab .pl-prop-notice:empty { display: none; }
+.party-lab .pl-prop-notice[data-kind="counting"] { font-size: clamp(30px, 4.2vw, 52px); background: oklch(26% 0.03 250 / 88%); color: oklch(96% 0.02 250); font-variant-numeric: tabular-nums; }
+.party-lab .pl-prop-notice[data-kind="hunted"] { top: 30%; font-size: clamp(34px, 5.2vw, 68px); background: oklch(60% 0.2 28); color: oklch(98% 0.01 60); animation: pl-prop-alarm 0.45s ease-in-out 3; }
+.party-lab .pl-prop-notice[data-kind="seek"] { top: 34%; font-size: clamp(56px, 9vw, 110px); background: oklch(80% 0.16 75); color: oklch(22% 0.05 60); letter-spacing: 0.05em; }
+@keyframes pl-prop-alarm { 50% { transform: translate(-50%, -50%) scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .party-lab .pl-prop-notice[data-kind="hunted"] { animation: none; } }

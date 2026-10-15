@@ -57,7 +57,19 @@ export function raceVisual(kit:Group,track:RaceTrack,count:number){
   const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=160;const ctx=canvas.getContext('2d')!;ctx.fillStyle='#344a43';ctx.fillRect(0,0,1024,160);ctx.fillStyle='#f0e5c9';ctx.textAlign='center';ctx.font='900 73px sans-serif';ctx.fillText('ARABA YARIŞI',512,102);
   const texture=new CanvasTexture(canvas);texture.colorSpace=SRGBColorSpace;const signMat=new MeshBasicMaterial({map:texture,side:DoubleSide});materials.push(signMat);const signGeo=new PlaneGeometry(start.width+2,1.9);owned.push(signGeo);const sign=new Mesh(signGeo,signMat);sign.position.y=5.7;sign.rotation.y=Math.PI;gantry.add(sign);gantry.position.set(start.x,0,start.z);gantry.rotation.y=heading;root.add(gantry);
   const cars=Array.from({length:count},(_,i)=>{const g=new Group(),mesh=new Mesh(kitGeometry('Car',COLORS[i]),material);mesh.position.y=-.64;g.add(mesh);root.add(g);return g;});
+  // Rüzgâr alma: thin white wind streaks stream back along a towed car's sides and roof, as strong as its tow.
+  const streakGeo=new BoxGeometry(.028,.028,1.5);owned.push(streakGeo);
+  const STREAKS=[[-1.25,.15],[-1.35,.55],[-1.2,.95],[1.25,.15],[1.35,.55],[1.2,.95],[-.55,1.35],[0,1.45],[.55,1.35],[-.9,1.2],[.9,1.2]] as const;
+  const winds=cars.map(car=>{
+    const mat=new MeshBasicMaterial({color:'#f4fbff',transparent:true,opacity:0,depthWrite:false,fog:false});materials.push(mat);
+    const group=new Group();group.visible=false;car.add(group);
+    const streaks=STREAKS.map(([x,y])=>{const m=new Mesh(streakGeo,mat);m.position.set(x,y-.64,0);group.add(m);return m;});
+    return {group,mat,streaks};
+  });
   const shadowGeo=new PlaneGeometry(2.4,4.1),shadowMat=new MeshBasicMaterial({color:'#26342c',transparent:true,opacity:.20,depthWrite:false});owned.push(shadowGeo);materials.push(shadowMat);
   const shadows=cars.map(()=>{const m=new Mesh(shadowGeo,shadowMat);m.rotation.x=-Math.PI/2;root.add(m);return m;});
-  return {root,cars,update(g:RaceGame,alpha:number){g.cars.forEach((c,i)=>{const p=c.body.translation(),a=c.previous;cars[i].position.set(a.x+(p.x-a.x)*alpha,a.y+(p.y-a.y)*alpha,a.z+(p.z-a.z)*alpha);cars[i].rotation.y=c.previousHeading+angle(c.heading-c.previousHeading)*alpha;shadows[i].position.set(p.x,.07,p.z);shadows[i].rotation.z=-c.heading;shadows[i].visible=p.y>0&&p.y<2;});},dispose(){root.traverse(o=>{if(o instanceof InstancedMesh)o.dispose();});owned.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());texture.dispose();}};
+  return {root,cars,update(g:RaceGame,alpha:number){g.cars.forEach((c,i)=>{const p=c.body.translation(),a=c.previous;cars[i].position.set(a.x+(p.x-a.x)*alpha,a.y+(p.y-a.y)*alpha,a.z+(p.z-a.z)*alpha);cars[i].rotation.y=c.previousHeading+angle(c.heading-c.previousHeading)*alpha;shadows[i].position.set(p.x,.07,p.z);shadows[i].rotation.z=-c.heading;shadows[i].visible=p.y>0&&p.y<2;
+    const wind=winds[i],t=performance.now()/1000;wind.group.visible=c.draft>.08&&c.body.isEnabled();
+    if(wind.group.visible){wind.mat.opacity=.15+.5*c.draft;wind.streaks.forEach((m,k)=>{const phase=(t*(2.2+.5*c.draft)+k*.37)%1;m.position.z=2.6-phase*5.6;m.scale.z=.6+.8*c.draft;});}
+  });},dispose(){root.traverse(o=>{if(o instanceof InstancedMesh)o.dispose();});owned.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());texture.dispose();}};
 }

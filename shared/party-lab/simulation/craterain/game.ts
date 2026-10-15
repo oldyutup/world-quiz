@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { BOXES, BOX_KINDS, CRATE_SIZE, baseLandingTime, CRATE_RAIN as C, FEET, IDLE, clamp, seeded, waveAt, roundWinner, type BoxKind, type Input } from './config.js';
+import { BOXES, BOX_KINDS, CRATE_PUNCH as PUNCH, CRATE_SIZE, baseLandingTime, CRATE_RAIN as C, FEET, IDLE, clamp, seeded, waveAt, roundWinner, type BoxKind, type Input } from './config.js';
 import { CrateBot } from './bots.js';
 
 type Vec = { x: number; y: number; z: number };
@@ -8,12 +8,18 @@ export interface CratePlayer {
   id: number; body: RAPIER.RigidBody; collider: RAPIER.Collider; alive: boolean; heading: number;
   grounded: boolean; support: number | null; coyote: number; buffer: number; jumpHeld: boolean;
   positionBefore: Vec; input: Input; reason: 'impact' | null; stepped: number;
+  /** The punch: seconds into the swing (−1: none), whether it landed, the held key (presses are edges). */
+  punchAge: number; punchHit: boolean; punchHeld: boolean;
+  /** Seconds left: before the next punch, stunned, guarded (CRATE_PUNCH). */
+  cooldown: number; stun: number; guard: number;
 }
+/** A landed punch this step (visuals and sound). */
+export interface PunchEvent { attacker: number; target: number; x: number; y: number; z: number }
 export interface Cell { index: number; x: number; z: number; layers: number; reserved: boolean }
 export interface Warning { cell: number; impactAt: number; id: number; kind: BoxKind; x: number; z: number; y: number; since: number; spawnAt: number; spawned: boolean; landed: boolean }
 export interface Crate { id: number; kind: BoxKind; body: RAPIER.RigidBody; collider: RAPIER.Collider; before: Vec; warnedAt: number; spawnedAt: number; firstHit: boolean; cell: number; startY: number; landingY: number; impactAt: number }
 export interface Impact { player: number; crate: number; kind: BoxKind; speed: number; downward: number; impulse: number; lethal: boolean; tick: number }
-export interface CrateSnapshot { phase: CratePhase; round: number; seconds: number; alive: boolean[]; wins: number[]; winner: number; elapsed: number; boxes: number; wave: number; timeout: boolean; danger: boolean }
+export interface CrateSnapshot { phase: CratePhase; round: number; seconds: number; alive: boolean[]; wins: number[]; winner: number; elapsed: number; boxes: number; wave: number; timeout: boolean; danger: boolean; stunned: boolean; guarded: boolean }
 export interface PhysicsStats { awake: number; sleeping: number; dynamic: number; kinematic: number; fixed: number; invalid: number; tunneled: number; bodies: number; colliders: number; maxSpeed: number; maxHeight: number }
 const ZERO = { x: 0, y: 0, z: 0 }, ROT = { x: 0, y: 0, z: 0, w: 1 };
 /** Approved fixed-step Crate Rain simulation. Presentation never owns outcomes. */
@@ -30,7 +36,7 @@ export class CrateRainGame {
   phase: CratePhase = 'countdown'; round = 1; phaseTime = 0; elapsed = 0; tick = 0;
   wins: number[]; winner = -1; timeout = false; bots = true; spawning = true;
   physicsMs = 0; invalidBodies = 0; tunneling = 0; peakSpeed = 0;
-  impacts: Impact[] = []; hits: { x: number; y: number; z: number; speed: number }[] = [];
+  impacts: Impact[] = []; hits: { x: number; y: number; z: number; speed: number }[] = []; punches: PunchEvent[] = [];
   history: { round: number; seconds: number; winner: number; boxes: number; timeout: boolean }[] = [];
   private random: () => number;
   private botBrains: CrateBot[] = [];
@@ -55,14 +61,15 @@ export class CrateRainGame {
       const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().lockRotations().setCanSleep(true).setCcdEnabled(true));
       const collider = this.world.createCollider(RAPIER.ColliderDesc.capsule(C.playerHalf, C.playerRadius).setMass(C.playerMass).setFriction(0.65).setRestitution(0)
         .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Min).setContactSkin(0.01), body);
-      this.players.push({ id, body, collider, alive: true, heading: 0, grounded: false, support: null, coyote: 0, buffer: 0, jumpHeld: false, positionBefore: { ...ZERO }, input: { ...IDLE }, reason: null, stepped: 0 });
+      this.players.push({ id, body, collider, alive: true, heading: 0, grounded: false, support: null, coyote: 0, buffer: 0, jumpHeld: false, positionBefore: { ...ZERO }, input: { ...IDLE }, reason: null, stepped: 0,
+        punchAge: -1, punchHit: false, punchHeld: false, cooldown: 0, stun: 0, guard: 0 });
     }
     this.resetRound();
   }
   resetRound() {
     // The ONLY gameplay removal path for crates. There is no per-wave/age cleanup.
     for (const c of this.crates) this.world.removeRigidBody(c.body);
-    this.crates.length = 0; this.crateByCollider.clear(); this.warnings.length = 0; this.impacts.length = 0; this.hits.length = 0;
+    this.crates.length = 0; this.crateByCollider.clear(); this.warnings.length = 0; this.impacts.length = 0; this.hits.length = 0; this.punches.length = 0;
     this.phase = 'countdown'; this.phaseTime = this.elapsed = this.tick = 0; this.winner = -1; this.timeout = false;
     this.planned = this.nextId = 0; this.lastSound = -10;
     this.cells.forEach(cell => { cell.layers = 0; cell.reserved = false; });
@@ -73,7 +80,8 @@ export class CrateRainGame {
       p.body.setEnabled(true); p.body.setTranslation({ x: Math.sin(a) * this.half * 0.48, y: FEET + 0.035, z: Math.cos(a) * this.half * 0.48 }, true);
       p.body.setLinvel(ZERO, true); p.body.setAngvel(ZERO, true); p.body.setRotation(ROT, true); p.body.resetForces(true); p.body.resetTorques(true);
       p.positionBefore = p.body.translation();
-      Object.assign(p, { alive: true, heading: a + Math.PI, grounded: false, support: null, coyote: 0, buffer: 0, jumpHeld: false, reason: null, input: { ...IDLE }, stepped: 0 });
+      Object.assign(p, { alive: true, heading: a + Math.PI, grounded: false, support: null, coyote: 0, buffer: 0, jumpHeld: false, reason: null, input: { ...IDLE }, stepped: 0,
+        punchAge: -1, punchHit: false, punchHeld: false, cooldown: 0, stun: 0, guard: 0 });
     });
     this.world.propagateModifiedBodyPositionsToColliders();
   }
@@ -183,9 +191,62 @@ export class CrateRainGame {
       }
     }
   }
+  /** Punch timers, one step: the swing, the cooldown, the guard; a stun that ends turns into a guard. */
+  private punchTimers(p: CratePlayer) {
+    if (p.punchAge >= 0 && (p.punchAge += C.step) > PUNCH.startup + PUNCH.active + 1e-9) p.punchAge = -1;
+    p.cooldown = Math.max(0, p.cooldown - C.step);
+    p.guard = Math.max(0, p.guard - C.step);
+    if (p.stun > 0 && (p.stun = Math.max(0, p.stun - C.step)) === 0) p.guard = PUNCH.guard;
+  }
+  /** A fresh punch press starts a swing (not while stunned or cooling down). */
+  private punchPress(p: CratePlayer, input: Input) {
+    const pressed = !!input.punch && !p.punchHeld;
+    p.punchHeld = !!input.punch;
+    if (pressed && this.phase === 'playing' && p.stun <= 0 && p.cooldown <= 0) { p.punchAge = 0; p.punchHit = false; p.cooldown = PUNCH.cooldown; }
+  }
+  /** The rival `id`'s swing would hit now: the nearest one in reach that is neither stunned nor guarded, with no crate between. */
+  punchTarget(id: number): number | null {
+    const a = this.players[id], at = a.body.translation();
+    let best: number | null = null, bestDistance = PUNCH.range + 1e-9;
+    for (const t of this.players) {
+      if (t.id === id || !t.alive || !t.body.isEnabled() || t.stun > 0 || t.guard > 0) continue;
+      const q = t.body.translation(), dx = q.x - at.x, dz = q.z - at.z, distance = Math.hypot(dx, dz), dy = q.y - at.y;
+      if (distance > bestDistance || Math.abs(dy) > PUNCH.heightGap) continue;
+      const length = Math.hypot(dx, dy, dz);
+      if (length > 1e-6) {
+        const ray = new RAPIER.Ray(at, { x: dx / length, y: dy / length, z: dz / length });
+        const blocked = this.world.castRay(ray, length, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, undefined, undefined,
+          c => !this.players.some(other => other.collider.handle === c.handle));
+        if (blocked) continue;
+      }
+      best = t.id; bestDistance = distance;
+    }
+    return best;
+  }
+  /** Swings in their active window land on the nearest valid rival; same-step hits all count. */
+  private resolvePunches() {
+    const landed: [CratePlayer, CratePlayer][] = [];
+    for (const a of this.players) {
+      if (!a.alive || a.stun > 0 || a.punchHit || a.punchAge < PUNCH.startup - 1e-9) continue;
+      const target = this.punchTarget(a.id);
+      if (target === null) continue;
+      a.punchHit = true; landed.push([a, this.players[target]]);
+    }
+    for (const [a, t] of landed) {
+      const from = a.body.translation(), to = t.body.translation(), v = t.body.linvel();
+      let dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz);
+      if (d < 1e-6) { dx = Math.sin(a.heading); dz = Math.cos(a.heading); d = 1; }
+      t.body.setLinvel({ x: dx / d * PUNCH.push, y: Math.max(0, v.y) + PUNCH.lift, z: dz / d * PUNCH.push }, true);
+      Object.assign(t, { stun: PUNCH.stun, guard: 0, punchAge: -1, buffer: 0 });
+      a.heading = Math.atan2(dx, dz);
+      this.punches.push({ attacker: a.id, target: t.id, x: to.x, y: to.y, z: to.z });
+    }
+  }
   private drive(p: CratePlayer, input: Input) {
     const body = p.body, at = body.translation(), v = body.linvel();
     this.ground(p); p.coyote = p.grounded ? C.coyote : Math.max(0, p.coyote - C.step);
+    // Stunned: no walking, jumping or braking; the punch's push slides out on friction.
+    if (p.stun > 0) { p.buffer = 0; p.jumpHeld = false; p.stepped = Math.max(0, p.stepped - C.step); return; }
     p.buffer = input.jump && !p.jumpHeld ? C.jumpBuffer : Math.max(0, p.buffer - C.step); p.jumpHeld = input.jump;
     let jumping = false;
     if (p.buffer > 0 && p.coyote > 0) { body.setLinvel({ x: v.x, y: C.jumpSpeed, z: v.z }, true); p.buffer = p.coyote = 0; p.grounded = false; p.support = null; jumping = true; }
@@ -213,11 +274,14 @@ export class CrateRainGame {
   /** Prediction runs movement/contact only; no schedule, KO, timer, or score. */
   predictPlayer(id: number, input: Input) {
     const p = this.players[id]; if (!p?.alive) return;
-    p.positionBefore = p.body.translation(); this.drive(p, input); this.world.step();
+    if (this.phase === 'playing') this.punchTimers(p);
+    const own = p.stun > 0 ? IDLE : input;
+    this.punchPress(p, own);
+    p.positionBefore = p.body.translation(); this.drive(p, own); this.world.step();
   }
   step(human: Input = IDLE, overrides?: readonly Input[]) {
     if (this.phase === 'results') return;
-    this.hits.length = 0; this.phaseTime += C.step; this.tick++;
+    this.hits.length = 0; this.punches.length = 0; this.phaseTime += C.step; this.tick++;
     if (this.phase === 'roundOver') {
       if (this.phaseTime >= C.resultTime) { if (this.round >= C.rounds) { this.phase = 'results'; this.phaseTime = 0; } else { this.round++; this.resetRound(); } }
       return;
@@ -234,9 +298,14 @@ export class CrateRainGame {
           input = this.botBrains[p.id].think({ ...at, grounded: p.grounded, elapsed: this.elapsed, half: this.half,
             warnings: this.warnings.filter(w => !w.landed).map(w => ({ id: w.id, x: w.x, z: w.z, radius: BOXES[w.kind].size[0] / 2, since: w.since })),
             height: (x, z) => this.surface(x, z).y,
-            clear: (x, z, y) => !this.world.intersectionWithShape({ x, y, z }, ROT, this.shape, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, p.collider, p.body), });
+            clear: (x, z, y) => !this.world.intersectionWithShape({ x, y, z }, ROT, this.shape, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, undefined, p.collider, p.body),
+            rivals: this.players.filter(o => o.id !== p.id && o.alive).map(o => { const q = o.body.translation(); return { x: q.x, y: q.y, z: q.z, open: o.stun <= 0 && o.guard <= 0 }; }),
+            canPunch: p.cooldown <= 0 && p.punchAge < 0, });
         }
+        this.punchTimers(p);
       }
+      if (p.stun > 0) input = IDLE;
+      this.punchPress(p, input);
       p.input = input; this.drive(p, input); p.positionBefore = p.body.translation();
     }
     for (const c of this.crates) if (!c.firstHit) {
@@ -245,7 +314,7 @@ export class CrateRainGame {
       c.body.setNextKinematicTranslation({ x: c.before.x, y: c.startY + (c.landingY - c.startY) * progress * progress, z: c.before.z });
     }
     const start = performance.now(); this.world.step(); this.physicsMs = performance.now() - start;
-    if (this.phase === 'playing') this.landAndHit();
+    if (this.phase === 'playing') { this.landAndHit(); this.resolvePunches(); }
     // Fixed crates have immutable, finite grid transforms. Validate only simulated bodies.
     for (const body of [...this.crates.filter(c => !c.firstHit).map(c => c.body), ...this.players.filter(p => p.alive).map(p => p.body)]) {
       const p = body.translation(), v = body.linvel();
@@ -271,6 +340,6 @@ export class CrateRainGame {
       maxHeight: this.crates.reduce((h, c) => c.firstHit ? Math.max(h, c.body.translation().y + BOXES[c.kind].size[1] / 2) : h, 0) };
   }
   coverage() { const base = this.cells.filter(c => c.layers > 0).length, landed = this.cells.reduce((n, c) => n + c.layers, 0); return { time: this.elapsed, playable: this.cells.length, base, percent: 100 * base / this.cells.length, spawned: this.crates.length, stacked: landed - base, maxLayers: Math.max(...this.cells.map(c => c.layers)) }; }
-  snapshot(self = 0): CrateSnapshot { const at = this.players[self].body.translation(); return { danger: this.warnings.some(w => !w.landed && Math.hypot(w.x - at.x, w.z - at.z) < 1.65), phase: this.phase, round: this.round, seconds: this.phase === 'countdown' ? Math.ceil(C.countdown - this.phaseTime) : Math.max(0, Math.ceil(C.maxRoundTime - this.elapsed - 1e-8)), alive: this.players.map(p => p.alive), wins: [...this.wins], winner: this.winner, elapsed: this.elapsed, boxes: this.crates.length, wave: waveAt(this.elapsed).phase, timeout: this.timeout }; }
+  snapshot(self = 0): CrateSnapshot { const me = this.players[self], at = me.body.translation(); return { stunned: me.alive && me.stun > 0, guarded: me.alive && me.stun <= 0 && me.guard > 0, danger: this.warnings.some(w => !w.landed && Math.hypot(w.x - at.x, w.z - at.z) < 1.65), phase: this.phase, round: this.round, seconds: this.phase === 'countdown' ? Math.ceil(C.countdown - this.phaseTime) : Math.max(0, Math.ceil(C.maxRoundTime - this.elapsed - 1e-8)), alive: this.players.map(p => p.alive), wins: [...this.wins], winner: this.winner, elapsed: this.elapsed, boxes: this.crates.length, wave: waveAt(this.elapsed).phase, timeout: this.timeout }; }
   dispose() { this.world.free(); }
 }

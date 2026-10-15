@@ -1,4 +1,4 @@
-import { clamp, type Vec } from './config.js';
+import { RACE, clamp, type Vec } from './config.js';
 import { ShapeUtils, Vector2 } from 'three';
 
 export interface RoutePoint extends Vec { s: number; tx: number; tz: number; width: number; curve: number }
@@ -97,10 +97,15 @@ export class RaceTrack {
   grid(id:number):{p:Vec;heading:number}{const s=-7-(id===2?6:0),p=this.at(s);return {p:this.pose(s,id===0?-2:id===1?2:0),heading:Math.atan2(p.tx,p.tz)};}
 }
 
-/** Swept, forward-only gate crossing. The finite gate also checks height; no air/void laps. */
-export function crossedGate(previous:Vec,current:Vec,gate:RoutePoint){
+/** Where a forward swept move crosses the gate's line: its offset from the route (m) and height; null when it does not cross forward. */
+export function gateCrossing(previous:Vec,current:Vec,gate:RoutePoint){
   const a=(previous.x-gate.x)*gate.tx+(previous.z-gate.z)*gate.tz,b=(current.x-gate.x)*gate.tx+(current.z-gate.z)*gate.tz;
-  if(a>0||b<=0||b-a<.0001)return false;
+  if(a>0||b<=0||b-a<.0001)return null;
   const t=-a/(b-a),x=previous.x+(current.x-previous.x)*t,z=previous.z+(current.z-previous.z)*t,y=previous.y+(current.y-previous.y)*t;
-  return Math.abs((x-gate.x)*gate.tz-(z-gate.z)*gate.tx)<=gate.width/2+1.4&&y>0&&y<1.8;
+  return {lateral:Math.abs((x-gate.x)*gate.tz-(z-gate.z)*gate.tx),y};
+}
+/** Swept, forward-only gate crossing within `RACE.gateMargin` m of the asphalt. The finite gate also checks height; no air/void laps. */
+export function crossedGate(previous:Vec,current:Vec,gate:RoutePoint){
+  const c=gateCrossing(previous,current,gate);
+  return !!c&&c.lateral<=gate.width/2+RACE.gateMargin&&c.y>0&&c.y<1.8;
 }

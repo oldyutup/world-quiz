@@ -28,6 +28,6 @@ export default function OnlineRaceArena(props:Props){
    <div className="pl-arena-side"><ArenaStatus lobby={lobby} spectating={!self?.participating}/></div>
    {status!=='ready'&&<div className="pl-arena-message" role="status"><strong>{status==='error'?'Arena yüklenemedi':'Arena bağlanıyor…'}</strong></div>}
   </div>
-  {menu.view&&<ArenaMenu view={menu.view} setView={menu.setView} onResume={()=>menu.setView(null)} onLeave={props.onLeave} lobby={lobby} modeName="Araba Yarışı" bindings={props.bindings} onBindings={props.onBindings} bindingsSaved={props.bindingsSaved} controlsContent={<RaceControls online bindings={bindings} shared={props.bindings} onShared={props.onBindings} onExtras={updateExtras} saved={props.bindingsSaved&&saved} onClose={()=>menu.setView('main')}/>}><p>3 tur. Maç menü açıkken sürer.</p></ArenaMenu>}
+  {menu.view&&<ArenaMenu view={menu.view} setView={menu.setView} onResume={()=>menu.setView(null)} onLeave={props.onLeave} lobby={lobby} modeName="Araba Yarışı" bindings={props.bindings} onBindings={props.onBindings} bindingsSaved={props.bindingsSaved} controlsContent={<RaceControls online bindings={bindings} shared={props.bindings} onShared={props.onBindings} onExtras={updateExtras} saved={props.bindingsSaved&&saved} onClose={()=>menu.setView('main')}/>}><p>3 tur. Öndekinin hemen arkasında kalırsan rüzgâr alıp hızlanırsın. Maç menü açıkken sürer.</p></ArenaMenu>}
  </div>;
 }

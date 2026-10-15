@@ -1,7 +1,7 @@
 import { BOWLING_DRIVE_PRESETS } from './camera';
 import type { BowlingPhase } from './game';
 import './bowling.css';
-import { FLIGHT } from './config';
+import { BOWLING, FLIGHT } from './config';
 export interface BowlingSnapshot {
   phase: BowlingPhase; player: number; round: number; totals: number[]; throws: number[][];
   charging:boolean;nudgeUsed:boolean;angle:number;angleDirection:'rising'|'falling';airHint:boolean; speed: number; countdown: number; inZone: boolean; missedEject: boolean; knocked: number; lastPoints: number; lastPlayer: number;
@@ -16,9 +16,9 @@ export default function BowlingHud({ snapshot: s, restart, debugOpen, names, sel
     {driving && !!s.cameraNotice && <div key={s.cameraNotice} className="pl-bowling-camera-notice" role="status">KAMERA · {BOWLING_DRIVE_PRESETS[s.cameraPreset ?? 1].label}</div>}
     <ol className="pl-bowling-scores" aria-label="Toplam puanlar">{s.totals.map((total, i) => <li key={i} data-active={!result && s.player === i}>
       <span className="pl-bowling-slot" style={{ background: ['#f6c773', '#e985a2', '#79bbed'][i] }}>{i + 1}</span>
-      <span><b>{name(i)}{!names && i > 0 && <small> BOT</small>}</b><span className="pl-bowling-throws">{[0, 1, 2].map(n => <span key={n}>{s.throws[i][n] ?? '·'}</span>)}</span></span><strong>{total}<small>/30</small></strong>
+      <span><b>{name(i)}{!names && i > 0 && <small> BOT</small>}</b><span className="pl-bowling-throws">{Array.from({ length: BOWLING.throws }, (_, n) => <span key={n}>{s.throws[i][n] ?? '·'}</span>)}</span></span><strong>{total}<small>/{BOWLING.throws * 10}</small></strong>
     </li>)}</ol>
-    {!result && <div className="pl-bowling-turn" role="status"><b>{name(s.player)} · Atış {s.round}/3</b><span>{s.phase === 'countdown' ? 'Direksiyona geç!' : driving ? mine ? 'Hızlan · Hizalan · Fırlat' : 'Piste çıkıyor…' : s.phase === 'score' ? 'Sıradaki oyuncu hazırlanıyor' : s.airHint ? 'Havada yön ver!' : 'Bırak yuvarlansın!'}</span></div>}
+    {!result && <div className="pl-bowling-turn" role="status"><b>{name(s.player)} · Atış {s.round}/{BOWLING.throws}</b><span>{s.phase === 'countdown' ? 'Direksiyona geç!' : driving ? mine ? 'Hızlan · Hizalan · Fırlat' : 'Piste çıkıyor…' : s.phase === 'score' ? 'Sıradaki oyuncu hazırlanıyor' : s.airHint ? 'Havada yön ver!' : 'Bırak yuvarlansın!'}</span></div>}
     {s.phase === 'countdown' && <div className="pl-bowling-countdown" role="status">{s.countdown}</div>}
     <aside className="pl-bowling-charge" data-charging={s.charging} data-direction={s.angleDirection} aria-label="Atış göstergeleri">
       <div className="pl-bowling-meter-label"><b>FIRLATMA AÇISI</b><span aria-label={s.charging ? s.angleDirection==='rising' ? 'Açı yükseliyor' : 'Açı azalıyor' : undefined}>{s.charging ? s.angleDirection==='rising' ? '↗' : '↘' : driving || s.phase==='countdown' ? 'SPACE TUT' : 'KİLİTLİ'}</span></div>

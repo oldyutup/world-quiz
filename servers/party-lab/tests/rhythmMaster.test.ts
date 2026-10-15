@@ -349,7 +349,7 @@ test("the round simulation: player counts, slots (not seats) as winner, placemen
   assert.equal(sim.winner, 2);
   assert.deepEqual(sim.placements(), [-1, 1, 0]);
   const snap = sim.snapshot([0, 0, 0]);
-  assert.equal(snap.v, 23);
+  assert.equal(snap.v, 24);
   assert.equal(snap.mode, "rhythm_master");
   assert.equal(snap.winner, 2);
   assert.ok(validRhythmWire(snap.rhythm));
@@ -594,7 +594,7 @@ for (const count of [2, 3])
     if (count === 3) assert.equal(places[slot(2)], 1, "equal totals share a place");
     await until(() => peers[0].snapshots.at(-1)?.phase === "results");
     const shown = peers[0].snapshots.at(-1)!;
-    assert.equal(shown.v, 23);
+    assert.equal(shown.v, 24);
     assert.ok(validRhythmWire(shown.rhythm));
     assert.equal(shown.winner, slot(1));
     assert.equal(shown.rhythm!.score[l1], 20);
