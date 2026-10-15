@@ -344,6 +344,14 @@ export class AudioManager {
       return false;
     }
   }
+  /**
+   * The context and the output bus for music a mode schedules itself (Ritim Ustası): through the
+   * same volume, mute and limiter as every cue. Null while audio is locked or the page is hidden.
+   */
+  musicBus(): { context: AudioContext; output: AudioNode } | null {
+    if (!this.context || this.context.state !== "running" || this.background || !this.output) return null;
+    return { context: this.context, output: this.output };
+  }
   async playUi(name: SfxName = "uiClick") {
     return (await this.unlock()) ? this.playSfx({ name }) : false;
   }

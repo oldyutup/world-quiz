@@ -154,6 +154,8 @@ export const CHAT_LAYOUT: Readonly<Record<ChatPlace, { wide: ChatSpot; narrow: C
   gift_grab: { wide: at(24, 236), narrow: at(24, 236), phone: at(120) },
   // Bottom of the left HUD column (cards, train, controls at its top), no wider than it: the arena starts right of it.
   light_trails: { wide: at(24, 236), narrow: at(24, 236), phone: at(120) },
+  // Above the lanes block (across the bottom from 50 px: 112 + 72 + 72 px and gaps), narrow enough to leave the left dancer clear.
+  rhythm_master: { wide: at(352, 280), narrow: at(352, 230), phone: at(352, 220) },
   board_game: { wide: at(24), narrow: at(24, 260), phone: at(24) },
 };
 

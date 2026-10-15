@@ -438,6 +438,8 @@ export class LobbySession {
       ? {seq:++this.inputSeq,round:this.snapshot.round,drop:intent.tower?.drop??1,at:intent.tower?.at??0}
       : this.snapshot.mode === "light_trails"
       ? {seq:++this.inputSeq,round:this.snapshot.round,dirX:intent.trail?.dirX??0,dirZ:intent.trail?.dirZ??0}
+      : this.snapshot.mode === "rhythm_master"
+      ? {seq:++this.inputSeq,round:this.snapshot.round,pressed:intent.rhythm?.pressed??0,presses:intent.rhythm?.presses??[]}
       : this.snapshot.mode === "bomber"
       ? {seq:++this.inputSeq,round:this.snapshot.round,moveX:intent.bomber?.moveX??0,moveZ:intent.bomber?.moveZ??0,bombs:intent.bomber?.bombs??0}
       : this.snapshot.mode === "gold_miner"

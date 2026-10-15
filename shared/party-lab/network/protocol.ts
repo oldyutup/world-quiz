@@ -10,6 +10,7 @@ import { validateBomberInput, type BomberInputPacket } from "./bomberInput.js";
 import { validateTowerInput, type TowerInputPacket } from "./towerInput.js";
 import { validateMarksmanInput, type MarksmanInputPacket } from "./marksmanInput.js";
 import { validateTrailInput, type TrailInputPacket } from "./trailInput.js";
+import { validateRhythmInput, type RhythmInputPacket } from "./rhythmInput.js";
 import type { MovementInput } from "../intent.js";
 import type { FeedbackEvent } from "../feedback/events.js";
 import type { GameMode } from "../modes.js";
@@ -58,7 +59,10 @@ export const NET = {
   // 22: Işık İzi (light_trails). A new mode, its held direction-keys packet and snapshot
   // section (heads, trail points on the centimetre, deaths and their causes); a v21 page
   // cannot draw it and a v21 server refuses it.
-  version: 22,
+  // 23: Ritim Ustası (rhythm_master). A new mode, its press packet (press counter and the latest
+  // stamped presses with their keys) and snapshot section (the song's style and seed, scores,
+  // combos, recent results); a v22 page cannot draw it and a v22 server refuses it.
+  version: 23,
   physicsHz: 60,
   snapshotHz: 20,
   inputHz: 60,
@@ -209,7 +213,7 @@ export interface GiftInputPacket extends BombInputPacket {
 }
 /** Prop Hunt intent: Barn aim/movement edges plus a separate whistle edge. */
 export interface PropInputPacket extends BarnInputPacket { whistlePressed: boolean; }
-export type AnyInputPacket = TrailInputPacket | MarksmanInputPacket | TowerInputPacket | BomberInputPacket | GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket | GiftInputPacket;
+export type AnyInputPacket = RhythmInputPacket | TrailInputPacket | MarksmanInputPacket | TowerInputPacket | BomberInputPacket | GoldInputPacket | ClickInputPacket | ClassicInputPacket | RaceInputPacket | FightInputPacket | CrateInputPacket | SnowballInputPacket | BowlingInputPacket | PropInputPacket | InputPacket | BarnInputPacket | LayerInputPacket | BombInputPacket | GiftInputPacket;
 export const isBarnPacket = (p: AnyInputPacket): p is BarnInputPacket => "attackPressed" in p;
 export const isBombPacket = (p: AnyInputPacket): p is BombInputPacket => "viewTick" in p && "punchPressed" in p && !("pickupPressed" in p);
 export const isGiftPacket = (p: AnyInputPacket): p is GiftInputPacket => "viewTick" in p && "punchPressed" in p && "pickupPressed" in p;
@@ -420,6 +424,7 @@ export interface GameSnapshot {
   marksman?: import("../simulation/marksman/wire.js").MarksmanWire;
   gift?: import("../simulation/gifts/wire.js").GiftWire;
   trail?: import("../simulation/trails/wire.js").TrailWire;
+  rhythm?: import("../simulation/rhythm/wire.js").RhythmWire;
 }
 export const BODY_COUNT = 9,
   BODY_STRIDE = 7,
@@ -650,6 +655,7 @@ export class InputMailbox {
   private trailPacket: TrailInputPacket | null = null;
   private towerPacket: TowerInputPacket | null = null;
   private marksmanPacket: MarksmanInputPacket | null = null;
+  private rhythmPacket: RhythmInputPacket | null = null;
   private snowballPacket: SnowballInputPacket | null = null;
   private bowlingQueue: BowlingInputPacket[] = [];
   private bowlingHeld: BowlingInputPacket | null = null;
@@ -707,6 +713,15 @@ export class InputMailbox {
       this.seq = p.seq;
       this.received = now;
       this.marksmanPacket = p;
+      return true;
+    }
+    if (mode === "rhythm_master") {
+      const p = validateRhythmInput(value);
+      if (!p || p.round !== round || p.seq <= this.seq) return false;
+      // The newest packet waits for the next step: it repeats the latest presses.
+      this.seq = p.seq;
+      this.received = now;
+      this.rhythmPacket = p;
       return true;
     }
     if (mode === "light_trails") {
@@ -879,6 +894,13 @@ export class InputMailbox {
       this.processedRound = p.round;
       return { ...neutralIntent(), marksman: p };
     }
+    if (this.rhythmPacket) {
+      const p = this.rhythmPacket;
+      this.rhythmPacket = null;
+      this.processedSeq = p.seq;
+      this.processedRound = p.round;
+      return { ...neutralIntent(), rhythm: p };
+    }
     if (now - this.received > NET.staleMs) this.clear();
     if(this.classicPacket){const p=this.classicEdge??{...this.classicPacket,pressed:false};this.classicEdge=null;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),classic:p};}
     if(this.racePacket){const p={...this.racePacket,reset:this.raceReset};this.raceReset=false;this.processedSeq=p.seq;this.processedRound=p.round;return {...neutralIntent(),race:p};}
@@ -1002,6 +1024,7 @@ export class InputMailbox {
     this.trailPacket=null;
     this.towerPacket=null;
     this.marksmanPacket=null;
+    this.rhythmPacket=null;
     this.snowballPacket=null;
     this.bowlingQueue=[];this.bowlingHeld=null;
     this.propPacket = null;

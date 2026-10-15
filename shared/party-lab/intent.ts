@@ -12,6 +12,7 @@ export interface MovementInput {
   tower?: import("./network/towerInput.js").TowerInputPacket;
   marksman?: import("./network/marksmanInput.js").MarksmanInputPacket;
   trail?: import("./network/trailInput.js").TrailInputPacket;
+  rhythm?: import("./network/rhythmInput.js").RhythmInputPacket;
   x: number;
   z: number;
   jump: boolean;

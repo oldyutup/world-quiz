@@ -22,8 +22,8 @@ import { causeText, resultOrder, secondsLeft } from "./hud";
 const HALF_X = L.width / 2,
   HALF_Z = L.depth / 2;
 
-test("Işık İzi is a registered 2–3 player mode on protocol 22, with a local arena, an online view and a chat spot", () => {
-  assert.equal(NET.version, 22);
+test("Işık İzi is a registered 2–3 player mode on protocol 23, with a local arena, an online view and a chat spot", () => {
+  assert.equal(NET.version, 23);
   assert.ok(GAME_MODES.includes("light_trails") && MODE_SELECTIONS.includes("light_trails"));
   assert.equal(MODE_NAMES.light_trails, "Işık İzi");
   assert.ok(modeFits("light_trails", 2) && modeFits("light_trails", 3) && !modeFits("light_trails", 4));
