@@ -1,12 +1,12 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CATCH_UP, DRAFT, GROUP, IDLE, NAMES, RACE, angle, clamp, groups, yaw, type DriveInput, type Vec } from './config.js';
+import { CAR_LENGTH, CAR_WIDTH, CATCH_UP, DRAFT, GROUP, IDLE, NAMES, RACE, angle, clamp, groups, yaw, type DriveInput, type Vec } from './config.js';
 import { RaceTrack } from './track.js';
 import { RaceCar } from './car.js';
 import { RacingBot } from './bots.js';
 import { advance, markMissed, missedCheckpoint, newProgress, raceDistance, raceOrder, wrongWay } from './rules.js';
 
 export interface RaceOptions { scale?:number; width?:number; maxSpeed?:number; laps?:number }
-export interface RaceSnapshot { phase:'countdown'|'racing'|'results';countdown:number;time:number;lap:number;laps:number;position:number;count:number;speed:number;grass:boolean;wrong:boolean;missed:boolean;resetting:boolean;finalLap:boolean;draft:number;catchUp:number;order:{id:number;name:string;finish:number|null;laps:number}[]; winner:number|null; camera?:string }
+export interface RaceSnapshot { phase:'countdown'|'racing'|'results';countdown:number;time:number;lap:number;laps:number;position:number;count:number;speed:number;grass:boolean;wrong:boolean;missed:boolean;resetting:boolean;finalLap:boolean;draft:number;tooClose:boolean;catchUp:number;order:{id:number;name:string;finish:number|null;laps:number}[]; winner:number|null; camera?:string }
 export class RaceGame {
   readonly world:RAPIER.World;
   readonly track:RaceTrack;
@@ -44,16 +44,33 @@ export class RaceGame {
       if(clear>best){best=clear;at=q;chosen=s-back;}if(clear>5)break search;
     }
     const t=this.track.at(chosen);car.place(at,Math.atan2(t.tx,t.tz));p.hold=RACE.resetHold;p.lastReset=this.time;p.resets++;p.stuck=p.wrongDwell=p.rightDwell=0;p.wrong=false;p.missed=false;this.drivers[id].reverseUntil=0;
-    this.drivers[id].recovering=null;
+    this.drivers[id].recovering=null;this.drivers[id].passing=null;
     this.events.push({kind:'reset',id,intensity:.4});return true;
   }
-  /** The car `leader` gives `id` a tow now: `id` is in the narrow cone behind it, both fast and aligned (DRAFT). */
-  inTow(id:number,leader:number){
-    const f=this.cars[id],l=this.cars[leader];if(id===leader||!f.body.isEnabled()||!l.body.isEnabled())return false;
+  /** Where `id` is behind `leader`, along the leader's heading: the bumper-to-bumper gap and the sideways offset (centres). */
+  private behind(id:number,leader:number){
+    const f=this.cars[id],l=this.cars[leader];if(id===leader||!f.body.isEnabled()||!l.body.isEnabled())return null;
     const a=f.body.translation(),b=l.body.translation(),fx=Math.sin(l.heading),fz=Math.cos(l.heading),dx=a.x-b.x,dz=a.z-b.z;
-    const behind=-(dx*fx+dz*fz),side=Math.abs(dx*fz-dz*fx);
-    return behind>=DRAFT.minDistance&&behind<=DRAFT.maxDistance&&side<=DRAFT.halfWidth+DRAFT.widen*(behind-DRAFT.minDistance)&&Math.abs(a.y-b.y)<2
-      &&Math.abs(angle(f.heading-l.heading))<=DRAFT.maxHeading&&f.forwardSpeed>=DRAFT.minSpeed&&l.forwardSpeed>=DRAFT.minSpeed;
+    if(Math.abs(a.y-b.y)>=2)return null;
+    const centres=-(dx*fx+dz*fz);return {centres,gap:centres-CAR_LENGTH,side:Math.abs(dx*fz-dz*fx)};
+  }
+  private paced(id:number,leader:number){const f=this.cars[id],l=this.cars[leader];return Math.abs(angle(f.heading-l.heading))<=DRAFT.maxHeading&&f.forwardSpeed>=DRAFT.minSpeed&&l.forwardSpeed>=DRAFT.minSpeed;}
+  /** The car `leader` gives `id` a tow now: `id` is in the narrow cone a few metres behind it, both fast and aligned (DRAFT). */
+  inTow(id:number,leader:number){
+    const at=this.behind(id,leader);
+    return !!at&&at.gap>=DRAFT.minGap&&at.gap<=DRAFT.maxGap&&at.side<=DRAFT.halfWidth+DRAFT.widen*(at.gap-DRAFT.minGap)&&this.paced(id,leader);
+  }
+  /** `id` is behind `leader` and no wider than DRAFT.passWidth beside it, both fast and aligned: pulling out to pass keeps a tow. */
+  passing(id:number,leader:number){
+    const at=this.behind(id,leader);
+    return !!at&&at.centres>0&&at.gap<=DRAFT.maxGap&&at.side<=DRAFT.passWidth&&this.paced(id,leader);
+  }
+  /** How much of a tow works for `id` (DRAFT.ease): 1, less in the last metres before DRAFT.minGap
+   * right behind a car (overlapping it sideways), 0 closer. Speed over the lowered cap bleeds off softly. */
+  room(id:number){
+    let room=1;
+    for(let j=0;j<this.cars.length;j++){const at=this.behind(id,j);if(at&&at.centres>0&&at.side<CAR_WIDTH)room=Math.min(room,clamp((at.gap-DRAFT.minGap)/DRAFT.ease,0,1));}
+    return room;
   }
   /** Catch-up help for `id` (0–1): only the last car still racing, by its race distance behind the car ahead (CATCH_UP). */
   catchUpFor(id:number){
@@ -68,8 +85,9 @@ export class RaceGame {
   private assists(dt:number){
     for(const [i,c] of this.cars.entries()){
       const racing=this.phase==='racing'&&this.progress[i].finish===null&&this.progress[i].hold===0;
+      c.room=racing?this.room(i):1;
       if(racing&&this.cars.some((_,j)=>this.inTow(i,j))){c.draftTime+=dt;if(c.draftTime+1e-9>=DRAFT.charge)c.draft=Math.min(1,c.draft+dt/DRAFT.build);}
-      else {c.draftTime=0;c.draft=Math.max(0,c.draft-dt/DRAFT.fade);}
+      else {c.draftTime=0;if(!(racing&&this.cars.some((_,j)=>this.passing(i,j))))c.draft=Math.max(0,c.draft-dt/DRAFT.fade);}
       c.catchUp=racing?this.catchUpFor(i):0;
     }
   }
@@ -118,7 +136,7 @@ export class RaceGame {
   }
   snapshot(self=0):RaceSnapshot{
     const order=raceOrder(this.progress,this.track,this.cars.map(c=>c.projection.s)),me=this.progress[self];
-    return {phase:this.phase,countdown:Math.ceil(this.countdown),time:this.time,lap:Math.min(this.laps,me.laps+1),laps:this.laps,position:order.indexOf(self)+1,count:this.count,speed:this.cars[self].speed*3.6,grass:this.cars[self].grass,wrong:me.wrong,missed:missedCheckpoint(me),draft:this.cars[self].draft,catchUp:this.cars[self].catchUp,resetting:me.hold>0,finalLap:me.laps===this.laps-1&&this.time-this.lapAt[self]<2.5,order:order.map(id=>({id,name:NAMES[id],finish:this.progress[id].finish,laps:this.progress[id].laps})),winner:this.firstFinish===null?null:order[0]};
+    return {phase:this.phase,countdown:Math.ceil(this.countdown),time:this.time,lap:Math.min(this.laps,me.laps+1),laps:this.laps,position:order.indexOf(self)+1,count:this.count,speed:this.cars[self].speed*3.6,grass:this.cars[self].grass,wrong:me.wrong,missed:missedCheckpoint(me),draft:this.cars[self].draft,tooClose:this.cars[self].room<.5,catchUp:this.cars[self].catchUp,resetting:me.hold>0,finalLap:me.laps===this.laps-1&&this.time-this.lapAt[self]<2.5,order:order.map(id=>({id,name:NAMES[id],finish:this.progress[id].finish,laps:this.progress[id].laps})),winner:this.firstFinish===null?null:order[0]};
   }
   stats(){return {dynamic:this.world.bodies.len(),colliders:this.world.colliders.len(),invalid:this.invalid,contacts:this.contacts,resets:this.progress.map(p=>p.resets)};}
   dispose(){if(this.disposed)return;this.disposed=true;this.queue.free();this.world.free();}

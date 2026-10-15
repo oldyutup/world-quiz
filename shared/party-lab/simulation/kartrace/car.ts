@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR, CATCH_UP, DRAFT, HANDBRAKE, GROUP, RACE, clamp, groups, headingOf, steeringRate, yaw, type DriveInput, type Vec } from './config.js';
+import { CAR, CATCH_UP, CHASSIS, DRAFT, HANDBRAKE, GROUP, RACE, clamp, groups, headingOf, steeringRate, yaw, type DriveInput, type Vec } from './config.js';
 import type { RaceTrack, Projection } from './track.js';
 
 /** Bowling's cheap four-ray chassis, with unrestricted physical yaw and race-local tires.
@@ -8,21 +8,24 @@ export class RaceCar {
   readonly body:RAPIER.RigidBody;
   readonly collider:RAPIER.Collider;
   grounded=false; grass=false; steer=0; heading=0; handbrake=0;
-  /** Rüzgâr alma: seconds in a tow cone (the charge) and the tow (0–1, DRAFT). Yakalama yardımı (0–1, CATCH_UP). */
-  draftTime=0; draft=0; catchUp=0;
+  /** Rüzgâr alma: seconds in a tow cone (the charge), the tow (0–1, DRAFT) and how much of it works
+   * (1; less right behind a car, 0 on its bumper). Yakalama yardımı (0–1, CATCH_UP). */
+  draftTime=0; draft=0; room=1; catchUp=0;
   previous:Vec={x:0,y:0,z:0}; previousHeading=0;
   projection:Projection;
   constructor(readonly world:RAPIER.World,readonly track:RaceTrack,readonly id:number,readonly maxSpeed=CAR.maxSpeed){
     const grid=track.grid(id);this.heading=grid.heading;this.previousHeading=this.heading;this.previous={...grid.p};
     this.body=world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(grid.p.x,grid.p.y,grid.p.z).setRotation(yaw(this.heading)).enabledRotations(false,true,false).setCcdEnabled(true).setCanSleep(false));
-    this.collider=world.createCollider(RAPIER.ColliderDesc.roundCuboid(.98,.23,1.95,.08).setMass(CAR.mass).setFriction(.08).setRestitution(.08).setCollisionGroups(groups(GROUP.car,7)).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),this.body);
+    this.collider=world.createCollider(RAPIER.ColliderDesc.roundCuboid(CHASSIS.halfWidth,CHASSIS.halfHeight,CHASSIS.halfLength,CHASSIS.round).setMass(CAR.mass).setFriction(.08).setRestitution(.08).setCollisionGroups(groups(GROUP.car,7)).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),this.body);
     this.projection=track.project(grid.p);
   }
   get speed(){const v=this.body.linvel();return Math.hypot(v.x,v.z);}
+  /** Top speed on asphalt now: a working tow and the catch-up help raise it (both 0 when not earned). */
+  get topSpeed(){return this.maxSpeed*(1+DRAFT.speedBonus*this.draft*this.room+CATCH_UP.speedBonus*this.catchUp);}
   get forwardSpeed(){const v=this.body.linvel();return v.x*Math.sin(this.heading)+v.z*Math.cos(this.heading);}
   place(p:Vec,heading:number){
     this.body.setTranslation(p,true);this.body.setRotation(yaw(heading),true);this.body.setLinvel({x:0,y:0,z:0},true);this.body.setAngvel({x:0,y:0,z:0},true);this.body.resetForces(true);this.body.resetTorques(true);
-    this.previous={...p};this.heading=this.previousHeading=heading;this.steer=0;this.handbrake=0;this.draftTime=this.draft=0;this.projection=this.track.project(p);
+    this.previous={...p};this.heading=this.previousHeading=heading;this.steer=0;this.handbrake=0;this.draftTime=this.draft=0;this.room=1;this.projection=this.track.project(p);
   }
   step(input:DriveInput,locked=false){
     const dt=RACE.step,p=this.body.translation(),v=this.body.linvel();this.previous={...p};this.previousHeading=this.heading;this.heading=headingOf(this.body.rotation());this.projection=this.track.project(p);
@@ -42,8 +45,8 @@ export class RaceCar {
     // Rear lock builds/releases over time. Tire force and yaw acceleration remain bounded.
     this.handbrake+=(Number(!!input.handbrake)-this.handbrake)*(1-Math.exp(-12*dt));
     // A tow and the catch-up help raise the top speed and the acceleration (both 0 when not earned).
-    const acceleration=(this.grass?CAR.acceleration*.40:CAR.acceleration)*(1+DRAFT.accelBonus*this.draft+CATCH_UP.accelBonus*this.catchUp);
-    const cap=(this.grass?this.maxSpeed*.48:this.maxSpeed)*(1+DRAFT.speedBonus*this.draft+CATCH_UP.speedBonus*this.catchUp);
+    const acceleration=(this.grass?CAR.acceleration*.40:CAR.acceleration)*(1+DRAFT.accelBonus*this.draft*this.room+CATCH_UP.accelBonus*this.catchUp);
+    const cap=this.topSpeed*(this.grass?.48:1);
     let next=forward;
     if(brake>0){if(forward>.35)next=Math.max(0,forward-CAR.brake*brake*dt);else next=Math.max(-CAR.reverse,forward-acceleration*.7*brake*dt);}
     else if(throttle>0)next=forward<cap?Math.min(cap,forward+acceleration*throttle*dt):forward;

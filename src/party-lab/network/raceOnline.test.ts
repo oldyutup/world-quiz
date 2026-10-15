@@ -94,7 +94,7 @@ test('Race tow and catch-up cross the wire; the client replay keeps building the
  try{for(let tick=0;tick<60;tick++){const intents=Array.from({length:3},neutralIntent);intents[0].race=packet({seq:tick,throttle:1});intents[2].race=packet({seq:tick,throttle:1});s.step(intents);}
   assert.ok(g.cars[1].draft>0,'the follower is towed');assert.equal(g.cars[0].draft,0);
   const f=s.snapshot([59,-1,59]);assert.ok(buffer.push(f,0));const copy=new RaceGame(2);
-  try{restoreRace(copy,f.race!,buffer.latest!.values);copy.cars.forEach((c,i)=>{assert.equal(c.draft,g.cars[i].draft);assert.equal(c.draftTime,g.cars[i].draftTime);assert.equal(c.catchUp,g.cars[i].catchUp);});}finally{copy.dispose();}
+  try{restoreRace(copy,f.race!,buffer.latest!.values);copy.cars.forEach((c,i)=>{assert.equal(c.draft,g.cars[i].draft);assert.equal(c.draftTime,g.cars[i].draftTime);assert.equal(c.catchUp,g.cars[i].catchUp);assert.equal(c.room,g.cars[i].room);});assert.ok(g.cars[1].room>0&&g.cars[1].room<1,'the wake eases the tow');}finally{copy.dispose();}
   p.reconcile(buffer.latest!,0);const towed=p.game.cars[1].draft;assert.equal(towed,g.cars[1].draft);
   for(let k=0;k<6;k++)p.step(packet({seq:60+k,throttle:1}),k*16);assert.ok(p.game.cars[1].draft>towed,'the replay keeps building the tow');
  }finally{p.dispose();s.dispose();}

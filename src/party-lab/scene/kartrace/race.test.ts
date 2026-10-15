@@ -3,7 +3,7 @@ import { before, test } from 'node:test';
 import { initializePhysics } from '../physics';
 import { NET } from '../../../../shared/party-lab/network/protocol';
 import { MODE_SELECTIONS } from '../../../../shared/party-lab/modes';
-import { CAR, CATCH_UP, DRAFT, IDLE, RACE, steeringRate, type DriveInput } from './config';
+import { CAR, CAR_LENGTH, CATCH_UP, DRAFT, IDLE, RACE, angle, clamp, steeringRate, type DriveInput } from './config';
 import { RaceTrack, crossedGate } from './track';
 import { RaceGame } from './game';
 import { advance, markMissed, missedCheckpoint, newProgress, raceDistance, raceOrder, wrongWay } from './rules';
@@ -97,40 +97,73 @@ test('R always respawns at the last checkpoint passed and never adds progress, f
     }finally{g.dispose();}
   }
 });
-/** Two cars on a long straight (a 5× circuit), the second `gap` m behind the first, `side` m off its line, both at `speed`. */
+/** Two cars on a long straight (a 5× circuit), the second `gap` m behind the first bumper to bumper, `side` m off its line, both at `speed`. */
 function towFixture(gap:number,side=0,speed=26){
   const g=new RaceGame(2,{scale:5,width:100});g.phase='racing';g.bots=false;const t=g.track,lead=t.at(200),h=Math.atan2(lead.tx,lead.tz);
   g.progress.forEach(p=>{p.started=true;p.next=1;});
-  g.cars[0].place(t.pose(200),h);g.cars[1].place(t.pose(200-gap,side),h);
+  g.cars[0].place(t.pose(200),h);g.cars[1].place(t.pose(200-gap-CAR_LENGTH,side),h);
   for(const c of g.cars)c.body.setLinvel({x:lead.tx*speed,y:0,z:lead.tz*speed},true);
   return g;
 }
 const both=(g:RaceGame,seconds:number,throttle=1)=>run2(g,seconds,[{...IDLE,throttle},{...IDLE,throttle}]);
 const run2=(g:RaceGame,seconds:number,inputs:DriveInput[])=>{for(let i=0;i<Math.round(seconds/RACE.step);i++)g.step(IDLE,inputs);};
-test('tow cone: only a few metres right behind, aligned and fast',()=>{
-  const cases:[number,number,number,boolean][]=[[8,0,26,true],[4,.5,26,true],[13.5,1.9,26,true],[2,0,26,false],[15,0,26,false],[8,2.4,26,false],[-8,0,26,false],[8,0,10,false]];
+/** Bumper-to-bumper gap between two cars in line. */
+const bumper=(g:RaceGame,a=0,b=1)=>{const p=g.cars[a].body.translation(),q=g.cars[b].body.translation();return Math.hypot(p.x-q.x,p.z-q.z)-CAR_LENGTH;};
+/** Steering that holds a lateral offset along the track (a driver keeping a line). */
+const hold=(c:RaceGame['cars'][number],lateral:number)=>{const pt=c.projection.point;return clamp((lateral-c.projection.lateral)*.08-angle(c.heading-Math.atan2(pt.tx,pt.tz))*1.6,-1,1);};
+test('tow zone: 3–12 m behind the bumper, in a narrow cone, aligned and fast; it eases out in the last metres and gives nothing on the bumper',()=>{
+  assert.deepEqual({minGap:DRAFT.minGap,maxGap:DRAFT.maxGap,speedBonus:DRAFT.speedBonus,accelBonus:DRAFT.accelBonus,fade:DRAFT.fade},{minGap:3,maxGap:12,speedBonus:.12,accelBonus:.1,fade:2});
+  assert.ok(Math.abs(CAR_LENGTH-4.06)<1e-9);
+  const cases:[number,number,number,boolean][]=[[8,0,26,true],[3.2,.5,26,true],[11.8,2,26,true],[2.5,0,26,false],[12.5,0,26,false],[8,2.2,26,false],[-12,0,26,false],[8,0,10,false]];
   for(const [gap,side,speed,tow] of cases){const g=towFixture(gap,side,speed);try{g.step(IDLE,[IDLE,IDLE]);assert.equal(g.inTow(1,0),tow,`${gap} m behind, ${side} m aside, ${speed} m/s`);if(gap>0)assert.equal(g.inTow(0,1),false,'the leader is never towed by the car behind');}finally{g.dispose();}}
   const turned=towFixture(8);try{const c=turned.cars[1];c.place(c.body.translation(),c.heading+.45);c.body.setLinvel({x:Math.sin(c.heading)*26,y:0,z:Math.cos(c.heading)*26},true);turned.step(IDLE,[IDLE,IDLE]);assert.equal(turned.inTow(1,0),false,'not aligned');}finally{turned.dispose();}
+  // How much of a tow works: all of it from 6.5 m, easing to nothing at 3 m, none on the bumper; beside a car, all of it.
+  for(const [gap,side,room] of [[9,0,1],[DRAFT.minGap+DRAFT.ease,0,1],[DRAFT.minGap+DRAFT.ease*.75,0,.75],[DRAFT.minGap+DRAFT.ease/4,0,.25],[2.5,0,0],[.5,1,0],[1,2.5,1],[-3,3,1]] as const){
+    const g=towFixture(gap,side);try{g.step(IDLE,[IDLE,IDLE]);assert.ok(Math.abs(g.cars[1].room-room)<.02,`${gap} m behind, ${side} m aside: ${g.cars[1].room}`);assert.equal(g.cars[0].room,1);assert.equal(g.snapshot(1).tooClose,room<.5);}finally{g.dispose();}
+  }
 });
-test('tow builds after 0.6 s in the cone, fills in 1.5 s and fades within 0.8 s outside it',()=>{
+test('tow builds after 0.6 s in the zone, fills in 1.5 s and fades slowly (2 s) once out of it',()=>{
   const g=towFixture(9);try{
     both(g,DRAFT.charge-.1);assert.equal(g.cars[1].draft,0,'no tow before the charge');
     both(g,.4);assert.ok(g.cars[1].draft>0&&g.cars[1].draft<.4,`building ${g.cars[1].draft}`);
     // Hold the gap (the leader at full throttle, the follower easing) until full.
-    for(let i=0;i<120;i++){const gap=Math.hypot(g.cars[0].body.translation().x-g.cars[1].body.translation().x,g.cars[0].body.translation().z-g.cars[1].body.translation().z);g.step(IDLE,[{...IDLE,throttle:1},{...IDLE,throttle:gap>8?1:0}]);}
+    for(let i=0;i<120;i++)g.step(IDLE,[{...IDLE,throttle:1},{...IDLE,throttle:bumper(g)>8?1:0}]);
     assert.equal(g.cars[1].draft,1);assert.equal(g.cars[0].draft,0,'the leader gets nothing');assert.equal(g.snapshot(1).draft,1);
-    // Out of the cone: gone in 0.8 s.
-    const c=g.cars[1],at=c.body.translation();c.body.setTranslation({x:at.x+Math.cos(c.heading)*6,y:at.y,z:at.z-Math.sin(c.heading)*6},true);
-    both(g,.4);assert.ok(c.draft>.3&&c.draft<.7,`fading ${c.draft}`);both(g,.45);assert.equal(c.draft,0);
+    // Out of the zone (well wide of the car ahead): it lasts, gone after 2 s.
+    const c=g.cars[1],at=c.body.translation();c.body.setTranslation({x:at.x+Math.cos(c.heading)*7,y:at.y,z:at.z-Math.sin(c.heading)*7},true);
+    both(g,1);assert.ok(c.draft>.4&&c.draft<.6,`fading ${c.draft}`);assert.equal(c.room,1);both(g,1.05);assert.equal(c.draft,0);
   }finally{g.dispose();}
 });
-test('a full tow lifts the top speed by 12% and catches the car ahead; alone nobody passes the cap',()=>{
-  const g=towFixture(10,0,CAR.maxSpeed-.2);try{let peak=0;
-    for(let i=0;i<Math.round(6/RACE.step);i++){g.step(IDLE,[{...IDLE,throttle:1},{...IDLE,throttle:1}]);peak=Math.max(peak,g.cars[1].forwardSpeed);
-      const a=g.cars[0].body.translation(),b=g.cars[1].body.translation();if(Math.hypot(a.x-b.x,a.z-b.z)<5.5)break;}
+test('a full tow lifts the top speed by up to 12% with soft pull, eases out in the wake and never puts the car on the bumper',()=>{
+  const g=towFixture(12,0,CAR.maxSpeed-.2);try{let peak=0,closest=Infinity,surge=0;
+    for(let i=0;i<Math.round(6/RACE.step);i++){const before=g.cars[1].forwardSpeed;g.step(IDLE,[{...IDLE,throttle:1,steer:hold(g.cars[0],0)},{...IDLE,throttle:1,steer:hold(g.cars[1],0)}]);
+      peak=Math.max(peak,g.cars[1].forwardSpeed);surge=Math.max(surge,(g.cars[1].forwardSpeed-before)/RACE.step);closest=Math.min(closest,bumper(g));
+      assert.ok(!g.events.some(e=>e.kind==='impact'),'never touches the car ahead');}
     assert.ok(peak>CAR.maxSpeed*1.04,`towed ${(peak*3.6).toFixed(1)} km/h`);assert.ok(peak<=CAR.maxSpeed*(1+DRAFT.speedBonus)+.05);
-    const a=g.cars[0].body.translation(),b=g.cars[1].body.translation();assert.ok(Math.hypot(a.x-b.x,a.z-b.z)<6,'the follower catches up');
+    assert.ok(surge<CAR.acceleration*(1+DRAFT.accelBonus)+.01,`pull ${surge.toFixed(2)} m/s²`);
+    assert.ok(closest>2.8,`closest ${closest.toFixed(2)} m`);
+    assert.ok(bumper(g)<4,'it settles in the wake, a few metres back');assert.equal(g.cars[1].draft,1,'and keeps its tow for the pass');
+    assert.ok(Math.abs(g.cars[1].forwardSpeed-g.cars[0].forwardSpeed)<.4,'at the speed of the car ahead');
     assert.ok(g.cars[0].forwardSpeed<=CAR.maxSpeed+.05,'the leader stays at the normal cap');
+  }finally{g.dispose();}
+});
+test('the tow pulls only forwards: no sideways pull towards the car ahead, no steering',()=>{
+  const g=towFixture(8,1);try{both(g,4);const c=g.cars[1];assert.ok(c.draft>.5,`towed ${c.draft}`);
+    assert.ok(Math.abs(c.projection.lateral-1)<.02,`kept its line: ${c.projection.lateral}`);assert.ok(Math.abs(c.body.angvel().y)<1e-6);assert.equal(c.steer,0);
+  }finally{g.dispose();}
+});
+test('the slingshot: pulling out of the wake keeps the tow alongside and carries the car past',()=>{
+  const g=towFixture(12,0,CAR.maxSpeed-.2);try{const [l,f]=g.cars;
+    for(let i=0;i<Math.round(6/RACE.step);i++)g.step(IDLE,[{...IDLE,throttle:1,steer:hold(l,0)},{...IDLE,throttle:1,steer:hold(f,0)}]);
+    assert.equal(f.draft,1);assert.ok(bumper(g)>2.8&&bumper(g)<4);
+    // Pull out 3.2 m: the tow holds while alongside, then fades over 2 s and carries the car clear.
+    let level=-1,clear=-1;
+    for(let i=0;i<Math.round(9/RACE.step)&&clear<0;i++){g.step(IDLE,[{...IDLE,throttle:1,steer:hold(l,0)},{...IDLE,throttle:1,steer:hold(f,3.2)}]);
+      const ahead=g.track.wrap(f.projection.s-l.projection.s+g.track.length/2)-g.track.length/2;
+      if(level<0&&ahead>=0){level=i*RACE.step;assert.ok(f.draft>.95,`kept alongside: ${f.draft}`);}
+      if(ahead>CAR_LENGTH+1)clear=i*RACE.step;
+      assert.ok(!g.events.some(e=>e.kind==='impact'),'a clean pass');}
+    assert.ok(level>0&&level<4.5,`level after ${level.toFixed(1)} s`);assert.ok(clear>0&&clear<9,`clear ahead after ${clear.toFixed(1)} s`);
   }finally{g.dispose();}
 });
 test('catch-up helps only the last car still racing, from 40 m behind, fully at 120 m (+5%)',()=>{
@@ -149,9 +182,24 @@ test('catch-up helps only the last car still racing, from 40 m behind, fully at 
     run2(solo,9,[IDLE,{...IDLE,throttle:1}]);assert.equal(solo.cars[1].catchUp,1);assert.ok(solo.cars[1].speed>CAR.maxSpeed*1.04&&solo.cars[1].speed<=CAR.maxSpeed*(1+CATCH_UP.speedBonus)+.05,`${solo.cars[1].speed}`);
   }finally{solo.dispose();}
 });
-test('bots use the tow (tuck in on straights, pull out to pass) and still finish clean races without misses',()=>{
-  let towed=0;
-  for(const n of [2,3] as const){const g=new RaceGame(n);try{g.autoHuman=true;for(let i=0;i<9000&&g.phase!=='results';i++){g.step();towed+=g.cars.filter(c=>c.draft>.5).length*RACE.step;assert.ok(g.progress.every(p=>!p.missed),'bots on the racing line never miss');}
-    assert.equal(g.phase,'results');assert.ok(g.progress.every(p=>p.finish!==null&&p.laps===3));assert.equal(g.invalid,0);}finally{g.dispose();}}
-  assert.ok(towed>2,`bots towed ${towed.toFixed(1)} s`);
+test('bots use the tow (tuck in, pull out, pass) and still finish clean races without misses',()=>{
+  let towed=0,passes=0;
+  for(const n of [2,3] as const){const g=new RaceGame(n);try{g.autoHuman=true;let order:number[]=[],contacts=0;
+    for(let i=0;i<9000&&g.phase!=='results';i++){g.step();towed+=g.cars.filter(c=>c.draft*c.room>.5).length*RACE.step;assert.ok(g.progress.every(p=>!p.missed),'bots on the racing line never miss');
+      const now=raceOrder(g.progress,g.track,g.cars.map(c=>c.projection.s));if(g.time>8&&order.length&&now.join()!==order.join())passes++;order=now;if(g.time>5)contacts+=g.events.filter(e=>e.kind==='impact').length;}
+    assert.equal(g.phase,'results');assert.ok(g.progress.every(p=>p.finish!==null&&p.laps===3));assert.equal(g.invalid,0);assert.ok(contacts<=4,`${n}P contacts ${contacts}`);
+    assert.ok(g.cars.every(c=>c.projection.distance<c.projection.point.width/2+3));}finally{g.dispose();}}
+  assert.ok(towed>10,`bots towed ${towed.toFixed(1)} s`);assert.ok(passes>=2,`bots passed ${passes} times`);
+});
+test('a bot behind a car at the top speed tucks in, pulls out on the slingshot and passes it',()=>{
+  const g=new RaceGame(2,{scale:5,width:100});try{g.phase='racing';const t=g.track,lead=t.at(200),h=Math.atan2(lead.tx,lead.tz),[you,bot]=g.cars;
+    const next=t.checkpoints.findIndex(c=>c.s>200);g.progress.forEach(p=>{p.started=true;p.next=next;});you.place(t.pose(200),h);bot.place(t.pose(200-11-CAR_LENGTH),h);
+    for(const c of g.cars)c.body.setLinvel({x:lead.tx*CAR.maxSpeed,y:0,z:lead.tz*CAR.maxSpeed},true);
+    let tucked=false,pulledOut=false,passed=false,topSpeed=0;
+    for(let i=0;i<Math.round(20/RACE.step)&&!passed;i++){g.step({...IDLE,throttle:1,steer:hold(you,0)});
+      tucked||=g.inTow(1,0);pulledOut||=g.drivers[1].passing===0;topSpeed=Math.max(topSpeed,bot.forwardSpeed);
+      passed=t.wrap(bot.projection.s-you.projection.s+t.length/2)-t.length/2>CAR_LENGTH+1;assert.ok(!g.events.some(e=>e.kind==='impact'),'a clean pass');assert.ok(!g.progress[1].missed);}
+    assert.ok(tucked&&pulledOut&&passed,`tucked ${tucked}, pulled out ${pulledOut}, passed ${passed}`);
+    assert.ok(topSpeed>CAR.maxSpeed*1.06,`the bot used the tow's top speed: ${(topSpeed*3.6).toFixed(0)} km/h`);
+  }finally{g.dispose();}
 });

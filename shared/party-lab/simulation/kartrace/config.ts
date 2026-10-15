@@ -7,17 +7,24 @@ export const RACE = { id: 'kart_race', label: 'ARABA YARIŞI', step: 1 / 60, cou
   /** The later checkpoints a miss is noticed on (a shortcut across the infield comes back through one of them). */
   missLookahead: 5,
 } as const;
+/** The chassis collider, a rounded box: 2.12 m wide and 4.06 m long outside. */
+export const CHASSIS = { halfWidth: .98, halfHeight: .23, halfLength: 1.95, round: .08 } as const;
+export const CAR_LENGTH = 2 * (CHASSIS.halfLength + CHASSIS.round), CAR_WIDTH = 2 * (CHASSIS.halfWidth + CHASSIS.round);
 /**
- * Rüzgâr alma (slipstream). A car in the narrow cone behind another (`minDistance`–`maxDistance` m
- * behind it along its heading, centre to centre; within ±(`halfWidth` + `widen` × (distance −
- * minDistance)) m sideways; headings within `maxHeading` rad; both at least `minSpeed` m/s) for
- * `charge` s starts to build a tow: 0 → 1 in `build` s. Out of the cone it fades 1 → 0 in `fade` s.
- * A full tow raises the top speed by `speedBonus` and the acceleration by `accelBonus`.
+ * Rüzgâr alma (slipstream). Gaps are bumper to bumper (the centre-to-centre distance less one
+ * CAR_LENGTH). A car `minGap`–`maxGap` m behind another (along its heading), within ±(`halfWidth`
+ * + `widen` × (gap − minGap)) m sideways, headings within `maxHeading` rad and both at least
+ * `minSpeed` m/s, for `charge` s builds a tow: 0 → 1 in `build` s. Pulling out beside that car
+ * to pass (behind its centre, within `passWidth` m sideways, same limits) keeps it; anywhere else it
+ * fades 1 → 0 in `fade` s and keeps working meanwhile: the slingshot carries a car past. Right
+ * behind a car (overlapping it sideways) it eases out over the last `ease` m before `minGap` and
+ * gives nothing closer, so a tow brings a car up to the wake, never onto the bumper.
+ * A tow raises the top speed by `speedBonus` and the acceleration by `accelBonus`.
  */
 export const DRAFT = {
-  minDistance: 3, maxDistance: 14, halfWidth: 1.5, widen: 0.064, maxHeading: 20 * Math.PI / 180, minSpeed: 55 / 3.6,
-  charge: 0.6, build: 1.5, fade: 0.8,
-  speedBonus: 0.12, accelBonus: 0.35,
+  minGap: 3, maxGap: 12, halfWidth: 1.5, widen: 0.064, passWidth: 5, maxHeading: 20 * Math.PI / 180, minSpeed: 55 / 3.6,
+  charge: 0.6, build: 1.5, fade: 2, ease: 3.5,
+  speedBonus: 0.12, accelBonus: 0.10,
 } as const;
 /**
  * Yakalama yardımı: only the last car still racing, when its race distance behind the car ahead of
