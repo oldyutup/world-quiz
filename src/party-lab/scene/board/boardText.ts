@@ -51,9 +51,10 @@ export function boardBanner(board: BoardWire, name: (slot: number) => string, se
     me = who === self && who >= 0;
   switch (board.phase) {
     case "intro":
+      if (!board.mode) return { title: "Mini oyun kalmadı", detail: `Tur ${board.round} · Her mini oyun oynandı, herkes tek zar atar` };
       return { title: MODE_NAMES[board.mode], detail: board.round === 1 ? "İlk mini oyun hazırlanıyor" : `Tur ${board.round} · Sıradaki mini oyun` };
     case "minigame":
-      return { title: MODE_NAMES[board.mode], detail: board.mini === "results" ? "Sonuçlar · Tahtaya dönülüyor" : "Mini oyun sürüyor" };
+      return { title: board.mode ? MODE_NAMES[board.mode] : "", detail: board.mini === "results" ? "Sonuçlar · Tahtaya dönülüyor" : "Mini oyun sürüyor" };
     case "choose":
       return me
         ? { title: "Mini oyunu kazandın!", detail: "Zarını seç: iki zarın büyüğü ya da tek zar +1" }

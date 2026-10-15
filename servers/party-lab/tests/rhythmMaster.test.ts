@@ -10,7 +10,8 @@ import type { AddressInfo } from "node:net";
 import { Client, type Room } from "@colyseus/sdk";
 import { matchMaker } from "@colyseus/core";
 import { createPartyServer } from "../src/server.js";
-import type { PartyRoom } from "../src/PartyRoom.js";
+import { createSimulation, type PartyRoom } from "../src/PartyRoom.js";
+import { newRoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import type { LobbyState } from "../src/state.js";
 import { RHYTHM as R } from "../../../shared/party-lab/simulation/rhythm/config.js";
 import { GOOD, MISS, PERFECT, RhythmGame, WRONG, comboOf, judgePress, type RhythmPress } from "../../../shared/party-lab/simulation/rhythm/game.js";
@@ -436,6 +437,35 @@ test("Ritim Ustası is in Mixed, in the board's mini games and in the Yerel Test
     assert.ok(minis.includes("rhythm_master"), `Tahta Oyunu ${count}P: ${minis.join(",")}`);
   }
   assert.ok(!modeFits("rhythm_master", 1) && !modeFits("rhythm_master", 4));
+});
+
+test("online: every round draws its music at random from the three styles (one-mode lobby, Mixed and the board alike)", () => {
+  const N = 600,
+    fresh = new Map<string, number>(),
+    again = new Map<string, number>();
+  // Mixed and the board build a new simulation for each Ritim Ustası round (its own crypto seed) ...
+  for (let i = 0; i < N; i++) {
+    const sim = createSimulation("rhythm_master", newRoomCounters()) as RhythmRoundSimulation;
+    assert.ok(sim.start([0, 1]));
+    fresh.set(sim.game.style, (fresh.get(sim.game.style) ?? 0) + 1);
+  }
+  // ... a one-mode lobby keeps its simulation and starts it again: a new draw every round.
+  const kept = createSimulation("rhythm_master", newRoomCounters()) as RhythmRoundSimulation;
+  const styles: string[] = [];
+  for (let i = 0; i < N; i++) {
+    assert.ok(kept.start([0, 1, 2]));
+    styles.push(kept.game.style);
+    again.set(kept.game.style, (again.get(kept.game.style) ?? 0) + 1);
+    kept.cancelCountdown();
+  }
+  for (const [name, tally] of [["fresh", fresh], ["again", again]] as const)
+    for (const style of RHYTHM_STYLES) {
+      const share = (tally.get(style) ?? 0) / N;
+      assert.ok(share > 0.22 && share < 0.45, `${name} ${style}: ${share}`);
+    }
+  // Not stuck on one style for long: the next round's style changes about two times in three.
+  const changes = styles.filter((s, i) => i > 0 && s !== styles[i - 1]).length / (N - 1);
+  assert.ok(changes > 0.55 && changes < 0.78, `changes ${changes}`);
 });
 
 /* A real room: presses in the countdown are dropped, stamped presses judged at their stamp,

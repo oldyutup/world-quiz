@@ -1,4 +1,4 @@
-import { MixedRotation, type GameMode } from "../modes.js";
+import { BoardRotation, type GameMode } from "../modes.js";
 import { BOARD, EFFECT, effectSeconds, moveSeconds, type BoardSquare } from "./config.js";
 import { dieFrom, isWinnerChoice, moveOrder, rollDice, type DiceKind, type Die, type WinnerChoice } from "./rules.js";
 import { generateSquares } from "./squares.js";
@@ -14,13 +14,20 @@ export interface BoardHost {
   connected(slot: number): boolean;
 }
 
+/** The mini game order a match asks: the next mode (null: none left to play) and that it started. */
+export interface MiniRotation {
+  readonly next: GameMode | null;
+  played(): void;
+  setPlayers(count: number): void;
+}
+
 export interface BoardOptions {
   length: number;
   slots: readonly number[];
   random?: () => number;
   die?: Die;
-  /** Mini game order: random, no repeats within a cycle, fit for the player count. */
-  rotation?: MixedRotation;
+  /** Mini game order: random, fit for the player count, each mode once a match (BoardRotation; tests pin one). */
+  rotation?: MiniRotation;
   /** Special squares; a fresh random layout (from `random`) when left out. */
   squares?: readonly BoardSquare[];
 }
@@ -48,8 +55,8 @@ export class BoardSession {
   /** The last mini game's winner (−1: draw or none) and its mode. */
   first = -1;
   lastMode: GameMode | null = null;
-  /** The mode the next (or running) mini game is played in. */
-  mode: GameMode;
+  /** The mode the next (or running) mini game is played in; null once the match has played every mode that fits. */
+  mode: GameMode | null;
   choice: WinnerChoice | null = null;
   roll: BoardRoll | null = null;
   winner = -1;
@@ -68,7 +75,7 @@ export class BoardSession {
   private effectSeq = 0;
   private readonly random: () => number;
   private readonly die: Die;
-  readonly rotation: MixedRotation;
+  readonly rotation: MiniRotation;
 
   constructor(private readonly host: BoardHost, options: BoardOptions) {
     const slots = [...new Set(options.slots)].sort((a, b) => a - b);
@@ -78,7 +85,7 @@ export class BoardSession {
     if (options.squares && options.squares.length !== options.length + 1) throw new Error("BOARD_SQUARES");
     this.squares = options.squares ? options.squares.map((s) => ({ ...s })) : generateSquares(options.length, this.random);
     this.die = options.die ?? dieFrom(this.random);
-    this.rotation = options.rotation ?? new MixedRotation(this.random);
+    this.rotation = options.rotation ?? new BoardRotation(this.random);
     for (const slot of slots) this.pieces.set(slot, 0);
     this.rotation.setPlayers(slots.length);
     this.mode = this.rotation.next;
@@ -234,6 +241,13 @@ export class BoardSession {
 
   private startMini() {
     const mode = this.rotation.next;
+    if (!mode) {
+      // Every mini game that fits was played in this match (none repeats): the round goes on with dice alone.
+      this.mode = null;
+      this.record(-1, null);
+      this.beginTurns();
+      return;
+    }
     this.rotation.played();
     this.mode = this.lastMode = mode;
     this.phase = "minigame";

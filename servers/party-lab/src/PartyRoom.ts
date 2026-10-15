@@ -24,12 +24,13 @@ import { LayerRoundSimulation } from "../../../shared/party-lab/simulation/layer
 import { ColorRoundSimulation } from "../../../shared/party-lab/simulation/colorRound.js";
 import { BombRoundSimulation } from "../../../shared/party-lab/simulation/bombRound.js";
 import { NO_COLOR } from "../../../shared/party-lab/simulation/colors/layouts.js";
-import { BoardSession, type BoardHost } from "../../../shared/party-lab/board/session.js";
+import { BoardSession, type BoardHost, type MiniRotation } from "../../../shared/party-lab/board/session.js";
 import { BOARD, type BoardSquare } from "../../../shared/party-lab/board/config.js";
 import { encodeBoard } from "../../../shared/party-lab/board/wire.js";
 import { DEFAULT_BOARD_SETTINGS, validBoardSettings } from "../../../shared/party-lab/boardSettings.js";
 import { newRoomCounters, type OnlineSimulation, type RoomCounters } from "../../../shared/party-lab/simulation/online.js";
 import {
+  BoardRotation,
   DEFAULT_MODE_SELECTION,
   isModeSelection,
   MixedRotation,
@@ -149,8 +150,8 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   readonly rotation = new MixedRotation();
   readonly propRotation = new PropRotation(cryptoSeed());
   upcoming: GameMode = upcomingMode(DEFAULT_MODE_SELECTION, this.rotation);
-  /** Tahta Oyunu: the next match's mini game order (its first one is the lobby preview). */
-  boardRotation = new MixedRotation(cryptoRandom);
+  /** Tahta Oyunu: the next match's mini game order (its first one is the lobby preview; each mode once a match). */
+  boardRotation: MiniRotation = new BoardRotation(cryptoRandom);
   /** The board match in progress: mini games start without the lobby until someone wins. */
   board: BoardSession | null = null;
   /** Special squares for the next match; null draws a fresh random layout (tests pin one). */
@@ -195,9 +196,9 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     }
     if (!board && game.phase === "waiting" && this.selection === "board_game") {
       this.boardRotation.setPlayers([...this.state.players.values()].filter((p) => p.connected).length);
-      this.upcoming = this.boardRotation.next;
+      this.upcoming = this.boardRotation.next ?? this.upcoming;
     }
-    if (board) this.upcoming = board.mode;
+    if (board) this.upcoming = board.mode ?? this.upcoming;
     const encoded = encodeBoard(board?.wire() ?? null);
     if (this.state.board !== encoded) this.state.board = encoded;
     this.state.phase = game.phase;
@@ -246,7 +247,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
     if (selection === this.selection) return;
     this.selection = selection;
     if (selection === "mixed") this.rotation.reset();
-    this.upcoming = upcomingMode(selection, selection === "board_game" ? this.boardRotation : this.rotation);
+    this.upcoming = selection === "board_game" ? this.boardRotation.next ?? this.upcoming : upcomingMode(selection, this.rotation);
     // A different game is a new decision: everyone confirms again.
     for (const p of this.state.players.values()) p.ready = false;
     this.syncGameState();
@@ -278,7 +279,7 @@ export class PartyRoom extends Room<{ state: LobbyState }> {
   /** Everyone ready on Tahta Oyunu: a board match takes over until someone reaches the treasure. */
   private startBoard(slots: number[]) {
     const rotation = this.boardRotation;
-    this.boardRotation = new MixedRotation(cryptoRandom);
+    this.boardRotation = new BoardRotation(cryptoRandom);
     const length = this.state.boardLength;
     this.board = new BoardSession(this.boardHost, { length, slots, random: cryptoRandom, die: cryptoDie, rotation, squares: this.boardLayout?.(length) });
     // Lobby Ready means nothing during the match; the rematch asks for it again.

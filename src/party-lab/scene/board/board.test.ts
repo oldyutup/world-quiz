@@ -139,6 +139,8 @@ test("HUD lines: the winner chooses, the dice result waits for the dice, the cel
   assert.equal(boardBanner(base({ phase: "finished", winner: 2, reason: "treasure" }), name, 2, true).title, "Hazineyi buldun!");
   assert.equal(boardBanner(base({ phase: "finished", winner: 2, reason: "forfeit" }), name, 0, true).detail, "Rakipler ayrıldı");
   assert.equal(boardBanner(base({ phase: "intro", round: 1, mode: "kart_race" }), name, 0, true).title, "Araba Yarışı");
+  // Every mini game played in this match (none repeats): the round is dice alone.
+  assert.deepEqual(boardBanner(base({ phase: "intro", round: 21, mode: null }), name, 0, true), { title: "Mini oyun kalmadı", detail: "Tur 21 · Her mini oyun oynandı, herkes tek zar atar" });
 });
 
 /** Kedi (slot 0) landed on 7 and the effect moved it to `to`. */

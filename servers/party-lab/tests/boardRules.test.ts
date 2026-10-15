@@ -5,7 +5,7 @@ import { BOARD, BOARD_LENGTHS, boardSquares, moveSeconds } from "../../../shared
 import { dieFrom, eliminationRanks, moveOrder, ranksByScore, rollDice, seatRanks } from "../../../shared/party-lab/board/rules.js";
 import { encodeBoard, parseBoard } from "../../../shared/party-lab/board/wire.js";
 import { boardPath, numberedSquare, pawnOffset, SQUARE_SIZE } from "../../../shared/party-lab/board/layout.js";
-import { GAME_MODES, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
+import { BoardRotation, GAME_MODES, MixedRotation, modeFits, type GameMode } from "../../../shared/party-lab/modes.js";
 
 const DT = 1 / 60;
 function seeded(seed = 1) {
@@ -385,4 +385,111 @@ test("the board's rotation is the lobby preview: first mini game = the one annou
   assert.equal(board.mode, preview);
   run(board, BOARD.introSeconds);
   assert.equal(host.minis[0].mode, preview);
+});
+
+/** Plays a match to the end: every mini game a draw (or the winner `winner()` picks), the rolls pressed at once. Returns each round's intro mode. */
+function playOut(board: BoardSession, winner: () => number = () => -1, dt = DT) {
+  const intros: (GameMode | null)[] = [];
+  let minigameWithoutMode = false;
+  for (let t = 0; t < 4e6 && board.phase !== "finished"; t++) {
+    if (board.phase === "intro" && intros.length < board.round) {
+      intros.push(board.mode);
+      assert.equal(parseBoard(encodeBoard(board.wire()))?.mode, board.mode);
+    }
+    if (board.phase === "minigame" && !board.mode) minigameWithoutMode = true;
+    if (board.phase === "minigame" && board.wire().mini === "playing") board.miniResult(winner(), null);
+    else if (board.phase === "roll") board.rollPressed(board.current);
+    else if (board.phase === "choose") board.choose(board.current, "two");
+    board.step(dt);
+  }
+  assert.equal(board.phase, "finished");
+  assert.ok(!minigameWithoutMode, "a round without a mode never enters a mini game");
+  return intros;
+}
+const counts = (modes: readonly GameMode[]) => modes.reduce((m, mode) => m.set(mode, (m.get(mode) ?? 0) + 1), new Map<GameMode, number>());
+
+test("a board match never repeats a mini game: every fitting mode once, then the rounds go on with dice alone", () => {
+  for (const count of [2, 3]) {
+    const fits = GAME_MODES.filter((mode) => modeFits(mode, count)).sort();
+    const host = new Host();
+    // One square a round each on Uzun: 50 rounds, far more than the modes.
+    const board = new BoardSession(host, { length: 50, slots: [0, 1, 2].slice(0, count), random: seeded(count), die: queued(1), squares: boardSquares(50) });
+    const intros = playOut(board);
+    const played = host.minis.map((m) => m.mode);
+    assert.equal(board.round, 50);
+    assert.equal(board.reason, "treasure");
+    assert.equal(played.length, fits.length, `${count}P: one mini game per mode`);
+    assert.deepEqual([...played].sort(), fits, `${count}P: every fitting mode`);
+    assert.ok([...counts(played).values()].every((n) => n === 1), `${count}P: no repeats`);
+    assert.equal(counts(played).get("rhythm_master"), 1, `${count}P: Ritim Ustası once`);
+    // The intros announce the modes in the order they are played, then no mode at all.
+    assert.deepEqual(intros.slice(0, fits.length), played);
+    assert.deepEqual(intros.slice(fits.length), Array(50 - fits.length).fill(null));
+  }
+});
+
+test("a player leaving a board match does not bring back the mini games already played", () => {
+  const host = new Host();
+  const board = new BoardSession(host, { length: 50, slots: [0, 1, 2], random: seeded(11), die: queued(1), squares: boardSquares(50) });
+  for (let t = 0; t < 4e6 && board.round < 7; t++) {
+    if (board.phase === "minigame" && board.wire().mini === "playing") board.miniResult(-1, null);
+    else if (board.phase === "roll") board.rollPressed(board.current);
+    board.step(DT);
+  }
+  const before = host.minis.map((m) => m.mode);
+  assert.equal(before.length, 6);
+  // 3 → 2 players in the intro: the rotation is reshuffled for two, the played modes stay out.
+  board.remove(2);
+  assert.ok(board.mode && !before.includes(board.mode));
+  playOut(board);
+  const played = host.minis.map((m) => m.mode),
+    after = played.slice(before.length);
+  assert.ok([...counts(played).values()].every((n) => n === 1), `no repeats: ${played.join(",")}`);
+  assert.ok(!after.includes("prop_hunt"), "Saklambaç needs three");
+  const fits2 = GAME_MODES.filter((mode) => modeFits(mode, 2));
+  assert.deepEqual([...after].sort(), fits2.filter((mode) => !before.includes(mode)).sort());
+  assert.ok(host.minis.slice(before.length).every((m) => m.slots.length === 2));
+});
+
+test("BoardRotation: each fitting mode once, kept across a player count change, then null", () => {
+  const rotation = new BoardRotation(seeded(5));
+  rotation.setPlayers(3);
+  const seen: GameMode[] = [];
+  for (let i = 0; i < 4; i++) {
+    seen.push(rotation.next!);
+    rotation.played();
+  }
+  rotation.setPlayers(2);
+  for (let mode = rotation.next; mode; mode = rotation.next) {
+    seen.push(mode);
+    rotation.played();
+  }
+  assert.equal(new Set(seen).size, seen.length);
+  const first = seen.slice(0, 4);
+  assert.deepEqual(seen.slice(4).sort(), GAME_MODES.filter((m) => modeFits(m, 2) && !first.includes(m)).sort());
+  assert.equal(rotation.next, null);
+  rotation.played();
+  assert.equal(rotation.next, null);
+});
+
+test("real dice and squares on Uzun: no board match repeats a mini game (Ritim Ustası at most once)", () => {
+  // Matches with more rounds than modes (rare, a few in a thousand) run out of mini games instead of repeating one.
+  let outOfModes = 0;
+  for (const count of [2, 3]) {
+    const fits = GAME_MODES.filter((mode) => modeFits(mode, count)).length;
+    for (let match = 0; match < 2000; match++) {
+      const random = seeded(1000 * count + match),
+        slots = [0, 1, 2].slice(0, count);
+      const host = new Host();
+      const board = new BoardSession(host, { length: 50, slots, random, die: dieFrom(seeded(77 + match)) });
+      // A random winner most rounds, sometimes a draw.
+      playOut(board, () => (random() < 0.15 ? -1 : slots[Math.floor(random() * count)]), 0.25);
+      const played = host.minis.map((m) => m.mode);
+      assert.equal(new Set(played).size, played.length, `${count}P match ${match}: ${played.join(",")}`);
+      assert.ok((counts(played).get("rhythm_master") ?? 0) <= 1);
+      assert.equal(played.length, Math.min(board.round, fits));
+      if (board.round > fits) outOfModes++;
+    }
+  }
+  assert.ok(outOfModes > 0, "some long matches outlast the modes");
 });

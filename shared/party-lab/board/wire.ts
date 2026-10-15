@@ -55,8 +55,8 @@ export interface BoardWire {
   /** The last mini game's winner, −1 for a draw or none. */
   first: number;
   choice: WinnerChoice | null;
-  /** The next (intro) or running mini game. */
-  mode: GameMode;
+  /** The next (intro) or running mini game; null once the match has played every mode that fits. */
+  mode: GameMode | null;
   lastMode: GameMode | null;
   /** Mini game stage while phase is "minigame". */
   mini: "playing" | "results" | null;
@@ -97,7 +97,7 @@ export function parseBoard(text: unknown): BoardWire | null {
   if (!Array.isArray(b.order) || b.order.length > BOARD.maxPlayers || !b.order.every(slot)) return null;
   if (!slotOrNone(b.current) || !slotOrNone(b.first) || !slotOrNone(b.winner) || !int(b.left, 0, 600)) return null;
   if (b.choice !== null && b.choice !== "two" && b.choice !== "plus") return null;
-  if (!isGameMode(b.mode) || (b.lastMode !== null && !isGameMode(b.lastMode))) return null;
+  if ((b.mode !== null && !isGameMode(b.mode)) || (b.lastMode !== null && !isGameMode(b.lastMode))) return null;
   if (b.mini !== null && b.mini !== "playing" && b.mini !== "results") return null;
   if (b.reason !== null && b.reason !== "treasure" && b.reason !== "forfeit") return null;
   if (b.roll !== null) {

@@ -155,6 +155,37 @@ export class MixedRotation {
   }
 }
 
+/**
+ * Tahta Oyunu's mini games: shuffled like Mixed and fit for the player count, but a match
+ * plays each mode at most once. A change in the player count keeps what was played; once
+ * every fitting mode has been played `next` is null (the rounds go on with dice alone).
+ */
+export class BoardRotation {
+  private queue: GameMode[] = [];
+  private players = 3;
+  private readonly used = new Set<GameMode>();
+  constructor(private readonly random: () => number = Math.random) {}
+  setPlayers(count: number) {
+    const next = count === 3 ? 3 : 2;
+    if (next === this.players) return;
+    this.players = next;
+    this.queue = [];
+  }
+  /** The next mini game; null when this match has played every mode that fits. */
+  get next(): GameMode | null {
+    if (!this.queue.length && GAME_MODES.some((mode) => modeFits(mode, this.players) && !this.used.has(mode)))
+      this.queue = mixedCycle(null, this.random, this.players).filter((mode) => !this.used.has(mode));
+    return this.queue[0] ?? null;
+  }
+  /** A mini game of the next mode started: it never comes back in this match. */
+  played() {
+    const mode = this.next;
+    if (!mode) return;
+    this.used.add(mode);
+    this.queue.shift();
+  }
+}
+
 /** The next round's mode for a single-mode selection; Mixed (and the board's mini games) ask a rotation. */
 export function upcomingMode(selection: ModeSelection, rotation: MixedRotation): GameMode {
   return selection === "mixed" || selection === "board_game" ? rotation.next : selection;
